@@ -1,0 +1,28 @@
+firma: Muster GmbH
+rechtsform: GmbH
+uid: CHE-123.456.789
+adresse:
+  strasse: Bahnhofstrasse
+  nr: '1'
+  plz: '3000'
+  ort: Bern
+  land: CH
+telefon: ''
+email: ''
+iban: CH93 0076 2011 6238 5295 7
+qr_referenz_praefix: ''
+waehrung: CHF
+sprache: de
+zahlungsfrist_tage: 30
+erstes_jahr: 2026
+sperre_bis: null
+agent_modus: vorschlag
+konten:
+  bank: '1020'
+  debitoren: '1100'
+  ertrag: '3400'
+  gutschrift: '3800'
+  gewinnvortrag: '2970'
+  jahresergebnis: '2979'
+  dividende: '2261'
+  reserve: '2950'

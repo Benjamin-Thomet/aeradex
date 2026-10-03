@@ -1,0 +1,46 @@
+buchen: true
+konten:
+  lohnaufwand: '5000'
+  auszahlung: '1020'
+  kinderzulagen: '2270'
+  ahv: '2270'
+  alv: '2270'
+  bvg: '2272'
+  ktg: '2271'
+  uvg: '2271'
+  quellensteuer: '2279'
+saetze_an:
+  ahv: 0.053
+  alv: 0.011
+  uvg: 0.007
+  ktg: 0.007
+saetze_ag:
+  ahv: 0.053
+  alv: 0.011
+  fak: 0.015
+  uvg: 0.005
+  ktg: 0.007
+  verwaltung: 0.002
+ag_bvg: gleich_an
+ag_konten:
+  ahv:
+  - '5700'
+  - '2270'
+  alv:
+  - '5700'
+  - '2270'
+  fak:
+  - '5710'
+  - '2270'
+  verwaltung:
+  - '5700'
+  - '2270'
+  bvg:
+  - '5720'
+  - '2272'
+  uvg:
+  - '5730'
+  - '2271'
+  ktg:
+  - '5740'
+  - '2271'

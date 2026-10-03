@@ -1,0 +1,116 @@
+# Kontenrahmen KMU (Schweiz) — schlanke Vorlage für GmbH und AG.
+# klasse: aktiv | passiv | aufwand | ertrag. Die Bilanz-/ER-Gruppe folgt aus der
+# Kontonummer (siehe statements.default_group) und kann mit `gruppe:` übersteuert werden.
+# Eröffnungssalden (eroeffnung) sind vorzeichenbehaftet: Aktiven +, Passiven −.
+konten:
+# --- 1 Aktiven ---
+- {nr: "1000", name: Kasse, klasse: aktiv}
+- {nr: "1020", eroeffnung: 30000, name: Bank, klasse: aktiv}
+- {nr: "1060", name: Wertschriften, klasse: aktiv}
+- {nr: "1100", name: Forderungen aus Lieferungen und Leistungen (Debitoren), klasse: aktiv}
+- {nr: "1109", name: Delkredere, klasse: aktiv}
+- {nr: "1140", name: Vorschüsse und Darlehen, klasse: aktiv}
+- {nr: "1170", name: Vorsteuer MWST Material, Waren, Dienstleistungen, klasse: aktiv}
+- {nr: "1171", name: Vorsteuer MWST Investitionen, übriger Betriebsaufwand, klasse: aktiv}
+- {nr: "1176", name: Verrechnungssteuer, klasse: aktiv}
+- {nr: "1180", name: Forderungen gegenüber Sozialversicherungen, klasse: aktiv}
+- {nr: "1200", name: Handelswaren, klasse: aktiv}
+- {nr: "1280", name: Nicht fakturierte Dienstleistungen, klasse: aktiv}
+- {nr: "1300", name: Bezahlter Aufwand des Folgejahres, klasse: aktiv}
+- {nr: "1301", name: Noch nicht erhaltener Ertrag, klasse: aktiv}
+- {nr: "1400", name: Wertschriften des Anlagevermögens, klasse: aktiv}
+- {nr: "1440", name: Darlehen, klasse: aktiv}
+- {nr: "1480", name: Beteiligungen, klasse: aktiv}
+- {nr: "1500", name: Maschinen und Apparate, klasse: aktiv}
+- {nr: "1510", name: Mobiliar und Einrichtungen, klasse: aktiv}
+- {nr: "1520", name: Büromaschinen, Informatik, Kommunikationstechnologie, klasse: aktiv}
+- {nr: "1530", name: Fahrzeuge, klasse: aktiv}
+- {nr: "1540", name: Werkzeuge und Geräte, klasse: aktiv}
+- {nr: "1600", name: Geschäftsliegenschaften, klasse: aktiv}
+- {nr: "1700", name: Patente, Know-how, Lizenzen, Rechte, Entwicklungen, klasse: aktiv}
+- {nr: "1770", name: Goodwill, klasse: aktiv}
+# --- 2 Passiven ---
+- {nr: "2000", name: Verbindlichkeiten aus Lieferungen und Leistungen (Kreditoren), klasse: passiv}
+- {nr: "2030", name: Erhaltene Anzahlungen, klasse: passiv}
+- {nr: "2100", name: Bankverbindlichkeiten, klasse: passiv}
+- {nr: "2120", name: Verbindlichkeiten aus Finanzierungsleasing, klasse: passiv}
+- {nr: "2140", name: Übrige verzinsliche Verbindlichkeiten, klasse: passiv}
+- {nr: "2200", name: Geschuldete MWST (Umsatzsteuer), klasse: passiv}
+- {nr: "2201", name: Abrechnungskonto MWST, klasse: passiv}
+- {nr: "2206", name: Verrechnungssteuer, klasse: passiv}
+- {nr: "2208", name: Direkte Steuern, klasse: passiv}
+- {nr: "2210", name: Sonstige kurzfristige Verbindlichkeiten, klasse: passiv}
+- {nr: "2261", name: Beschlossene Ausschüttungen, klasse: passiv}
+- {nr: "2270", name: Verbindlichkeiten Ausgleichskasse (AHV/IV/EO/ALV/FAK), klasse: passiv}
+- {nr: "2271", name: Verbindlichkeiten Unfall- und Krankentaggeldversicherung, klasse: passiv}
+- {nr: "2272", name: Verbindlichkeiten Vorsorgeeinrichtung (BVG), klasse: passiv}
+- {nr: "2279", name: Verbindlichkeiten Quellensteuer, klasse: passiv}
+- {nr: "2300", name: Noch nicht bezahlter Aufwand, klasse: passiv}
+- {nr: "2301", name: Erhaltener Ertrag des Folgejahres, klasse: passiv}
+- {nr: "2330", name: Kurzfristige Rückstellungen, klasse: passiv}
+- {nr: "2400", name: Bankverbindlichkeiten langfristig, klasse: passiv}
+- {nr: "2450", name: Darlehen, klasse: passiv}
+- {nr: "2500", name: Übrige langfristige Verbindlichkeiten, klasse: passiv}
+- {nr: "2600", name: Rückstellungen, klasse: passiv}
+- {nr: "2800", eroeffnung: -20000, name: Stammkapital / Aktienkapital, klasse: passiv}
+- {nr: "2900", name: Gesetzliche Kapitalreserve, klasse: passiv}
+- {nr: "2950", name: Gesetzliche Gewinnreserve, klasse: passiv}
+- {nr: "2960", name: Freiwillige Gewinnreserven, klasse: passiv}
+- {nr: "2970", eroeffnung: -10000, name: Gewinnvortrag / Verlustvortrag, klasse: passiv}
+- {nr: "2979", name: Jahresgewinn / Jahresverlust, klasse: passiv}
+# --- 3 Betriebsertrag aus Lieferungen und Leistungen ---
+- {nr: "3000", name: Produktionserlöse, klasse: ertrag}
+- {nr: "3200", name: Handelserlöse, klasse: ertrag}
+- {nr: "3400", name: Dienstleistungserlöse, klasse: ertrag}
+- {nr: "3600", name: Übrige Erlöse aus Lieferungen und Leistungen, klasse: ertrag}
+- {nr: "3800", name: Erlösminderungen, klasse: ertrag}
+- {nr: "3805", name: Verluste aus Forderungen, klasse: ertrag}
+# --- 4 Aufwand für Material, Handelswaren, Dienstleistungen ---
+- {nr: "4000", name: Materialaufwand, klasse: aufwand}
+- {nr: "4200", name: Handelswarenaufwand, klasse: aufwand}
+- {nr: "4400", name: Aufwand für bezogene Dienstleistungen, klasse: aufwand}
+- {nr: "4500", name: Energieaufwand zur Leistungserstellung, klasse: aufwand}
+- {nr: "4900", name: Aufwandminderungen, klasse: aufwand}
+# --- 5 Personalaufwand ---
+- {nr: "5000", name: Lohnaufwand, klasse: aufwand}
+- {nr: "5700", name: AHV, IV, EO, ALV, klasse: aufwand}
+- {nr: "5710", name: FAK, klasse: aufwand}
+- {nr: "5720", name: Berufliche Vorsorge, klasse: aufwand}
+- {nr: "5730", name: Unfallversicherung, klasse: aufwand}
+- {nr: "5740", name: Krankentaggeldversicherung, klasse: aufwand}
+- {nr: "5800", name: Übriger Personalaufwand, klasse: aufwand}
+- {nr: "5810", name: Aus- und Weiterbildung, klasse: aufwand}
+- {nr: "5820", name: Spesenentschädigungen effektiv, klasse: aufwand}
+- {nr: "5830", name: Spesenentschädigungen pauschal, klasse: aufwand}
+- {nr: "5900", name: Leistungen Dritter (Temporärarbeit), klasse: aufwand}
+# --- 6 Übriger betrieblicher Aufwand, Abschreibungen, Finanzerfolg ---
+- {nr: "6000", name: Raumaufwand / Miete, klasse: aufwand}
+- {nr: "6100", name: Unterhalt, Reparaturen, Ersatz, klasse: aufwand}
+- {nr: "6105", name: Leasingaufwand mobile Sachanlagen, klasse: aufwand}
+- {nr: "6200", name: Fahrzeug- und Transportaufwand, klasse: aufwand}
+- {nr: "6300", name: Sachversicherungen, Abgaben, Gebühren, Bewilligungen, klasse: aufwand}
+- {nr: "6400", name: Energie- und Entsorgungsaufwand, klasse: aufwand}
+- {nr: "6500", name: Büromaterial, klasse: aufwand}
+- {nr: "6510", name: Telefon, Internet, klasse: aufwand}
+- {nr: "6513", name: Porti, klasse: aufwand}
+- {nr: "6520", name: Beiträge, Spenden, klasse: aufwand}
+- {nr: "6530", name: Buchführungs- und Beratungsaufwand, klasse: aufwand}
+- {nr: "6570", name: Informatikaufwand, klasse: aufwand}
+- {nr: "6600", name: Werbeaufwand, klasse: aufwand}
+- {nr: "6640", name: Reisespesen, klasse: aufwand}
+- {nr: "6641", name: Kundenbetreuung, klasse: aufwand}
+- {nr: "6700", name: Sonstiger betrieblicher Aufwand, klasse: aufwand}
+- {nr: "6800", name: Abschreibungen auf Sachanlagen, klasse: aufwand}
+- {nr: "6850", name: Abschreibungen auf immateriellen Werten, klasse: aufwand}
+- {nr: "6900", name: Zinsaufwand, klasse: aufwand}
+- {nr: "6940", name: Bankspesen, klasse: aufwand}
+- {nr: "6950", name: Finanzertrag, klasse: ertrag}
+# --- 7 Betrieblicher Nebenerfolg ---
+- {nr: "7000", name: Ertrag Nebenbetrieb, klasse: ertrag}
+- {nr: "7010", name: Aufwand Nebenbetrieb, klasse: aufwand}
+# --- 8 Betriebsfremder, ausserordentlicher Erfolg, Steuern ---
+- {nr: "8000", name: Betriebsfremder Aufwand, klasse: aufwand}
+- {nr: "8100", name: Betriebsfremder Ertrag, klasse: ertrag}
+- {nr: "8500", name: Ausserordentlicher Aufwand, klasse: aufwand}
+- {nr: "8510", name: Ausserordentlicher Ertrag, klasse: ertrag}
+- {nr: "8900", name: Direkte Steuern, klasse: aufwand}
