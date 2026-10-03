@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Abschluss {{ year }}{% endblock %}
+{% macro stmt(title, rows) %}
+<div class="panel">
+  <div class="tablewrap"><table class="ledger stmt">
+    <thead><tr><th>{{ title }}</th><th class="right">{{ st.jahr }}</th><th class="right">{{ st.vorjahr }}</th></tr></thead>
+    <tbody>
+    {% for r in rows %}{% set gid = title[:3] ~ loop.index %}
+      <tr class="{{ {'zwischentotal': 'zw', 'total': 'total'}.get(r.stil, 'row') }} {{ 'group' if r.konten }}" data-group="{{ gid }}">
+        <td>{% if r.konten %}<span class="caret">▸</span> {% endif %}{{ r.label }}</td><td class="right num">{{ r.aktuell|chf }}</td><td class="right num">{{ r.vorjahr|chf }}</td></tr>
+      {% for k in r.konten %}<tr class="member sub" data-of="{{ gid }}" hidden><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ st.jahr }}">{{ k.konto }}</a> {{ k.name }}</td><td class="right num">{{ k.aktuell|chf }}</td><td class="right num">{{ k.vorjahr|chf }}</td></tr>{% endfor %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endmacro %}
+{% block main %}
+{% set g = st.gewinnverwendung %}
+<div class="topbar">
+  <div><h1>Jahresrechnung {{ year }}</h1><div class="sub">{{ st.firma }} · Bilanz und Erfolgsrechnung nach OR 959a/959b · {% if st.abgeschlossen %}<span class="pill lock">🔒 gesperrt</span>{% else %}<span class="pill info">offen</span>{% endif %}</div></div>
+  <div class="actions">
+    <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in years|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
+    <a class="btn primary" href="/pdf/jahresrechnung?jahr={{ year }}" target="_blank">Jahresrechnung PDF</a>
+  </div>
+</div>
+{% if st.differenz|float %}<div class="alert error">Bilanzdifferenz {{ st.differenz|chf }}: Aktiven und Passiven stimmen nicht überein. batzen check zeigt die Ursache.</div>{% endif %}
+<div class="figures">
+  <div class="figure"><span class="label">Total Aktiven</span><span class="value">{{ st.total_aktiven|chf }}</span></div>
+  <div class="figure"><span class="label">Jahresergebnis</span><span class="value">{{ st.jahresergebnis|chf }}</span><span class="meta">{{ 'Gewinn' if st.jahresergebnis|float > 0 else 'Verlust' if st.jahresergebnis|float < 0 else 'ausgeglichen' }}</span></div>
+  <div class="figure"><span class="label">{{ "Bilanzverlust" if g.bilanzgewinn|neg else "Bilanzgewinn" }}</span><span class="value">{{ g.bilanzgewinn|chf }}</span><span class="meta">Vortrag {{ g.gewinnvortrag|chf }} + Ergebnis</span></div>
+  <div class="figure"><span class="label">Gesperrt bis</span><span class="value" style="font-size:18px">{{ settings.sperre_bis|datum or '—' }}</span></div>
+</div>
+<div class="grid2 even">{{ stmt("Aktiven", st.aktiven) }}{{ stmt("Passiven", st.passiven) }}</div>
+{{ stmt("Erfolgsrechnung", st.erfolg) }}
+
+<div class="grid2 even">
+  <div class="panel">
+    <header><h2>Gewinnverwendung {{ year }}</h2>{% if g.gebucht %}<span class="pill ok">gebucht</span>{% endif %}</header>
+    <div class="tablewrap"><table class="ledger"><tbody>
+      <tr><td>Gewinnvortrag</td><td class="right num">{{ g.gewinnvortrag|chf }}</td></tr>
+      <tr><td>Jahresergebnis</td><td class="right num">{{ g.jahresgewinn|chf }}</td></tr>
+      <tr class="zw"><td>{{ "Bilanzverlust" if g.bilanzgewinn|neg else "Bilanzgewinn" }}</td><td class="right num">{{ g.bilanzgewinn|chf }}</td></tr>
+      <tr><td>Dividende</td><td class="right num">{{ g.dividende|minus }}</td></tr>
+      <tr><td>Zuweisung gesetzliche Gewinnreserve</td><td class="right num">{{ g.reserve|minus }}</td></tr>
+      <tr class="total"><td>Vortrag auf neue Rechnung</td><td class="right num">{{ g.vortrag_neu|chf }}</td></tr>
+    </tbody></table></div>
+    {% if not g.gebucht %}
+    <form class="body" hx-post="/abschluss/gewinnverwendung" hx-target="find .errors">
+      <input type="hidden" name="jahr" value="{{ year }}">
+      <div class="form"><div class="field"><label>Dividende CHF</label><input class="input num" name="dividende" value="{{ g.dividende }}"></div><div class="field"><label>Gesetzliche Reserve CHF</label><input class="input num" name="reserve" value="{{ g.reserve }}"></div></div>
+      {{ errors() }}<div class="formfoot"><span class="small muted">Antrag an die GV</span><button class="btn" type="submit">Antrag speichern</button></div>
+    </form>
+    {% if g.dividende|float or g.reserve|float %}
+    <form class="body" hx-post="/abschluss/gewinnverwendung-buchen" hx-target="find .errors" hx-confirm="Gewinnverwendung {{ year }} buchen?" style="border-top:1px solid var(--rule)">
+      <input type="hidden" name="jahr" value="{{ year }}">
+      <div class="field"><label>Datum des GV-Beschlusses ({{ year + 1 }})</label><input class="input" type="date" name="datum" value="{{ gv_date }}"></div>
+      {{ errors() }}<div class="formfoot"><span class="small muted">Bucht Gewinnvortrag an Dividende / Reserve</span><button class="btn primary" type="submit">Nach GV-Beschluss buchen</button></div>
+    </form>{% endif %}
+    {% endif %}
+  </div>
+  <div class="panel">
+    <header><h2>Periode sperren</h2><span class="hint">GeBüV: abgeschlossene Perioden bleiben unverändert</span></header>
+    <form class="body" hx-post="/abschluss/sperre" hx-target="find .errors" hx-confirm="Buchungen bis zu diesem Datum endgültig sperren? Korrekturen gehen danach nur noch als neue Buchung.">
+      <input type="hidden" name="jahr" value="{{ year }}">
+      <div class="field"><label>Sperren bis und mit</label><input class="input" type="date" name="bis" value="{{ year }}-12-31"></div>
+      {{ errors() }}<div class="formfoot"><span class="small muted">Jeder gesperrte Monat wird gehasht; Änderungen fallen bei batzen check auf.</span><button class="btn primary" type="submit">Sperren</button></div>
+    </form>
+    {% if settings.sperre_bis %}
+    <details class="inline"><summary>Sperre zurücknehmen</summary>
+      <form class="body" hx-post="/abschluss/entsperren" hx-target="find .errors">
+        <input type="hidden" name="jahr" value="{{ year }}">
+        <div class="form"><div class="field"><label>Neu gesperrt bis (leer = ganz entsperren)</label><input class="input" type="date" name="bis"></div><div class="field"><label>Grund (wird protokolliert)</label><input class="input" name="grund" required></div></div>
+        {{ errors() }}<div class="formfoot"><span></span><button class="btn danger" type="submit">Zurücknehmen</button></div>
+      </form>
+    </details>{% endif %}
+    {% if verlauf %}<div class="body"><span class="lbl">Verlauf</span>{% for v in verlauf %}<span class="small">{{ v.am|datum }} · {{ v.aktion }} {{ v.bis|datum if v.bis }}{% if v.grund %} · «{{ v.grund }}»{% endif %}</span>{% endfor %}</div>{% endif %}
+  </div>
+</div>
+
+<div class="panel">
+  <header><h2>Anhang {{ year }} (Art. 959c OR)</h2><span class="hint">## Überschrift, darunter Text</span></header>
+  <form class="body" hx-post="/abschluss/anhang" hx-target="find .errors">
+    <input type="hidden" name="jahr" value="{{ year }}">
+    <textarea class="input" name="text" style="min-height:280px;font-family:var(--f-num);font-size:12.5px" aria-label="Anhang">{{ anhang }}</textarea>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Wird in abschluss/{{ year }}/anhang.md gespeichert und erscheint in der Jahresrechnung.</span><button class="btn" type="submit">Anhang speichern</button></div>
+  </form>
+</div>
+{% endblock %}

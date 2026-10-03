@@ -60,7 +60,9 @@ def _done(book: Book, message: str, paths: list[Path], **data) -> dict:
                         "Bitte `git diff` prüfen.\n" + "\n".join(map(str, errors)))
     commit = gitlog.commit(book.root, f"batzen: {message}", paths)
     return jsonable({"ok": True, "meldung": message, "commit": commit,
-                     "dateien": sorted({book.rel(p) for p in paths if Path(p).exists()}), **data})
+                     "dateien": sorted({book.rel(p) for p in paths
+                                         if Path(p).exists() and Path(p).resolve().is_relative_to(book.root)}),
+                     **data})
 
 
 # ---------- book ----------
@@ -96,7 +98,7 @@ def init_book(path: Path, firma: str, jahr: int | None = None, kontenplan: str =
             (root / folder / ".gitkeep").write_text("")
     book = Book(root)
     payroll.write_default_config(book)
-    (root / ".gitignore").write_text("berichte/\n.DS_Store\n__pycache__/\n")
+    (root / ".gitignore").write_text("berichte/\n.batzen/write.lock\n.DS_Store\n__pycache__/\n")
     agents = (DATA / "BUCH_AGENTS.md").read_text(encoding="utf-8")
     (root / "AGENTS.md").write_text(agents.replace("{firma}", firma), encoding="utf-8")
     claude = root / "CLAUDE.md"
@@ -439,3 +441,273 @@ def unlock(book: Book, bis, grund: str) -> dict:
 
 def history(book: Book, limit: int = 20) -> list[dict]:
     return gitlog.log(book.root, limit)
+
+
+# ---------- updates (used by the UI; also callable from CLI/MCP) ----------
+
+_ADDRESS_KEYS = ("strasse", "nr", "plz", "ort", "land")
+
+
+def _update_record(path: Path, fields: dict, numeric: tuple = (), notes: str | None = None,
+                   nullable: tuple = ()) -> dict:
+    from .files import read_frontmatter, write_frontmatter
+    meta, body = read_frontmatter(path)
+    adresse = dict(meta.get("adresse") or {})
+    for key, value in fields.items():
+        if value is None:
+            if key in nullable:
+                meta[key] = None
+            continue
+        if key in _ADDRESS_KEYS:
+            adresse[key] = str(value)
+        elif key in numeric:
+            meta[key] = Decimal(str(value or 0))
+        else:
+            meta[key] = value
+    if adresse:
+        meta["adresse"] = adresse
+    write_frontmatter(path, meta, body if notes is None else notes)
+    return meta
+
+
+def customer_update(book: Book, nummer: str, notizen: str | None = None, **fields) -> dict:
+    _guard(book)
+    nr = nummer
+    cust = invoices.customer(book, nr)
+    allowed = {"name", "firma", "rechnung_an", "email", "stundensatz", *_ADDRESS_KEYS}
+    unknown = set(fields) - allowed
+    if unknown:
+        raise BookError(f"Unbekannte Felder: {', '.join(sorted(unknown))}")
+    if fields.get("rechnung_an") not in (None, "firma", "person"):
+        raise BookError("rechnung_an muss 'firma' oder 'person' sein")
+    meta = _update_record(cust["_pfad"], fields, numeric=("stundensatz",), notes=notizen)
+    return _done(book, f"Kunde {nr} geändert", [cust["_pfad"]], kunde=meta)
+
+
+EMPLOYEE_NUMERIC = ("monatslohn", "pensum", "stundenlohn", "standard_stunden", "vollzeit_stunden_woche",
+                    "ferienzuschlag_satz", "bvg_betrag", "ag_bvg_betrag", "kinderzulagen", "qst_satz")
+
+
+def employee_update(book: Book, nummer: str, **fields) -> dict:
+    _guard(book)
+    nr = nummer
+    emp = payroll.employee(book, nr)
+    allowed = {"vorname", "nachname", "ahv_nr", "geburtsdatum", "eintritt", "austritt", "lohnart",
+               "ferien_inbegriffen", "qst", "aktiv", *EMPLOYEE_NUMERIC, *_ADDRESS_KEYS}
+    unknown = set(fields) - allowed
+    if unknown:
+        raise BookError(f"Unbekannte Felder: {', '.join(sorted(unknown))}")
+    if fields.get("lohnart") not in (None, "monat", "stunde"):
+        raise BookError("lohnart muss 'monat' oder 'stunde' sein")
+    for key in ("geburtsdatum", "eintritt", "austritt"):
+        if key in fields:
+            fields[key] = parse_date(fields[key], key).isoformat() if fields[key] else None
+    if "qst" in fields and fields["qst"]:
+        q = fields["qst"]
+        from . import qst as qstmod
+        qstmod.parse_code(q.get("code", ""))
+        fields["qst"] = {"kanton": str(q["kanton"]).upper(), "jahr": int(q["jahr"]), "code": q["code"].upper()}
+    if "qst" in fields and not fields["qst"]:
+        fields["qst"] = None
+    meta = _update_record(emp["_pfad"], fields, numeric=EMPLOYEE_NUMERIC, nullable=("qst", "austritt"))
+    return _done(book, f"Mitarbeiter {nr} geändert", [emp["_pfad"]], mitarbeiter=meta)
+
+
+def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | None = None,
+                   aktiv: bool | None = None, eroeffnung=None, vorjahr=None) -> dict:
+    _guard(book)
+    acct = book.account(nr)
+    if name is not None:
+        acct.name = name.strip() or acct.name
+    if gruppe:
+        if gruppe not in statements.GROUP_LABEL:
+            raise BookError(f"Unbekannte Gruppe {gruppe}")
+        acct.gruppe = gruppe
+    if aktiv is not None:
+        acct.aktiv_ = bool(aktiv)
+    if eroeffnung is not None or vorjahr is not None:
+        lock = book.settings.sperre_bis
+        if lock and lock.year >= book.settings.erstes_jahr:
+            raise BookError("Eröffnungssalden sind gesperrt (erstes Jahr liegt in der gesperrten Periode)")
+        if eroeffnung is not None:
+            acct.eroeffnung = Decimal(str(eroeffnung or 0))
+        if vorjahr is not None:
+            acct.vorjahr = Decimal(str(vorjahr or 0))
+    book.save_accounts()
+    return _done(book, f"Konto {nr} geändert", [book.root / "kontenplan.yaml"])
+
+
+SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_referenz_praefix",
+                 "zahlungsfrist_tage", "agent_modus", "sprache", "co")
+
+
+def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None, **fields) -> dict:
+    _guard(book)
+    unknown = set(fields) - set(SETTINGS_KEYS)
+    if unknown:
+        raise BookError(f"Diese Einstellungen sind nicht änderbar: {', '.join(sorted(unknown))}")
+    if fields.get("agent_modus") not in (None, "vorschlag", "direkt"):
+        raise BookError("agent_modus muss 'vorschlag' oder 'direkt' sein")
+    data = book.settings.data
+    for key, value in fields.items():
+        if value is not None:
+            data[key] = int(value) if key == "zahlungsfrist_tage" else value
+    if adresse:
+        data.setdefault("adresse", {}).update({k: str(v) for k, v in adresse.items() if k in _ADDRESS_KEYS})
+    if konten:
+        for role, nr in konten.items():
+            if nr:
+                book.account(str(nr))
+        data.setdefault("konten", {}).update({k: str(v) for k, v in konten.items() if v})
+    book.save_settings()
+    return _done(book, "Einstellungen geändert", [book.root / "batzen.yaml"])
+
+
+def payroll_config_update(book: Book, saetze_an: dict | None = None, saetze_ag: dict | None = None,
+                          ag_bvg: str | None = None, buchen: bool | None = None, konten: dict | None = None) -> dict:
+    _guard(book)
+    cfg = payroll.config(book)
+    for key, values in (("saetze_an", saetze_an), ("saetze_ag", saetze_ag)):
+        for code, rate in (values or {}).items():
+            value = Decimal(str(rate))
+            if not (0 <= value < 1):
+                raise BookError(f"Satz {code} = {rate}: als Anteil angeben, z.B. 0.053 für 5.3 %")
+            cfg[key][code] = float(value)
+    if ag_bvg is not None:
+        if ag_bvg not in ("gleich_an", "betrag"):
+            raise BookError("ag_bvg muss 'gleich_an' oder 'betrag' sein")
+        cfg["ag_bvg"] = ag_bvg
+    if buchen is not None:
+        cfg["buchen"] = bool(buchen)
+    for role, nr in (konten or {}).items():
+        if nr:
+            book.account(str(nr))
+            cfg["konten"][role] = str(nr)
+    write_yaml(payroll.config_path(book), cfg)
+    return _done(book, "Lohneinstellungen geändert", [payroll.config_path(book)])
+
+
+def anhang_save(book: Book, jahr: int, text: str) -> dict:
+    _guard(book)
+    lock = book.settings.sperre_bis
+    if lock and lock >= date(int(jahr), 12, 31):
+        raise BookError(f"Das Geschäftsjahr {jahr} ist gesperrt")
+    path = book.root / "abschluss" / str(jahr) / "anhang.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text.strip() + "\n", encoding="utf-8")
+    return _done(book, f"Anhang {jahr} gespeichert", [path])
+
+
+def commit_diff(book: Book, commit: str) -> dict:
+    return gitlog.show(book.root, commit)
+
+
+def invoice_preview(book: Book, positionen: list[dict]) -> dict:
+    pos = invoices.normalize_positions(positionen, book.settings.konto("ertrag"))
+    total = sum((p["betrag"] for p in pos), Decimal("0"))
+    iban = invoices.qr.normalize_iban(book.settings.get("iban"))
+    return jsonable({"positionen": pos, "total": total,
+                     "referenz_typ": invoices.qr.reference_type_for(iban) if iban else "NON"})
+
+
+# ---------- one writer at a time ----------
+# UI, CLI, MCP and the chat agent may all write the same book. A lock file
+# serialises them; within a process an RLock keeps nested calls re-entrant.
+
+import fcntl
+import functools
+import threading
+
+_local_lock = threading.RLock()
+_depth = threading.local()
+
+
+def _locked(fn):
+    @functools.wraps(fn)
+    def wrapper(book, *args, **kwargs):
+        with _local_lock:
+            outer = getattr(_depth, "n", 0) == 0
+            handle = None
+            if outer:
+                path = book.root / ".batzen" / "write.lock"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                handle = open(path, "w")
+                fcntl.flock(handle, fcntl.LOCK_EX)
+            _depth.n = getattr(_depth, "n", 0) + 1
+            try:
+                book.reload()          # see what the previous writer wrote
+                return fn(book, *args, **kwargs)
+            finally:
+                _depth.n -= 1
+                if handle:
+                    fcntl.flock(handle, fcntl.LOCK_UN)
+                    handle.close()
+    return wrapper
+
+
+WRITES = ("add_account", "post_entry", "post_split", "reverse_entry", "propose", "approve", "reject",
+          "customer_add", "invoice_create", "invoice_void", "invoice_pay", "invoice_credit", "employee_add",
+          "payroll_run", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
+          "allocation_book", "lock", "unlock", "customer_update", "employee_update", "account_update",
+          "settings_update", "payroll_config_update", "anhang_save")
+for _name in WRITES:
+    globals()[_name] = _locked(globals()[_name])
+
+
+# ---------- files from the UI ----------
+
+def inbox_add(book: Book, filename: str, data: bytes) -> dict:
+    """Store an uploaded file in inbox/ (never overwrites)."""
+    from .files import slug
+    name = Path(filename or "datei").name
+    stem, suffix = Path(name).stem, Path(name).suffix.lower()
+    target = book.root / "inbox" / f"{slug(stem)}{suffix}"
+    n = 2
+    while target.exists():
+        target = book.root / "inbox" / f"{slug(stem)}-{n}{suffix}"
+        n += 1
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return _done(book, f"Datei {target.name} in die Inbox gelegt", [target], datei=book.rel(target))
+
+
+def attach_receipt(book: Book, beleg: str, source: str) -> dict:
+    """Attach a receipt file to an already booked Beleg."""
+    _guard(book)
+    rows = [r for r in book.rows if r.beleg == beleg]
+    if not rows:
+        raise BookError(f"Beleg {beleg} nicht gefunden")
+    src = Path(source) if Path(source).is_absolute() else book.root / source
+    target = journal.attach(book, rows[0], src)
+    return _done(book, f"Beleg-Datei an {beleg} angehängt", [target, src], datei=book.rel(target))
+
+
+for _name in ("inbox_add", "attach_receipt"):
+    globals()[_name] = _locked(globals()[_name])
+
+
+def payslip_inputs(book: Book, monat: str, mitarbeiter: str, eingaben: dict) -> dict:
+    """Replace a draft payslip's inputs and recalculate. An input left empty
+    (None) falls back to the employee's standing value."""
+    _guard(book)
+    from .files import read_frontmatter, write_frontmatter
+    y, m = _ym(monat)
+    slip = payroll.load_payslip(book, y, m, mitarbeiter)
+    if slip.get("status") == "abgeschlossen":
+        raise BookError(f"Lohnabrechnung {mitarbeiter} {m:02d}/{y} ist abgeschlossen — zuerst wieder öffnen")
+    allowed = ("stunden", "bvg", "kinderzulagen", "korrektur", "korrektur_text", "qst_satzbestimmend", "qst_gesamtpensum")
+    unknown = set(eingaben) - set(allowed)
+    if unknown:
+        raise BookError(f"Unbekannte Eingaben: {', '.join(sorted(unknown))}")
+    meta, body = read_frontmatter(slip["_pfad"])
+    meta["eingaben"] = {k: eingaben.get(k) for k in allowed}
+    meta["eingaben"]["korrektur"] = meta["eingaben"]["korrektur"] or 0
+    meta["eingaben"]["korrektur_text"] = meta["eingaben"]["korrektur_text"] or ""
+    write_frontmatter(slip["_pfad"], meta, body)
+    results = payroll.run(book, y, m, mitarbeiter)
+    w = results[0][0]["werte"]
+    return _done(book, f"Lohnabrechnung {mitarbeiter} {m:02d}/{y} neu berechnet (netto {w['nettolohn']:.2f})",
+                 [p for _, p in results])
+
+
+payslip_inputs = _locked(payslip_inputs)

@@ -25,7 +25,7 @@ batzen dreht das um:
 ## Schnellstart
 
 ```bash
-pip install -e ".[mcp]"          # Python ≥ 3.11
+pip install -e ".[ui,mcp]"       # Python ≥ 3.11
 
 batzen init ~/buchhaltung/muster --firma "Muster GmbH" --jahr 2026 \
   --strasse Bahnhofstrasse --nr 1 --plz 3000 --ort Bern \
@@ -38,6 +38,30 @@ batzen book --datum 2026-01-05 --soll 6500 --haben 1020 --betrag 45.80 \
   --text "Büromaterial" --datei inbox/quittung.pdf
 batzen balance
 ```
+
+### Die Oberfläche
+
+```bash
+batzen ui                        # öffnet batzen im Browser (nur lokal, mit Zugangsschlüssel im Link)
+```
+
+Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird geprüft und in git festgehalten.
+
+| Bereich | Was du dort machst |
+|---|---|
+| **Übersicht** | Liquidität, Ergebnis, offene Debitoren, was ansteht, letzte Änderungen |
+| **Prüfen** | Inbox mit Vorschau (PDF, Bild, Text), Buchung daneben erfassen, Agenten-Vorschläge freigeben, Lohnentwürfe abschliessen |
+| **Journal** | Monate, Suche und Filter, einfache und Sammelbuchungen mit Beleg-Datei, Storno, Belege nachreichen |
+| **Konten** | Kontenplan bearbeiten, Saldenliste nach Periode, Kontoblatt |
+| **Debitoren** | Kunden, Rechnungen mit Live-Total und QR-PDF, Zahlung zuordnen, Gutschrift, Storno, offene Posten |
+| **Lohn** | Lohnlauf pro Monat, Eingaben (Stunden, QST, Korrekturen), Abschluss, Lohnkonto, Lohnausweis |
+| **Abschluss** | Bilanz und Erfolgsrechnung mit Vorjahr und Drill-down, Gewinnverwendung, Anhang, Periode sperren |
+| **Verlauf** | jeder Commit mit Diff, Änderungen von Agenten markiert |
+| **Einstellungen** | Firma, IBAN-Prüfung, Systemkonten, Lohnsätze, Agentenmodus |
+
+Rechts sitzt der **Agent** (Claude): «Bereite die Quittungen in der Inbox vor», «Welche Rechnungen sind überfällig?». Er arbeitet mit denselben Werkzeugen wie der MCP-Server; seine Vorschläge erscheinen sofort unter *Prüfen*. Dafür braucht es API-Zugang (`ant auth login` oder `ANTHROPIC_API_KEY`). Ändert ein Agent oder das CLI das Buch, aktualisiert sich die offene Seite selbst.
+
+Tastatur: `N` neue Buchung, `/` Suche, `A` Agent, `⌘/Ctrl+Enter` Formular absenden.
 
 ### Debitoren und QR-Rechnungen
 ```bash
@@ -121,20 +145,21 @@ Die Fachlogik (Saldenmotor mit Jahresverkettung, OR-Gliederung, Lohnberechnung i
 
 ## Stand und Roadmap
 
-v0.1: Finanzbuchhaltung, Debitoren mit QR-Rechnung, Lohn, Agenten-Schnittstelle (CLI + MCP).
+v0.2: Finanzbuchhaltung, Debitoren mit QR-Rechnung, Lohn, Agenten-Schnittstelle (CLI + MCP), lokale Web-Oberfläche mit eingebautem Agenten.
 
 Als Nächstes:
 - MWST-Abrechnung (effektiv und Saldosteuersatz), MWST-Codes im Journal
 - Bankimport camt.053 mit automatischem Zahlungsabgleich
 - Kreditoren und pain.001-Zahlungsaufträge
 - Weitere Quellensteuer-Kantone, ALV-Höchstgrenze, Swissdec/ELM
-- Read-only Web-Ansicht
+- Login für den Betrieb auf einem Server (mehrere Benutzer, Mandanten)
 
 Vor dem ersten Einsatz mit echten Rechnungen: ein erzeugtes PDF im offiziellen SIX-Validator prüfen (https://validation.iso-payments.ch/). Sozialversicherungssätze in `lohn/einstellungen.yaml` an deine Ausgleichskasse, UVG- und KTG-Police anpassen.
 
 ## Lizenz
 
 [AGPL-3.0-or-later](LICENSE). batzen bleibt offen, auch wenn jemand es als Dienst betreibt.
+Mitgeliefert: HTMX (Zero-Clause BSD), Hanken Grotesk und IBM Plex Mono (SIL Open Font License 1.1).
 
 ---
 

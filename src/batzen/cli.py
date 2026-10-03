@@ -222,6 +222,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--kanton", required=True)
     s.add_argument("--jahr", type=int, required=True)
     sub.add_parser("mcp", help="MCP-Server (stdio) für Claude Code, opencode & Co. starten")
+    s = sub.add_parser("ui", help="Oberfläche im Browser starten (lokal)")
+    s.add_argument("--port", type=int, default=5151)
+    s.add_argument("--kein-browser", action="store_true", help="Browser nicht automatisch öffnen")
     return p
 
 
@@ -420,6 +423,19 @@ def main(argv: list[str] | None = None) -> int:
         if a.buch:
             os.environ["BATZEN_BUCH"] = a.buch
         serve()
+        return 0
+    if a.cmd == "ui":
+        try:
+            from .web.app import run
+        except ImportError as exc:
+            print(f"✗ Für die Oberfläche fehlen Pakete ({exc.name}): pip install 'batzen[ui]'", file=sys.stderr)
+            return 2
+        try:
+            root = find_root(Path(a.buch) if a.buch else None)
+        except BookError as exc:
+            print(f"✗ {exc}", file=sys.stderr)
+            return 2
+        run(root, a.port, open_browser=not a.kein_browser)
         return 0
     try:
         result = dispatch(a, Path(a.buch) if a.buch else None)

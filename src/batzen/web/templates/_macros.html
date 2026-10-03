@@ -1,0 +1,9 @@
+{% macro money(v, blank=false, cls="") %}<td class="right num {{ cls }}">{{ v|chf(blank) }}</td>{% endmacro %}
+{% macro acc(nr, names) %}<td class="acc">{{ nr }}{% if names and names.get(nr) %}<small>{{ names[nr] }}</small>{% endif %}</td>{% endmacro %}
+{% macro errors() %}<div class="errors"></div>{% endmacro %}
+{% macro accounts_datalist(accounts, id="konten") %}<datalist id="{{ id }}">{% for a in accounts %}<option value="{{ a.nr }}  {{ a.name }}">{% endfor %}</datalist>{% endmacro %}
+{% macro subnav(items, current) %}<nav class="subnav">{% for key, label, href in items %}<a href="{{ href }}" class="{{ 'on' if key == current }}">{{ label }}</a>{% endfor %}</nav>{% endmacro %}
+{% macro debitoren_nav(tab) %}{{ subnav([("rechnungen", "Rechnungen", "/debitoren"), ("kunden", "Kunden", "/debitoren/kunden"), ("offene", "Offene Posten", "/debitoren/offene-posten")], tab) }}{% endmacro %}
+{% macro lohn_nav(tab) %}{{ subnav([("lauf", "Lohnlauf", "/lohn"), ("mitarbeiter", "Mitarbeitende", "/lohn/mitarbeiter")], tab) }}{% endmacro %}
+{% macro konten_nav(tab) %}{{ subnav([("kontenplan", "Kontenplan", "/konten"), ("saldenliste", "Saldenliste", "/konten/saldenliste")], tab) }}{% endmacro %}
+{% macro status_pill(s) %}{% set m = {"offen": "info", "teilbezahlt": "warn", "bezahlt": "ok", "storniert": "muted", "entwurf": "warn", "abgeschlossen": "ok"} %}<span class="pill {{ m.get(s, 'muted') }}">{{ s }}</span>{% endmacro %}

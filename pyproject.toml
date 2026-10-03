@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "batzen"
-version = "0.1.0"
+version = "0.2.0"
 description = "Swiss bookkeeping your agent can run — agent-first open-source accounting and payroll for Switzerland."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -26,6 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.2"]
+ui = ["starlette>=0.40", "uvicorn>=0.30", "jinja2>=3.1", "python-multipart>=0.0.9", "watchfiles>=0.21", "anthropic>=1.0"]
 dev = ["pytest>=8"]
 
 [project.scripts]
@@ -35,7 +36,7 @@ batzen = "batzen.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-batzen = ["data/**/*"]
+batzen = ["data/**/*", "web/templates/*", "web/static/*", "web/static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

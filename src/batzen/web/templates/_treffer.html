@@ -1,0 +1,12 @@
+{% if error %}<div class="alert error">{{ error }}</div>
+{% elif res.treffer %}{% set t = res.treffer %}
+<div class="alert ok" style="display:flex;flex-direction:column;gap:8px">
+  <span>Passt zu <strong>{{ t.nummer }}</strong> ({{ t.name }}), offen {{ t.offen|chf }} · gefunden über {{ {"referenz": "die Referenz", "nummer": "die Rechnungsnummer", "betrag": "den Betrag", "betrag_mehrdeutig": "den Betrag (mehrere passen, älteste gewählt)"}[res.grund] }}</span>
+  <form hx-post="/debitoren/rechnung/{{ t.nummer }}/zahlung" hx-target="find .errors" class="actions">
+    <input type="hidden" name="betrag" value="{{ betrag }}">
+    <input class="input" type="date" name="datum" value="{{ today }}" style="width:auto" aria-label="Valuta">
+    <button class="btn small primary" type="submit">Zahlung {{ betrag|chf }} buchen</button>
+    <div class="errors"></div>
+  </form>
+</div>
+{% else %}<div class="alert warn">Keine offene Rechnung passt. Prüfe Betrag und Referenz, oder buche die Gutschrift im Journal.</div>{% endif %}

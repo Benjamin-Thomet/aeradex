@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import konten_nav %}
+{% block title %}Konto {{ led.konto }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><div class="crumbs"><a href="/konten?jahr={{ year }}">Konten</a> /</div><h1>{{ led.konto }} {{ led.name }}</h1><div class="sub">Kontoblatt {{ year }}</div></div>
+  <div class="actions">
+    <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in book.years()|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
+    <a class="btn" href="/pdf/kontoblatt?konto={{ led.konto }}&jahr={{ year }}" target="_blank">PDF</a>
+  </div>
+</div>
+<div class="panel">
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Datum</th><th>Beleg</th><th>Text</th><th>Gegenkonto</th><th class="right">Soll</th><th class="right">Haben</th><th class="right">Saldo</th></tr></thead>
+    <tbody>
+      <tr class="row"><td></td><td></td><td class="muted">Eröffnung</td><td></td><td></td><td></td><td class="right num">{{ led.eroeffnung|chf }}</td></tr>
+      {% for z in led.zeilen %}
+      <tr class="row"><td class="num">{{ z.datum|datum }}</td><td><a class="beleg" href="/journal?jahr={{ year }}&monat={{ z.datum.month }}&q={{ z.beleg|urlq }}">{{ z.beleg }}</a></td><td>{{ z.text }}</td>
+        <td class="acc">{% if z.gegenkonto != 'div.' %}<a class="link" href="/konten/{{ z.gegenkonto }}?jahr={{ year }}">{{ z.gegenkonto }}</a>{% else %}div.{% endif %}</td>
+        <td class="right num">{{ z.soll|chf(true) }}</td><td class="right num">{{ z.haben|chf(true) }}</td><td class="right num">{{ z.saldo|chf }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td colspan="4">Total · Saldo per 31.12.{{ year }}</td><td class="right num">{{ led.total_soll|chf }}</td><td class="right num">{{ led.total_haben|chf }}</td><td class="right num total">{{ led.saldo|chf }}</td></tr></tfoot>
+  </table></div>
+</div>
+{% endblock %}

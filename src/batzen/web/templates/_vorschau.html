@@ -1,0 +1,2 @@
+{% if error %}<div class="alert warn">{{ error }}</div>
+{% elif prev %}<div class="alert info" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span>{{ prev.positionen|length }} Position{{ 'en' if prev.positionen|length != 1 }} · Referenz {{ prev.referenz_typ }}</span><strong class="num">Total CHF {{ prev.total|chf }}</strong></div>{% endif %}

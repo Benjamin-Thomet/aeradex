@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, accounts_datalist %}
+{% block title %}Einstellungen{% endblock %}
+{% block main %}
+{% set a = settings.adresse %}{% set k = settings.get('konten') or {} %}
+<div class="topbar"><div><h1>Einstellungen</h1><div class="sub">batzen.yaml und lohn/einstellungen.yaml · jede Änderung wird committet</div></div></div>
+{{ accounts_datalist(accounts) }}
+<form class="panel" hx-post="/einstellungen" hx-target="find .errors">
+  <header><h2>Firma und Bank</h2>{% if iban_problem %}<span class="pill warn">{{ iban_problem }}</span>{% else %}<span class="pill ok">IBAN gültig · {{ 'QR-IBAN (QRR-Referenz)' if qr_iban else 'SCOR-Referenz (RF…)' }}</span>{% endif %}</header>
+  <div class="body">
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label>Firma</label><input class="input" name="firma" value="{{ settings.firma }}" required></div>
+      <div class="field"><label>Rechtsform</label><input class="input" name="rechtsform" value="{{ settings.get('rechtsform') or '' }}"></div>
+      <div class="field"><label>UID / MWST-Nr.</label><input class="input" name="uid" value="{{ settings.get('uid') or '' }}" placeholder="CHE-123.456.789 (MWST)"></div>
+      <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="a_strasse" value="{{ a.strasse or '' }}"></div>
+      <div class="field"><label>Nr.</label><input class="input" name="a_nr" value="{{ a.nr or '' }}"></div>
+      <div class="field"><label>Land</label><input class="input" name="a_land" value="{{ a.land or 'CH' }}" maxlength="2"></div>
+      <div class="field"><label>PLZ</label><input class="input" name="a_plz" value="{{ a.plz or '' }}"></div>
+      <div class="field"><label>Ort</label><input class="input" name="a_ort" value="{{ a.ort or '' }}"></div>
+      <div class="field"><label>Telefon</label><input class="input" name="telefon" value="{{ settings.get('telefon') or '' }}"></div>
+      <div class="field"><label>E-Mail</label><input class="input" name="email" value="{{ settings.get('email') or '' }}"></div>
+      <div class="field" style="grid-column: span 2"><label>IBAN oder QR-IBAN</label><input class="input num" name="iban" value="{{ settings.get('iban') or '' }}" style="text-align:left"></div>
+      <div class="field"><label>c/o-Zeile</label><input class="input" name="co" value="{{ settings.get('co') or '' }}"></div>
+      <div class="field"><label>Zahlungsfrist (Tage)</label><input class="input num" name="zahlungsfrist_tage" value="{{ settings.get('zahlungsfrist_tage') or 30 }}"></div>
+      <div class="field"><label>QR-Referenz-Präfix</label><input class="input num" name="qr_referenz_praefix" value="{{ settings.get('qr_referenz_praefix') or '' }}" placeholder="nur wenn die Bank es verlangt"></div>
+      <div class="field wide"><span class="lbl">Agent</span>
+        <span class="actions"><label class="check"><input type="radio" name="agent_modus" value="vorschlag" {{ 'checked' if (settings.get('agent_modus') or 'vorschlag') == 'vorschlag' }}> Vorschlag: Agenten schlagen freie Buchungen nur vor, du gibst frei</label>
+        <label class="check"><input type="radio" name="agent_modus" value="direkt" {{ 'checked' if settings.get('agent_modus') == 'direkt' }}> Direkt: Agenten dürfen selbst buchen</label></span></div>
+    </div>
+    <details><summary class="lbl" style="cursor:pointer">Systemkonten</summary>
+      <div class="form four" style="margin-top:10px">
+        {% for role, label in [("bank","Bank"),("debitoren","Debitoren"),("ertrag","Standard-Ertrag"),("gutschrift","Erlösminderung"),("gewinnvortrag","Gewinnvortrag"),("jahresergebnis","Jahresergebnis"),("dividende","Dividende"),("reserve","Gesetzliche Reserve")] %}
+        <div class="field"><label>{{ label }}</label><input class="input" name="k_{{ role }}" list="konten" value="{{ settings.konto(role) }}"></div>
+        {% endfor %}
+      </div>
+    </details>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Gilt für neue Rechnungen; ausgestellte bleiben eingefroren.</span><button class="btn primary" type="submit">Speichern</button></div>
+  </div>
+</form>
+
+<form class="panel" id="lohn" hx-post="/einstellungen/lohn" hx-target="find .errors">
+  <header><h2>Lohn: Sätze und Buchung</h2><span class="hint">in Prozent; an Ausgleichskasse, UVG- und KTG-Police anpassen</span></header>
+  <div class="body">
+    <span class="lbl">Arbeitnehmer-Abzüge</span>
+    <div class="form four">{% for code, label in [("ahv","AHV/IV/EO"),("alv","ALV"),("uvg","NBU"),("ktg","KTG")] %}<div class="field"><label>{{ label }} %</label><input class="input num" name="an_{{ code }}" value="{{ (cfg.saetze_an[code]|float * 100)|round(3) }}"></div>{% endfor %}</div>
+    <span class="lbl">Arbeitgeber-Beiträge</span>
+    <div class="form three">{% for code, label in [("ahv","AHV/IV/EO"),("alv","ALV"),("fak","FAK"),("uvg","UVG (BU)"),("ktg","KTG"),("verwaltung","Verwaltungskosten (auf AHV-Beiträgen)")] %}<div class="field"><label>{{ label }} %</label><input class="input num" name="ag_{{ code }}" value="{{ (cfg.saetze_ag[code]|float * 100)|round(3) }}"></div>{% endfor %}</div>
+    <div class="actions">
+      <label class="check"><input type="radio" name="ag_bvg" value="gleich_an" {{ 'checked' if cfg.ag_bvg != 'betrag' }}> BVG: Arbeitgeber zahlt gleich viel wie Arbeitnehmer</label>
+      <label class="check"><input type="radio" name="ag_bvg" value="betrag" {{ 'checked' if cfg.ag_bvg == 'betrag' }}> BVG: eigener AG-Betrag je Mitarbeiter</label>
+      <label class="check"><input type="checkbox" name="buchen" value="1" {{ 'checked' if cfg.buchen }}> Abgeschlossene Löhne verbuchen</label>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Gilt für Entwürfe und künftige Abrechnungen.</span><button class="btn primary" type="submit">Speichern</button></div>
+  </div>
+</form>
+
+<div class="panel">
+  <header><h2>Agent (Claude)</h2>{% if cred.ok %}<span class="pill ok">bereit · {{ cred.quelle }}</span>{% else %}<span class="pill warn">nicht eingerichtet</span>{% endif %}</header>
+  <div class="body">
+    <p>{% if cred.ok %}Der Agent im Seitenpanel nutzt dieselben Werkzeuge wie das CLI und der MCP-Server. Seine Commits sind im Verlauf als «Agent» markiert.{% else %}{{ cred.hinweis }}{% endif %}</p>
+    <p class="small muted">Für Claude Code, opencode und andere: <code>claude mcp add batzen -- batzen --buch {{ book.root }} mcp</code></p>
+  </div>
+</div>
+
+<div class="panel" id="pruefung">
+  <header><h2>Prüfung des Buchs</h2><span class="hint">batzen check</span></header>
+  {% if issues %}<ul class="todo">{% for i in issues %}<li><a href="#pruefung"><span class="stripe {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}"></span><div><div class="t">{{ i.message }}</div><div class="d">{{ i.where }}</div></div><span class="pill {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}">{{ i.level }}</span></a></li>{% endfor %}</ul>
+  {% else %}<div class="empty">✓ Keine Fehler, Warnungen oder Hinweise.</div>{% endif %}
+</div>
+{% endblock %}

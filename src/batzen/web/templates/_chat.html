@@ -1,0 +1,21 @@
+<aside class="chat" id="chat" aria-label="Agent">
+  <header>
+    <div><strong>Agent</strong><span>Claude · Modus «{{ settings.get('agent_modus') or 'vorschlag' }}»{% if (settings.get('agent_modus') or 'vorschlag') == 'vorschlag' %}: bucht nichts ohne dich{% endif %}</span></div>
+    <span class="actions"><button class="btn small ghost" type="button" id="chatReset" title="Neues Gespräch">Neu</button><button class="btn small ghost" type="button" id="chatClose" aria-label="Agent schliessen">✕</button></span>
+  </header>
+  <div class="msgs" id="msgs" aria-live="polite">
+    <div class="msg ai" id="chatHello"><p>Ich kenne dieses Buch und arbeite mit denselben Werkzeugen wie du. Was soll ich tun?</p></div>
+    <div class="suggest" id="chatSuggest">
+      <button type="button">Bereite die Quittungen in der Inbox vor</button>
+      <button type="button">Welche Rechnungen sind offen?</button>
+      <button type="button">Wie steht das Ergebnis dieses Jahr?</button>
+      <button type="button">Was muss ich diesen Monat noch erledigen?</button>
+    </div>
+  </div>
+  <div class="ctx" id="chatCtx"><span class="pill lock">Kontext</span> <span id="chatPage"></span></div>
+  <form class="composer" id="composer">
+    <label for="chatInput" hidden>Nachricht an den Agenten</label>
+    <textarea class="input" id="chatInput" placeholder="Frag den Agenten …"></textarea>
+    <button class="btn primary" type="submit" id="chatSend">Senden</button>
+  </form>
+</aside>

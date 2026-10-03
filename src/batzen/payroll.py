@@ -141,6 +141,12 @@ def add_employee(book: Book, vorname: str, nachname: str, **fields) -> tuple[dic
     for key in ("geburtsdatum", "eintritt"):
         if meta[key]:
             meta[key] = parse_date(meta[key], key).isoformat()
+    for key in ("monatslohn", "pensum", "stundenlohn", "standard_stunden", "vollzeit_stunden_woche",
+                "ferienzuschlag_satz", "bvg_betrag", "ag_bvg_betrag", "kinderzulagen", "qst_satz"):
+        meta[key] = Decimal(str(meta[key] or 0))
+    if meta["qst"]:
+        qst.parse_code(meta["qst"].get("code", ""))
+    meta["ferien_inbegriffen"] = bool(meta["ferien_inbegriffen"])
     path = book.root / "personal" / f"{number}-{slug(vorname + ' ' + nachname)}.md"
     write_frontmatter(path, meta, "Notizen zum Arbeitsverhältnis.")
     return meta, path

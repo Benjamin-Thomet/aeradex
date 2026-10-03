@@ -12,7 +12,13 @@ This file is for developing batzen itself. Agents *operating a book* read the
 - `invoices.py`, `qrbill_ch.py`: customers, frozen invoices, payments/credit notes as `Quelle` rows, Swiss QR-bill.
 - `payroll.py`, `qst.py`, `qst_import.py`, `lohnausweis.py`: payroll.
 - `check.py`: every invariant + period lock hashes. `api.py`: the operations (guard → write → check → git commit).
-- `cli.py` and `mcp_server.py` are thin layers over `api.py`. New features go into `api.py` first.
+- `cli.py`, `mcp_server.py` and `web/` are thin layers over `api.py`. New features go into `api.py` first.
+- `tools.py`: the one agent tool registry, used by the MCP server and the UI's chat panel.
+- `web/app.py`: Starlette app, token/CSRF middleware, file serving, SSE live refresh (watchfiles).
+  `web/views.py`: one handler per page/form; forms post via HTMX and get `204 + HX-Redirect` or an error box.
+  `web/chat.py`: Claude via the SDK tool runner over `tools.py`; commits it makes are attributed to the agent.
+  Templates are Jinja in `web/templates/`, styles in `web/static/batzen.css` (tokens at the top, light + dark).
+- Writes are serialised by a lock file (`.batzen/write.lock`) so UI, CLI, MCP and chat never interleave.
 
 ## Rules
 - Money is `Decimal`, rounded half-up to cents (`files.CENT`). Never use floats for amounts.
@@ -23,7 +29,7 @@ This file is for developing batzen itself. Agents *operating a book* read the
 
 ## Tests
 ```bash
-pip install -e ".[mcp,dev]"
+pip install -e ".[ui,mcp,dev]"
 pytest
 ```
 Tests build throwaway books in a temp dir; they never touch a real book.

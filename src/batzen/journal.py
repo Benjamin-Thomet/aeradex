@@ -90,8 +90,12 @@ def post(book: Book, rows: list[Row], attachment: Path | None = None) -> list[Pa
 def attach(book: Book, row: Row, source: Path) -> Path:
     """Copy a receipt to belege/<JJJJ>/<Beleg> <name> so it is found by its number."""
     source = Path(source)
+    if not source.is_absolute():
+        # Relative paths ("inbox/quittung.pdf") are relative to the book, not to
+        # wherever the CLI, the MCP server or the UI process happens to run.
+        source = book.root / source
     if not source.exists():
-        raise BookError(f"Beleg-Datei {source} nicht gefunden")
+        raise BookError(f"Beleg-Datei {source.relative_to(book.root) if source.is_relative_to(book.root) else source} nicht gefunden")
     target = book.root / "belege" / str(row.datum.year) / f"{row.beleg} {source.name}"
     target.parent.mkdir(parents=True, exist_ok=True)
     if source.resolve().is_relative_to((book.root / "inbox").resolve()):
