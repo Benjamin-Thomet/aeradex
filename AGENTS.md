@@ -33,6 +33,8 @@ This file is for developing batzen itself. Agents *operating a book* read the
   (`werte.spesen`, `auszahlung`) without touching the wage calculation; Lohnausweis 13.1.2.
 - `mahnungen.py`: reminders (3 steps, PDF with QR-bill for the open amount). Plugin pages: `plugins.Page`, routes
   `/p/<plugin>/<slug>`, templates from the plugin's `templates/` folder (`web/app.py` `_PluginTemplates`).
+- `marktplatz.py`: plugin catalog (bundled JSON or `BATZEN_PLUGIN_KATALOG` https URL), maintainer review with a
+  SHA-256 over the plugin's source files, install via pip (local UI only, then `web.app.restart_later`).
 - `bank.py` (camt.053 import, matching, reconciliation), `kreditoren.py` (QR scan, pain.001), `mwst.py` (incl. eCH-0217).
 - Writes are serialised by a lock file (`.batzen/write.lock`) so UI, CLI, MCP and chat never interleave.
 

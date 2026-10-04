@@ -302,7 +302,9 @@ batzen init ~/buecher/turnverein --firma "Turnverein Muster" --kontenplan verein
 
 Plugins schreiben nur über die Prüfung von batzen; Buchungen, die ihnen gehören, prüft `batzen check` wie
 Rechnungen und Lohn; ein Buch ohne ein Plugin, das es braucht, ist ungültig statt still unvollständig.
-Bauen: [docs/plugins.md](docs/plugins.md) und die Vorlage unter `plugins/vorlage`. Verzeichnis und Wunschliste:
+Ein Katalog zeigt verfügbare Plugins mit ihren Rechten; «geprüft» vergibt ein Maintainer mit festgehaltenem
+Fingerabdruck des Codes, und batzen merkt, wenn der installierte Code davon abweicht. Lokal installiert man mit einem
+Klick, auf dem Server per Befehl. Bauen: [docs/plugins.md](docs/plugins.md) und die Vorlage unter `plugins/vorlage`. Verzeichnis und Wunschliste:
 [PLUGINS.md](PLUGINS.md). Beitragen: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Stand und Roadmap

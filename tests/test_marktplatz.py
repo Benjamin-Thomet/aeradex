@@ -1,0 +1,112 @@
+"""Plugin marketplace: catalog, maintainer review with fingerprint, code watch, install."""
+from __future__ import annotations
+
+import importlib
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+from batzen import check, marktplatz, plugins
+from batzen.book import Book, BookError
+from batzen.testing import make_book, plugin
+
+
+PLUGIN_CODE = '''"""Testplugin für den Katalog."""
+from batzen.plugins import Finding, hookimpl
+
+BATZEN_PLUGIN_API = 1
+__version__ = "1.0.0"
+
+
+@hookimpl
+def batzen_check(book, rows):
+    return []
+'''
+
+
+@pytest.fixture
+def katalog(tmp_path, monkeypatch):
+    pkg = tmp_path / "src" / "kat_testplugin"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text(PLUGIN_CODE)
+    monkeypatch.syspath_prepend(str(tmp_path / "src"))
+    module = importlib.import_module("kat_testplugin")
+    path = tmp_path / "katalog.json"
+    path.write_text(json.dumps({"version": 1, "plugins": [
+        {"name": "testplug", "paket": "batzen-testplug", "version": "1.0.0", "beschreibung": "x", "hooks": ["check"],
+         "status": "ungeprüft"}]}))
+    monkeypatch.setenv("BATZEN_PLUGIN_KATALOG", str(path))
+    with plugin("testplug", module):
+        yield path, pkg
+    sys.modules.pop("kat_testplugin", None)
+
+
+def test_review_records_fingerprint_and_watches_the_code(tmp_path, katalog):
+    path, pkg = katalog
+    book = make_book(tmp_path / "b", plugins=["testplug"])
+    e = marktplatz.entries(book)[0]
+    assert not e["geprueft"] and e["rechte"] == ["eigene Prüfregeln"]
+    reviewed = marktplatz.review("testplug", "Benjamin Thomet", tests=False)
+    assert reviewed["status"] == "geprüft" and reviewed["pruefung"]["sha256"] == marktplatz.tree_hash(pkg)
+    assert json.loads(path.read_text())["plugins"][0]["pruefung"]["von"] == "Benjamin Thomet"
+    e = marktplatz.entries(book)[0]
+    assert e["geprueft"] and e["code"] == "unverändert"
+    assert not [i for i in check.run(Book(book.root)) if "nicht der geprüfte" in i.message]
+    (pkg / "__init__.py").write_text(PLUGIN_CODE + "\n# nachträglich geändert\n")
+    assert marktplatz.entries(book)[0]["code"] == "verändert"
+    assert any(i.level == "warnung" and "nicht der geprüfte" in i.message for i in check.run(Book(book.root)))
+    marktplatz.revoke("testplug")
+    assert marktplatz.entries(book)[0]["status"] == "ungeprüft"
+
+
+def test_install_needs_review_or_explicit_consent(katalog, monkeypatch):
+    calls = []
+    monkeypatch.setattr(marktplatz.subprocess, "run",
+                        lambda args, **kw: calls.append(args) or type("P", (), {"returncode": 0, "stdout": "ok", "stderr": ""})())
+    with pytest.raises(BookError, match="nicht geprüft"):
+        marktplatz.install("testplug")
+    marktplatz.install("testplug", ungeprueft_ok=True)
+    assert calls[0][-1] == "batzen-testplug==1.0.0" and calls[0][1:4] == ["-m", "pip", "install"]
+    with pytest.raises(BookError, match="nicht im Katalog"):
+        marktplatz.install("gibtsnicht", True)
+
+
+def test_catalog_over_https_is_cached(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("BATZEN_PLUGIN_KATALOG", "https://example.org/katalog.json")
+    data = json.dumps({"version": 1, "plugins": [{"name": "a", "paket": "batzen-a"}]}).encode()
+    assert marktplatz.load(fetch=lambda url: data)["plugins"][0]["name"] == "a"
+
+    def offline(url):
+        raise OSError("offline")
+    assert marktplatz.load(fetch=offline)["plugins"][0]["name"] == "a"               # from the cache
+    monkeypatch.setenv("BATZEN_PLUGIN_KATALOG", "http://example.org/k.json")
+    with pytest.raises(BookError, match="https"):
+        marktplatz.load()
+
+
+def test_bundled_catalog_lists_the_examples_unreviewed():
+    names = {e["name"]: e for e in marktplatz.load()["plugins"]}
+    assert set(names) >= {"anlagen", "revolut", "kontenplan-verein"}
+    assert all(e["status"] == "ungeprüft" for e in names.values())
+
+
+def test_settings_page_shows_catalog_and_installs_locally(tmp_path, katalog, monkeypatch):
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+    from batzen.web.app import create_app
+    book = make_book(tmp_path / "b")
+    installed = []
+    monkeypatch.setattr(marktplatz, "install", lambda name, ok=False: installed.append((name, ok)) or "")
+    app = create_app(book.root, token="tok")
+    with TestClient(app) as c:
+        c.get("/?t=tok", follow_redirects=False)
+        h = {"X-CSRF": app.state.ui.csrf, "HX-Request": "true"}
+        page = c.get("/einstellungen").text
+        assert "Katalog" in page and "ungeprüft" in page
+        r = c.post("/einstellungen/plugins/installieren", headers=h, data={"name": "testplug", "ungeprueft_ok": "1"})
+        assert r.status_code == 204, r.text
+        assert installed == [("testplug", True)]
+        assert "Jetzt neu starten" in c.get("/einstellungen").text

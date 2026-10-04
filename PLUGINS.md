@@ -1,13 +1,14 @@
 # Plugins
 
 Plugins erweitern batzen, ohne batzen zu verändern. Wie man eines baut: [docs/plugins.md](docs/plugins.md).
-Eigenes Plugin eintragen: Pull Request auf diese Datei.
+Massgebend ist der Katalog `src/batzen/data/plugin_katalog.json` (in batzen: Einstellungen → Plugins → Katalog);
+eigenes Plugin per Pull Request dort eintragen, ein Maintainer prüft es (siehe docs/plugins.md).
 
 | Plugin | Art | Was es tut | Stand |
 |---|---|---|---|
-| [batzen-kontenplan-verein](plugins/batzen-kontenplan-verein) | Daten | Kontenplan für Schweizer Vereine | Beispiel im Repo |
-| [batzen-anlagen](plugins/batzen-anlagen) | Dokumente, Seite | Anlagenbuchhaltung: Abschreibungen, Abgänge, Anlagenspiegel | Beispiel im Repo |
-| [batzen-revolut](plugins/batzen-revolut) | Bankformat | Revolut-Kontoauszüge (CSV, Business und Privat) | Beispiel im Repo, mit echtem Export zu prüfen |
+| [batzen-kontenplan-verein](plugins/batzen-kontenplan-verein) | Daten | Kontenplan für Schweizer Vereine | ungeprüft |
+| [batzen-anlagen](plugins/batzen-anlagen) | Dokumente, Seite | Anlagenbuchhaltung: Abschreibungen, Abgänge, Anlagenspiegel | ungeprüft |
+| [batzen-revolut](plugins/batzen-revolut) | Bankformat | Revolut-Kontoauszüge (CSV, Business und Privat) | ungeprüft, mit echtem Export zu prüfen |
 
 ## Gesucht
 

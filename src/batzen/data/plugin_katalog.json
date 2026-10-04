@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "hinweis": "Katalog der batzen-Plugins. «geprüft» vergibt ein Maintainer mit `batzen plugins pruefen`; der festgehaltene Fingerabdruck (sha256) muss zum installierten Code passen.",
+  "plugins": [
+    {
+      "name": "anlagen",
+      "paket": "batzen-anlagen",
+      "version": "0.1.0",
+      "beschreibung": "Anlagenbuchhaltung: Abschreibungen (linear/degressiv, ESTV-Höchstsätze), Abgänge, Anlagenspiegel — mit eigener Seite.",
+      "autor": "batzen",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "",
+      "repo_pfad": "plugins/batzen-anlagen",
+      "batzen": ">=0.8",
+      "art": "code",
+      "hooks": ["check", "commands", "instructions", "pages", "sources", "tools"],
+      "status": "ungeprüft"
+    },
+    {
+      "name": "revolut",
+      "paket": "batzen-revolut",
+      "version": "0.1.0",
+      "beschreibung": "Revolut-Kontoauszüge (CSV, Business und Privat) für den Bankimport.",
+      "autor": "batzen",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "",
+      "repo_pfad": "plugins/batzen-revolut",
+      "batzen": ">=0.6",
+      "art": "code",
+      "hooks": ["bank_formats", "check", "commands", "instructions"],
+      "status": "ungeprüft"
+    },
+    {
+      "name": "kontenplan-verein",
+      "paket": "batzen-kontenplan-verein",
+      "version": "0.1.0",
+      "beschreibung": "Kontenplan für Schweizer Vereine (Mitgliederbeiträge, Spenden, Fonds, Vereinsvermögen).",
+      "autor": "batzen",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "",
+      "repo_pfad": "plugins/batzen-kontenplan-verein",
+      "batzen": ">=0.6",
+      "art": "daten",
+      "hooks": ["kontenplaene"],
+      "status": "ungeprüft"
+    }
+  ]
+}

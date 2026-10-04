@@ -55,6 +55,14 @@ def run(book: Book) -> list[Issue]:
     from . import plugins
     for problem in plugins.problems(book):
         add("fehler", "batzen.yaml", problem)
+    try:
+        from . import marktplatz
+        for e in marktplatz.entries(book):
+            if e["eingeschaltet"] and e["code"] == "verändert":
+                add("warnung", "batzen.yaml", f"Plugin '{e['name']}': der installierte Code ist nicht der geprüfte "
+                    f"(geprüft {e['pruefung'].get('am')} von {e['pruefung'].get('von')}) — neu prüfen lassen")
+    except (BookError, ValueError, OSError):
+        pass
     if s.get("iban") and iban_problem(normalize_iban(s.get("iban"))):
         add("warnung", "batzen.yaml", f"IBAN: {iban_problem(normalize_iban(s.get('iban')))}")
     try:

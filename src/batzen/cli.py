@@ -413,6 +413,19 @@ def build_parser() -> argparse.ArgumentParser:
     for name, text in (("ein", "für dieses Buch einschalten"), ("aus", "für dieses Buch ausschalten")):
         c = ps.add_parser(name, help=text)
         c.add_argument("name")
+    ps.add_parser("katalog", help="Plugins im Katalog (geprüft/ungeprüft, installiert?)")
+    c = ps.add_parser("installieren", help="Plugin aus dem Katalog installieren")
+    c.add_argument("name")
+    c.add_argument("--ungeprueft", action="store_true", help="auch ein nicht geprüftes Plugin installieren")
+    c.add_argument("--ja", action="store_true", help="ohne Rückfrage")
+    c = ps.add_parser("pruefen", help="Maintainer: geprüften Code im Katalog festhalten (Fingerabdruck, Tests)")
+    c.add_argument("name")
+    c.add_argument("--von", required=True, help="wer geprüft hat")
+    c.add_argument("--katalog", help="Katalog-Datei (Standard: die mitgelieferte)")
+    c.add_argument("--ohne-tests", action="store_true")
+    c = ps.add_parser("zurueckziehen", help="Maintainer: Prüfung zurückziehen")
+    c.add_argument("name")
+    c.add_argument("--katalog")
     _plugin_commands(sub)
     return p
 
@@ -440,6 +453,28 @@ def dispatch(a, book_path: Path | None):
         return Book(find_root(book_path))
 
     c = a.cmd
+    if c == "plugins" and a.sub in ("katalog", "installieren", "pruefen", "zurueckziehen"):
+        from . import marktplatz
+        if a.sub == "katalog":
+            try:
+                b = book()
+            except BookError:
+                b = None
+            return marktplatz.entries(b)
+        if a.sub == "pruefen":
+            return marktplatz.review(a.name, a.von, Path(a.katalog) if a.katalog else None, tests=not a.ohne_tests)
+        if a.sub == "zurueckziehen":
+            return marktplatz.revoke(a.name, Path(a.katalog) if a.katalog else None)
+        e = marktplatz.entry(a.name)
+        if not a.ja:
+            print(f"{e['name']} {e.get('version', '')} — {e.get('beschreibung', '')}\n"
+                  f"Status: {e.get('status')}. Ein Plugin ist Programmcode mit den Rechten von batzen.\n"
+                  f"Befehl: {' '.join(marktplatz.install_args(e, display=True))}", file=sys.stderr)
+            if input("Installieren? [j/N] ").strip().lower() not in ("j", "ja", "y", "yes"):
+                raise BookError("abgebrochen")
+        out = marktplatz.install(a.name, a.ungeprueft)
+        return {"ok": True, "meldung": f"Plugin {a.name} installiert — `batzen ui` neu starten, dann im Buch einschalten "
+                                       f"(batzen plugins ein {a.name})", "pip": out}
     if c == "plugins":
         if a.sub == "ein":
             return api.plugin_enable(book(), a.name)
@@ -811,6 +846,15 @@ def render(cmd: str, sub: str | None, result) -> str:
                 out.append(f"      · {h}")
         out.append("\nPrüfen und buchen: Oberfläche → Prüfen → Eingang (Quittungen auch: batzen eingang buchen ID)")
         return "\n".join(out)
+    if cmd == "plugins" and sub == "katalog" and isinstance(result, list):
+        out = []
+        for e in result:
+            mark = "✓ geprüft" if e["geprueft"] else "· ungeprüft"
+            state = f"installiert {e['installiert']}" if e["installiert"] else "nicht installiert"
+            code = f", Code {e['code']}" if e["code"] else ""
+            out.append(f"{e['name']:<20} {mark:<12} {state}{code}\n    {e.get('beschreibung', '')}\n"
+                       f"    darf: {', '.join(e['rechte']) or '—'}")
+        return "\n".join(out) or "Der Katalog ist leer."
     if cmd == "plugins" and isinstance(result, list):
         if not result:
             return "Keine Plugins installiert. Plugins sind Python-Pakete: pip install batzen-<name>"

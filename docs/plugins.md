@@ -212,8 +212,32 @@ def test_mein_plugin(tmp_path):
 Plugins mit einer anderen Version werden nicht geladen und in `batzen plugins` mit dem Grund angezeigt — nie halb.
 Neue, optionale Hooks erhöhen die Version nicht.
 
+## Katalog, Prüfung und Installation
+
+Der **Katalog** (`src/batzen/data/plugin_katalog.json`, später eine öffentliche https-Adresse über
+`BATZEN_PLUGIN_KATALOG`) listet die Plugins mit Beschreibung, Paket, Version und den Rechten in Klartext
+(«liest Kontoauszüge ein», «bucht eigene Dokumente ins Journal» …). Oberfläche: Einstellungen → Plugins → Katalog;
+Kommandozeile: `batzen plugins katalog`.
+
+**Geprüft** heisst: ein Maintainer hat den Code gelesen, die Tests des Plugins laufen, und der Fingerabdruck
+(SHA-256 über alle Quelldateien) ist im Katalog festgehalten:
+
+```bash
+batzen plugins installieren revolut --ungeprueft      # zum Prüfen installieren
+# Code lesen: Was tut das Plugin, schreibt es nur über api.write, sendet es Daten nach aussen?
+batzen plugins pruefen revolut --von "Benjamin Thomet"  # Tests laufen, Fingerabdruck in den Katalog
+batzen plugins zurueckziehen revolut                  # Prüfung zurücknehmen
+```
+
+batzen vergleicht den Fingerabdruck laufend mit dem installierten Code. Weicht er ab, zeigt die Oberfläche
+«Code verändert» und `batzen check` warnt bei Büchern, die das Plugin eingeschaltet haben.
+
+**Installieren:** lokal mit einem Klick (nach Bestätigung; ungeprüfte Plugins nur mit dem ausdrücklichen Häkchen
+«Ich habe den Code selbst geprüft»), danach startet batzen auf Knopfdruck neu. Im Serverbetrieb zeigt batzen nur den
+Befehl — Programmcode wird dort nicht aus dem Browser installiert.
+
 ## Veröffentlichen
 
 - Paketname `batzen-<name>`, Entry-Point-Name `<name>` (das steht dann in `batzen.yaml`).
 - Lizenz: AGPL-3.0-or-later empfohlen (wie batzen); jede damit verträgliche Open-Source-Lizenz geht.
-- Auf PyPI veröffentlichen und in [PLUGINS.md](../PLUGINS.md) per Pull Request eintragen.
+- Auf PyPI veröffentlichen und per Pull Request in den Katalog eintragen (`status: ungeprüft`); ein Maintainer prüft.

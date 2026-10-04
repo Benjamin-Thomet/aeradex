@@ -9,6 +9,7 @@ editor) so they refresh themselves.
 from __future__ import annotations
 
 import asyncio
+import os
 import contextlib
 import hashlib
 import hmac
@@ -132,6 +133,8 @@ class UI:
         self.env = make_env()
         self.version = 0          # bumped by the file watcher
         self.chat = None          # set lazily by chat.py
+        self.auth_dir = auth_dir  # set = server mode (login, no plugin installs from the browser)
+        self.neustart_noetig = False
         # Server mode: users and signed sessions instead of the one-time token.
         self.users = self.sessions = self.throttle = None
         self.https = https
@@ -427,17 +430,31 @@ def create_app(root: Path, token: str | None = None, auth_dir: Path | None = Non
     return app
 
 
+def restart_later(ui: "UI", delay: float = 0.8) -> None:
+    """Replace this process with a fresh `batzen ui` (same token), so newly installed plugins load."""
+    import sys
+    import threading
+
+    def go():
+        os.environ["BATZEN_UI_TOKEN"] = ui.token
+        os.environ["BATZEN_UI_RESTART"] = "1"
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    threading.Timer(delay, go).start()
+
+
 def run(root: Path, port: int = 5151, open_browser: bool = True) -> None:
     import threading
     import webbrowser
 
     import uvicorn
 
-    app = create_app(root)
+    # After installing a plugin the UI restarts itself (os.execv) and keeps its access token.
+    restarted = bool(os.environ.pop("BATZEN_UI_RESTART", ""))
+    app = create_app(root, os.environ.pop("BATZEN_UI_TOKEN", None) or None)
     ui: UI = app.state.ui
     url = f"http://127.0.0.1:{port}/?t={ui.token}"
     print(f"batzen läuft für {ui.book().settings.firma}: {url}\n(Beenden mit Ctrl+C)")
-    if open_browser:
+    if open_browser and not restarted:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 

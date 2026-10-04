@@ -110,6 +110,24 @@
     {% endfor %}</tbody>
   </table></div>
   {% else %}<div class="body"><p class="small muted">Keine Plugins installiert. Plugins sind Python-Pakete, z.B. <code>pip install batzen-revolut</code>; danach erscheinen sie hier.</p></div>{% endif %}
+  {% if neustart %}<div class="body"><div class="alert warn" style="display:flex;justify-content:space-between;align-items:center;gap:10px">Ein Plugin wurde installiert. Damit batzen es lädt, ist ein Neustart nötig.
+    <form hx-post="/einstellungen/plugins/neustart" hx-target="find .errors"><button class="btn primary small" type="submit">Jetzt neu starten</button>{{ errors() }}</form></div></div>{% endif %}
+  <header style="border-top:1px solid var(--rule)"><h2>Katalog</h2><span class="hint">{{ 'mitgeliefert' if katalog.quelle.endswith('plugin_katalog.json') else katalog.quelle }} · «geprüft» vergibt ein Maintainer</span></header>
+  {% if katalog.fehler %}<div class="body"><div class="alert warn">{{ katalog.fehler }}</div></div>{% endif %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Plugin</th><th>darf</th><th>Prüfung</th><th class="right"></th></tr></thead>
+    <tbody>{% for e in katalog.eintraege %}
+      <tr class="row"><td><strong>{{ e.name }}</strong> <span class="small muted">{{ e.version }}</span><br><span class="small">{{ e.beschreibung }}</span></td>
+        <td class="small">{{ e.rechte|join(" · ") or "—" }}</td>
+        <td>{% if e.geprueft %}<span class="pill ok" title="geprüft am {{ e.pruefung.am }} von {{ e.pruefung.von }}">geprüft</span>{% if e.code == 'verändert' %} <span class="pill red" title="Der installierte Code ist nicht der geprüfte">Code verändert</span>{% endif %}{% else %}<span class="pill warn">ungeprüft</span>{% endif %}</td>
+        <td class="right">{% if e.installiert %}<span class="pill muted">installiert {{ e.installiert }}</span>
+          {% elif server_mode %}<code class="small" title="auf dem Server ausführen, dann neu starten">{{ e.befehl }}</code>
+          {% else %}<form hx-post="/einstellungen/plugins/installieren" hx-target="find .errors" hx-confirm="{{ e.name }} installieren? Ein Plugin ist Programmcode mit allen Rechten von batzen.{{ '' if e.geprueft else ' Es ist NICHT geprüft.' }}">
+            <input type="hidden" name="name" value="{{ e.name }}">
+            {% if not e.geprueft %}<label class="check small"><input type="checkbox" name="ungeprueft_ok" value="1" required> Ich habe den Code selbst geprüft</label>{% endif %}
+            <button class="btn small {{ 'primary' if e.geprueft }}" type="submit">Installieren</button>{{ errors() }}</form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="4" class="empty">Der Katalog ist leer.</td></tr>{% endfor %}</tbody>
+  </table></div>
   <div class="body"><p class="small muted">Installiert heisst nicht eingeschaltet: ein Plugin wirkt erst in einem Buch, das es einschaltet, und schreibt nur über die Prüfung von batzen. Plugins sind Programmcode — nur aus vertrauenswürdigen Quellen installieren.</p></div>
 </div>
 

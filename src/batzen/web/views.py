@@ -906,6 +906,38 @@ async def jev_einstellung(ui: UI, request: Request):
                      jev={"aktiv": f.get("aktiv") == "1", "schwelle": f.get("schwelle") or None})
 
 
+def _katalog(book):
+    from .. import marktplatz
+    try:
+        return {"eintraege": marktplatz.entries(book), "quelle": marktplatz.source(), "fehler": ""}
+    except Exception as exc:  # an unreachable catalog must not break the settings page
+        return {"eintraege": [], "quelle": marktplatz.source(), "fehler": str(exc)}
+
+
+async def plugin_installieren(ui: UI, request: Request):
+    """Local mode only: pip install a catalog plugin into this environment; a restart loads it."""
+    from .. import marktplatz
+    if ui.auth_dir is not None:
+        return fail("Auf dem Server werden Plugins nicht aus dem Browser installiert — den angezeigten Befehl "
+                    "auf dem Server ausführen und batzen neu starten.")
+    f = await request.form()
+    name = f.get("name", "")
+    try:
+        await asyncio.to_thread(marktplatz.install, name, f.get("ungeprueft_ok") == "1")
+    except BookError as exc:
+        return fail(str(exc))
+    ui.neustart_noetig = True
+    return done(f"Plugin {name} installiert — batzen neu starten, um es zu laden", "/einstellungen#plugins")
+
+
+async def plugin_neustart(ui: UI, request: Request):
+    from .app import restart_later
+    if ui.auth_dir is not None:
+        return fail("Den Server bitte über systemd neu starten (systemctl restart …).")
+    restart_later(ui)
+    return done("batzen startet neu …", "/einstellungen#plugins")
+
+
 async def plugin_einstellung(ui: UI, request: Request):
     f = await request.form()
     fn = api.plugin_enable if request.path_params["aktion"] == "ein" else api.plugin_disable
@@ -1456,7 +1488,8 @@ async def einstellungen(ui: UI, request: Request):
                      accounts=account_options(book), cred=credentials_status(book.settings.get("agent_backend")),
                      jev=__import__("batzen.jev", fromlist=["config"]).config(book),
                      backends=__import__("batzen.web.chat", fromlist=["BACKENDS"]).BACKENDS,
-                     plugin_rows=api.plugin_list(book))
+                     plugin_rows=api.plugin_list(book), katalog=_katalog(book), server_mode=ui.auth_dir is not None,
+                     neustart=bool(getattr(ui, "neustart_noetig", False)))
 
 
 async def einstellungen_speichern(ui: UI, request: Request):
@@ -1607,6 +1640,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/einstellungen/lohn", h(lohn_einstellungen), methods=["POST"]),
         Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),
         Route("/einstellungen/jev", h(jev_einstellung), methods=["POST"]),
+        Route("/einstellungen/plugins/installieren", h(plugin_installieren), methods=["POST"]),
+        Route("/einstellungen/plugins/neustart", h(plugin_neustart), methods=["POST"]),
         Route("/einstellungen/plugins/{aktion:str}", h(plugin_einstellung), methods=["POST"]),
         Route("/pdf/{kind:str}", h(pdf_report)),
     ]
