@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 import tempfile
 from collections import OrderedDict, defaultdict
 from datetime import date
@@ -834,8 +835,80 @@ async def kreditoren_page(ui: UI, request: Request):
     rows = [kred.state(book, m, paid.get(k, [])) for k, m in kred.bills(book).items()]
     rows = [r for r in rows if not status or r["status"] == status]
     rows.sort(key=lambda r: (r["status"] not in ("offen", "angewiesen"), r["faellig"], r["nummer"]))
+    from .. import erfassung, jev
+    drafts = list(erfassung.drafts(book).values())
     return ui.render(request, "kreditoren.html", book=book, rows=rows, status=status, op=kred.open_payables(book),
-                     tab="rechnungen", default_date=_next_workday().isoformat())
+                     tab="rechnungen", default_date=_next_workday().isoformat(), drafts=drafts,
+                     auto_agent=erfassung.agent_auto(book), jev=jev.config(book),
+                     ocr=bool(erfassung.ocr_languages()), dv=erfassung.value)
+
+
+# ---------- Kreditoren drafts: upload → read → account (supplier, Jev, agent) ----------
+
+_agent_jobs = threading.Lock()
+
+
+def _agent_in_background(root: Path, ids: list[str]) -> None:
+    """Hand drafts to the agent one after another; the page refreshes as each draft changes."""
+    def work():
+        with _agent_jobs:                     # one agent run at a time per process
+            for draft_id in ids:
+                try:
+                    api.bill_draft_agent(Book(root), draft_id)
+                except Exception:             # recorded on the draft by run_agent
+                    continue
+    if ids:
+        threading.Thread(target=work, daemon=True).start()
+
+
+async def kreditoren_einlesen(ui: UI, request: Request):
+    from .. import erfassung
+    form = await request.form()
+    uploads = [u for u in form.getlist("dateien") if getattr(u, "filename", "")]
+    datei = form.get("datei")                # an inbox file (from Prüfen)
+    if not uploads and not datei:
+        return fail("Keine Datei gewählt.")
+    created, errors_ = [], []
+    targets = [datei] if datei else []
+    for upload in uploads:
+        try:
+            res = await asyncio.to_thread(api.inbox_add, ui.book(), upload.filename, await upload.read())
+            targets.append(res["datei"])
+        except BookError as exc:
+            errors_.append(f"{upload.filename}: {exc}")
+    for target in targets:
+        try:
+            res = await asyncio.to_thread(api.bill_draft_create, ui.book(), target)
+            created.append(res["entwurf"])
+        except BookError as exc:
+            errors_.append(f"{Path(target).name}: {exc}")
+    if erfassung.agent_auto(ui.book()):
+        _agent_in_background(ui.root, [d["id"] for d in created if erfassung.needs_agent(d)])
+    if errors_ and not created:
+        return fail(" · ".join(errors_))
+    msg = f"{len(created)} Rechnung(en) eingelesen" + (f" · Probleme: {' · '.join(errors_)}" if errors_ else "")
+    return done(msg, "/kreditoren#entwuerfe", "warn" if errors_ else "ok")
+
+
+async def kreditoren_entwurf(ui: UI, request: Request):
+    draft_id, aktion = request.path_params["id"], request.path_params["aktion"]
+    if aktion == "agent":
+        try:
+            await asyncio.to_thread(api.bill_draft_mark, ui.book(), draft_id, "agent", "An den Agenten übergeben")
+        except BookError as exc:
+            return fail(str(exc))
+        _agent_in_background(ui.root, [draft_id])
+        return done(f"{draft_id} ist beim Agenten — die Seite aktualisiert sich, sobald er fertig ist",
+                    "/kreditoren#entwuerfe")
+    if aktion == "verwerfen":
+        return await act(request, api.bill_draft_discard, "/kreditoren#entwuerfe", ui.book(), draft_id)
+    return fail("Unbekannte Aktion")
+
+
+async def kreditoren_einstellung(ui: UI, request: Request):
+    f = await request.form()
+    return await act(request, api.settings_update, "/kreditoren#entwuerfe", ui.book(),
+                     kreditoren={"agent_automatisch": f.get("agent_automatisch") == "1"})
 
 
 def _next_workday() -> date:
@@ -851,6 +924,24 @@ async def kreditor_neu(ui: UI, request: Request):
     book = ui.book()
     datei = request.query_params.get("datei", "")
     scan, scan_error = None, None
+    entwurf_id = request.query_params.get("entwurf", "")
+    if entwurf_id:
+        from .. import erfassung
+        try:
+            meta = erfassung.draft(book, entwurf_id)
+        except BookError as exc:
+            return PlainTextResponse(str(exc), status_code=404)
+        v = erfassung.form_values(meta)
+        sc = {"betrag": v["betrag"], "iban": v["iban"], "referenz": v["referenz"], "referenz_typ": v["referenz_typ"],
+              "mitteilung": v["mitteilung"], "rechnungsinfo": v["rechnungsnr"],
+              "kreditor": {k: v[k] for k in ("name", "strasse", "nr", "plz", "ort", "land") if v[k]}}
+        kind = file_kind(book.root / meta["datei"])
+        sups = kred.suppliers(book)
+        return ui.render(request, "kreditor_neu.html", book=book, datei=meta["datei"], kind=kind, scan=None, sc_override=sc,
+                         scan_error=None, suppliers=sups, chosen=v["lieferant"] if v["lieferant"] in sups else "",
+                         accounts=account_options(book), tab="rechnungen", today=date.today().isoformat(),
+                         entwurf=meta, ev=v, quellen_felder=meta.get("felder") or {},
+                         warnungen=erfassung.warnings(book, meta))
     if datei:
         try:
             scan = kred.scan(book, datei)
@@ -880,7 +971,7 @@ async def kreditor_erfassen(ui: UI, request: Request):
     except (BookError, ValueError) as exc:
         return fail(str(exc))
     fields = {k: (f.get(k) or "").strip() for k in ("datum", "faellig", "rechnungsnr", "referenz", "referenz_typ",
-                                                     "mitteilung", "iban", "datei")}
+                                                     "mitteilung", "iban", "datei", "entwurf")}
     fields = {k: v for k, v in fields.items() if v}
     if f.get("konto"):
         fields["konto"] = acct(f.get("konto"))
@@ -1166,6 +1257,9 @@ def routes(ui: UI) -> list[Route]:
         Route("/bank/{id:str}/{aktion:str}", h(bank_aktion), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),
+        Route("/kreditoren/einlesen", h(kreditoren_einlesen), methods=["POST"]),
+        Route("/kreditoren/entwurf/{id:str}/{aktion:str}", h(kreditoren_entwurf), methods=["POST"]),
+        Route("/kreditoren/einstellung", h(kreditoren_einstellung), methods=["POST"]),
         Route("/kreditoren/neu", h(kreditor_erfassen), methods=["POST"]),
         Route("/kreditoren/rechnung/{nr:str}", h(kreditor_detail)),
         Route("/kreditoren/rechnung/{nr:str}/{aktion:str}", h(kreditor_aktion), methods=["POST"]),

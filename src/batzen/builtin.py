@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .plugins import BankFormat, hookimpl
+from .plugins import BankFormat, BelegLeser, hookimpl
 
 BATZEN_PLUGIN_API = 1
 DATA = Path(__file__).parent / "data"
@@ -37,3 +37,35 @@ def _parse_camt(data: bytes, book):
 def batzen_bank_formats():
     return [BankFormat(name="camt053", label="ISO 20022 camt.053 (XML)", suffixes=(".xml",),
                        detect=_is_camt, parse=_parse_camt)]
+
+
+# ---------- reading supplier bills (Kreditoren drafts) ----------
+
+def _read_qr(book, path, text):
+    from . import erfassung
+    return erfassung.read_qr(book, path)
+
+
+def _read_text(book, path, text):
+    from . import erfassung
+    found = erfassung.pdf_text(path)
+    if len(found.strip()) < 40:
+        return None
+    return {**erfassung.parse_text(found, book.settings.firma), "_text": found}
+
+
+def _read_ocr(book, path, text):
+    from . import erfassung
+    if text:
+        return None                     # the PDF had a text layer: no OCR needed
+    found = erfassung.ocr_text(path)
+    if len(found.strip()) < 20:
+        return None
+    return {**erfassung.parse_text(found, book.settings.firma), "_text": found}
+
+
+@hookimpl
+def batzen_beleg_leser():
+    return [BelegLeser("qr", "QR", 10, _read_qr),
+            BelegLeser("text", "Text", 50, _read_text),
+            BelegLeser("ocr", "OCR", 80, _read_ocr)]

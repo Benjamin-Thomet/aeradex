@@ -252,6 +252,17 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("nr")
     c.add_argument("--grund", default="")
     ks.add_parser("offen", help="offene Kreditoren")
+    c = ks.add_parser("einlesen", help="Rechnungen einlesen → Entwürfe (QR, Text, OCR; Konto via Lieferant, Jev, Agent)")
+    c.add_argument("dateien", nargs="+")
+    g = c.add_mutually_exclusive_group()
+    g.add_argument("--agent", dest="agent", action="store_true", default=None,
+                   help="unsichere Entwürfe an den Agenten (Standard laut batzen.yaml)")
+    g.add_argument("--ohne-agent", dest="agent", action="store_false")
+    ks.add_parser("entwuerfe", help="Entwürfe anzeigen")
+    c = ks.add_parser("entwurf-agent", help="Entwurf vom Agenten kontieren lassen")
+    c.add_argument("id")
+    c = ks.add_parser("entwurf-verwerfen", help="Entwurf verwerfen (Datei bleibt in der Inbox)")
+    c.add_argument("id")
 
     s = sub.add_parser("zahlungslauf", help="Zahlungsdatei (pain.001) für das E-Banking")
     zs = s.add_subparsers(dest="sub", required=True)
@@ -502,6 +513,29 @@ def dispatch(a, book_path: Path | None):
             return api.bill_void(b, a.nr, a.grund)
         if a.sub == "offen":
             return api.payables(b)
+        if a.sub == "einlesen":
+            from . import erfassung
+            out = []
+            for datei in a.dateien:
+                res = api.bill_draft_create(Book(b.root), datei)
+                d = res["entwurf"]
+                use_agent = erfassung.agent_auto(Book(b.root)) if a.agent is None else a.agent
+                if erfassung.needs_agent(d) and use_agent:
+                    print(f"… {d['id']}: Konto unsicher, frage den Agenten", file=sys.stderr)
+                    try:
+                        d = api.bill_draft_agent(Book(b.root), d["id"])["entwurf"]
+                    except BookError as exc:
+                        print(f"✗ {d['id']}: {exc}", file=sys.stderr)
+                        d = erfassung.draft(Book(b.root), d["id"])
+                        d = {k: v for k, v in d.items() if not k.startswith("_")}
+                out.append(d)
+            return api.jsonable(out)
+        if a.sub == "entwuerfe":
+            return api.bill_drafts(b)
+        if a.sub == "entwurf-agent":
+            return api.bill_draft_agent(b, a.id)
+        if a.sub == "entwurf-verwerfen":
+            return api.bill_draft_discard(b, a.id)
     if c == "zahlungslauf":
         b = book()
         if a.sub == "erstellen":
@@ -627,6 +661,20 @@ def render(cmd: str, sub: str | None, result) -> str:
             out.append(f"  Ziffer {key:<12}{_fmt(z[key]):>14}")
         out.append(f"  {'Zahllast' if Decimal(result['zahllast']) >= 0 else 'Guthaben':<19}{_fmt(abs(Decimal(result['zahllast']))):>14}"
                    + ("   (gebucht)" if result["gebucht"] else ""))
+        return "\n".join(out)
+    if cmd == "kreditor" and sub in ("einlesen", "entwuerfe") and isinstance(result, list):
+        if not result:
+            return "Keine Entwürfe."
+        out = []
+        for d in result:
+            f = d.get("felder") or {}
+            g = lambda k: (f.get(k) or {}).get("wert", "")  # noqa: E731
+            konto = d.get("konto") or {}
+            out.append(f"{d['id']}  {d['status']:<14} {g('name')[:28]:<28} {g('betrag'):>10}  "
+                       f"Konto {konto.get('wert') or '—'}" + (f" ({konto.get('quelle')})" if konto.get("quelle") else ""))
+            for h in d.get("hinweise") or []:
+                out.append(f"      · {h}")
+        out.append("\nPrüfen und buchen: Oberfläche → Kreditoren → Entwürfe")
         return "\n".join(out)
     if cmd == "plugins" and isinstance(result, list):
         if not result:

@@ -9,6 +9,9 @@ decides whether a person has to look:
     confidence ≥ threshold  →  a proposal in Prüfen (never booked directly)
     below                   →  only a hint on the bank transaction
 
+The same applies to supplier bill drafts (Kreditoren upload): Jev picks the
+expense account; below the threshold the draft goes to the agent.
+
 Off by default. Enable per book (batzen.yaml → jev: {aktiv: true}) and set
 TYPESAFE_API_KEY in the environment. Sent per transaction: counterparty,
 payment message, amount, direction, the account list and up to five earlier
@@ -162,6 +165,51 @@ def suggest_one(book: Book, tx: dict, cfg: dict) -> dict:
     probs = sorted(((k, float(v)) for k, v in (answer.get("probabilities") or {}).items()), key=lambda kv: -kv[1])
     return {"id": tx["ID"], "konto": answer.get("choice"), "konfidenz": float(answer.get("confidence") or 0),
             "alternativen": probs[1:4], "wahrscheinlichkeit": probs[0][1] if probs else 0.0}
+
+
+def bill_history(book: Book, name: str, limit: int = 5) -> list[dict]:
+    """Accounts earlier bills of the same supplier went to."""
+    from . import kreditoren as kred
+    key = (name or "").strip().lower()
+    if len(key) < 3:
+        return []
+    out = []
+    for meta in reversed(list(kred.bills(book).values())):
+        if str(meta.get("name", "")).strip().lower() == key and meta.get("konto"):
+            konto = str(meta["konto"])
+            out.append({"rechnungsnr": meta.get("rechnungsnr", ""), "betrag": f"{meta.get('betrag')}", "konto": konto,
+                        "kontoname": book.accounts[konto].name if konto in book.accounts else ""})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def suggest_bill(book: Book, meta: dict, text: str, cfg: dict) -> dict:
+    """Expense account for a supplier bill draft. Sent: supplier name, amount, invoice number,
+    VAT rate, the first 1500 characters of the bill's text, the chart and earlier bills of that supplier."""
+    from . import erfassung
+    options = {k: v for k, v in candidate_accounts(book, False, "").items()
+               if book.accounts[k].klasse in ("aufwand", "aktiv")}
+    name = erfassung.value(meta, "name")
+    state = {
+        "firma": book.settings.firma,
+        "rechnung": {"lieferant": name, "betrag_chf": erfassung.value(meta, "betrag"),
+                     "rechnungsnr": erfassung.value(meta, "rechnungsnr"),
+                     "mwst_satz": erfassung.value(meta, "mwst_satz"), "text": (text or "")[:1500]},
+        "fruehere_rechnungen_gleicher_lieferant": bill_history(book, name),
+    }
+    questions = {"aufwandkonto": {
+        "type": "choice",
+        "instructions": ("Diese `rechnung` ist eine Lieferantenrechnung an eine Schweizer KMU. Auf welches Konto "
+                         "gehört der Aufwand (bei Anschaffungen von Anlagen ein Aktivkonto)? Wenn "
+                         "`fruehere_rechnungen_gleicher_lieferant` Einträge hat, ist das bisher verwendete Konto "
+                         "der stärkste Hinweis."),
+        "criteria": options,
+    }}
+    answer = system_one(state, questions, cfg["modell"])["answers"]["aufwandkonto"]
+    probs = sorted(((k, float(v)) for k, v in (answer.get("probabilities") or {}).items()), key=lambda kv: -kv[1])
+    return {"konto": answer.get("choice"), "konfidenz": float(answer.get("confidence") or 0),
+            "alternativen": probs[1:4]}
 
 
 def suggest_bank(book: Book, ids: list[str] | None = None, schwelle: float | None = None) -> dict:

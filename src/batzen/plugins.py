@@ -64,6 +64,22 @@ class BankFormat:
 
 
 @dataclass
+class BelegLeser:
+    """Reads a supplier bill (PDF, photo) into fields for a Kreditoren draft.
+
+    ``read(book, path, text_so_far)`` returns a dict with any of
+    ``erfassung.FIELDS`` (strings) and optionally ``_text`` (the document's text,
+    for later readers, Jev and the agent) — or None. Readers run by ascending
+    ``prioritaet``; a field keeps the value of the first reader that found it.
+    Built in: QR-bill (10), PDF text layer (50), Tesseract OCR (80).
+    """
+    name: str
+    label: str
+    prioritaet: int
+    read: Callable[[Book, Path, str], dict | None]
+
+
+@dataclass
 class Source:
     """A kind of document that owns journal rows (``Quelle <prefix>:<ref>``).
 
@@ -109,6 +125,10 @@ class Spec:
     @hookspec
     def batzen_bank_formats(self) -> list[BankFormat]:
         """Statement formats for the bank import."""
+
+    @hookspec
+    def batzen_beleg_leser(self) -> list[BelegLeser]:
+        """Readers for supplier bills (e.g. e-invoices: ZUGFeRD, XRechnung)."""
 
     @hookspec
     def batzen_sources(self) -> list[Source]:
@@ -267,6 +287,10 @@ def bank_format_for(book: Book | None, filename: str, data: bytes) -> BankFormat
     names = ", ".join(f.label for f in formats)
     raise BookError(f"Unbekanntes Kontoauszugsformat ({Path(filename).name}). Unterstützt: {names}. "
                     "Weitere Formate gibt es als Plugins (batzen plugins).")
+
+
+def beleg_leser(book: Book | None) -> list[BelegLeser]:
+    return _flat(manager(book).hook.batzen_beleg_leser())
 
 
 def sources(book: Book | None) -> dict[str, Source]:

@@ -63,6 +63,7 @@ Die Hooks sind [pluggy](https://pluggy.readthedocs.io/)-Hooks (dasselbe System w
 | `batzen_kontenplaene()` | `{"name": Path}` | Kontenplan-Vorlagen für `batzen init --kontenplan name` | immer (Daten) |
 | `batzen_qst_tarife()` | `Path` | Ordner mit Quellensteuer-Tabellen `<KANTON>-<JAHR>.json` | immer (Daten) |
 | `batzen_bank_formats()` | `[BankFormat]` | Kontoauszüge für `batzen bank import` | eingeschaltet |
+| `batzen_beleg_leser()` | `[BelegLeser]` | Lieferantenrechnungen auslesen (z.B. E-Rechnungen ZUGFeRD/XRechnung) | eingeschaltet |
 | `batzen_sources()` | `[Source]` | Dokumente, denen Journalzeilen gehören | eingeschaltet |
 | `batzen_check(book, rows)` | `[Finding]` | zusätzliche Prüfregeln | eingeschaltet |
 | `batzen_tools()` | `[Funktion]` | Werkzeuge für Agenten (MCP und Chat in der Oberfläche) | eingeschaltet |
@@ -99,6 +100,23 @@ Saldoabstimmung und `buchungen` mit `datum`, `betrag` (Decimal, positiv = Eingan
 `text` und einer stabilen `bankref` (damit derselbe Auszug zweimal importiert keine Doppel erzeugt). Alles Weitere —
 Zuordnung zu Rechnungen und Kreditoren, offene Posten, Abstimmung — macht batzen. Der camt-Import selbst ist auf
 diese Weise eingebunden (`src/batzen/builtin.py`). Beispiel: [`plugins/batzen-revolut`](../plugins/batzen-revolut).
+
+### Belegleser (Kreditoren)
+
+```python
+from batzen.plugins import BelegLeser
+
+def lesen(book, pfad, text_bisher):
+    ...                                   # {"betrag": "123.45", "rechnungsnr": "…", "iban": "…", "_text": "…"} oder None
+    return felder
+
+@hookimpl
+def batzen_beleg_leser():
+    return [BelegLeser("zugferd", "ZUGFeRD", 20, lesen)]
+```
+
+Leser laufen nach `prioritaet` (eingebaut: QR 10, PDF-Text 50, OCR 80); ein Feld behält den Wert des ersten
+Lesers, der es gefunden hat, und zeigt dessen `label` als Quelle. Felder: siehe `batzen.erfassung.FIELDS`.
 
 ### Dokumente mit Buchungen
 

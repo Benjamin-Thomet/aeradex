@@ -2,13 +2,16 @@
 {% from "_macros.html" import errors, kreditoren_nav, accounts_datalist, mwst_select %}
 {% block title %}Kreditor erfassen{% endblock %}
 {% block main %}
-{% set sc = scan or {} %}{% set k = sc.kreditor or {} %}
+{% set sc = sc_override or scan or {} %}{% set k = sc.kreditor or {} %}{% set ev = ev or {} %}{% set qf = quellen_felder or {} %}
+{% macro src(key) %}{% if qf.get(key) %} <span class="pill {{ 'ok' if qf[key].quelle == 'QR' else 'info' if qf[key].quelle.startswith('Agent') else 'muted' }}" title="erkannt aus: {{ qf[key].quelle }}">{{ qf[key].quelle }}</span>{% endif %}{% endmacro %}
 <div class="topbar">
   <div><div class="crumbs"><a href="/kreditoren">Kreditoren</a> /</div><h1>Lieferantenrechnung erfassen</h1>
     <div class="sub">Wird gebucht (Aufwand{{ ' + Vorsteuer' if vat.methode == 'effektiv' }} an {{ settings.konto('kreditoren') }}) und eingefroren.{% if datei %} Die Datei wird nach belege/ verschoben.{% endif %}</div></div>
 </div>
 {{ accounts_datalist(accounts) }}
 {% if scan_error %}<div class="alert warn">{{ scan_error }} — Angaben bitte von Hand erfassen.</div>{% endif %}
+{% if entwurf %}<div class="alert {{ 'ok' if entwurf.status == 'bereit' else 'warn' }}">Entwurf {{ entwurf.id }}: bitte prüfen. Hinter jedem Feld steht, woher es kommt.{% if (entwurf.konto or {}).begruendung %} Begründung Konto ({{ entwurf.konto.quelle }}): «{{ entwurf.konto.begruendung }}»{% endif %}{% for h in entwurf.hinweise or [] %}<br>· {{ h }}{% endfor %}</div>{% endif %}
+{% for w in warnungen or [] %}<div class="alert error">⚠ {{ w }}</div>{% endfor %}
 {% if scan %}<div class="alert ok">QR-Zahlteil gelesen: {{ k.name }}, {{ sc.iban }}{% if sc.betrag %}, CHF {{ sc.betrag|chf }}{% endif %}{% if sc.referenz %}, Referenz {{ sc.referenz_typ }}{% endif %}.</div>{% endif %}
 <div class="{{ 'review' if datei else '' }}">
   {% if datei %}
@@ -19,9 +22,9 @@
   {% endif %}
   <form class="panel" hx-post="/kreditoren/neu" hx-target="find .errors">
     <div class="body">
-      {% if datei %}<input type="hidden" name="datei" value="{{ datei }}">{% endif %}
+      {% if entwurf %}<input type="hidden" name="entwurf" value="{{ entwurf.id }}">{% elif datei %}<input type="hidden" name="datei" value="{{ datei }}">{% endif %}
       <div class="form">
-        <div class="field wide"><label for="k-l">Lieferant</label>
+        <div class="field wide"><label for="k-l">Lieferant{{ src('name') }}</label>
           <select class="input" id="k-l" name="lieferant" style="width:100%" onchange="document.getElementById('neuer-lieferant').hidden = this.value !== 'neu'">
             {% for nr, s in suppliers.items() %}<option value="{{ nr }}" {{ 'selected' if nr == chosen }}>{{ nr }} · {{ s.name }}{{ ' · ' ~ s.konto if s.konto }}</option>{% endfor %}
             <option value="neu" {{ 'selected' if not chosen }}>+ neuer Lieferant{{ ': ' ~ k.name if k.name }}</option>
@@ -35,15 +38,15 @@
           <div class="field"><label>Land</label><input class="input" name="s_land" value="{{ k.land or 'CH' }}" maxlength="2"></div>
           <div class="field wide"><span class="small muted">Konto und MWST-Code unten werden als Standard des neuen Lieferanten gespeichert.</span></div>
         </div>
-        <div class="field"><label for="k-b">Betrag CHF (brutto)</label><input class="input num" id="k-b" name="betrag" value="{{ sc.betrag or '' }}" required></div>
-        <div class="field"><label for="k-r">Rechnungsnummer des Lieferanten</label><input class="input" id="k-r" name="rechnungsnr" value="{{ sc.rechnungsinfo or '' }}"></div>
-        <div class="field"><label for="k-d">Rechnungsdatum</label><input class="input" id="k-d" type="date" name="datum" value="{{ today }}"></div>
-        <div class="field"><label for="k-f">Fällig am</label><input class="input" id="k-f" type="date" name="faellig"></div>
-        <div class="field"><label for="k-k">Aufwandkonto (leer = Standard des Lieferanten)</label><input class="input" id="k-k" name="konto" list="konten" placeholder="z.B. 6500 Büromaterial"></div>
-        {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition"), id="k-m") }}
-        <div class="field wide"><label for="k-i">IBAN / QR-IBAN (leer = vom Lieferanten)</label><input class="input num" id="k-i" name="iban" value="{{ sc.iban or '' }}" style="text-align:left"></div>
+        <div class="field"><label for="k-b">Betrag CHF (brutto){{ src('betrag') }}</label><input class="input num" id="k-b" name="betrag" value="{{ sc.betrag or '' }}" required></div>
+        <div class="field"><label for="k-r">Rechnungsnummer des Lieferanten{{ src('rechnungsnr') }}</label><input class="input" id="k-r" name="rechnungsnr" value="{{ sc.rechnungsinfo or '' }}"></div>
+        <div class="field"><label for="k-d">Rechnungsdatum{{ src('datum') }}</label><input class="input" id="k-d" type="date" name="datum" value="{{ ev.datum or today }}"></div>
+        <div class="field"><label for="k-f">Fällig am{{ src('faellig') }}</label><input class="input" id="k-f" type="date" name="faellig" value="{{ ev.faellig or '' }}"></div>
+        <div class="field"><label for="k-k">Aufwandkonto (leer = Standard des Lieferanten){% if entwurf and (entwurf.konto or {}).quelle %} <span class="pill {{ 'info' if entwurf.konto.quelle.startswith('Agent') else 'muted' }}" title="{{ entwurf.konto.begruendung or '' }}">{{ entwurf.konto.quelle }}</span>{% endif %}</label><input class="input" id="k-k" name="konto" list="konten" placeholder="z.B. 6500 Büromaterial" value="{{ ev.konto or '' }}"></div>
+        {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition"), id="k-m", selected=ev.mwst or "") }}
+        <div class="field wide"><label for="k-i">IBAN / QR-IBAN (leer = vom Lieferanten){{ src('iban') }}</label><input class="input num" id="k-i" name="iban" value="{{ sc.iban or '' }}" style="text-align:left"></div>
         <div class="field"><label for="k-rt">Referenzart</label><select class="input" id="k-rt" name="referenz_typ" style="width:100%">{% for t in ["", "QRR", "SCOR", "NON"] %}<option value="{{ t }}" {{ 'selected' if t == (sc.referenz_typ or '') }}>{{ t or 'automatisch' }}</option>{% endfor %}</select></div>
-        <div class="field"><label for="k-ref">Referenz</label><input class="input num" id="k-ref" name="referenz" value="{{ sc.referenz or '' }}" style="text-align:left"></div>
+        <div class="field"><label for="k-ref">Referenz{{ src('referenz') }}</label><input class="input num" id="k-ref" name="referenz" value="{{ sc.referenz or '' }}" style="text-align:left"></div>
         <div class="field wide"><label for="k-mi">Mitteilung (ohne Referenz)</label><input class="input" id="k-mi" name="mitteilung" value="{{ sc.mitteilung or '' }}"></div>
       </div>
       {{ errors() }}

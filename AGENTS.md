@@ -24,6 +24,9 @@ This file is for developing batzen itself. Agents *operating a book* read the
   `batzen.yaml → plugins`). `builtin.py` provides the core's own data and the camt.053 format through the same hooks.
   `testing.py`: helpers for plugin tests. Example plugins and the template live in `plugins/`; docs in `docs/plugins.md`.
   When a feature could be a plugin (a bank, a canton, an export), prefer a plugin over growing the core.
+- `erfassung.py`: supplier bill intake → drafts (`kreditoren/entwuerfe/`): reader chain (QR, PDF text, Tesseract OCR,
+  plugin readers via `batzen_beleg_leser`), account chain (known supplier → Jev → agent via `web/chat` backends,
+  writing through the `complete_bill_draft` tool). Never books; IBAN/name conflicts are flagged, never auto-matched.
 - `bank.py` (camt.053 import, matching, reconciliation), `kreditoren.py` (QR scan, pain.001), `mwst.py` (incl. eCH-0217).
 - Writes are serialised by a lock file (`.batzen/write.lock`) so UI, CLI, MCP and chat never interleave.
 

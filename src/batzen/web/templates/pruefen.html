@@ -26,7 +26,9 @@
       {% if qrbill %}<div class="body" style="border-bottom:1px solid var(--rule)"><div class="alert info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
         <span><strong>QR-Rechnung erkannt:</strong> {{ qrbill.kreditor.name }} · CHF {{ qrbill.betrag|chf if qrbill.betrag else 'Betrag offen' }}{% if qrbill.lieferant %} · Lieferant {{ qrbill.lieferant }}{% else %} · neuer Lieferant{% endif %}</span>
         <a class="btn small primary" href="/kreditoren/neu?datei=inbox/{{ current.name|urlq }}">Als Kreditor erfassen</a></div></div>{% endif %}
-      <div class="filemeta"><span>inbox/{{ current.name }} · {{ (current.stat().st_size / 1024)|round(1) }} KB</span><span>wird beim Buchen nach belege/ verschoben</span></div>
+      <div class="filemeta"><span>inbox/{{ current.name }} · {{ (current.stat().st_size / 1024)|round(1) }} KB</span>
+        {% if kind in ("pdf", "image") %}<form hx-post="/kreditoren/einlesen" hx-target="find .errors" style="display:inline"><input type="hidden" name="datei" value="inbox/{{ current.name }}"><button class="btn small ghost" type="submit" title="Auslesen (QR, Text, OCR), kontieren (Lieferant, Jev, Agent) — als Entwurf unter Kreditoren">Lieferantenrechnung? Einlesen →</button>{{ errors() }}</form>{% endif %}
+        <span>wird beim Buchen nach belege/ verschoben</span></div>
     {% else %}
       <div class="body"><div class="dropzone">Die Inbox ist leer. Lade Quittungen hier hoch oder lege sie in den Ordner <code>inbox/</code>; dein Agent kann sie dann vorbereiten.</div></div>
     {% endif %}

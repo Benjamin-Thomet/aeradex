@@ -113,6 +113,18 @@ batzen zahlungslauf bezahlt 2026-03-20-ab12cd.xml                         # nach
 Die Zahlungsdatei folgt den Swiss Payment Standards (pain.001.001.09) und validiert gegen die offiziellen
 SIX-Schemas SPS 2025 und 2026. QR-Codes lesen: `pip install -e ".[scan]"`.
 
+**Rechnungen einlesen** (Oberfläche: Kreditoren → Rechnungen einlesen, mehrere Dateien auf einmal):
+```bash
+batzen kreditor einlesen inbox/*.pdf inbox/foto.jpg   # → Entwürfe, nichts wird gebucht
+batzen kreditor entwuerfe
+```
+Ausgelesen wird in Stufen — QR-Zahlteil, Textebene des PDFs, Tesseract-OCR für Scans und Fotos — und kontiert
+ebenso: bekannter Lieferant → Jev (falls eingeschaltet und sicher) → Agent (Claude Code, Codex, opencode oder API,
+wie im Seitenpanel). Jedes Feld zeigt seine Quelle. Nennt die Rechnung einen anderen Namen als der Inhaber der IBAN,
+ordnet batzen nicht zu und warnt; eine IBAN aus dem QR-Zahlteil kann auch der Agent nicht ändern. Gebucht wird
+erst, wenn ein Mensch den Entwurf prüft. OCR braucht Tesseract mit Sprachdaten (Arch:
+`pacman -S tesseract tesseract-data-deu tesseract-data-fra tesseract-data-ita`, Debian: `apt install tesseract-ocr-deu …`).
+
 ### Bank (camt.053)
 ```bash
 batzen bank import inbox/auszug-maerz.xml   # Kontoauszug aus dem E-Banking (ISO 20022 camt.053)

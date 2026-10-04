@@ -176,6 +176,16 @@ jev: {aktiv: true, schwelle: 0.7, modell: jev-latest}   # plus TYPESAFE_API_KEY 
 
 Frontmatter: `nummer, name, adresse{…}, iban, konto` (Standard-Aufwandkonto), `mwst` (Standard-Code), `email`.
 
+## kreditoren/entwuerfe/ENT-NNNN.yaml
+
+Eingelesene, noch nicht erfasste Lieferantenrechnungen. `datei` (meist inbox/…), `felder` mit je `wert` und
+`quelle` (QR, Text, OCR, Lieferant L0001, Agent, Hand oder ein Plugin), `konto` und `mwst` mit Quelle (und
+`begruendung`, wenn der Agent kontiert hat), `hinweise`, `konflikt` (Name auf der Rechnung ≠ Inhaber der IBAN) und
+`status`: `bereit`, `unsicher` (Konto fehlt), `agent` (Agent arbeitet), `konflikt`, `unvollstaendig`.
+Entwürfe besitzen keine Journalzeilen; beim Erfassen wird der Entwurf im selben Commit entfernt.
+Der erkannte Text liegt unter `.batzen/erfassung/ENT-NNNN.txt` (nicht im git). In batzen.yaml schaltet
+`kreditoren: {agent_automatisch: false}` die automatische Übergabe an den Agenten aus.
+
 ## kreditoren/JJJJ/E-JJJJ-NNNN.md
 
 Frontmatter: `nummer, lieferant, name, rechnungsnr, datum, faellig, betrag` (brutto), `waehrung, iban, referenz_typ`

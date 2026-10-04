@@ -607,6 +607,7 @@ SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_r
 
 def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None,
                     mwst: dict | None = None, bankkonten: dict | None = None, jev: dict | None = None,
+                    kreditoren: dict | None = None,
                     **fields) -> dict:
     _guard(book)
     unknown = set(fields) - set(SETTINGS_KEYS)
@@ -627,6 +628,11 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
             if nr:
                 book.account(str(nr))
         data.setdefault("konten", {}).update({k: str(v) for k, v in konten.items() if v})
+    if kreditoren is not None:
+        current = dict(data.get("kreditoren") or {})
+        if "agent_automatisch" in kreditoren:
+            current["agent_automatisch"] = bool(kreditoren["agent_automatisch"])
+        data["kreditoren"] = current
     if jev is not None:
         current = dict(data.get("jev") or {})
         current["aktiv"] = bool(jev.get("aktiv"))
@@ -861,10 +867,16 @@ def qr_scan(book: Book, datei: str) -> dict:
     return jsonable(kred.scan(book, datei))
 
 
-def bill_add(book: Book, lieferant: str, betrag, **fields) -> dict:
+def bill_add(book: Book, lieferant: str, betrag, entwurf: str = "", **fields) -> dict:
+    """Enter and book a supplier bill; with `entwurf`, the draft it came from is closed in the same commit."""
     _guard(book)
-    from . import kreditoren as kred
+    from . import erfassung, kreditoren as kred
+    if entwurf:
+        source = erfassung.draft(book, entwurf)
+        fields.setdefault("datei", source.get("datei", ""))
     meta, touched = kred.add_bill(book, lieferant, betrag, **fields)
+    if entwurf:
+        touched += erfassung.discard(book, entwurf)
     return _done(book, f"Kreditor {meta['nummer']} {meta['name']} über {meta['betrag']:.2f} erfasst", touched,
                  kreditor=meta)
 
@@ -1104,3 +1116,68 @@ def write(book: Book, message: str, fn, *args, **kwargs) -> dict:
 plugin_enable = _locked(plugin_enable)
 plugin_disable = _locked(plugin_disable)
 write = _locked(write)
+
+
+# ---------- Kreditoren drafts (upload → read → account → a person books) ----------
+
+def bill_drafts(book: Book) -> list[dict]:
+    from . import erfassung
+    return jsonable([{k: v for k, v in d.items() if not k.startswith("_")} for d in erfassung.drafts(book).values()])
+
+
+def bill_draft_create(book: Book, datei: str) -> dict:
+    """Read a supplier bill (QR, text, OCR, plugin readers), assign an account where it is sure
+    (known supplier, Jev) and keep the result as a draft. Nothing is booked."""
+    from . import erfassung
+    path = Path(datei) if Path(datei).is_absolute() else book.root / datei
+    if not path.is_file():
+        raise BookError(f"Datei {datei} nicht gefunden")
+    fields, text, notes = erfassung.analyse(book, path)      # slow (OCR): outside the write lock
+    return _bill_draft_store(book, datei, fields, text, notes)
+
+
+def _bill_draft_store(book: Book, datei: str, fields: dict, text: str, notes: list[str]) -> dict:
+    from . import erfassung
+    _guard(book)
+    meta, touched = erfassung.create(book, datei, fields, text, notes)
+    name = erfassung.value(meta, "name") or Path(datei).name
+    return _done(book, f"Kreditoren-Entwurf {meta['id']}: {name} ({meta['status']})", touched,
+                 entwurf={k: v for k, v in meta.items() if not k.startswith("_")})
+
+
+def bill_draft_update(book: Book, entwurf: str, quelle: str = "Hand", konto: str = "", mwst: str | None = None,
+                      begruendung: str = "", **fields) -> dict:
+    from . import erfassung
+    _guard(book)
+    meta, touched = erfassung.update(book, entwurf, quelle, konto, mwst, begruendung, **fields)
+    return _done(book, f"Kreditoren-Entwurf {entwurf} ergänzt ({quelle}" + (f": Konto {konto}" if konto else "") + ")",
+                 touched, entwurf=meta)
+
+
+def bill_draft_mark(book: Book, entwurf: str, status: str, hinweis: str = "") -> dict:
+    from . import erfassung
+    _guard(book)
+    meta, touched = erfassung.mark(book, entwurf, status, hinweis)
+    return _done(book, f"Kreditoren-Entwurf {entwurf}: {status}", touched, entwurf=meta)
+
+
+def bill_draft_discard(book: Book, entwurf: str) -> dict:
+    from . import erfassung
+    _guard(book)
+    touched = erfassung.discard(book, entwurf)
+    return _done(book, f"Kreditoren-Entwurf {entwurf} verworfen (Datei bleibt in der Inbox)", touched)
+
+
+def bill_draft_agent(book: Book, entwurf: str) -> dict:
+    """Let the book's agent read and account a draft (it writes through complete_bill_draft)."""
+    from . import erfassung
+    said = erfassung.run_agent(book.root, entwurf)
+    meta = erfassung.draft(Book(book.root), entwurf)
+    return jsonable({"ok": True, "entwurf": {k: v for k, v in meta.items() if not k.startswith("_")},
+                     "agent": said})
+
+
+_bill_draft_store = _locked(_bill_draft_store)
+bill_draft_update = _locked(bill_draft_update)
+bill_draft_mark = _locked(bill_draft_mark)
+bill_draft_discard = _locked(bill_draft_discard)

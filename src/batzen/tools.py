@@ -40,6 +40,9 @@ Regeln:
   (Konto leer = hinterlegtes Konto). Neuer Lieferant: add_supplier ohne konto, dann dem Menschen das Aufwandkonto
   vorschlagen; er erfasst die Rechnung unter Kreditoren (vorausgefüllt). Nicht als freie Buchung (propose_booking)
   erfassen — sonst fehlen IBAN und Referenz für den Zahlungslauf.
+- Kreditoren-Entwürfe (bill_drafts): hochgeladene Lieferantenrechnungen, schon ausgelesen. Ist ein Entwurf
+  «unsicher» oder «agent», kontiere ihn: bill_draft(id) lesen, Konto wählen, complete_bill_draft mit Begründung.
+  Neue Rechnungen in der Inbox: create_bill_draft(datei). Erfasst/gebucht wird die Rechnung von einem Menschen.
 - Fremdwährung: Beleg in EUR/USD … → waehrung mitgeben und den Betrag in der Fremdwährung; umgerechnet wird
   zum BAZG-Tageskurs (exchange_rate). Konten mit Fremdwährung (accounts() zeigt waehrung) gehen nur so.
   Die Bewertung per Stichtag (revaluation_preview) bucht ein Mensch im Abschluss.
@@ -401,6 +404,62 @@ def add_supplier(name: str, strasse: str = "", nr: str = "", plz: str = "", ort:
                  konto=konto, mwst=mwst)
 
 
+def bill_drafts() -> list | dict:
+    """Kreditoren-Entwürfe: hochgeladene Lieferantenrechnungen, ausgelesen, noch nicht gebucht.
+    Status: bereit (Konto gesetzt), unsicher/agent (Konto fehlt), unvollstaendig (Betrag oder IBAN fehlt)."""
+    return _call(api.bill_drafts)
+
+
+def bill_draft(id: str) -> dict:
+    """Einen Kreditoren-Entwurf mit allen erkannten Feldern (und deren Quelle) und dem erkannten Text der Rechnung.
+
+    Args:
+        id: z.B. "ENT-0001".
+    """
+    from . import erfassung
+
+    def get(b):
+        meta = erfassung.draft(b, id)
+        cache = erfassung.text_cache(b, meta["id"])
+        out = {k: v for k, v in meta.items() if not k.startswith("_")}
+        out["text"] = cache.read_text(encoding="utf-8")[:6000] if cache.exists() else ""
+        return api.jsonable(out)
+    return _call(get)
+
+
+def create_bill_draft(datei: str) -> dict:
+    """Eine Lieferantenrechnung aus der Inbox einlesen (QR-Zahlteil, Text, OCR) und als Kreditoren-Entwurf anlegen.
+    Bucht nichts. Bekannte Lieferanten bringen ihr Konto mit; sonst danach complete_bill_draft.
+
+    Args:
+        datei: z.B. "inbox/rechnung.pdf".
+    """
+    return _call(api.bill_draft_create, datei)
+
+
+def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", betrag: str = "", datum: str = "",
+                        faellig: str = "", rechnungsnr: str = "", name: str = "", iban: str = "") -> dict:
+    """Einen Kreditoren-Entwurf kontieren und fehlende/falsch erkannte Felder korrigieren. Bucht nichts —
+    ein Mensch prüft den Entwurf und erfasst die Rechnung. Auch im agent_modus 'vorschlag' erlaubt.
+
+    Args:
+        id: Entwurf, z.B. "ENT-0001".
+        konto: Aufwandkonto (bei Anschaffungen Aktivkonto), aus accounts().
+        begruendung: ein Satz, warum dieses Konto (wird dem Menschen gezeigt).
+        mwst: Vorsteuer-Code (V81 Material/DL, I81 Investitionen/übriger Aufwand …), nur bei effektiver Methode
+            und wenn die Rechnung MWST ausweist; sonst leer lassen.
+        betrag: Bruttobetrag "123.45", nur wenn falsch oder fehlend.
+        datum: Rechnungsdatum JJJJ-MM-TT, nur wenn falsch oder fehlend.
+        faellig: Fälligkeit JJJJ-MM-TT, nur wenn falsch oder fehlend.
+        rechnungsnr: Rechnungsnummer des Lieferanten, nur wenn falsch oder fehlend.
+        name: Name des Lieferanten, nur wenn falsch oder fehlend.
+        iban: IBAN des Lieferanten, nur wenn falsch oder fehlend.
+    """
+    fields = {k: v for k, v in (("betrag", betrag), ("datum", datum), ("faellig", faellig),
+                                ("rechnungsnr", rechnungsnr), ("name", name), ("iban", iban)) if v}
+    return _call(api.bill_draft_update, id, "Agent", konto, mwst or None, begruendung, **fields)
+
+
 def scan_qr_bill(datei: str) -> dict:
     """Liest den Swiss-QR-Zahlteil einer Rechnung (PDF oder Foto, z.B. "inbox/rechnung.pdf"): IBAN, Betrag,
     Referenz, Lieferant. 'lieferant' ist die Nummer eines bekannten Lieferanten mit derselben IBAN, sonst leer.
@@ -619,6 +678,7 @@ def read_inbox_file(datei: str) -> list[dict] | str:
 SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
           exchange_rate, revaluation_preview,
+          bill_drafts, bill_draft, create_bill_draft, complete_bill_draft,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,

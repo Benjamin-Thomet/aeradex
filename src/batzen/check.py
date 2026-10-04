@@ -276,8 +276,22 @@ def run(book: Book) -> list[Issue]:
     if missing:
         add("hinweis", "belege", f"{len(missing)} Buchung(en) ohne Beleg-Datei, z.B. {', '.join(sorted(missing)[:5])}")
 
+    from . import erfassung
+    try:
+        bill_drafts = erfassung.drafts(book)
+    except (FormatError, OSError) as exc:
+        bill_drafts = {}
+        add("fehler", "kreditoren/entwuerfe", str(exc))
+    for d in bill_drafts.values():
+        if not (book.root / str(d.get("datei", ""))).is_file():
+            add("warnung", book.rel(d["_pfad"]), f"Entwurf {d.get('id')}: Datei {d.get('datei')} fehlt")
+    if bill_drafts:
+        add("hinweis", "kreditoren/entwuerfe", f"{len(bill_drafts)} Kreditoren-Entwurf/-Entwürfe zu prüfen")
+    drafted = {str(d.get("datei", "")) for d in bill_drafts.values()}
+
     inbox = book.root / "inbox"
-    pending = [p for p in inbox.iterdir() if p.is_file() and not p.name.startswith(".")] if inbox.exists() else []
+    pending = [p for p in inbox.iterdir() if p.is_file() and not p.name.startswith(".")
+               and f"inbox/{p.name}" not in drafted] if inbox.exists() else []
     if pending:
         add("hinweis", "inbox", f"{len(pending)} unverarbeitete Datei(en) in inbox/")
     return issues
