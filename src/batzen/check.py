@@ -246,6 +246,15 @@ def run(book: Book) -> list[Issue]:
         if kind in ("kreditor", "kzahlung") and ref not in all_bills:
             add("fehler", group[0].where, f"Quelle {quelle}: Kreditor {ref} existiert nicht")
 
+    # ---- bank rules ----
+    from . import bank as bank_mod
+    try:
+        for r in bank_mod.rules(book):
+            if str(r.get("konto")) not in accounts:
+                add("warnung", "bank/regeln.yaml", f"Bankregel {r.get('id')}: Konto {r.get('konto')} fehlt im Kontenplan")
+    except FormatError as exc:
+        add("fehler", "bank/regeln.yaml", str(exc))
+
     # ---- bank statements ----
     from . import bank
     try:

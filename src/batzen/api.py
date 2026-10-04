@@ -945,7 +945,8 @@ def bank_import(book: Book, datei: str) -> dict:
         touched.append(source)
     msg = (f"Kontoauszug importiert: {summary['neu']} neue Bewegungen — {summary['gebucht']} gebucht, "
            f"{summary['abgeglichen']} abgeglichen, {summary['offen']} offen"
-           + (f", {summary['doppelt']} schon bekannt" if summary["doppelt"] else ""))
+           + (f", {summary['doppelt']} schon bekannt" if summary["doppelt"] else "")
+           + (f" (davon {summary['regeln']} per Bankregel)" if summary.get("regeln") else ""))
     return _done(book, msg, touched, import_=summary)
 
 
@@ -1247,3 +1248,46 @@ def reminder_create(book: Book, nummern: list[str], datum=None, frist_tage: int 
 
 
 reminder_create = _locked(reminder_create)
+
+
+# ---------- bank rules ----------
+
+def bank_rules(book: Book) -> list[dict]:
+    from . import bank
+    return bank.rules(book)
+
+
+def bank_rule_add(book: Book, konto: str, gegenpartei: str = "", text: str = "", betrag=None, richtung: str = "",
+                  mwst: str = "", buchungstext: str = "", anwenden: bool = True) -> dict:
+    """A rule that books recognised movements on import; with `anwenden` also the open ones now."""
+    from . import bank
+    _guard(book)
+    rule, path = bank.add_rule(book, konto, gegenpartei, text, betrag, richtung, mwst, buchungstext)
+    touched, booked = [path], []
+    if anwenden:
+        booked, t = bank.apply_rules(book)
+        touched += t
+    return _done(book, f"Bankregel {rule['id']} «{rule['name']}» → {konto}" + (f", {len(booked)} Bewegung(en) gebucht"
+                                                                          if booked else ""),
+                 touched, regel=rule, gebucht=booked)
+
+
+def bank_rule_from(book: Book, id: str, mit_betrag: bool = False) -> dict:
+    """«Immer so buchen» from a booked movement; books matching open movements right away."""
+    from . import bank
+    _guard(book)
+    rule, path = bank.rule_from_transaction(book, id, mit_betrag)
+    booked, t = bank.apply_rules(book)
+    return _done(book, f"Bankregel {rule['id']} «{rule['name']}» → {rule['konto']}"
+                 + (f", {len(booked)} Bewegung(en) gebucht" if booked else ""), [path] + t, regel=rule, gebucht=booked)
+
+
+def bank_rule_remove(book: Book, regel: str) -> dict:
+    from . import bank
+    _guard(book)
+    return _done(book, f"Bankregel {regel} entfernt", [bank.remove_rule(book, regel)])
+
+
+bank_rule_add = _locked(bank_rule_add)
+bank_rule_from = _locked(bank_rule_from)
+bank_rule_remove = _locked(bank_rule_remove)

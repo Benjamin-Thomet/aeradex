@@ -406,6 +406,12 @@ def add_supplier(name: str, strasse: str = "", nr: str = "", plz: str = "", ort:
                  konto=konto, mwst=mwst)
 
 
+def bank_rules() -> list | dict:
+    """Bankregeln: wiederkehrende Bewegungen (Gegenpartei/Text → Konto), die der Import selbst bucht.
+    Neue Regeln legt ein Mensch an (Bank → «Immer so buchen» bzw. `batzen bank regel`)."""
+    return _call(api.bank_rules)
+
+
 def overdue_invoices() -> list | dict:
     """Überfällige Kundenrechnungen mit den bisherigen Mahnungen und dem nächsten Schritt.
     Mahnungen erstellt ein Mensch (Debitoren → Mahnungen bzw. `batzen mahnung erstellen`)."""
@@ -709,7 +715,7 @@ def read_inbox_file(datei: str) -> list[dict] | str:
 SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
           exchange_rate, revaluation_preview,
-          bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices,
+          bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices, bank_rules,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,

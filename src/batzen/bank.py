@@ -257,9 +257,16 @@ def import_file(book: Book, source: Path) -> tuple[dict, list[Path]]:
                 summary["gebucht"] += 1
             else:
                 match = _match_existing(book, konto, e["betrag"], e["datum"], taken)
+                rule = None if match else matching_rule(book, row)
                 if match:
                     row["Status"], row["Beleg"] = "abgeglichen", match
                     summary["abgeglichen"] += 1
+                elif rule is not None:
+                    booked, _ = _book_with_rule(book, row, rule)
+                    row["Status"], row["Beleg"], row["Hinweis"] = "gebucht", booked.beleg, f"Regel {rule['id']}"
+                    summary["gebucht"] += 1
+                    summary.setdefault("regeln", 0)
+                    summary["regeln"] += 1
                 else:
                     summary["offen"] += 1
             if row["Beleg"]:
@@ -293,6 +300,112 @@ def _auto_book(book: Book, e: dict, konto: str, invoices, kreditoren) -> str | N
     except BookError:
         return None
     return None
+
+
+# ---------- rules: recurring movements booked on import ----------
+
+def rules_path(book: Book) -> Path:
+    return book.root / "bank" / "regeln.yaml"
+
+
+def rules(book: Book) -> list[dict]:
+    """bank/regeln.yaml: [{id, name, gegenpartei, text, betrag, richtung, konto, mwst, buchungstext, aktiv}].
+    Criteria that are set must all match (texts as case-insensitive parts, betrag exactly)."""
+    from .files import read_yaml
+    p = rules_path(book)
+    return list((read_yaml(p) or {}).get("regeln") or []) if p.exists() else []
+
+
+def matching_rule(book: Book, tx: dict) -> dict | None:
+    amount = parse_amount(tx["Betrag"])
+    for r in rules(book):
+        if r.get("aktiv") is False:
+            continue
+        if r.get("gegenpartei") and str(r["gegenpartei"]).lower() not in (tx.get("Gegenpartei") or "").lower():
+            continue
+        if r.get("text") and str(r["text"]).lower() not in (tx.get("Text") or "").lower():
+            continue
+        if r.get("betrag") not in (None, "") and parse_amount(r["betrag"]) != abs(amount):
+            continue
+        if r.get("richtung") == "belastung" and amount > 0 or r.get("richtung") == "gutschrift" and amount < 0:
+            continue
+        if not (r.get("gegenpartei") or r.get("text")):
+            continue                                   # a rule needs something to recognise the movement by
+        return r
+    return None
+
+
+def _book_with_rule(book: Book, tx: dict, rule: dict):
+    from .journal import book_entry
+    amount = parse_amount(tx["Betrag"])
+    text = (rule.get("buchungstext") or " ".join(t for t in (tx.get("Gegenpartei"), tx.get("Text")) if t))[:120]
+    soll, haben = (tx["Konto"], str(rule["konto"])) if amount > 0 else (str(rule["konto"]), tx["Konto"])
+    return book_entry(book, tx["Datum"], soll, haben, abs(amount), text or "Bankbewegung", mwst=rule.get("mwst") or "")
+
+
+def save_rules(book: Book, items: list[dict]) -> Path:
+    from .files import write_yaml
+    write_yaml(rules_path(book), {"regeln": items})
+    return rules_path(book)
+
+
+def add_rule(book: Book, konto: str, gegenpartei: str = "", text: str = "", betrag=None, richtung: str = "",
+             mwst: str = "", buchungstext: str = "", name: str = "") -> tuple[dict, Path]:
+    book.account(konto)
+    if not (gegenpartei.strip() or text.strip()):
+        raise BookError("Eine Regel braucht eine Gegenpartei oder einen Text, an dem sie die Bewegung erkennt")
+    if richtung not in ("", "belastung", "gutschrift"):
+        raise BookError("richtung: belastung, gutschrift oder leer")
+    if mwst:
+        from .mwst import code
+        code(mwst)
+    items = rules(book)
+    nums = [int(str(r.get("id", "R0"))[1:]) for r in items if str(r.get("id", "")).startswith("R")
+            and str(r.get("id"))[1:].isdigit()]
+    rule = {"id": f"R{max(nums, default=0) + 1}", "name": name or gegenpartei or text, "gegenpartei": gegenpartei.strip(),
+            "text": text.strip(), "betrag": f"{parse_amount(betrag):.2f}" if betrag not in (None, "") else "",
+            "richtung": richtung, "konto": str(konto), "mwst": (mwst or "").upper(), "buchungstext": buchungstext.strip(),
+            "aktiv": True}
+    return rule, save_rules(book, items + [rule])
+
+
+def rule_from_transaction(book: Book, tid: str, mit_betrag: bool = False) -> tuple[dict, Path]:
+    """«Immer so buchen»: a rule from a booked movement — same counterparty, same counter account."""
+    tx = find(book, tid)
+    if tx["Status"] != "gebucht" or not tx.get("Beleg"):
+        raise BookError(f"Bankbewegung {tid} ist nicht gebucht — zuerst buchen, dann die Regel daraus machen")
+    rows = [r for r in book.rows if r.beleg == tx["Beleg"]]
+    counter = next((r.haben if r.soll == tx["Konto"] else r.soll for r in rows
+                    if tx["Konto"] in (r.soll, r.haben) and r.soll and r.haben), None)
+    if not counter:
+        raise BookError(f"Beleg {tx['Beleg']} hat kein eindeutiges Gegenkonto")
+    if not (tx.get("Gegenpartei") or "").strip():
+        raise BookError("Die Bewegung hat keine Gegenpartei — Regel von Hand mit einem Text anlegen")
+    amount = parse_amount(tx["Betrag"])
+    return add_rule(book, counter, gegenpartei=tx["Gegenpartei"].strip(), betrag=abs(amount) if mit_betrag else None,
+                    richtung="belastung" if amount < 0 else "gutschrift", mwst=rows[0].mwst if rows else "",
+                    buchungstext=rows[0].text if rows else "")
+
+
+def remove_rule(book: Book, rule_id: str) -> Path:
+    items = rules(book)
+    if not any(r.get("id") == rule_id for r in items):
+        raise BookError(f"Regel {rule_id} nicht gefunden")
+    return save_rules(book, [r for r in items if r.get("id") != rule_id])
+
+
+def apply_rules(book: Book) -> tuple[list[str], list[Path]]:
+    """Book the open movements a rule recognises (e.g. after adding a rule)."""
+    done_, touched = [], []
+    for tx in [t for t in transactions(book) if t["Status"] == "offen"]:
+        rule = matching_rule(book, tx)
+        if rule is None:
+            continue
+        row, t = _book_with_rule(book, tx, rule)
+        touched += t + _set(book, tx["ID"], Status="gebucht", Beleg=row.beleg, Hinweis=f"Regel {rule['id']}")
+        done_.append(tx["ID"])
+        book.reload()
+    return done_, touched
 
 
 # ---------- working on open transactions ----------

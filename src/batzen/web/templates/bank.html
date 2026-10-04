@@ -35,7 +35,7 @@
         <td class="num">{{ t.Datum|datum }}</td>
         <td><strong>{{ t.Gegenpartei or '—' }}</strong><br><span class="small muted">{{ t.Text }}{% if t.Referenz %} · Ref. {{ t.Referenz }}{% endif %}</span>{% if t.Hinweis and t.Status == 'offen' %}<br><span class="pill info" title="{{ t.Hinweis }}">{{ t.Hinweis|truncate(70) }}</span>{% endif %}</td>
         <td class="right num">{{ t.Betrag|chf(sign=true) }}</td>
-        <td>{% if t.Status == 'offen' %}<span class="pill warn">offen</span>{% elif t.Status == 'ignoriert' %}<span class="pill muted">ignoriert</span>{% else %}<a class="pill ok" href="/journal?jahr={{ t.Datum[:4] }}&monat=alle&q={{ t.Beleg|urlq }}">{{ t.Status }} · {{ t.Beleg }}</a>{% endif %}</td>
+        <td>{% if t.Status == 'offen' %}<span class="pill warn">offen</span>{% elif t.Status == 'ignoriert' %}<span class="pill muted">ignoriert</span>{% else %}<a class="pill ok" href="/journal?jahr={{ t.Datum[:4] }}&monat=alle&q={{ t.Beleg|urlq }}">{{ t.Status }} · {{ t.Beleg }}</a>{% if t.Hinweis and t.Hinweis.startswith('Regel ') %} <span class="pill muted">{{ t.Hinweis }}</span>{% endif %}{% endif %}</td>
         <td class="right">{% if t.Status == 'offen' %}
           <details class="drawer"><summary class="btn small">Bearbeiten</summary>
             <div class="panel" style="position:absolute;right:40px;z-index:3;padding:14px;display:flex;flex-direction:column;gap:12px;width:360px;text-align:left;box-shadow:var(--shadow)">
@@ -60,12 +60,35 @@
                 <input class="input" name="grund" placeholder="Grund zum Ignorieren" required style="flex:1"><button class="btn small ghost" type="submit">Ignorieren</button>{{ errors() }}
               </form>
             </div>
-          </details>{% endif %}</td>
+          </details>{% elif t.Status == 'gebucht' and t.Gegenpartei and not (t.Hinweis or '').startswith('Regel ') %}
+          <form hx-post="/bank/{{ t.ID }}/regel" hx-target="find .errors" title="Künftige Bewegungen von {{ t.Gegenpartei }} beim Import gleich buchen"><button class="btn small ghost" type="submit">Immer so buchen</button>{{ errors() }}</form>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table></div>
   {% else %}<div class="empty">{% if status == 'offen' %}Keine offenen Bankbewegungen. Neuen Auszug oben importieren (E-Banking → Kontoauszug als camt.053 / ISO 20022 exportieren).{% else %}Keine Bewegungen mit diesem Status.{% endif %}</div>{% endif %}
 </div>
+<details class="panel drawer" id="regeln" {{ 'open' if rules }}>
+  <summary><header style="border-bottom:0"><h2>Bankregeln</h2><span class="hint">{{ rules|length }} · wiederkehrende Bewegungen (Miete, Abos, Spesen) bucht der Import selbst</span></header></summary>
+  {% if rules %}<div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Regel</th><th>erkennt</th><th>Konto</th><th>Text</th><th></th></tr></thead>
+    <tbody>{% for r in rules %}<tr class="row">
+      <td><span class="beleg">{{ r.id }}</span></td>
+      <td>{% if r.gegenpartei %}Gegenpartei «{{ r.gegenpartei }}»{% endif %}{% if r.text %} Text «{{ r.text }}»{% endif %}{% if r.betrag %} · genau {{ r.betrag|chf }}{% endif %}{% if r.richtung %} · nur {{ r.richtung }}{% endif %}</td>
+      <td class="acc">{{ r.konto }} <span class="small muted">{{ book.accounts[r.konto].name if r.konto in book.accounts }}</span>{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}</td>
+      <td class="small">{{ r.buchungstext }}</td>
+      <td class="right"><form hx-post="/bank/regel/{{ r.id }}/entfernen" hx-target="find .errors" hx-confirm="Regel {{ r.id }} entfernen?"><button class="btn small ghost" type="submit" aria-label="Entfernen">✕</button>{{ errors() }}</form></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>{% endif %}
+  <form class="body" hx-post="/bank/regel" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label>Gegenpartei enthält</label><input class="input" name="gegenpartei" placeholder="z.B. SWISSCOM"></div>
+      <div class="field"><label>oder Text enthält</label><input class="input" name="text" placeholder="z.B. Kontoführung"></div>
+      <div class="field"><label>Konto</label><input class="input" name="konto" list="konten" required placeholder="z.B. 6510"></div>
+      <div class="field"><label>Buchungstext</label><input class="input" name="buchungstext"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Greift nur, wenn keine Rechnung, kein Kreditor und keine bestehende Buchung passt; offene Bewegungen werden gleich gebucht.</span><button class="btn small primary" type="submit">Regel anlegen</button></div>
+  </form>
+</details>
 <p class="small muted">Tipp: Den Agenten fragen «Verbuche die offenen Bankbewegungen» — er ordnet zu oder schlägt Buchungen vor, du gibst unter Prüfen frei.</p>
 {% endblock %}

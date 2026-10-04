@@ -310,6 +310,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("bank", help="Kontoauszüge (camt.053)")
     bs = s.add_subparsers(dest="sub", required=True)
+    c = bs.add_parser("regel", help="Bankregeln: wiederkehrende Bewegungen beim Import buchen")
+    c.add_argument("aktion", choices=["list", "add", "von", "remove"])
+    c.add_argument("ref", nargs="?", help="von: Bewegungs-ID · remove: Regel-ID")
+    c.add_argument("--konto")
+    c.add_argument("--gegenpartei", default="")
+    c.add_argument("--text", default="")
+    c.add_argument("--betrag")
+    c.add_argument("--richtung", default="", choices=["", "belastung", "gutschrift"])
+    c.add_argument("--mwst", default="")
+    c.add_argument("--buchungstext", default="")
+    c.add_argument("--mit-betrag", action="store_true", help="von: nur bei genau diesem Betrag")
     c = bs.add_parser("import", help="camt.053-Datei importieren und abgleichen")
     c.add_argument("datei")
     c = bs.add_parser("list")
@@ -623,6 +634,17 @@ def dispatch(a, book_path: Path | None):
             return api.jsonable(kred.runs(b))
         return api.payment_run_book(b, a.datei, a.datum)
     if c == "bank":
+        if a.sub == "regel":
+            b = book()
+            if a.aktion == "list":
+                return api.bank_rules(b)
+            if a.aktion == "von":
+                return api.bank_rule_from(b, a.ref, a.mit_betrag)
+            if a.aktion == "remove":
+                return api.bank_rule_remove(b, a.ref)
+            if not a.konto:
+                raise BookError("--konto fehlt")
+            return api.bank_rule_add(b, a.konto, a.gegenpartei, a.text, a.betrag, a.richtung, a.mwst, a.buchungstext)
         b = book()
         if a.sub == "import":
             return api.bank_import(b, a.datei)

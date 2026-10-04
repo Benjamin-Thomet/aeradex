@@ -796,7 +796,7 @@ async def bank_page(ui: UI, request: Request):
     return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts, jev=jev.config(book),
                      bank_accept=",".join(sorted({x for f in formats for x in f.suffixes} | {".camt", ".053"})),
                      bank_labels=", ".join(f.label for f in formats),
-                     rec=bank.reconciliation(book), open_inv=open_inv, open_bills=open_bills,
+                     rec=bank.reconciliation(book), open_inv=open_inv, open_bills=open_bills, rules=bank.rules(book),
                      accounts=account_options(book))
 
 
@@ -844,7 +844,18 @@ async def bank_aktion(ui: UI, request: Request):
         return await act(request, api.bank_link, to, book, tid, (f.get("beleg") or "").strip())
     if aktion == "ignorieren":
         return await act(request, api.bank_ignore, to, book, tid, f.get("grund", ""))
+    if aktion == "regel":
+        return await act(request, api.bank_rule_from, to, book, tid)
     return fail("Unbekannte Aktion")
+
+
+async def bank_regel(ui: UI, request: Request):
+    f = await request.form()
+    to = request.headers.get("hx-current-url", "/bank")
+    if request.path_params.get("id"):
+        return await act(request, api.bank_rule_remove, to, ui.book(), request.path_params["id"])
+    return await act(request, api.bank_rule_add, to, ui.book(), acct(f.get("konto")), f.get("gegenpartei", ""),
+                     f.get("text", ""), None, "", "", f.get("buchungstext", ""))
 
 
 # ---------- Kreditoren ----------
@@ -1408,6 +1419,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/bank", h(bank_page)),
         Route("/bank/import", h(bank_upload), methods=["POST"]),
         Route("/bank/jev", h(bank_jev), methods=["POST"]),
+        Route("/bank/regel", h(bank_regel), methods=["POST"]),
+        Route("/bank/regel/{id:str}/entfernen", h(bank_regel), methods=["POST"]),
         Route("/bank/{id:str}/{aktion:str}", h(bank_aktion), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),
