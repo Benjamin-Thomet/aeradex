@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import errors, kreditoren_nav, accounts_datalist, mwst_select %}
+{% macro posrow(p={}) %}<div class="splitrow"><input class="input" name="p_konto" list="konten" aria-label="Konto" value="{{ p.konto or '' }}"><input class="input num" name="p_betrag" inputmode="decimal" aria-label="Betrag brutto" value="{{ p.betrag or '' }}"><input class="input" name="p_text" aria-label="Text" value="{{ p.text or '' }}">{% if vat.methode == 'effektiv' %}{{ mwst_select("p_mwst", vat, vat_codes, kinds=("vorsteuer","investition"), selected=p.mwst or "", label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Zeile entfernen">✕</button></div>{% endmacro %}
 {% block title %}Kreditor erfassen{% endblock %}
 {% block main %}
 {% set sc = sc_override or scan or {} %}{% set k = sc.kreditor or {} %}{% set ev = ev or {} %}{% set qf = quellen_felder or {} %}
@@ -38,12 +39,21 @@
           <div class="field"><label>Land</label><input class="input" name="s_land" value="{{ k.land or 'CH' }}" maxlength="2"></div>
           <div class="field wide"><span class="small muted">Konto und MWST-Code unten werden als Standard des neuen Lieferanten gespeichert.</span></div>
         </div>
-        <div class="field"><label for="k-b">Betrag CHF (brutto){{ src('betrag') }}</label><input class="input num" id="k-b" name="betrag" value="{{ sc.betrag or '' }}" required></div>
+        <div class="field"><label for="k-b">Betrag brutto (in Rechnungswährung){{ src('betrag') }}</label><input class="input num" id="k-b" name="betrag" value="{{ sc.betrag or '' }}" required></div>
+        <div class="field"><label for="k-w">Währung{{ src('waehrung') }}</label><select class="input" id="k-w" name="waehrung" style="width:100%" hx-get="/kurs" hx-include="closest form" hx-target="#k-kurs-hint" hx-trigger="change, load">{% set cur = (ev.waehrung or sc.waehrung or 'CHF')|upper %}{% for c in ['CHF'] + currencies %}<option {{ 'selected' if c == cur }}>{{ c }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="k-kurs">Kurs (leer = BAZG am Rechnungsdatum)</label><input class="input num" id="k-kurs" name="kurs" inputmode="decimal" placeholder="BAZG"><span class="small" id="k-kurs-hint"></span></div>
         <div class="field"><label for="k-r">Rechnungsnummer des Lieferanten{{ src('rechnungsnr') }}</label><input class="input" id="k-r" name="rechnungsnr" value="{{ sc.rechnungsinfo or '' }}"></div>
         <div class="field"><label for="k-d">Rechnungsdatum{{ src('datum') }}</label><input class="input" id="k-d" type="date" name="datum" value="{{ ev.datum or today }}"></div>
         <div class="field"><label for="k-f">Fällig am{{ src('faellig') }}</label><input class="input" id="k-f" type="date" name="faellig" value="{{ ev.faellig or '' }}"></div>
         <div class="field"><label for="k-k">Aufwandkonto (leer = Standard des Lieferanten){% if entwurf and (entwurf.konto or {}).quelle %} <span class="pill {{ 'info' if entwurf.konto.quelle.startswith('Agent') else 'muted' }}" title="{{ entwurf.konto.begruendung or '' }}">{{ entwurf.konto.quelle }}</span>{% endif %}</label><input class="input" id="k-k" name="konto" list="konten" placeholder="z.B. 6500 Büromaterial" value="{{ ev.konto or '' }}"></div>
         {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition"), id="k-m", selected=ev.mwst or "") }}
+        <details class="field wide" {{ 'open' if ev.positionen }}><summary class="small">Auf mehrere Konten aufteilen{% if entwurf and entwurf.positionen %} <span class="pill info" title="{{ entwurf.positionen.begruendung or '' }}">{{ entwurf.positionen.quelle }}</span>{% endif %}</summary>
+          <div class="splitrow poshead billhead {{ 'vat' if vat.methode == 'effektiv' }}"><span>Konto</span><span class="right">Betrag brutto</span><span>Text</span>{% if vat.methode == 'effektiv' %}<span>MWST</span>{% endif %}<span></span></div>
+          <div class="splitrows billrows" id="posrows">{% for p in ev.positionen or [{}, {}] %}{{ posrow(p) }}{% endfor %}</div>
+          <template>{{ posrow() }}</template>
+          <button class="btn small" type="button" data-addrow="#posrows" style="margin-top:6px">+ Position</button>
+          <p class="small muted">Sind Positionen ausgefüllt, gelten sie statt Aufwandkonto und MWST-Code oben; ihre Summe muss dem Betrag entsprechen.</p>
+        </details>
         <div class="field wide"><label for="k-i">IBAN / QR-IBAN (leer = vom Lieferanten){{ src('iban') }}</label><input class="input num" id="k-i" name="iban" value="{{ sc.iban or '' }}" style="text-align:left"></div>
         <div class="field"><label for="k-rt">Referenzart</label><select class="input" id="k-rt" name="referenz_typ" style="width:100%">{% for t in ["", "QRR", "SCOR", "NON"] %}<option value="{{ t }}" {{ 'selected' if t == (sc.referenz_typ or '') }}>{{ t or 'automatisch' }}</option>{% endfor %}</select></div>
         <div class="field"><label for="k-ref">Referenz{{ src('referenz') }}</label><input class="input num" id="k-ref" name="referenz" value="{{ sc.referenz or '' }}" style="text-align:left"></div>

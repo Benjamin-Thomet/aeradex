@@ -703,7 +703,9 @@ async def abschluss(ui: UI, request: Request):
     from ..files import read_yaml
     verlauf = (read_yaml(lock_path).get("verlauf") or []) if lock_path.exists() else []
     fx_view = None
-    if st.get("fremdwaehrung"):
+    from .. import kreditoren as kred
+    has_fw_bills = any(kred.is_foreign(m) for m in kred.bills(book).values())
+    if st.get("fremdwaehrung") or has_fw_bills:
         from .. import fx
         try:
             stichtag = date.fromisoformat(request.query_params.get("stichtag", ""))
@@ -712,7 +714,7 @@ async def abschluss(ui: UI, request: Request):
         done = sorted(p.stem for p in (book.root / "bewertung").glob(f"{year}-*.yaml"))
         try:
             fx_view = {"stichtag": stichtag, "konten": fx.preview(book, stichtag), "bewertet": fx.path(book, stichtag).exists(),
-                       "erledigt": done}
+                       "erledigt": done, "kreditoren": fx.preview_bills(book, stichtag)}
         except BookError as exc:          # no rates yet (future date, offline)
             fx_view = {"stichtag": stichtag, "konten": [], "bewertet": fx.path(book, stichtag).exists(), "fehler": str(exc),
                        "erledigt": done}
@@ -940,7 +942,7 @@ async def kreditor_neu(ui: UI, request: Request):
         return ui.render(request, "kreditor_neu.html", book=book, datei=meta["datei"], kind=kind, scan=None, sc_override=sc,
                          scan_error=None, suppliers=sups, chosen=v["lieferant"] if v["lieferant"] in sups else "",
                          accounts=account_options(book), tab="rechnungen", today=date.today().isoformat(),
-                         entwurf=meta, ev=v, quellen_felder=meta.get("felder") or {},
+                         entwurf=meta, ev=v, quellen_felder=meta.get("felder") or {}, currencies=currencies(book),
                          warnungen=erfassung.warnings(book, meta))
     if datei:
         try:
@@ -952,7 +954,7 @@ async def kreditor_neu(ui: UI, request: Request):
     kind = file_kind(book.root / datei) if datei else None
     return ui.render(request, "kreditor_neu.html", book=book, datei=datei, kind=kind, scan=scan, scan_error=scan_error,
                      suppliers=sups, chosen=chosen, accounts=account_options(book), tab="rechnungen",
-                     today=date.today().isoformat())
+                     today=date.today().isoformat(), currencies=currencies(book))
 
 
 async def kreditor_erfassen(ui: UI, request: Request):
@@ -977,6 +979,15 @@ async def kreditor_erfassen(ui: UI, request: Request):
         fields["konto"] = acct(f.get("konto"))
     if f.get("mwst") is not None:
         fields["mwst"] = f.get("mwst") or ""
+    if (f.get("waehrung") or "CHF").upper() != "CHF":
+        fields["waehrung"] = f.get("waehrung").upper()
+        if f.get("kurs"):
+            fields["kurs"] = f.get("kurs")
+    codes = f.getlist("p_mwst") or [""] * len(f.getlist("p_konto"))
+    lines = [{"konto": acct(k), "betrag": b, "text": t, "mwst": m}
+             for k, b, t, m in zip(f.getlist("p_konto"), f.getlist("p_betrag"), f.getlist("p_text"), codes) if k or b]
+    if lines:
+        fields["positionen"] = lines
     return await act(request, api.bill_add, lambda r: f"/kreditoren/rechnung/{r['kreditor']['nummer']}", book,
                      lieferant, f.get("betrag"), **fields)
 
@@ -990,7 +1001,17 @@ async def kreditor_detail(ui: UI, request: Request):
     except BookError as exc:
         return PlainTextResponse(str(exc), status_code=404)
     st = kred.state(book, meta)
+    pay_accounts = [a for a in book.accounts.values() if a.klasse == "aktiv" and a.nr.startswith("10") and a.aktiv_
+                    and (not a.is_foreign or a.waehrung == st["waehrung"])]
+    pay_default = book.settings.konto("bank")
+    if kred.is_foreign(meta):
+        try:
+            pay_default = kred.payment_account(book, st["waehrung"])[1]
+        except BookError:
+            pass
     return ui.render(request, "kreditor.html", book=book, meta=meta, st=st, paid=kred.payments(book).get(nr, []),
+                     booked=kred.booked_chf(book, meta) if kred.is_foreign(meta) else None,
+                     pay_accounts=pay_accounts, pay_default=pay_default,
                      kind=file_kind(book.root / meta["datei"]) if meta.get("datei") else None,
                      tab="rechnungen", today=date.today().isoformat())
 
@@ -1000,7 +1021,8 @@ async def kreditor_aktion(ui: UI, request: Request):
     nr, aktion = request.path_params["nr"], request.path_params["aktion"]
     to = f"/kreditoren/rechnung/{nr}"
     if aktion == "zahlung":
-        return await act(request, api.bill_pay, to, ui.book(), nr, f.get("datum") or None, f.get("betrag") or None)
+        return await act(request, api.bill_pay, to, ui.book(), nr, f.get("datum") or None, f.get("betrag") or None,
+                         f.get("konto") or None, None, f.get("fw") or None)
     if aktion == "storno":
         return await act(request, api.bill_void, to, ui.book(), nr, f.get("grund", ""))
     return fail("Unbekannte Aktion")

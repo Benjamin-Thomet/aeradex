@@ -47,7 +47,15 @@
     {% endfor %}</tbody>
   </table></div>
   {% endif %}
-  {% if not fx.bewertet and fx.konten and not st.abgeschlossen %}
+  {% if fx.kreditoren %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Offene Kreditoren in Fremdwährung</th><th class="right">Offen FW</th><th class="right">Kurs</th><th class="right">CHF zum Kurs</th><th class="right">CHF Buchwert</th><th class="right">Kursdifferenz</th></tr></thead>
+    <tbody>{% for k in fx.kreditoren %}
+      <tr class="row"><td><a class="link" href="/kreditoren/rechnung/{{ k.nummer }}">{{ k.nummer }}</a> {{ k.name }}</td><td class="right num">{{ k.waehrung }} {{ k.fw|chf }}</td><td class="right num">{{ k.kurs }}</td><td class="right num">{{ k.chf_neu|chf }}</td><td class="right num">{{ k.chf_buch|chf }}</td><td class="right num">{{ (-(k.differenz|float))|chf(false, true) }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if not fx.bewertet and (fx.konten or fx.kreditoren) and not st.abgeschlossen %}
   <form class="body" hx-post="/abschluss/bewertung" hx-target="find .errors" hx-confirm="Kursdifferenzen per {{ fx.stichtag|datum }} buchen?">
     <input type="hidden" name="jahr" value="{{ year }}"><input type="hidden" name="stichtag" value="{{ fx.stichtag.isoformat() }}">
     {{ errors() }}<div class="formfoot"><span class="small muted">Gewinne auf {{ settings.konto('kursgewinn') }}, Verluste auf {{ settings.konto('kursverlust') }}; die Bilanz zeigt danach die Fremdwährungskonten zum Stichtagskurs.</span><button class="btn primary" type="submit">Bewertung buchen</button></div>

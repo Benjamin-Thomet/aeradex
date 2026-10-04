@@ -234,8 +234,9 @@ def run(book: Book) -> list[Issue]:
         expected = kred.booking_rows(book, meta) if meta.get("status") != "storniert" else []
         if Counter(map(_key, expected)) != Counter(map(_key, owned.get(f"kreditor:{nr}", []))):
             add("fehler", where, "Journalbuchung passt nicht zum Kreditor")
-        paid_rows = owned.get(f"kzahlung:{nr}", [])
-        paid = sum((r.betrag for r in paid_rows), ZERO)
+        konto_k = str(meta.get("kreditorenkonto") or kred.KREDITOREN)
+        paid_rows = [r for r in owned.get(f"kzahlung:{nr}", []) if r.soll == konto_k]
+        paid = sum(((r.fw or ZERO) if kred.is_foreign(meta) else r.betrag for r in paid_rows), ZERO)
         if meta.get("status") == "storniert" and paid_rows:
             add("fehler", where, "stornierter Kreditor hat Zahlungen")
         elif paid > Decimal(str(meta.get("betrag") or 0)):

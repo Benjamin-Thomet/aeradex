@@ -287,7 +287,7 @@ def _auto_book(book: Book, e: dict, konto: str, invoices, kreditoren) -> str | N
                 if st["status"] not in ("offen", "angewiesen"):
                     continue
                 ref_hit = meta.get("referenz") and meta["referenz"] == e["referenz"]
-                if (e["endtoend"] == nr or ref_hit) and -amount <= st["offen"]:
+                if (e["endtoend"] == nr or ref_hit) and kreditoren.amount_fits(book, meta, st, -amount, konto):
                     row, _ = kreditoren.pay(book, nr, e["datum"], -amount, konto)
                     return row.beleg
     except BookError:

@@ -193,6 +193,13 @@ Frontmatter: `nummer, lieferant, name, rechnungsnr, datum, faellig, betrag` (bru
 `datei` (Beleg unter belege/), nach einem Zahlungslauf `zahlungslauf`. Gebucht als `Quelle kreditor:E-…`,
 die Zahlung als `Quelle kzahlung:E-…` (Kreditoren an Bank).
 
+Fremdwährung: `waehrung` (EUR …) und `kurs` (BAZG am Rechnungsdatum, sofern nicht angegeben); `betrag` ist in der
+Rechnungswährung, die Journalzeilen sind in CHF mit FW und Kurs. Aufteilung: `positionen: [{konto, betrag, mwst,
+text}]`, Summe = `betrag`. Beide Felder fliessen nur in den Fingerprint ein, wenn sie vorhanden sind — ältere
+Kreditoren bleiben gültig. Die Zahlung einer Fremdwährungsrechnung besteht aus der Kreditorenzeile (Buchwert, FW
+beglichen, Buchkurs), der Bankzeile (bezahlter Betrag) und, falls nötig, einer Zeile auf Kursgewinn/-verlust.
+Offene Fremdwährungs-Kreditoren stehen in `bewertung/<datum>.yaml` unter `kreditoren:`.
+
 ## zahlungen/
 
 Zahlungsdateien `JJJJ-MM-TT-xxxxxx.xml` (ISO 20022 pain.001.001.09, Swiss Payment Standards) zum Hochladen im E-Banking.

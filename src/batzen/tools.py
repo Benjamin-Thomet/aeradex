@@ -438,7 +438,8 @@ def create_bill_draft(datei: str) -> dict:
 
 
 def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", betrag: str = "", datum: str = "",
-                        faellig: str = "", rechnungsnr: str = "", name: str = "", iban: str = "") -> dict:
+                        faellig: str = "", rechnungsnr: str = "", name: str = "", iban: str = "", waehrung: str = "",
+                        aufteilung: list[dict] | None = None) -> dict:
     """Einen Kreditoren-Entwurf kontieren und fehlende/falsch erkannte Felder korrigieren. Bucht nichts —
     ein Mensch prüft den Entwurf und erfasst die Rechnung. Auch im agent_modus 'vorschlag' erlaubt.
 
@@ -454,10 +455,15 @@ def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", b
         rechnungsnr: Rechnungsnummer des Lieferanten, nur wenn falsch oder fehlend.
         name: Name des Lieferanten, nur wenn falsch oder fehlend.
         iban: IBAN des Lieferanten, nur wenn falsch oder fehlend.
+        waehrung: Währung der Rechnung (EUR, USD …), wenn nicht CHF; umgerechnet wird zum BAZG-Kurs des Rechnungsdatums.
+        aufteilung: nur wenn Positionen auf verschiedene Konten gehören: [{"konto": "6500", "betrag": "80.00",
+            "mwst": "I81", "text": "Papier"}, …]; Beträge brutto in der Rechnungswährung, Summe = Rechnungsbetrag.
+            `konto` ist dann das Konto der ersten Position.
     """
     fields = {k: v for k, v in (("betrag", betrag), ("datum", datum), ("faellig", faellig),
-                                ("rechnungsnr", rechnungsnr), ("name", name), ("iban", iban)) if v}
-    return _call(api.bill_draft_update, id, "Agent", konto, mwst or None, begruendung, **fields)
+                                ("rechnungsnr", rechnungsnr), ("name", name), ("iban", iban),
+                                ("waehrung", (waehrung or "").upper())) if v}
+    return _call(api.bill_draft_update, id, "Agent", konto, mwst or None, begruendung, positionen=aufteilung, **fields)
 
 
 def scan_qr_bill(datei: str) -> dict:
@@ -472,7 +478,8 @@ def scan_qr_bill(datei: str) -> dict:
 
 def add_supplier_bill(lieferant: str, betrag: str, datum: str = "", faellig: str = "", rechnungsnr: str = "",
                       referenz: str = "", referenz_typ: str = "", mitteilung: str = "", datei: str = "",
-                      konto: str = "", mwst: str = "") -> dict:
+                      konto: str = "", mwst: str = "", waehrung: str = "",
+                      aufteilung: list[dict] | None = None) -> dict:
     """Lieferantenrechnung erfassen und verbuchen (Aufwand an Kreditoren). Im agent_modus 'vorschlag' nur mit
     dem beim Lieferanten hinterlegten Aufwandkonto (konto leer lassen); sonst propose_booking verwenden.
 
@@ -488,11 +495,18 @@ def add_supplier_bill(lieferant: str, betrag: str, datum: str = "", faellig: str
         datei: die Rechnung, z.B. "inbox/rechnung.pdf" (wird nach belege/ verschoben).
         konto: abweichendes Aufwandkonto (nur agent_modus direkt).
         mwst: abweichender MWST-Code (sonst der des Lieferanten).
+        waehrung: Währung der Rechnung, wenn nicht CHF (EUR, USD …); betrag ist dann in dieser Währung,
+            gebucht wird zum BAZG-Kurs des Rechnungsdatums.
+        aufteilung: Positionen auf verschiedene Konten (nur agent_modus direkt):
+            [{"konto": "6500", "betrag": "80.00", "mwst": "I81", "text": "Papier"}, …], Summe = betrag.
     """
     try:
         b = book()
     except BookError as exc:
         return {"ok": False, "fehler": str(exc)}
+    if aufteilung and (b.settings.get("agent_modus") or "vorschlag") != "direkt":
+        return {"ok": False, "fehler": "agent_modus 'vorschlag': Aufteilungen über einen Kreditoren-Entwurf "
+                "(create_bill_draft, complete_bill_draft mit aufteilung) — ein Mensch prüft und erfasst."}
     if konto and (b.settings.get("agent_modus") or "vorschlag") != "direkt":
         from . import kreditoren as kred
         try:
@@ -504,9 +518,11 @@ def add_supplier_bill(lieferant: str, betrag: str, datum: str = "", faellig: str
                     "Konto leer lassen oder den Menschen das Konto beim Lieferanten hinterlegen lassen."}
     fields = {k: v for k, v in {"datum": datum, "faellig": faellig, "rechnungsnr": rechnungsnr, "referenz": referenz,
                                 "referenz_typ": referenz_typ, "mitteilung": mitteilung, "datei": datei,
-                                "konto": konto}.items() if v}
+                                "konto": konto, "waehrung": waehrung}.items() if v}
     if mwst:
         fields["mwst"] = mwst
+    if aufteilung:
+        fields["positionen"] = aufteilung
     return _call(api.bill_add, lieferant, betrag, **fields)
 
 

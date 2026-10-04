@@ -113,6 +113,20 @@ batzen zahlungslauf bezahlt 2026-03-20-ab12cd.xml                         # nach
 Die Zahlungsdatei folgt den Swiss Payment Standards (pain.001.001.09) und validiert gegen die offiziellen
 SIX-Schemas SPS 2025 und 2026. QR-Codes lesen: `pip install -e ".[scan]"`.
 
+**Fremdwährung und Aufteilung:**
+```bash
+batzen kreditor add --lieferant L0003 --betrag 1190 --waehrung EUR --datum 2026-10-01 \
+    --position 6570:240:"":Webhosting --position 6600:950:"":Flyer        # Kurs: BAZG am Rechnungsdatum
+batzen kreditor pay E-2026-0007 --datum 2026-10-14 --betrag 1112.30    # CHF laut Kontoauszug
+```
+Eine Rechnung in EUR/USD … wird zum BAZG-Kurs des Rechnungsdatums gebucht (der Fremdwährungsbetrag bleibt auf
+jeder Zeile). Bei der Zahlung wird der Buchwert ausgeglichen und die Differenz zum tatsächlich bezahlten Betrag als
+Kursgewinn/-verlust gebucht — vom CHF-Konto mit dem belasteten CHF-Betrag, vom EUR-Konto zum BAZG-Kurs des
+Zahltags. Der Zahlungslauf (pain.001) zahlt in der Rechnungswährung, je Währung ein Block, vom Bankkonto dieser
+Währung, falls unter `bankkonten` eines hinterlegt ist. Offene Fremdwährungs-Kreditoren werden mit den
+Fremdwährungskonten per Stichtag bewertet. Positionen (`--position`, im Formular «Auf mehrere Konten aufteilen»)
+tragen je ein Konto, einen Bruttobetrag und einen eigenen MWST-Code; der Agent schlägt Aufteilungen im Entwurf vor.
+
 **Rechnungen einlesen** (Oberfläche: Kreditoren → Rechnungen einlesen, mehrere Dateien auf einmal):
 ```bash
 batzen kreditor einlesen inbox/*.pdf inbox/foto.jpg   # → Entwürfe, nichts wird gebucht

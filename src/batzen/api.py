@@ -190,7 +190,8 @@ def fx_preview(book: Book, stichtag) -> dict:
     """Foreign-currency accounts valued at the BAZG rate of `stichtag` (nothing is booked)."""
     from . import fx
     d = parse_date(stichtag, "stichtag")
-    return jsonable({"stichtag": d, "gebucht": fx.path(book, d).exists(), "konten": fx.preview(book, d)})
+    return jsonable({"stichtag": d, "gebucht": fx.path(book, d).exists(), "konten": fx.preview(book, d),
+                     "kreditoren": fx.preview_bills(book, d)})
 
 
 def fx_revalue(book: Book, stichtag) -> dict:
@@ -198,8 +199,10 @@ def fx_revalue(book: Book, stichtag) -> dict:
     from . import fx
     _guard(book)
     saved, touched = fx.book_revaluation(book, stichtag)
-    total = sum((Decimal(str(k["differenz"])) for k in saved["konten"]), Decimal(0))
-    return _done(book, f"Fremdwährungen per {saved['stichtag']} bewertet (Differenz {total:.2f})", touched,
+    # net effect on the result: accounts gain when they grow, supplier debts lose when they grow
+    total = (sum((Decimal(str(k["differenz"])) for k in saved["konten"]), Decimal(0))
+             - sum((Decimal(str(k["differenz"])) for k in saved.get("kreditoren") or []), Decimal(0)))
+    return _done(book, f"Fremdwährungen per {saved['stichtag']} bewertet (Kurserfolg {total:.2f})", touched,
                  bewertung=saved)
 
 
@@ -888,11 +891,15 @@ def bill_list(book: Book, status: str = "") -> list[dict]:
     return jsonable([s for s in out if not status or s["status"] == status])
 
 
-def bill_pay(book: Book, nummer: str, datum=None, betrag=None, konto: str | None = None) -> dict:
+def bill_pay(book: Book, nummer: str, datum=None, betrag=None, konto: str | None = None, kurs=None,
+             fw=None) -> dict:
+    """Book a payment. `betrag` is in the paying account's currency; for a foreign bill paid from a
+    CHF account, the CHF actually debited (default: open amount × BAZG rate); `fw` pays only part."""
     _guard(book)
     from . import kreditoren as kred
-    row, touched = kred.pay(book, nummer, datum, betrag, konto)
-    return _done(book, f"Zahlung {row.betrag:.2f} an Kreditor {nummer} verbucht (Beleg {row.beleg})", touched, buchung=row)
+    row, touched = kred.pay(book, nummer, datum, betrag, konto, kurs, fw)
+    fwtext = f" ({row.waehrung} {row.fw:.2f})" if row.waehrung else ""
+    return _done(book, f"Zahlung an Kreditor {nummer} verbucht{fwtext}: Beleg {row.beleg}", touched, buchung=row)
 
 
 def bill_void(book: Book, nummer: str, grund: str = "") -> dict:
@@ -1146,10 +1153,10 @@ def _bill_draft_store(book: Book, datei: str, fields: dict, text: str, notes: li
 
 
 def bill_draft_update(book: Book, entwurf: str, quelle: str = "Hand", konto: str = "", mwst: str | None = None,
-                      begruendung: str = "", **fields) -> dict:
+                      begruendung: str = "", positionen: list[dict] | None = None, **fields) -> dict:
     from . import erfassung
     _guard(book)
-    meta, touched = erfassung.update(book, entwurf, quelle, konto, mwst, begruendung, **fields)
+    meta, touched = erfassung.update(book, entwurf, quelle, konto, mwst, begruendung, positionen, **fields)
     return _done(book, f"Kreditoren-Entwurf {entwurf} ergänzt ({quelle}" + (f": Konto {konto}" if konto else "") + ")",
                  touched, entwurf=meta)
 

@@ -54,7 +54,7 @@
         <td>{% if r.status == 'offen' %}<input type="checkbox" name="nr" value="{{ r.nummer }}" aria-label="{{ r.nummer }} in Zahlungslauf" {{ 'checked' if r.faellig <= (today().isoformat()) }}>{% endif %}</td>
         <td><a class="beleg" href="/kreditoren/rechnung/{{ r.nummer }}">{{ r.nummer }}</a></td><td>{{ r.name }}</td><td class="small">{{ r.rechnungsnr }}</td>
         <td class="num">{{ r.faellig|datum }}{% if r.status == 'offen' and r.faellig < today().isoformat() %} <span class="pill red">überfällig</span>{% endif %}</td>
-        <td class="right num">{{ r.total|chf }}</td><td class="right num">{{ r.offen|chf(true) }}</td><td>{{ status_pill(r.status) }}</td>
+        <td class="right num">{% if r.waehrung != 'CHF' %}<span class="small muted">{{ r.waehrung }}</span> {% endif %}{{ r.total|chf }}</td><td class="right num">{% if r.waehrung != 'CHF' and r.offen|float %}<span class="small muted">{{ r.waehrung }}</span> {% endif %}{{ r.offen|chf(true) }}</td><td>{{ status_pill(r.status) }}</td>
       </tr>
     {% endfor %}
     </tbody>

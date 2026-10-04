@@ -107,7 +107,8 @@ def ocr_text(path: Path, max_pages: int = 3) -> str:
 
 # ---------- text → fields ----------
 
-_AMOUNT = r"(?<![\d.,'])(\d{1,3}(?:['’ ]\d{3})+|\d+)[.,](\d{2})(?!\d)"
+# 1234.50 · 1'234.50 · 1 234,50 · 1.234,50 (EU) · 1,234.50 (US)
+_AMOUNT = r"(?<![\d.,'])(\d{1,3}(?:['’ .,]\d{3})+|\d+)[.,](\d{2})(?!\d)"
 _MONTHS = {"januar": 1, "janvier": 1, "gennaio": 1, "februar": 2, "février": 2, "fevrier": 2, "febbraio": 2,
            "märz": 3, "maerz": 3, "mars": 3, "marzo": 3, "april": 4, "avril": 4, "aprile": 4, "mai": 5, "maggio": 5,
            "juni": 6, "juin": 6, "giugno": 6, "juli": 7, "juillet": 7, "luglio": 7, "august": 8, "août": 8,
@@ -126,7 +127,7 @@ def amounts(line: str) -> list[Decimal]:
     out = []
     for whole, cents in re.findall(_AMOUNT, line):
         try:
-            out.append(Decimal(re.sub(r"['’ ]", "", whole) + "." + cents))
+            out.append(Decimal(re.sub(r"['’ .,]", "", whole) + "." + cents))
         except InvalidOperation:
             continue
     return out
@@ -186,10 +187,14 @@ def parse_text(text: str, own_name: str = "") -> dict:
                 lambda s: (re.match(r"\s*[:#]?\s*([A-Z0-9][A-Z0-9\-/.]{2,24})", s, re.I) or [None, None])[1])
     if nr:
         out["rechnungsnr"] = nr.rstrip(".")
-    totals = [a for l in lines if _TOTAL.search(l) and not re.search(r"(zwischen|sous-total|subtotal|netto|exkl)", l, re.I)
-              for a in amounts(l)]
+    total_lines = [l for l in lines if _TOTAL.search(l) and not re.search(r"(zwischen|sous-total|subtotal|netto|exkl)", l, re.I)]
+    totals = [a for l in total_lines for a in amounts(l)]
     if totals:
         out["betrag"] = str(max(totals).quantize(CENT))
+        best = next(l for l in total_lines if max(totals) in amounts(l))
+        cur = re.search(r"\b(CHF|EUR|USD|GBP)\b|(€)|(\$)|(£)", best)
+        if cur:
+            out["waehrung"] = cur.group(1) or {"€": "EUR", "$": "USD", "£": "GBP"}[next(g for g in cur.groups()[1:] if g)]
     for line in lines:
         if _VAT.search(line):
             rate = re.search(r"(8[.,]1|2[.,]6|3[.,]8|7[.,]7|2[.,]5|3[.,]7)\s*%", line)
@@ -201,9 +206,9 @@ def parse_text(text: str, own_name: str = "") -> dict:
     uid = re.search(r"CHE[- ]?(\d{3})\.?(\d{3})\.?(\d{3})", text)
     if uid:
         out["uid"] = f"CHE-{uid.group(1)}.{uid.group(2)}.{uid.group(3)}"
-    for m in re.finditer(r"\b(CH|LI)\s?(\d{2})((?:\s?[0-9A-Z]{4}){4}\s?[0-9A-Z])\b", text):
-        iban = qr.normalize_iban(m.group(0))
-        if qr.iban_is_valid(iban):
+    for m in re.finditer(r"\b([A-Z]{2}\d{2}(?:\s?[0-9A-Z]{4}){2,7}(?:\s?[0-9A-Z]{1,3})?)\b", text):
+        iban = qr.normalize_iban(m.group(1))
+        if qr.iban_is_valid(iban):        # the checksum rules out look-alikes (UID, order numbers …)
             out["iban"] = iban
             break
     own = own_name.lower().strip()
@@ -215,13 +220,15 @@ def parse_text(text: str, own_name: str = "") -> dict:
             # the sender's address usually follows its name: "Strasse 5" / "3000 Bern"
             for nxt in lines[i + 1:i + 4]:
                 street = re.match(r"^([A-Za-zÀ-ÿ][\w .\-'’]*?)\s+(\d+\s?[a-zA-Z]?)$", nxt)
-                town = re.match(r"^(?:CH-)?(\d{4})\s+([A-Za-zÀ-ÿ][\w .\-'’]*)$", nxt)
+                town = re.match(r"^(?:(?:CH|D|DE|A|AT|F|FR|I|IT|FL|LI)-)?(\d{4,5})\s+([A-Za-zÀ-ÿ][\w .\-'’]*)$", nxt)
                 if street and "strasse" not in out:
                     out["strasse"], out["nr"] = street.group(1), street.group(2).replace(" ", "")
                 elif town:
                     out["plz"], out["ort"] = town.group(1), town.group(2)
                     break
             break
+    if out.get("iban") and out["iban"][:2] not in ("CH", "LI") and "land" not in out:
+        out["land"] = out["iban"][:2]
     return out
 
 
@@ -403,9 +410,29 @@ def create(book: Book, datei: str, fields: dict, text: str, notes: list[str]) ->
 
 
 def update(book: Book, draft_id: str, quelle: str, konto: str = "", mwst: str | None = None,
-           begruendung: str = "", **fields) -> tuple[dict, list[Path]]:
+           begruendung: str = "", positionen: list[dict] | None = None, **fields) -> tuple[dict, list[Path]]:
     meta = draft(book, draft_id)
     path = meta.pop("_pfad")
+    if positionen:
+        from .mwst import code as mwst_code
+        lines = []
+        for i, p in enumerate(positionen, 1):
+            acct = book.account(str(p.get("konto") or ""))
+            if acct.klasse not in ("aufwand", "aktiv"):
+                raise BookError(f"Position {i}: Konto {acct.nr} ist weder Aufwand noch Aktivkonto")
+            amount = Decimal(str(p.get("betrag") or "0")).quantize(CENT)
+            if amount <= 0:
+                raise BookError(f"Position {i}: Betrag fehlt")
+            code = str(p.get("mwst") or "").upper()
+            if code:
+                mwst_code(code)
+            lines.append({"konto": acct.nr, "betrag": f"{amount:.2f}", "mwst": code, "text": str(p.get("text") or "")})
+        meta["positionen"] = {"zeilen": lines, "quelle": quelle, **({"begruendung": begruendung} if begruendung else {})}
+        konto = konto or lines[0]["konto"]
+        total = sum((Decimal(l["betrag"]) for l in lines), Decimal(0))
+        gross = value(meta, "betrag") or fields.get("betrag")
+        if gross and total != Decimal(str(gross)):
+            meta.setdefault("hinweise", []).append(f"{quelle}: Positionen ergeben {total:.2f}, Rechnung {gross}")
     if konto:
         acct = book.account(konto)
         if acct.klasse not in ("aufwand", "aktiv"):
@@ -426,7 +453,12 @@ def update(book: Book, draft_id: str, quelle: str, konto: str = "", mwst: str | 
     for key, val in fields.items():
         if key not in FIELDS:
             raise BookError(f"Unbekanntes Feld {key}")
-        if val not in (None, ""):
+        if val in (None, ""):
+            continue
+        current = meta["felder"].get(key) or {}
+        same = (qr.normalize_iban(str(val)) == qr.normalize_iban(current.get("wert", "")) if key == "iban"
+                else str(val).strip() == str(current.get("wert", "")).strip())
+        if not same:                       # confirming a value keeps where it was read from
             _set(meta["felder"], key, val, quelle, overwrite=True)
     if begruendung and not konto:
         meta.setdefault("hinweise", []).append(f"{quelle}: {begruendung}")
@@ -473,6 +505,7 @@ def form_values(meta: dict) -> dict:
     out = {k: value(meta, k) for k in FIELDS}
     out["konto"] = (meta.get("konto") or {}).get("wert", "")
     out["mwst"] = (meta.get("mwst") or {}).get("wert", "")
+    out["positionen"] = (meta.get("positionen") or {}).get("zeilen") or []
     return out
 
 
@@ -493,8 +526,11 @@ def agent_prompt(meta: dict, book: Book) -> str:
             + (f"Hinweise: {'; '.join(meta.get('hinweise') or [])}.\n" if meta.get("hinweise") else "")
             + "Vorgehen: bill_draft() zeigt Entwurf und erkannten Text; lies bei Bedarf die Datei. Wähle mit accounts() "
             "das passende Aufwandkonto (bei Anschaffungen ein Aktivkonto) und, falls die Rechnung MWST ausweist und das "
-            "Buch effektiv abrechnet, den Vorsteuer-Code. Trage alles mit complete_bill_draft ein: konto, begruendung "
-            "(ein Satz, warum), und fehlende oder falsch erkannte Felder (betrag, datum, faellig, rechnungsnr, name, iban). "
+            "Buch effektiv abrechnet, den Vorsteuer-Code. Gehören Positionen der Rechnung auf verschiedene Konten "
+            "(z.B. Material und eine Anschaffung), teile sie mit `aufteilung` auf (Beträge brutto, Summe = Rechnung). "
+            "Lautet die Rechnung nicht auf CHF, setze `waehrung` (EUR, USD …) — umgerechnet wird zum BAZG-Kurs. "
+            "Trage alles mit complete_bill_draft ein: konto, begruendung (ein Satz, warum), und fehlende oder falsch "
+            "erkannte Felder (betrag, datum, faellig, rechnungsnr, name, iban). "
             "Erfasse die Rechnung NICHT selbst und buche nichts — ein Mensch prüft den Entwurf.")
 
 

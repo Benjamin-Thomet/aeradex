@@ -237,3 +237,40 @@ def test_iban_of_another_supplier_is_a_conflict(book):
 def test_sender_address_is_read():
     f = erfassung.parse_text("\n".join(INVOICE), "Test GmbH")
     assert (f["strasse"], f["nr"], f["plz"], f["ort"]) == ("Bahnhofstrasse", "5", "3000", "Bern")
+
+
+def test_foreign_currency_is_detected():
+    f = erfassung.parse_text("Druckhaus Berlin GmbH\nRechnung Nr. B-17\nDatum 02.03.2026\nGesamtbetrag EUR 1.190,00")
+    assert f["waehrung"] == "EUR" and f["betrag"] == "1190.00"
+    assert erfassung.parse_text("Total € 59,90")["waehrung"] == "EUR"
+
+
+def test_agent_splits_a_draft(book, monkeypatch):
+    from batzen import tools
+    text_pdf(book.root / "inbox" / "s.pdf")
+    d = api.bill_draft_create(book, "inbox/s.pdf")["entwurf"]
+    monkeypatch.setenv("BATZEN_BUCH", str(book.root))
+    res = tools.complete_bill_draft(d["id"], "6600", "Flyer Werbung, Rest Büromaterial",
+                                    aufteilung=[{"konto": "6600", "betrag": "400.00"},
+                                                {"konto": "6500", "betrag": "86.45", "text": "Papier"}])
+    assert res["ok"], res
+    meta = erfassung.draft(Book(book.root), d["id"])
+    v = erfassung.form_values(meta)
+    assert [p["konto"] for p in v["positionen"]] == ["6600", "6500"] and meta["positionen"]["quelle"] == "Agent"
+    bad = tools.complete_bill_draft(d["id"], "6600", "x", aufteilung=[{"konto": "6600", "betrag": "1.00"}])
+    assert bad["ok"]                                    # accepted as a draft, but flagged
+    assert any("Positionen ergeben 1.00" in h for h in erfassung.draft(Book(book.root), d["id"])["hinweise"])
+
+
+def test_foreign_iban_address_and_confirmed_fields(book, monkeypatch):
+    text = ("Druckhaus Berlin GmbH\nUnter den Linden 12\n10117 Berlin\nRechnung Nr. DB-1\nDatum 01.10.2026\n"
+            "Gesamtbetrag EUR 1.190,00\nIBAN DE89 3704 0044 0532 0130 00  BIC COBADEFFXXX")
+    f = erfassung.parse_text(text)
+    assert f["iban"] == "DE89370400440532013000" and f["land"] == "DE"
+    assert (f["plz"], f["ort"]) == ("10117", "Berlin")
+    from batzen.files import write_yaml
+    (book.root / "inbox" / "x.pdf").write_bytes(b"%PDF-1.4")
+    write_yaml(erfassung.folder(book) / "ENT-0001.yaml", {"id": "ENT-0001", "datei": "inbox/x.pdf", "status": "unsicher",
+               "felder": {"waehrung": {"wert": "EUR", "quelle": "Text"}}})
+    api.bill_draft_update(Book(book.root), "ENT-0001", "Agent", "6600", waehrung="EUR")
+    assert erfassung.draft(Book(book.root), "ENT-0001")["felder"]["waehrung"]["quelle"] == "Text"

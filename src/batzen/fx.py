@@ -106,6 +106,41 @@ def preview(book: Book, stichtag, fetch=None) -> list[dict]:
     return out
 
 
+def preview_bills(book: Book, stichtag, fetch=None) -> list[dict]:
+    """Open foreign-currency supplier bills at `stichtag`: open amount × BAZG rate against
+    their CHF book value. Positive difference = the debt grew (Kursverlust)."""
+    from . import kreditoren as kred
+    when = parse_date(stichtag, "stichtag")
+    paid = kred.payments(book)
+    out = []
+    for nr, meta in sorted(kred.bills(book).items()):
+        if not kred.is_foreign(meta) or meta.get("status") == "storniert" or parse_date(meta["datum"]) > when:
+            continue
+        rows = [r for r in paid.get(nr, []) if r.datum <= when]
+        open_fw = Decimal(str(meta["betrag"])) - sum((r.fw or Decimal(0) for r in rows), Decimal(0))
+        if open_fw <= 0:
+            continue
+        cur = kred.currency(meta)
+        kurs = rate(book, cur, when, fetch)
+        value = kred.book_value(book, meta, when, paid_rows=rows)
+        target = (open_fw * kurs).quantize(CENT)
+        out.append({"nummer": nr, "name": meta.get("name"), "waehrung": cur, "fw": open_fw, "kurs": kurs,
+                    "chf_neu": target, "chf_buch": value, "differenz": target - value})
+    return out
+
+
+def bill_revaluations(book: Book) -> dict[str, list[tuple[date, Decimal]]]:
+    """Per supplier bill, the revaluations booked at each Stichtag (CHF, + = debt grew)."""
+    out: dict[str, list] = {}
+    folder = book.root / "bewertung"
+    for p in sorted(folder.glob("*.yaml")) if folder.exists() else []:
+        saved = read_yaml(p) or {}
+        when = parse_date(saved.get("stichtag"))
+        for line in saved.get("kreditoren") or []:
+            out.setdefault(str(line["nummer"]), []).append((when, Decimal(str(line["differenz"])).quantize(CENT)))
+    return out
+
+
 def path(book: Book, when: date) -> Path:
     return book.root / "bewertung" / f"{when.isoformat()}.yaml"
 
@@ -126,6 +161,20 @@ def revaluation_rows(book: Book, saved: dict) -> list[Row]:
         else:
             rows.append(Row(when, f"FX-{when.isoformat()}", text, loss, nr, -diff, f"bewertung:{when.isoformat()}",
                             waehrung=cur, fw=Decimal("0.00"), kurs=kurs))
+    kreditoren = book.settings.konto("kreditoren")
+    for line in saved.get("kreditoren") or []:
+        diff = Decimal(str(line["differenz"])).quantize(CENT)
+        if not diff:
+            continue
+        cur, kurs = str(line["waehrung"]), Decimal(str(line["kurs"]))
+        text = f"Bewertung Kreditor {line['nummer']} {cur} per {when:%d.%m.%Y}"
+        quelle = f"bewertung:{when.isoformat()}"
+        if diff > 0:     # the debt grew in CHF
+            rows.append(Row(when, f"FX-{when.isoformat()}", text, loss, kreditoren, diff, quelle,
+                            waehrung=cur, fw=Decimal("0.00"), kurs=kurs))
+        else:
+            rows.append(Row(when, f"FX-{when.isoformat()}", text, kreditoren, gain, -diff, quelle,
+                            waehrung=cur, fw=Decimal("0.00"), kurs=kurs))
     return rows
 
 
@@ -137,12 +186,22 @@ def book_revaluation(book: Book, stichtag, fetch=None) -> tuple[dict, list[Path]
         raise BookError(f"Fremdwährungen per {when} sind bereits bewertet")
     ensure_open(book, when)
     lines = preview(book, when, fetch)
-    if not lines:
-        raise BookError("Keine Fremdwährungskonten im Kontenplan (waehrung: EUR …)")
-    added = _ensure_accounts(book) if any(l["differenz"] for l in lines) else []
+    bills = preview_bills(book, when, fetch)
+    if not lines and not bills:
+        raise BookError("Weder Fremdwährungskonten (waehrung: EUR …) noch offene Fremdwährungs-Kreditoren")
+    from . import kreditoren as kred
+    later = [nr for nr, rows in kred.payments(book).items() for r in rows if r.datum > when and r.fw]
+    if later:
+        raise BookError(f"Nach dem {when} sind schon Fremdwährungs-Kreditoren bezahlt ({', '.join(sorted(set(later)))}) — "
+                        "die Bewertung muss vor diesen Zahlungen gebucht werden")
+    added = _ensure_accounts(book) if any(l["differenz"] for l in lines + bills) else []
     saved = {"stichtag": when.isoformat(), "quelle": "BAZG Tageskurse",
              "konten": [{"konto": l["konto"], "waehrung": l["waehrung"], "fw": l["fw"], "kurs": l["kurs"],
                          "chf_buch": l["chf_buch"], "chf_neu": l["chf_neu"], "differenz": l["differenz"]} for l in lines]}
+    if bills:
+        saved["kreditoren"] = [{"nummer": b["nummer"], "waehrung": b["waehrung"], "fw": b["fw"], "kurs": b["kurs"],
+                                "chf_buch": b["chf_buch"], "chf_neu": b["chf_neu"], "differenz": b["differenz"]}
+                               for b in bills]
     rows = revaluation_rows(book, saved)
     touched = post(book, rows) if rows else []
     write_yaml(path(book, when), saved)

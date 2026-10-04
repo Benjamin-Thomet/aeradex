@@ -242,12 +242,18 @@ def build_parser() -> argparse.ArgumentParser:
     c = ks.add_parser("add", help="Rechnung erfassen und buchen")
     c.add_argument("--lieferant", required=True)
     c.add_argument("--betrag", required=True, help="brutto")
-    for f in ("datum", "faellig", "konto", "mwst", "rechnungsnr", "referenz", "referenz-typ", "mitteilung", "iban", "datei"):
+    for f in ("datum", "faellig", "konto", "mwst", "rechnungsnr", "referenz", "referenz-typ", "mitteilung", "iban", "datei",
+              "waehrung", "kurs"):
         c.add_argument(f"--{f}", dest=f.replace("-", "_"), default=None)
+    c.add_argument("--position", action="append", default=[], metavar="KONTO:BETRAG[:MWST[:TEXT]]",
+                   help="Aufteilung auf mehrere Konten (mehrfach), Summe = --betrag")
     c = ks.add_parser("pay", help="Zahlung buchen")
     c.add_argument("nr")
     c.add_argument("--datum")
-    c.add_argument("--betrag")
+    c.add_argument("--betrag", help="in der Währung des Zahlkontos (bei Fremdwährung vom CHF-Konto: belastete CHF)")
+    c.add_argument("--konto", help="Zahlkonto (Standard: Bank bzw. Konto der Rechnungswährung)")
+    c.add_argument("--kurs", help="Kurs am Zahltag (Standard: BAZG)")
+    c.add_argument("--fw", help="nur diesen Betrag in Rechnungswährung begleichen (Teilzahlung)")
     c = ks.add_parser("void")
     c.add_argument("nr")
     c.add_argument("--grund", default="")
@@ -505,10 +511,20 @@ def dispatch(a, book_path: Path | None):
             return api.bill_list(b, a.status)
         if a.sub == "add":
             fields = {k: getattr(a, k) for k in ("datum", "faellig", "konto", "mwst", "rechnungsnr", "referenz",
-                                                 "referenz_typ", "mitteilung", "iban", "datei") if getattr(a, k) is not None}
+                                                 "referenz_typ", "mitteilung", "iban", "datei", "waehrung", "kurs")
+                      if getattr(a, k) is not None}
+            if a.position:
+                lines = []
+                for spec in a.position:
+                    parts = spec.split(":", 3)
+                    if len(parts) < 2:
+                        raise BookError(f"--position {spec}: erwartet KONTO:BETRAG[:MWST[:TEXT]]")
+                    lines.append({"konto": parts[0], "betrag": parts[1], "mwst": parts[2] if len(parts) > 2 else "",
+                                  "text": parts[3] if len(parts) > 3 else ""})
+                fields["positionen"] = lines
             return api.bill_add(b, a.lieferant, a.betrag, **fields)
         if a.sub == "pay":
-            return api.bill_pay(b, a.nr, a.datum, a.betrag)
+            return api.bill_pay(b, a.nr, a.datum, a.betrag, a.konto, a.kurs, a.fw)
         if a.sub == "void":
             return api.bill_void(b, a.nr, a.grund)
         if a.sub == "offen":

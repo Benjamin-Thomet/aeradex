@@ -15,23 +15,38 @@
       <tr><td class="muted">IBAN</td><td class="num">{{ meta.iban }}</td></tr>
       <tr><td class="muted">Referenz</td><td class="num">{{ meta.referenz_typ }} {{ meta.referenz }}</td></tr>
       {% if meta.mitteilung %}<tr><td class="muted">Mitteilung</td><td>{{ meta.mitteilung }}</td></tr>{% endif %}
-      <tr><td class="muted">Konto</td><td class="acc">{{ meta.konto }} {{ book.accounts[meta.konto].name if meta.konto in book.accounts }}{% if meta.mwst %} <span class="pill muted">{{ meta.mwst }}</span>{% endif %}</td></tr>
+      {% if meta.positionen %}{% for p in meta.positionen %}
+      <tr><td class="muted">{{ 'Konten' if loop.first }}</td><td class="acc">{{ p.konto }} {{ book.accounts[p.konto].name if p.konto in book.accounts }}{% if p.text %} · <span class="small">{{ p.text }}</span>{% endif %}{% if p.mwst %} <span class="pill muted">{{ p.mwst }}</span>{% endif %} <span class="num" style="float:right">{{ p.betrag|chf }}</span></td></tr>
+      {% endfor %}{% else %}
+      <tr><td class="muted">Konto</td><td class="acc">{{ meta.konto }} {{ book.accounts[meta.konto].name if meta.konto in book.accounts }}{% if meta.mwst %} <span class="pill muted">{{ meta.mwst }}</span>{% endif %}</td></tr>{% endif %}
       {% if meta.zahlungslauf %}<tr><td class="muted">Zahlungslauf</td><td><a class="link" href="/kreditoren/zahlungen">{{ meta.zahlungslauf }}</a></td></tr>{% endif %}
-      <tr class="total"><td>Betrag CHF</td><td class="right num">{{ meta.betrag|chf }}</td></tr>
+      {% if st.waehrung != 'CHF' %}<tr><td class="muted">Kurs (BAZG {{ meta.datum|datum }})</td><td class="num">{{ meta.kurs }} → gebucht CHF {{ booked|chf }}</td></tr>{% endif %}
+      <tr class="total"><td>Betrag {{ st.waehrung }}</td><td class="right num">{{ meta.betrag|chf }}</td></tr>
     </tbody></table></div>
   </div>
   <div style="display:flex;flex-direction:column;gap:18px">
     <div class="panel"><header><h2>Stand</h2></header>
       <div class="tablewrap"><table class="ledger"><tbody>
         <tr><td>Betrag</td><td class="right num">{{ st.total|chf }}</td></tr><tr><td>Bezahlt</td><td class="right num">{{ st.bezahlt|chf }}</td></tr>
-        <tr class="total"><td>Offen</td><td class="right num">{{ st.offen|chf }}</td></tr></tbody></table></div>
-      {% if paid %}<div class="body">{% for r in paid %}<span class="small"><span class="beleg">{{ r.beleg }}</span> {{ r.datum|datum }} · {{ r.betrag|chf }}</span>{% endfor %}</div>{% endif %}
+        <tr class="total"><td>Offen {{ st.waehrung }}</td><td class="right num">{{ st.offen|chf }}</td></tr>
+        {% if st.waehrung != 'CHF' %}<tr><td class="muted">Buchwert offen CHF</td><td class="right num">{{ st.offen_chf|chf }}</td></tr>{% endif %}</tbody></table></div>
+      {% if paid %}<div class="body">{% for r in paid %}<span class="small"><span class="beleg">{{ r.beleg }}</span> {{ r.datum|datum }} · {% if r.waehrung %}{{ r.waehrung }} {{ r.fw|chf }} (Buchwert CHF {{ r.betrag|chf }}){% else %}{{ r.betrag|chf }}{% endif %}</span>{% endfor %}</div>{% endif %}
     </div>
     {% if st.status in ('offen', 'angewiesen') %}
     <div class="panel"><header><h2>Zahlung buchen</h2><span class="hint">wenn die Bank ausgeführt hat</span></header>
       <form class="body" hx-post="/kreditoren/rechnung/{{ meta.nummer }}/zahlung" hx-target="find .errors">
+        {% if st.waehrung == 'CHF' %}
         <div class="form"><div class="field"><label>Betrag</label><input class="input num" name="betrag" value="{{ st.offen }}"></div><div class="field"><label>Valuta</label><input class="input" type="date" name="datum" value="{{ today }}"></div></div>
         {{ errors() }}<div class="formfoot"><span class="small muted">{{ meta.kreditorenkonto }} an {{ settings.konto('bank') }}</span><button class="btn primary" type="submit">Zahlung buchen</button></div>
+        {% else %}
+        <div class="form">
+          <div class="field"><label>Valuta</label><input class="input" type="date" name="datum" value="{{ today }}"></div>
+          <div class="field"><label>Bezahlt vom Konto</label><select class="input" name="konto" style="width:100%">{% for a in pay_accounts %}<option value="{{ a.nr }}" {{ 'selected' if a.nr == pay_default }}>{{ a.nr }} {{ a.name }}{{ ' (' ~ a.waehrung ~ ')' if a.is_foreign }}</option>{% endfor %}</select></div>
+          <div class="field"><label>{{ st.waehrung }} beglichen</label><input class="input num" name="fw" value="{{ st.offen }}"></div>
+          <div class="field"><label>Belastet (in Kontowährung, leer = BAZG-Kurs)</label><input class="input num" name="betrag" placeholder="z.B. CHF laut Kontoauszug"></div>
+        </div>
+        {{ errors() }}<div class="formfoot"><span class="small muted">Buchwert offen CHF {{ st.offen_chf|chf }}; die Differenz zur Zahlung geht auf Kursgewinn/-verlust.</span><button class="btn primary" type="submit">Zahlung buchen</button></div>
+        {% endif %}
       </form>
       {% if not paid %}
       <details class="inline"><summary>Stornieren</summary>
