@@ -31,8 +31,8 @@ from .files import (FormatError, MdTable, fmt_amount, parse_amount, parse_date,
 
 ZERO = Decimal("0")
 
-JOURNAL_COLUMNS = ["Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "MWST", "Quelle"]
-PROPOSAL_COLUMNS = ["ID", "Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "MWST", "Begründung", "Datei", "Bank"]
+JOURNAL_COLUMNS = ["Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "FW", "Kurs", "MWST", "Quelle"]
+PROPOSAL_COLUMNS = ["ID", "Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "MWST", "Begründung", "Datei", "Bank", "FW", "Kurs"]
 
 KLASSEN = ("aktiv", "passiv", "aufwand", "ertrag")
 
@@ -50,6 +50,8 @@ DEFAULT_SYSTEM_ACCOUNTS = {
     "gutschrift": "3400",
     "bank": "1020",
     "kreditoren": "2000",
+    "kursgewinn": "6952",
+    "kursverlust": "6942",
 }
 
 
@@ -67,6 +69,12 @@ class Account:
     vorjahr: Decimal = ZERO        # signed prior-year figure for the first year
     gruppe_negativ: str = ""       # presentation-only reclassification when the sign flips
     aktiv_: bool = True
+    waehrung: str = "CHF"          # account currency; foreign-currency rows carry FW and Kurs
+    eroeffnung_fw: Decimal = ZERO  # signed opening balance in the account currency (first year)
+
+    @property
+    def is_foreign(self) -> bool:
+        return self.waehrung != "CHF"
 
     @property
     def is_balance_sheet(self) -> bool:
@@ -91,10 +99,15 @@ class Row:
     file: str = ""        # relative path of the month file it came from
     line: int = 0         # 1-based row index within that file's table
     mwst: str = ""        # MWST code (see mwst.py), empty = no VAT relevance
+    waehrung: str = ""    # foreign currency of the row ("EUR"), empty = CHF only
+    fw: Decimal | None = None    # amount in that currency (positive)
+    kurs: Decimal | None = None  # CHF per 1 unit used for Betrag
 
     def as_cells(self) -> dict[str, str]:
         return {"Datum": self.datum.isoformat(), "Beleg": self.beleg, "Text": self.text,
                 "Soll": self.soll, "Haben": self.haben, "Betrag": fmt_amount(self.betrag),
+                "FW": f"{self.waehrung} {self.fw:.2f}" if self.waehrung and self.fw is not None else "",
+                "Kurs": format(self.kurs.normalize(), "f") if self.kurs is not None else "",
                 "MWST": self.mwst, "Quelle": self.quelle}
 
     @property
@@ -287,7 +300,20 @@ def _row_from_cells(cells: dict, rel: str, line: int) -> Row:
         quelle=cells.get("Quelle", "").strip(),
         file=rel, line=line,
         mwst=cells.get("MWST", "").strip().upper(),
+        **_fw_from_cells(cells, where),
     )
+
+
+def _fw_from_cells(cells: dict, where: str) -> dict:
+    raw = (cells.get("FW") or "").strip()
+    if not raw:
+        return {}
+    parts = raw.split()
+    if len(parts) != 2 or len(parts[0]) != 3 or not parts[0].isalpha():
+        raise FormatError(f"{where}: FW '{raw}' — erwartet z.B. 'EUR 100.00'")
+    kurs_raw = (cells.get("Kurs") or "").strip()
+    return {"waehrung": parts[0].upper(), "fw": parse_amount(parts[1], where),
+            "kurs": parse_amount(kurs_raw, where) if kurs_raw else None}
 
 
 def load_journal_file(path: Path, root: Path) -> list[Row]:
@@ -326,6 +352,8 @@ def load_accounts(path: Path) -> dict[str, Account]:
             vorjahr=parse_amount(item.get("vorjahr", 0), where),
             gruppe_negativ=str(item.get("gruppe_negativ") or ""),
             aktiv_=bool(item.get("aktiv", True)),
+            waehrung=str(item.get("waehrung") or "CHF").upper(),
+            eroeffnung_fw=parse_amount(item.get("eroeffnung_fw", 0), where),
         )
     return accounts
 
@@ -346,6 +374,10 @@ def save_accounts(path: Path, accounts: dict[str, Account]) -> None:
             item["gruppe_negativ"] = a.gruppe_negativ
         if not a.aktiv_:
             item["aktiv"] = False
+        if a.waehrung != "CHF":
+            item["waehrung"] = a.waehrung
+        if a.eroeffnung_fw:
+            item["eroeffnung_fw"] = a.eroeffnung_fw
         out.append(item)
     write_yaml(path, {"konten": out})
 

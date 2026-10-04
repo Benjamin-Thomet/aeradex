@@ -343,3 +343,19 @@ def test_login_throttle_and_password_change_ends_sessions(server):
     assert c.get("/", follow_redirects=False).status_code == 200
     c.app_ui.users.set_password("anna", "ganz-neues-passwort")
     assert c.get("/", follow_redirects=False).status_code == 303                       # old session ended
+
+
+def test_foreign_currency_screens(client, root, monkeypatch):
+    from batzen import fx
+    page = (b'<wechselkurse><datum>x</datum><devise code="eur"><waehrung>1 EUR</waehrung>'
+            b'<kurs>0.95</kurs></devise></wechselkurse>')
+    monkeypatch.setattr(fx, "_get", lambda url: page)
+    ok(post(client, "/konten/neu", {"nr": "1021", "name": "Bank EUR", "klasse": "aktiv", "waehrung": "eur"}))
+    assert "EUR" in client.get("/kurs?waehrung=EUR&datum=2026-03-02").text
+    ok(post(client, "/journal/buchen", {"modus": "einfach", "datum": "2026-03-02", "text": "Verkauf DE",
+                                         "soll": "1021", "haben": "3200", "betrag": "100", "waehrung": "EUR"}))
+    assert "EUR 100.00" in client.get("/journal?jahr=2026&monat=3").text
+    blatt = client.get("/konten/1021?jahr=2026").text
+    assert "Saldo EUR" in blatt and "95.00" in blatt
+    assert "Fremdwährungen per" in client.get("/abschluss?jahr=2026").text
+    assert errors(root) == []

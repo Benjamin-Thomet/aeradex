@@ -100,6 +100,29 @@ class BalanceEngine:
         return self._result[year]
 
 
+def fw_signed(r: Row, nr: str) -> Decimal:
+    """The row's effect on account `nr` in that account's currency."""
+    if r.fw is None:
+        return ZERO
+    if r.soll == nr:
+        return r.fw
+    if r.haben == nr:
+        return -r.fw
+    return ZERO
+
+
+def fw_balance(book: Book, nr: str, when: date) -> Decimal:
+    """Balance of a foreign-currency account in its own currency at the end of `when`
+    (opening of the first year plus every movement up to that day — balance-sheet
+    accounts carry over, so no per-year chaining is needed)."""
+    acct = book.account(nr)
+    total = acct.eroeffnung_fw
+    for r in book.rows:
+        if r.datum <= when and r.waehrung == acct.waehrung:
+            total += fw_signed(r, nr)
+    return total
+
+
 def month_end(year: int, month: int) -> date:
     return date(year, 12, 31) if month == 12 else date(year, month + 1, 1) - timedelta(days=1)
 
@@ -157,6 +180,8 @@ def account_ledger(book: Book, nr: str, year: int, engine: BalanceEngine | None 
     acct = book.account(nr)
     running = opening = engine.opening(nr, year)
     total_soll = total_haben = ZERO
+    opening_fw = fw_balance(book, nr, date(year, 1, 1) - timedelta(days=1)) if acct.is_foreign else ZERO
+    running_fw = opening_fw
     out = []
     rows = engine.year_rows(year)
     by_beleg: dict[str, list[Row]] = defaultdict(list)
@@ -174,7 +199,13 @@ def account_ledger(book: Book, nr: str, year: int, engine: BalanceEngine | None 
         running += soll - haben
         total_soll += soll
         total_haben += haben
+        fw = fw_signed(r, nr) if acct.is_foreign and r.waehrung == acct.waehrung else None
+        if fw is not None:
+            running_fw += fw
         out.append({"datum": r.datum, "beleg": r.beleg, "text": r.text, "gegenkonto": counter,
-                    "soll": soll, "haben": haben, "saldo": running, "quelle": r.quelle})
+                    "soll": soll, "haben": haben, "saldo": running, "quelle": r.quelle,
+                    "fw": fw, "kurs": r.kurs if fw is not None else None, "saldo_fw": running_fw if acct.is_foreign else None})
     return {"konto": nr, "name": acct.name, "jahr": year, "eroeffnung": opening,
-            "zeilen": out, "total_soll": total_soll, "total_haben": total_haben, "saldo": running}
+            "zeilen": out, "total_soll": total_soll, "total_haben": total_haben, "saldo": running,
+            "waehrung": acct.waehrung, "eroeffnung_fw": opening_fw if acct.is_foreign else None,
+            "saldo_fw": running_fw if acct.is_foreign else None}

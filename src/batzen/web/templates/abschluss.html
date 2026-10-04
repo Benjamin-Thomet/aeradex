@@ -9,7 +9,7 @@
     {% for r in rows %}{% set gid = title[:3] ~ loop.index %}
       <tr class="{{ {'zwischentotal': 'zw', 'total': 'total'}.get(r.stil, 'row') }} {{ 'group' if r.konten }}" data-group="{{ gid }}">
         <td>{% if r.konten %}<span class="caret">▸</span> {% endif %}{{ r.label }}</td><td class="right num">{{ r.aktuell|chf }}</td><td class="right num">{{ r.vorjahr|chf }}</td></tr>
-      {% for k in r.konten %}<tr class="member sub" data-of="{{ gid }}" hidden><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ st.jahr }}">{{ k.konto }}</a> {{ k.name }}</td><td class="right num">{{ k.aktuell|chf }}</td><td class="right num">{{ k.vorjahr|chf }}</td></tr>{% endfor %}
+      {% for k in r.konten %}<tr class="member sub" data-of="{{ gid }}" hidden><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ st.jahr }}">{{ k.konto }}</a> {{ k.name }}{% if k.fw %} <span class="small muted">({{ k.fw }})</span>{% endif %}</td><td class="right num">{{ k.aktuell|chf }}</td><td class="right num">{{ k.vorjahr|chf }}</td></tr>{% endfor %}
     {% endfor %}
     </tbody>
   </table></div>
@@ -31,6 +31,30 @@
   <div class="figure"><span class="label">{{ "Bilanzverlust" if g.bilanzgewinn|neg else "Bilanzgewinn" }}</span><span class="value">{{ g.bilanzgewinn|chf }}</span><span class="meta">Vortrag {{ g.gewinnvortrag|chf }} + Ergebnis</span></div>
   <div class="figure"><span class="label">Gesperrt bis</span><span class="value" style="font-size:18px">{{ settings.sperre_bis|datum or '—' }}</span></div>
 </div>
+{% if fx %}
+<div class="panel">
+  <header><h2>Fremdwährungen per {{ fx.stichtag|datum }}</h2>
+    <form method="get" class="actions"><input type="hidden" name="jahr" value="{{ year }}">{% if fx.bewertet %}<span class="pill ok">bewertet</span>{% endif %}
+      <label class="small muted" for="fx-st">Stichtag</label><input class="input num" id="fx-st" type="date" name="stichtag" value="{{ fx.stichtag.isoformat() }}" min="{{ year }}-01-01" max="{{ year }}-12-31" onchange="this.form.submit()"></form></header>
+  <div class="body"><p class="small muted">Saldo in der Fremdwährung × BAZG-Kurs des Stichtags (die Kurse der ESTV) gegen den CHF-Buchwert.
+    {% if fx.erledigt %}Bereits bewertet: {% for d in fx.erledigt %}<a class="link" href="/abschluss?jahr={{ year }}&stichtag={{ d }}">{{ d|datum }}</a>{{ ", " if not loop.last }}{% endfor %}.{% endif %}</p></div>
+  {% if fx.fehler %}<div class="body"><p class="small muted">{{ fx.fehler }}</p></div>{% endif %}
+  {% if fx.konten %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Konto</th><th class="right">Saldo FW</th><th class="right">Kurs</th><th class="right">CHF zum Kurs</th><th class="right">CHF gebucht</th><th class="right">Kursdifferenz</th></tr></thead>
+    <tbody>{% for k in fx.konten %}
+      <tr class="row"><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ year }}">{{ k.konto }}</a> {{ k.name }}</td><td class="right num">{{ k.waehrung }} {{ k.fw|chf }}</td><td class="right num">{{ k.kurs }}</td><td class="right num">{{ k.chf_neu|chf }}</td><td class="right num">{{ k.chf_buch|chf }}</td><td class="right num">{{ k.differenz|chf(false, true) }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if not fx.bewertet and fx.konten and not st.abgeschlossen %}
+  <form class="body" hx-post="/abschluss/bewertung" hx-target="find .errors" hx-confirm="Kursdifferenzen per {{ fx.stichtag|datum }} buchen?">
+    <input type="hidden" name="jahr" value="{{ year }}"><input type="hidden" name="stichtag" value="{{ fx.stichtag.isoformat() }}">
+    {{ errors() }}<div class="formfoot"><span class="small muted">Gewinne auf {{ settings.konto('kursgewinn') }}, Verluste auf {{ settings.konto('kursverlust') }}; die Bilanz zeigt danach die Fremdwährungskonten zum Stichtagskurs.</span><button class="btn primary" type="submit">Bewertung buchen</button></div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 <div class="grid2 even">{{ stmt("Aktiven", st.aktiven) }}{{ stmt("Passiven", st.passiven) }}</div>
 {{ stmt("Erfolgsrechnung", st.erfolg) }}
 

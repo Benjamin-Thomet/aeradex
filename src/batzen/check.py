@@ -36,7 +36,7 @@ class Issue:
 
 
 def _key(r: Row) -> tuple:
-    return (r.datum, r.beleg, r.soll, r.haben, r.betrag, r.quelle, r.mwst)
+    return (r.datum, r.beleg, r.soll, r.haben, r.betrag, r.quelle, r.mwst, r.waehrung, r.fw, r.kurs)
 
 
 def run(book: Book) -> list[Issue]:
@@ -105,6 +105,27 @@ def run(book: Book) -> list[Issue]:
         haben = sum((r.betrag for r in group if r.haben), ZERO)
         if soll != haben:
             add("fehler", group[0].where, f"Beleg {beleg} nicht ausgeglichen: Soll {soll} ≠ Haben {haben}")
+
+    # ---- foreign currencies ----
+    for a in accounts.values():
+        if a.is_foreign and not a.is_balance_sheet:
+            add("fehler", "kontenplan.yaml", f"Konto {a.nr}: Fremdwährung nur für Bilanzkonten")
+        if a.eroeffnung_fw and not a.is_foreign:
+            add("fehler", "kontenplan.yaml", f"Konto {a.nr}: eroeffnung_fw ohne waehrung")
+    for r in rows:
+        foreign = [accounts[a] for a in (r.soll, r.haben) if a in accounts and accounts[a].is_foreign]
+        if len({a.waehrung for a in foreign}) > 1:
+            add("fehler", r.where, "Zeile verbindet zwei verschiedene Fremdwährungen — über CHF aufteilen")
+        elif foreign and r.waehrung != foreign[0].waehrung:
+            add("fehler", r.where, f"Konto {foreign[0].nr} führt {foreign[0].waehrung}: FW-Betrag und Kurs fehlen")
+        if r.waehrung:
+            if r.fw is None or r.fw < 0:
+                add("fehler", r.where, "FW-Betrag fehlt oder ist negativ")
+            elif r.kurs is None or r.kurs <= 0:
+                add("fehler", r.where, "Kurs fehlt")
+            elif r.fw and abs(r.betrag - (r.fw * r.kurs).quantize(Decimal("0.01"))) > Decimal("0.01"):
+                add("fehler", r.where, f"Betrag {r.betrag} passt nicht zu {r.waehrung} {r.fw} × {r.kurs}")
+    issues += check_revaluation(book, rows)
 
     # ---- MWST ----
     issues += check_mwst(book, rows, by_beleg)
@@ -175,7 +196,7 @@ def run(book: Book) -> list[Issue]:
         if quelle.startswith("lohn:") and quelle not in known:
             add("fehler", group[0].where, f"Quelle {quelle}: Lohnabrechnung existiert nicht")
         if quelle.partition(":")[0] not in ("rechnung", "zahlung", "gutschrift", "lohn", "abschluss", "mwst",
-                                             "kreditor", "kzahlung"):
+                                             "kreditor", "kzahlung", "bewertung"):
             add("warnung", group[0].where, f"unbekannte Quelle '{quelle}'")
 
     # ---- kreditoren ----
@@ -239,6 +260,35 @@ def run(book: Book) -> list[Issue]:
     if pending:
         add("hinweis", "inbox", f"{len(pending)} unverarbeitete Datei(en) in inbox/")
     return issues
+
+
+def check_revaluation(book: Book, rows: list[Row]) -> list[Issue]:
+    from . import fx
+    out = []
+    owned = defaultdict(list)
+    for r in rows:
+        if r.quelle.startswith("bewertung:"):
+            owned[r.quelle].append(r)
+    known = set()
+    folder = book.root / "bewertung"
+    for path in sorted(folder.glob("*.yaml")) if folder.exists() else []:
+        saved = read_yaml(path)
+        quelle = f"bewertung:{saved.get('stichtag')}"
+        known.add(quelle)
+        expected = fx.revaluation_rows(book, saved)
+        if Counter(map(_key, expected)) != Counter(map(_key, owned.get(quelle, []))):
+            out.append(Issue("fehler", book.rel(path), "Buchung der Fremdwährungsbewertung passt nicht zur gespeicherten Bewertung"))
+    for quelle, group in owned.items():
+        if quelle not in known:
+            out.append(Issue("fehler", group[0].where, f"Quelle {quelle}: Bewertung existiert nicht"))
+    foreign = [a for a in book.accounts.values() if a.is_foreign]
+    if foreign and rows:
+        last_year = max(r.datum.year for r in rows)
+        for year in range(book.settings.erstes_jahr, last_year):
+            if f"bewertung:{year}-12-31" not in known and any(r.datum.year == year for r in rows):
+                out.append(Issue("hinweis", "bewertung", f"Fremdwährungskonten per 31.12.{year} nicht bewertet "
+                                 f"(batzen fx bewerten {year}-12-31)"))
+    return out
 
 
 def check_mwst(book: Book, rows: list[Row], by_beleg: dict) -> list[Issue]:
@@ -310,7 +360,8 @@ def _month_hashes(book: Book, until: date) -> dict[str, str]:
         if r.datum <= until:
             groups[f"{r.datum.year}-{r.datum.month:02d}"].append(
                 "|".join([r.datum.isoformat(), r.beleg, r.text, r.soll, r.haben, f"{r.betrag:.2f}", r.quelle]
-                         + ([r.mwst] if r.mwst else [])))
+                         + ([r.mwst] if r.mwst else [])
+                         + ([r.waehrung, f"{r.fw:.2f}", str(r.kurs)] if r.waehrung else [])))
     return {m: hashlib.sha256("\n".join(lines).encode()).hexdigest()[:16] for m, lines in sorted(groups.items())}
 
 

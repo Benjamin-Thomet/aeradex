@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, accounts_datalist, acc, mwst_select %}
+{% from "_macros.html" import errors, currency_fields, accounts_datalist, acc, mwst_select %}
 {% block title %}Journal {{ year }}{% endblock %}
 {% block main %}
 {% set q_base = "/journal?jahr=" ~ year ~ ("&konto=" ~ konto if konto) ~ ("&quelle=" ~ quelle if quelle) ~ ("&q=" ~ q|urlq if q) %}
@@ -26,9 +26,13 @@
     <div class="form three" data-show="einfach">
       <div class="field"><label for="j-soll">Soll (wohin)</label><input class="input" id="j-soll" name="soll" list="konten" placeholder="Konto suchen …"></div>
       <div class="field"><label for="j-haben">Haben (woher)</label><input class="input" id="j-haben" name="haben" list="konten" placeholder="z.B. 1020 Bank"></div>
-      <div class="field"><label for="j-betrag">Betrag CHF{{ ' (brutto bei MWST-Code)' if vat.methode != 'keine' }}</label><input class="input num" id="j-betrag" name="betrag" inputmode="decimal" placeholder="0.00"></div>
+      <div class="field"><label for="j-betrag">Betrag{{ ' (brutto bei MWST-Code)' if vat.methode != 'keine' }}</label><input class="input num" id="j-betrag" name="betrag" inputmode="decimal" placeholder="0.00"></div>
       {{ mwst_select("mwst", vat, vat_codes, id="j-mwst") }}
     </div>
+    <details class="fxopt"><summary class="small muted">Fremdwährung (EUR, USD …)</summary>
+      <div class="form three">{{ currency_fields(currencies, "j-fx") }}</div>
+      <p class="small muted">Betrag(e) dann in der Fremdwährung; gebucht wird in CHF zum Kurs, der Fremdwährungsbetrag bleibt in der Zeile.</p>
+    </details>
     <div data-show="split" hidden>
       <div class="splitrow poshead"><span>Soll</span><span>Haben</span><span class="right">Betrag</span><span>Zeilentext (optional)</span>{% if vat.methode != 'keine' %}<span>MWST</span>{% endif %}<span></span></div>
       <div class="splitrows" id="splitrows">
@@ -74,13 +78,14 @@
           <td class="num">{{ g.datum|datum("%d.%m.") }}</td>
           <td><span class="beleg">{{ g.beleg }}</span></td>
           <td>{% if multi %}<span class="caret">▸</span> {% endif %}{{ g.text }}{% if multi %} <span class="small muted">· {{ g.rows|length }} Zeilen</span>{% endif %}
+            {% set fwr = g.rows|selectattr('waehrung')|selectattr('fw')|first %}{% if fwr %} <span class="pill muted" title="Kurs {{ fwr.kurs }} (BAZG)">{{ fwr.waehrung }} {{ fwr.fw|chf }}</span>{% endif %}
             {% for c in g.rows|map(attribute='mwst')|select|unique %} <span class="pill muted" title="{{ vat_codes[c].label if c in vat_codes }}">{{ c }}</span>{% endfor %}
             {% for r in g.receipts %} <a class="pill info" href="/datei/belege/{{ year }}/{{ r|urlq }}" target="_blank" title="{{ r }}">Beleg ↗</a>{% endfor %}
             {% if not g.receipts and g.kind == 'manuell' %} <span class="pill red" title="GeBüV: jede Buchung braucht einen Beleg">ohne Beleg</span>{% endif %}
           </td>
           {{ acc(g.soll, names) }}{{ acc(g.haben, names) }}
           <td class="right num">{{ g.total|chf }}</td>
-          <td class="src">{% if g.doc %}<a class="pill lock" href="{{ g.doc }}">🔒 {{ g.kind|capitalize }}</a>{% elif g.locked %}<span class="pill lock">🔒 gesperrt</span>{% else %}manuell{% endif %}</td>
+          <td class="src">{% if g.doc %}<a class="pill lock" href="{{ g.doc }}">🔒 {{ g.kind|capitalize }}</a>{% elif g.quelle %}<span class="pill lock">🔒 {{ g.kind|capitalize }}</span>{% elif g.locked %}<span class="pill lock">🔒 gesperrt</span>{% else %}manuell{% endif %}</td>
           <td class="right">
             {% if g.kind == 'manuell' and not g.locked %}
             <details class="drawer"><summary class="btn small ghost" title="Aktionen">⋯</summary>
@@ -102,7 +107,7 @@
         </tr>
         {% if multi %}{% set gi = loop.index %}{% for r in g.rows %}
         <tr class="sub" data-of="g{{ gi }}" hidden>
-          <td></td><td></td><td>{{ r.text.split(" · ")[-1] if " · " in r.text else r.text }}{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}</td>
+          <td></td><td></td><td>{{ r.text.split(" · ")[-1] if " · " in r.text else r.text }}{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}{% if r.waehrung %} <span class="pill muted" title="Kurs {{ r.kurs }}">{{ r.waehrung }} {{ r.fw|chf }}</span>{% endif %}</td>
           {{ acc(r.soll, names) }}{{ acc(r.haben, names) }}<td class="right num">{{ r.betrag|chf }}</td><td></td><td></td>
         </tr>
         {% endfor %}{% endif %}

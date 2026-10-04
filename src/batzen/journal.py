@@ -74,15 +74,58 @@ def validate_rows(book: Book, rows: list[Row]) -> None:
 
 def book_entry(book: Book, datum, soll: str, haben: str, betrag, text: str,
                beleg: str = "", quelle: str = "", attachment: Path | None = None,
-               mwst: str = "") -> tuple[Row, list[Path]]:
+               mwst: str = "", waehrung: str = "", kurs=None) -> tuple[Row, list[Path]]:
     """Post one simple booking (Soll an Haben). With a MWST code the gross amount
-    is split into net and tax (effective method). Returns the row and the files touched."""
+    is split into net and tax (effective method). With a foreign `waehrung`,
+    `betrag` is in that currency and is converted at `kurs` (default: the BAZG
+    daily rate of the booking date). Returns the row and the files touched."""
     from .mwst import split
     d = parse_date(datum, "datum")
     row = Row(datum=d, beleg=beleg or next_beleg(book, d.year), text=text.strip(),
               soll=str(soll or "").strip(), haben=str(haben or "").strip(),
               betrag=parse_amount(betrag, "betrag"), quelle=quelle)
-    return row, post(book, split(book, row, mwst), attachment)
+    rows = convert(book, split(book, row, mwst), waehrung, kurs)
+    if row not in rows:     # MWST split: report the gross as the booking
+        gross = max(rows, key=lambda r: r.betrag)
+        row.betrag, row.waehrung, row.fw, row.kurs = gross.betrag, gross.waehrung, gross.fw, gross.kurs
+    return row, post(book, rows, attachment)
+
+
+def convert(book: Book, rows: list[Row], waehrung: str = "", kurs=None) -> list[Row]:
+    """Rows whose amounts are in `waehrung` → CHF at `kurs` (default: BAZG rate of the
+    booking date). Every row keeps its foreign amount and the rate (journal columns FW,
+    Kurs). Without a currency, refuse rows that touch a foreign-currency account."""
+    waehrung = (waehrung or "").strip().upper()
+    touched = {book.accounts[a].waehrung for r in rows for a in (r.soll, r.haben)
+               if a in book.accounts and book.accounts[a].is_foreign}
+    if not waehrung or waehrung == "CHF":
+        if touched:
+            raise BookError(f"Konto führt {', '.join(sorted(touched))}: Währung und Betrag in dieser Währung angeben")
+        return rows
+    if touched - {waehrung}:
+        raise BookError(f"Konto führt {', '.join(sorted(touched - {waehrung}))}, Buchung ist in {waehrung}")
+    from . import fx
+    rate = parse_amount(kurs, "kurs") if kurs not in (None, "") else fx.rate(book, waehrung, rows[0].datum)
+    if rate <= 0:
+        raise BookError("Kurs muss positiv sein")
+    for r in rows:
+        r.waehrung, r.fw, r.kurs = waehrung, r.betrag, rate
+        r.betrag = (r.betrag * rate).quantize(Decimal("0.01"))
+    _rebalance(book, rows)
+    return rows
+
+
+def _rebalance(book: Book, rows: list[Row]) -> None:
+    """After converting a split booking, push the rounding Rappen onto the largest one-sided row."""
+    soll = sum((r.betrag for r in rows if r.soll), ZERO)
+    haben = sum((r.betrag for r in rows if r.haben), ZERO)
+    if soll != haben:
+        # never the row of a foreign-currency account: its CHF must stay FW × Kurs
+        one_sided = [r for r in rows if bool(r.soll) != bool(r.haben) and r.fw is not None]
+        one_sided = [r for r in one_sided if (r.soll or r.haben) not in book.accounts or not book.accounts[r.soll or r.haben].is_foreign] or one_sided
+        if one_sided:
+            target = max(one_sided, key=lambda r: r.betrag)
+            target.betrag += (haben - soll) if target.soll else (soll - haben)
 
 
 def post(book: Book, rows: list[Row], attachment: Path | None = None) -> list[Path]:
@@ -164,7 +207,8 @@ def list_proposals(book: Book) -> list[dict]:
 
 
 def propose(book: Book, datum, soll: str, haben: str, betrag, text: str, begruendung: str = "",
-            beleg: str = "", datei: str = "", mwst: str = "", bank: str = "") -> tuple[dict, Path]:
+            beleg: str = "", datei: str = "", mwst: str = "", bank: str = "",
+            waehrung: str = "", kurs=None) -> tuple[dict, Path]:
     """Record a booking an agent suggests. It is validated now (so a proposal is
     always postable) but only reaches the journal on approval."""
     d = parse_date(datum, "datum")
@@ -172,14 +216,22 @@ def propose(book: Book, datum, soll: str, haben: str, betrag, text: str, begruen
               soll=str(soll or "").strip(), haben=str(haben or "").strip(),
               betrag=parse_amount(betrag, "betrag"))
     from .mwst import split
-    validate_rows(book, split(book, Row(row.datum, row.beleg, row.text, row.soll, row.haben, row.betrag), mwst))
+    waehrung = (waehrung or "").strip().upper()
+    if waehrung == "CHF":
+        waehrung = ""
+    if waehrung and kurs in (None, ""):
+        from . import fx
+        kurs = fx.rate(book, waehrung, d)      # fixed now, so approval books what was reviewed
+    converted = convert(book, split(book, Row(row.datum, row.beleg, row.text, row.soll, row.haben, row.betrag), mwst),
+                        waehrung, kurs)
+    validate_rows(book, converted)
     if bank:
         from . import bank as bk
         tx = bk.find(book, bank)
         if tx["Status"] != "offen":
             raise BookError(f"Bankbewegung {bank} ist {tx['Status']}")
         amount = parse_amount(tx["Betrag"])
-        if abs(amount) != row.betrag or (tx["Konto"] not in (row.soll, row.haben)):
+        if abs(amount) != converted[0].betrag or (tx["Konto"] not in (row.soll, row.haben)):
             raise BookError(f"Vorschlag passt nicht zur Bankbewegung {bank} ({tx['Konto']}, {amount})")
     if datei:
         source = Path(datei) if Path(datei).is_absolute() else book.root / datei
@@ -192,7 +244,7 @@ def propose(book: Book, datum, soll: str, haben: str, betrag, text: str, begruen
     cells = {"ID": pid, "Datum": d.isoformat(), "Beleg": row.beleg, "Text": row.text,
              "Soll": row.soll, "Haben": row.haben, "Betrag": fmt_amount(row.betrag),
              "MWST": (mwst or "").strip().upper(), "Begründung": begruendung.strip(), "Datei": datei or "",
-             "Bank": bank or ""}
+             "Bank": bank or "", "FW": waehrung, "Kurs": str(parse_amount(kurs, "kurs")) if waehrung else ""}
     table.rows.append(cells)
     write_table(proposals_path(book), table)
     return cells, proposals_path(book)
@@ -219,7 +271,7 @@ def approve(book: Book, ids: list[str]) -> tuple[list[Row], list[Path]]:
         row = Row(datum=parse_date(p["Datum"]), beleg=p["Beleg"], text=p["Text"], soll=p["Soll"],
                   haben=p["Haben"], betrag=parse_amount(p["Betrag"]))
         firsts.append(row)
-        rows += split(book, row, p.get("MWST", ""))
+        rows += convert(book, split(book, row, p.get("MWST", "")), p.get("FW", ""), p.get("Kurs") or None)
     touched = post(book, rows)
     for p, row in zip(found, firsts):
         if p.get("Bank"):

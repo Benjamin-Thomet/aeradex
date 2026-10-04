@@ -11,7 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from .. import api, check as checks, invoices, journal, payroll, statements
@@ -22,7 +22,8 @@ from .app import UI, acct, act, done, fail
 
 ZERO = Decimal("0")
 QUELLEN = {"": "Alle Quellen", "manuell": "Manuell", "rechnung": "Rechnungen", "zahlung": "Zahlungen",
-           "gutschrift": "Gutschriften", "lohn": "Lohn", "abschluss": "Abschluss"}
+           "gutschrift": "Gutschriften", "lohn": "Lohn", "abschluss": "Abschluss",
+           "bewertung": "Fremdwährungsbewertung"}
 
 
 def current_year(book: Book) -> int:
@@ -38,7 +39,14 @@ def year_param(request: Request, book: Book) -> int:
 
 
 def account_options(book: Book) -> list[dict]:
-    return [{"nr": a.nr, "name": a.name} for a in book.accounts.values() if a.aktiv_]
+    return [{"nr": a.nr, "name": a.name + (f" ({a.waehrung})" if a.is_foreign else "")}
+            for a in book.accounts.values() if a.aktiv_]
+
+
+def currencies(book: Book) -> list[str]:
+    """Currencies offered in booking forms: those of the chart plus the usual ones."""
+    used = {a.waehrung for a in book.accounts.values() if a.is_foreign}
+    return sorted(used | {"EUR", "USD", "GBP"})
 
 
 def file_kind(path: Path) -> str:
@@ -192,7 +200,7 @@ async def pruefen(ui: UI, request: Request):
     return ui.render(request, "pruefen.html", book=book, files=files, current=current, qrbill=qrbill, bank_open=bank_open,
                      kind=file_kind(current) if current else None, text=text, proposals=proposals, linked=linked,
                      drafts=draft_rows(book), issues=issues, accounts=account_options(book),
-                     next_beleg=journal.next_beleg(book, date.today().year))
+                     currencies=currencies(book), next_beleg=journal.next_beleg(book, date.today().year))
 
 
 async def inbox_upload(ui: UI, request: Request):
@@ -210,7 +218,7 @@ async def pruefen_buchen(ui: UI, request: Request):
     datei = f.get("datei") or None
     return await act(request, api.post_entry, "/pruefen", ui.book(), f.get("datum"), acct(f.get("soll")),
                      acct(f.get("haben")), f.get("betrag"), f.get("text", ""), "", datei and f"inbox/{datei}",
-                     f.get("mwst", ""))
+                     f.get("mwst", ""), f.get("waehrung", ""), f.get("kurs") or None)
 
 
 async def vorschlag(ui: UI, request: Request):
@@ -268,6 +276,8 @@ def doc_link(quelle: str) -> str | None:
         return f"/lohn/abrechnung/{month}/{nr}"
     if kind == "abschluss":
         return f"/abschluss?jahr={ref}"
+    if kind == "bewertung":
+        return f"/abschluss?jahr={ref[:4]}&stichtag={ref}"
     return None
 
 
@@ -289,7 +299,8 @@ async def journal_page(ui: UI, request: Request):
     return ui.render(request, "journal.html", book=book, year=year, month=month, counts=counts, groups=groups,
                      names={a.nr: a.name for a in book.accounts.values()}, accounts=account_options(book),
                      quellen=QUELLEN, q=qp.get("q", ""), konto=qp.get("konto", ""), quelle=qp.get("quelle", ""),
-                     ohne_beleg=bool(qp.get("ohne_beleg")), next_beleg=journal.next_beleg(book, year))
+                     ohne_beleg=bool(qp.get("ohne_beleg")), next_beleg=journal.next_beleg(book, year),
+                     currencies=currencies(book))
 
 
 async def journal_buchen(ui: UI, request: Request):
@@ -312,10 +323,11 @@ async def journal_buchen(ui: UI, request: Request):
                 lines.append({"soll": acct(soll), "haben": acct(haben), "betrag": betrag or "0",
                               "text": text or f.get("text"), "mwst": code})
             return await act(request, api.post_split, request.headers.get("hx-current-url", "/journal"), book,
-                             f.get("datum"), f.get("text", ""), lines, "", str(tmp) if tmp else None)
+                             f.get("datum"), f.get("text", ""), lines, "", str(tmp) if tmp else None,
+                             f.get("waehrung", ""), f.get("kurs") or None)
         return await act(request, api.post_entry, request.headers.get("hx-current-url", "/journal"), book,
                          f.get("datum"), acct(f.get("soll")), acct(f.get("haben")), f.get("betrag"), f.get("text", ""),
-                         "", str(tmp) if tmp else None, f.get("mwst", ""))
+                         "", str(tmp) if tmp else None, f.get("mwst", ""), f.get("waehrung", ""), f.get("kurs") or None)
     finally:
         if tmp and tmp.exists():
             tmp.unlink()
@@ -383,7 +395,7 @@ async def kontoblatt(ui: UI, request: Request):
 async def konto_neu(ui: UI, request: Request):
     f = await request.form()
     return await act(request, api.add_account, "/konten", ui.book(), f.get("nr", "").strip(), f.get("name", "").strip(),
-                     f.get("klasse", ""), f.get("gruppe", ""))
+                     f.get("klasse", ""), f.get("gruppe", ""), f.get("waehrung", ""))
 
 
 async def konto_aendern(ui: UI, request: Request):
@@ -392,7 +404,27 @@ async def konto_aendern(ui: UI, request: Request):
     kwargs = {"name": f.get("name"), "gruppe": f.get("gruppe") or None, "aktiv": f.get("aktiv") == "1"}
     if f.get("eroeffnung") not in (None, ""):
         kwargs["eroeffnung"] = parse_amount(f.get("eroeffnung"))
+    if f.get("waehrung"):
+        kwargs["waehrung"] = f.get("waehrung")
+    if f.get("eroeffnung_fw") not in (None, ""):
+        kwargs["eroeffnung_fw"] = parse_amount(f.get("eroeffnung_fw"))
     return await act(request, api.account_update, f"/konten#k{nr}", ui.book(), nr, **kwargs)
+
+
+async def kurs(ui: UI, request: Request):
+    """Rate hint next to a booking form's currency field (HTMX fragment)."""
+    from html import escape
+    from .. import fx
+    qp = request.query_params
+    cur = (qp.get("waehrung") or "").upper()
+    if not cur or cur == "CHF":
+        return HTMLResponse("")
+    try:
+        d = date.fromisoformat(qp.get("datum") or date.today().isoformat())
+        rate = fx.rate(ui.book(), cur, d)
+    except (BookError, ValueError) as exc:
+        return HTMLResponse(f'<span class="muted">{escape(str(exc))}</span>')
+    return HTMLResponse(f'<span class="muted">BAZG {d:%d.%m.%Y}: 1 {escape(cur)} = CHF {rate}</span>')
 
 
 # ---------- Debitoren ----------
@@ -664,9 +696,23 @@ async def abschluss(ui: UI, request: Request):
     lock_path = checks.locks_path(book)
     from ..files import read_yaml
     verlauf = (read_yaml(lock_path).get("verlauf") or []) if lock_path.exists() else []
+    fx_view = None
+    if st.get("fremdwaehrung"):
+        from .. import fx
+        try:
+            stichtag = date.fromisoformat(request.query_params.get("stichtag", ""))
+        except ValueError:
+            stichtag = min(date(year, 12, 31), date.today())
+        done = sorted(p.stem for p in (book.root / "bewertung").glob(f"{year}-*.yaml"))
+        try:
+            fx_view = {"stichtag": stichtag, "konten": fx.preview(book, stichtag), "bewertet": fx.path(book, stichtag).exists(),
+                       "erledigt": done}
+        except BookError as exc:          # no rates yet (future date, offline)
+            fx_view = {"stichtag": stichtag, "konten": [], "bewertet": fx.path(book, stichtag).exists(), "fehler": str(exc),
+                       "erledigt": done}
     return ui.render(request, "abschluss.html", book=book, year=year, st=st, years=book.years(),
                      anhang=statements.anhang(book, year), verlauf=list(reversed(verlauf))[:5],
-                     gv_date=date(year + 1, 6, 30).isoformat())
+                     gv_date=date(year + 1, 6, 30).isoformat(), fx=fx_view)
 
 
 async def abschluss_aktion(ui: UI, request: Request):
@@ -679,6 +725,8 @@ async def abschluss_aktion(ui: UI, request: Request):
         return await act(request, api.allocation_set, to, book, year, f.get("dividende") or "0", f.get("reserve") or "0")
     if aktion == "gewinnverwendung-buchen":
         return await act(request, api.allocation_book, to, book, year, f.get("datum") or None)
+    if aktion == "bewertung":
+        return await act(request, api.fx_revalue, to, book, f.get("stichtag") or f"{year}-12-31")
     if aktion == "anhang":
         return await act(request, api.anhang_save, to, book, year, f.get("text", ""))
     if aktion == "sperre":
@@ -1080,6 +1128,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/journal/storno", h(journal_storno), methods=["POST"]),
         Route("/journal/beleg", h(journal_beleg), methods=["POST"]),
         Route("/konten", h(konten)),
+        Route("/kurs", h(kurs)),
         Route("/konten/neu", h(konto_neu), methods=["POST"]),
         Route("/konten/saldenliste", h(saldenliste)),
         Route("/konten/{nr:str}", h(kontoblatt)),

@@ -7,6 +7,7 @@ compounded; what they write is validated before it touches a file.
 """
 from __future__ import annotations
 
+import re
 import shutil
 from datetime import date
 from decimal import Decimal
@@ -37,7 +38,8 @@ def jsonable(value):
     if isinstance(value, Row):
         return {"datum": value.datum.isoformat(), "beleg": value.beleg, "text": value.text,
                 "soll": value.soll, "haben": value.haben, "betrag": f"{value.betrag:.2f}",
-                "quelle": value.quelle}
+                "quelle": value.quelle, **({"mwst": value.mwst} if value.mwst else {}),
+                **({"waehrung": value.waehrung, "fw": f"{value.fw:.2f}", "kurs": str(value.kurs)} if value.waehrung else {})}
     if isinstance(value, dict):
         return {str(k): jsonable(v) for k, v in value.items() if not str(k).startswith("_")}
     if isinstance(value, (list, tuple)):
@@ -142,12 +144,13 @@ def run_check(book: Book) -> dict:
 
 def accounts(book: Book, suche: str = "") -> list[dict]:
     q = suche.lower()
-    return [{"konto": a.nr, "name": a.name, "klasse": a.klasse, "gruppe": a.gruppe}
+    return [{"konto": a.nr, "name": a.name, "klasse": a.klasse, "gruppe": a.gruppe,
+             **({"waehrung": a.waehrung} if a.is_foreign else {})}
             for a in book.accounts.values()
             if a.aktiv_ and (not q or q in a.nr or q in a.name.lower())]
 
 
-def add_account(book: Book, nr: str, name: str, klasse: str = "", gruppe: str = "") -> dict:
+def add_account(book: Book, nr: str, name: str, klasse: str = "", gruppe: str = "", waehrung: str = "") -> dict:
     _guard(book)
     from .book import _klasse_for, Account, KLASSEN
     if nr in book.accounts:
@@ -155,10 +158,45 @@ def add_account(book: Book, nr: str, name: str, klasse: str = "", gruppe: str = 
     klasse = klasse or _klasse_for(nr)
     if klasse not in KLASSEN:
         raise BookError(f"klasse muss eine von {', '.join(KLASSEN)} sein")
+    waehrung = _currency(waehrung)
+    if waehrung != "CHF" and klasse not in ("aktiv", "passiv"):
+        raise BookError("Fremdwährung nur für Bilanzkonten (Bank, Debitoren, Kreditoren …)")
     book.accounts[nr] = Account(nr=nr, name=name, klasse=klasse,
-                                gruppe=gruppe or statements.default_group(nr, klasse))
+                                gruppe=gruppe or statements.default_group(nr, klasse), waehrung=waehrung)
     book.save_accounts()
     return _done(book, f"Konto {nr} {name} angelegt", [book.root / "kontenplan.yaml"])
+
+
+def _currency(code: str | None) -> str:
+    code = (code or "CHF").strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", code):
+        raise BookError(f"Währung '{code}' ist kein ISO-Code (EUR, USD …)")
+    return code
+
+
+def fx_rate(book: Book, waehrung: str, datum=None) -> dict:
+    """BAZG daily rate (CHF per 1 unit) for a day; weekends use the last published day."""
+    from . import fx
+    d = parse_date(datum, "datum") if datum else date.today()
+    return jsonable({"waehrung": _currency(waehrung), "datum": d, "kurs": fx.rate(book, _currency(waehrung), d),
+                     "quelle": "BAZG Tageskurse"})
+
+
+def fx_preview(book: Book, stichtag) -> dict:
+    """Foreign-currency accounts valued at the BAZG rate of `stichtag` (nothing is booked)."""
+    from . import fx
+    d = parse_date(stichtag, "stichtag")
+    return jsonable({"stichtag": d, "gebucht": fx.path(book, d).exists(), "konten": fx.preview(book, d)})
+
+
+def fx_revalue(book: Book, stichtag) -> dict:
+    """Book the revaluation of all foreign-currency accounts at the BAZG rate of `stichtag`."""
+    from . import fx
+    _guard(book)
+    saved, touched = fx.book_revaluation(book, stichtag)
+    total = sum((Decimal(str(k["differenz"])) for k in saved["konten"]), Decimal(0))
+    return _done(book, f"Fremdwährungen per {saved['stichtag']} bewertet (Differenz {total:.2f})", touched,
+                 bewertung=saved)
 
 
 def balances(book: Book, jahr: int | None = None, periode: str = "jahr") -> dict:
@@ -189,16 +227,18 @@ def journal_rows(book: Book, jahr: int | None = None, monat: int | None = None, 
 
 
 def post_entry(book: Book, datum, soll: str, haben: str, betrag, text: str, beleg: str = "",
-               datei: str | None = None, mwst: str = "") -> dict:
+               datei: str | None = None, mwst: str = "", waehrung: str = "", kurs=None) -> dict:
     _guard(book)
     row, touched = journal.book_entry(book, datum, soll, haben, betrag, text, beleg,
-                                      attachment=Path(datei) if datei else None, mwst=mwst or "")
-    return _done(book, f"Beleg {row.beleg} gebucht: {row.text} ({row.soll} an {row.haben} {row.betrag:.2f})",
+                                      attachment=Path(datei) if datei else None, mwst=mwst or "",
+                                      waehrung=waehrung or "", kurs=kurs)
+    fw = f" = {row.waehrung} {row.fw:.2f} zu {row.kurs}" if row.waehrung else ""
+    return _done(book, f"Beleg {row.beleg} gebucht: {row.text} ({row.soll} an {row.haben} {row.betrag:.2f}{fw})",
                  touched, buchung=row)
 
 
 def post_split(book: Book, datum, text: str, zeilen: list[dict], beleg: str = "",
-               datei: str | None = None) -> dict:
+               datei: str | None = None, waehrung: str = "", kurs=None) -> dict:
     """A split (Sammel-)Buchung: several lines under one Beleg, each with soll
     and/or haben; the Beleg as a whole must balance."""
     _guard(book)
@@ -206,6 +246,7 @@ def post_split(book: Book, datum, text: str, zeilen: list[dict], beleg: str = ""
     ref = beleg or journal.next_beleg(book, d.year)
     rows = [Row(d, ref, str(z.get("text") or text), str(z.get("soll") or ""), str(z.get("haben") or ""),
                 Decimal(str(z["betrag"])), mwst=str(z.get("mwst") or "").upper()) for z in zeilen]
+    rows = journal.convert(book, rows, waehrung, kurs)
     touched = journal.post(book, rows, Path(datei) if datei else None)
     return _done(book, f"Beleg {ref} gebucht (Sammelbuchung, {len(rows)} Zeilen): {text}", touched, buchungen=rows)
 
@@ -217,11 +258,12 @@ def reverse_entry(book: Book, beleg: str, datum=None, text: str = "") -> dict:
 
 
 def propose(book: Book, datum, soll, haben, betrag, text, begruendung: str = "", datei: str = "",
-            mwst: str = "", bank: str = "") -> dict:
+            mwst: str = "", bank: str = "", waehrung: str = "", kurs=None) -> dict:
     _guard(book)
     cells, path = journal.propose(book, datum, soll, haben, betrag, text, begruendung, datei=datei or "",
-                                  mwst=mwst or "", bank=bank or "")
-    return _done(book, f"Vorschlag {cells['ID']}: {cells['Text']} ({cells['Soll']} an {cells['Haben']} {cells['Betrag']})",
+                                  mwst=mwst or "", bank=bank or "", waehrung=waehrung or "", kurs=kurs)
+    fw = f"{cells['FW']} " if cells.get("FW") else ""
+    return _done(book, f"Vorschlag {cells['ID']}: {cells['Text']} ({cells['Soll']} an {cells['Haben']} {fw}{cells['Betrag']})",
                  [path], vorschlag=cells)
 
 
@@ -517,7 +559,8 @@ def employee_update(book: Book, nummer: str, **fields) -> dict:
 
 
 def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | None = None,
-                   aktiv: bool | None = None, eroeffnung=None, vorjahr=None) -> dict:
+                   aktiv: bool | None = None, eroeffnung=None, vorjahr=None,
+                   waehrung: str | None = None, eroeffnung_fw=None) -> dict:
     _guard(book)
     acct = book.account(nr)
     if name is not None:
@@ -528,12 +571,26 @@ def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | N
         acct.gruppe = gruppe
     if aktiv is not None:
         acct.aktiv_ = bool(aktiv)
+    if waehrung is not None and _currency(waehrung) != acct.waehrung:
+        if any(nr in (r.soll, r.haben) for r in book.rows):
+            raise BookError(f"Konto {nr} hat Buchungen — Währung nicht mehr änderbar (neues Konto anlegen)")
+        if _currency(waehrung) != "CHF" and not acct.is_balance_sheet:
+            raise BookError("Fremdwährung nur für Bilanzkonten")
+        acct.waehrung = _currency(waehrung)
+        if not acct.is_foreign:
+            acct.eroeffnung_fw = Decimal(0)
+    if eroeffnung_fw is not None:
+        if not acct.is_foreign:
+            raise BookError(f"Konto {nr} führt keine Fremdwährung")
+        eroeffnung = eroeffnung if eroeffnung is not None else acct.eroeffnung
     if eroeffnung is not None or vorjahr is not None:
         lock = book.settings.sperre_bis
         if lock and lock.year >= book.settings.erstes_jahr:
             raise BookError("Eröffnungssalden sind gesperrt (erstes Jahr liegt in der gesperrten Periode)")
         if eroeffnung is not None:
             acct.eroeffnung = Decimal(str(eroeffnung or 0))
+        if eroeffnung_fw is not None:
+            acct.eroeffnung_fw = Decimal(str(eroeffnung_fw or 0))
         if vorjahr is not None:
             acct.vorjahr = Decimal(str(vorjahr or 0))
     book.save_accounts()
@@ -983,3 +1040,5 @@ payslip_inputs = _locked(payslip_inputs)
 for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_void", "payment_run", "payment_run_book",
               "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore", "bank_suggest"):
     globals()[_name] = _locked(globals()[_name])
+
+fx_revalue = _locked(fx_revalue)

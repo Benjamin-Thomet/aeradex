@@ -78,6 +78,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("name")
     s.add_argument("--klasse", default="")
     s.add_argument("--gruppe", default="")
+    s.add_argument("--waehrung", default="", help="Fremdwährung des Kontos (EUR, USD …), nur Bilanzkonten")
+
+    s = sub.add_parser("kurs", help="BAZG-Tageskurs (CHF je Einheit)")
+    s.add_argument("waehrung")
+    s.add_argument("datum", nargs="?")
+    s = sub.add_parser("bewertung", help="Fremdwährungskonten per Stichtag zum BAZG-Kurs bewerten")
+    s.add_argument("stichtag", help="JJJJ-MM-TT, meist 31.12.")
+    s.add_argument("--buchen", action="store_true", help="Kursdifferenzen buchen (sonst nur Vorschau)")
 
     s = sub.add_parser("balance", help="Saldenliste")
     s.add_argument("--jahr", type=int)
@@ -101,6 +109,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--beleg", default="")
     s.add_argument("--datei", help="Beleg-Datei (PDF/Bild); aus inbox/ wird sie verschoben")
     s.add_argument("--mwst", default="", help="MWST-Code (U81, V81, I81, …); Betrag ist dann brutto")
+    s.add_argument("--waehrung", default="", help="Fremdwährung; Betrag ist dann in dieser Währung")
+    s.add_argument("--kurs", default=None, help="Kurs CHF je Einheit (Standard: BAZG-Tageskurs)")
     s = sub.add_parser("book-split", help="Sammelbuchung aus JSON-Zeilen")
     s.add_argument("--datum", required=True)
     s.add_argument("--text", required=True)
@@ -118,6 +128,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--begruendung", default="")
     s.add_argument("--datei", default="", help="Beleg-Datei; wird bei approve nach belege/ abgelegt")
     s.add_argument("--mwst", default="", help="MWST-Code, Betrag brutto")
+    s.add_argument("--waehrung", default="", help="Fremdwährung; Betrag ist dann in dieser Währung")
+    s.add_argument("--kurs", default=None, help="Kurs CHF je Einheit (Standard: BAZG-Tageskurs)")
     sub.add_parser("proposals", help="offene Vorschläge")
     s = sub.add_parser("approve", help="Vorschläge buchen")
     s.add_argument("ids", nargs="+", help="V-001 … oder 'alle'")
@@ -337,7 +349,11 @@ def dispatch(a, book_path: Path | None):
     if c == "accounts":
         return api.accounts(book(), a.suche)
     if c == "account-add":
-        return api.add_account(book(), a.nr, a.name, a.klasse, a.gruppe)
+        return api.add_account(book(), a.nr, a.name, a.klasse, a.gruppe, a.waehrung)
+    if c == "kurs":
+        return api.fx_rate(book(), a.waehrung, a.datum)
+    if c == "bewertung":
+        return api.fx_revalue(book(), a.stichtag) if a.buchen else api.fx_preview(book(), a.stichtag)
     if c == "balance":
         return api.balances(book(), a.jahr, a.periode)
     if c == "ledger":
@@ -349,13 +365,13 @@ def dispatch(a, book_path: Path | None):
             return api.journal_pdf(book(), a.jahr, a.pdf or None)
         return api.journal_rows(book(), a.jahr, a.monat, a.beleg, a.konto, a.suche, a.limit)
     if c == "book":
-        return api.post_entry(book(), a.datum, a.soll, a.haben, a.betrag, a.text, a.beleg, a.datei, a.mwst)
+        return api.post_entry(book(), a.datum, a.soll, a.haben, a.betrag, a.text, a.beleg, a.datei, a.mwst, a.waehrung, a.kurs)
     if c == "book-split":
         return api.post_split(book(), a.datum, a.text, json.loads(a.zeilen), a.beleg, a.datei)
     if c == "reverse":
         return api.reverse_entry(book(), a.beleg, a.datum, a.text)
     if c == "propose":
-        return api.propose(book(), a.datum, a.soll, a.haben, a.betrag, a.text, a.begruendung, a.datei, a.mwst)
+        return api.propose(book(), a.datum, a.soll, a.haben, a.betrag, a.text, a.begruendung, a.datei, a.mwst, waehrung=a.waehrung, kurs=a.kurs)
     if c == "proposals":
         return api.proposals(book())
     if c == "approve":

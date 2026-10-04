@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, accounts_datalist, mwst_select %}
+{% from "_macros.html" import errors, currency_fields, accounts_datalist, mwst_select %}
 {% block title %}Prüfen{% endblock %}
 {% block main %}
 <div class="topbar">
@@ -49,7 +49,9 @@
           <tr><td class="muted">Soll</td><td class="acc">{{ linked.Soll }} <span class="muted">{{ book.accounts[linked.Soll].name if linked.Soll in book.accounts }}</span></td></tr>
           <tr><td class="muted">Haben</td><td class="acc">{{ linked.Haben }} <span class="muted">{{ book.accounts[linked.Haben].name if linked.Haben in book.accounts }}</span></td></tr>
           {% if linked.MWST %}<tr><td class="muted">MWST</td><td>{{ linked.MWST }} · {{ vat_codes[linked.MWST].label if linked.MWST in vat_codes }} (Betrag brutto)</td></tr>{% endif %}
-          <tr class="total"><td>Betrag CHF</td><td class="num">{{ linked.Betrag|chf }}</td></tr>
+          {% if linked.FW %}<tr class="total"><td>Betrag {{ linked.FW }}</td><td class="num">{{ linked.Betrag|chf }}</td></tr>
+          <tr><td class="muted">Kurs (BAZG)</td><td class="num">{{ linked.Kurs }} → CHF {{ (linked.Betrag|float * linked.Kurs|float)|round(2)|chf }}</td></tr>
+          {% else %}<tr class="total"><td>Betrag CHF</td><td class="num">{{ linked.Betrag|chf }}</td></tr>{% endif %}
         </tbody></table>
         <div class="formfoot">
           <span class="small muted">Beleg {{ linked.Beleg }} · Freigeben bucht und legt die Datei ab</span>
@@ -66,11 +68,12 @@
         <div class="agentnote"><span class="who2">Tipp</span><span>Frag den Agenten rechts: «Bereite {{ current.name }} vor». Er liest die Datei und schlägt Konten vor.</span></div>{% endif %}
         <div class="form">
           <div class="field"><label for="b-datum">Datum</label><input class="input num" id="b-datum" name="datum" type="date" value="{{ today().isoformat() }}" required></div>
-          <div class="field"><label for="b-betrag">Betrag CHF</label><input class="input num" id="b-betrag" name="betrag" inputmode="decimal" placeholder="0.00" required></div>
+          <div class="field"><label for="b-betrag">Betrag</label><input class="input num" id="b-betrag" name="betrag" inputmode="decimal" placeholder="0.00" required></div>
           <div class="field wide"><label for="b-text">Text</label><input class="input" id="b-text" name="text" placeholder="z.B. Druckerpapier, Papeterie Muster" required></div>
           <div class="field"><label for="b-soll">Soll (wohin)</label><input class="input" id="b-soll" name="soll" list="konten" placeholder="Konto suchen …" required></div>
           <div class="field"><label for="b-haben">Haben (woher)</label><input class="input" id="b-haben" name="haben" list="konten" placeholder="z.B. 1020 Bank" required></div>
           {{ mwst_select("mwst", vat, vat_codes, id="b-mwst") }}
+          {{ currency_fields(currencies, "b-fx") }}
           {% if vat.methode != 'keine' %}<div class="field"><span class="lbl">&nbsp;</span><span class="small muted">Mit Code ist der Betrag brutto; die Steuer wird abgespalten.</span></div>{% endif %}
         </div>
         {{ errors() }}
@@ -96,7 +99,7 @@
     <span class="beleg">{{ p.ID }}</span>
     <div class="what">
       <strong>{{ p.Text }}</strong>
-      <span class="posting">{{ p.Datum|datum }} · {{ p.Soll }} {{ book.accounts[p.Soll].name if p.Soll in book.accounts }} an {{ p.Haben }} {{ book.accounts[p.Haben].name if p.Haben in book.accounts }} · {{ p.Betrag|chf }}{% if p.MWST %} · {{ p.MWST }} brutto{% endif %}</span>
+      <span class="posting">{{ p.Datum|datum }} · {{ p.Soll }} {{ book.accounts[p.Soll].name if p.Soll in book.accounts }} an {{ p.Haben }} {{ book.accounts[p.Haben].name if p.Haben in book.accounts }} · {% if p.FW %}{{ p.FW }} {{ p.Betrag|chf }} zu {{ p.Kurs }}{% else %}{{ p.Betrag|chf }}{% endif %}{% if p.MWST %} · {{ p.MWST }} brutto{% endif %}</span>
       <span class="why">{% if p["Begründung"] %}«{{ p["Begründung"] }}»{% endif %} · {% if p.Datei %}<a class="link" href="/datei/{{ p.Datei|urlq }}" target="_blank">{{ p.Datei }}</a>{% elif p.Bank %}Bankbewegung {{ p.Bank }}{% else %}keine Beleg-Datei{% endif %}</span>
     </div>
     <span class="actions">

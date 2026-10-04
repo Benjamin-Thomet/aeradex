@@ -5,19 +5,22 @@ Rates are cached per day under .batzen/kurse/<JJJJ-MM-TT>.yaml so a book can be
 re-evaluated offline and the rate used stays documented. A rate quoted per 100
 units (e.g. "100 JPY") is normalised to 1 unit.
 
-Status: rate fetching only. Foreign-currency accounts, bookings and the
-revaluation at the balance-sheet date are not implemented yet.
+Foreign-currency accounts (kontenplan: `waehrung: EUR`) carry each booking's
+amount in their currency and the rate used (journal columns FW and Kurs); the
+books stay in CHF. At a Stichtag, `revaluation()` values every such account
+at the BAZG rate of that day and books the difference to Kursgewinn/-verlust.
 """
 from __future__ import annotations
 
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from .book import Book, BookError
-from .files import read_yaml, write_yaml
+from .book import Book, BookError, Row
+from .files import CENT, parse_date, read_yaml, write_yaml
 
 URL = "https://www.backend-rates.bazg.admin.ch/api/xmldaily?d={d}&locale=de"
 
@@ -45,14 +48,25 @@ def rates(book: Book, day: date, fetch=None) -> dict[str, Decimal]:
         path = cache / f"{d.isoformat()}.yaml"
         if path.exists():
             return {k: Decimal(str(v)) for k, v in read_yaml(path).get("kurse", {}).items()}
+        if d > date.today():
+            continue
         try:
             data = (fetch or _get)(URL.format(d=d.strftime("%Y%m%d")))
-            _, found = parse(data)
-        except Exception:
-            found = {}
+        except urllib.error.HTTPError:
+            data = b""                       # no table for that day
+        except OSError as exc:
+            raise BookError(f"BAZG-Kurse nicht erreichbar ({exc}) — Kurs von Hand angeben") from None
+        try:
+            published, found = parse(data)
+        except ET.ParseError:            # empty/HTML answer: no table for that day
+            published, found = "", {}
         if found:
-            write_yaml(path, {"datum": d.isoformat(), "quelle": "BAZG Tageskurse", "kurse": found})
+            # BAZG answers weekends with the last table (e.g. Friday's, valid Sat–Mon)
+            write_yaml(path, {"datum": d.isoformat(), "publiziert": published, "quelle": "BAZG Tageskurse",
+                              "kurse": found})
             return found
+    if day > date.today():
+        raise BookError(f"Der BAZG-Kurs für {day} ist noch nicht publiziert")
     raise BookError(f"Keine BAZG-Kurse für {day} gefunden")
 
 
@@ -69,3 +83,82 @@ def rate(book: Book, currency: str, day: date, fetch=None) -> Decimal:
 def _get(url: str) -> bytes:
     with urllib.request.urlopen(url, timeout=20) as r:
         return r.read()
+
+
+# ---------- revaluation at a Stichtag ----------
+
+def preview(book: Book, stichtag, fetch=None) -> list[dict]:
+    """Every foreign-currency account at `stichtag`: balance in its currency, BAZG rate,
+    CHF value at that rate, CHF value in the books, difference."""
+    from .ledger import BalanceEngine, fw_balance
+    when = parse_date(stichtag, "stichtag")
+    eng = BalanceEngine(book)
+    out = []
+    for nr, a in sorted(book.accounts.items()):
+        if not a.is_foreign:
+            continue
+        fw = fw_balance(book, nr, when)
+        kurs = rate(book, a.waehrung, when, fetch)
+        target = (fw * kurs).quantize(CENT)
+        chf = eng.balance_at(nr, when) if when.year in book.years() else a.eroeffnung
+        out.append({"konto": nr, "name": a.name, "waehrung": a.waehrung, "fw": fw, "kurs": kurs,
+                    "chf_neu": target, "chf_buch": chf, "differenz": target - chf})
+    return out
+
+
+def path(book: Book, when: date) -> Path:
+    return book.root / "bewertung" / f"{when.isoformat()}.yaml"
+
+
+def revaluation_rows(book: Book, saved: dict) -> list[Row]:
+    when = parse_date(saved["stichtag"])
+    gain, loss = book.settings.konto("kursgewinn"), book.settings.konto("kursverlust")
+    rows = []
+    for line in saved.get("konten") or []:
+        diff = Decimal(str(line["differenz"])).quantize(CENT)
+        if not diff:
+            continue
+        nr, cur, kurs = str(line["konto"]), str(line["waehrung"]), Decimal(str(line["kurs"]))
+        text = f"Bewertung {cur} per {when:%d.%m.%Y}"
+        if diff > 0:
+            rows.append(Row(when, f"FX-{when.isoformat()}", text, nr, gain, diff, f"bewertung:{when.isoformat()}",
+                            waehrung=cur, fw=Decimal("0.00"), kurs=kurs))
+        else:
+            rows.append(Row(when, f"FX-{when.isoformat()}", text, loss, nr, -diff, f"bewertung:{when.isoformat()}",
+                            waehrung=cur, fw=Decimal("0.00"), kurs=kurs))
+    return rows
+
+
+def book_revaluation(book: Book, stichtag, fetch=None) -> tuple[dict, list[Path]]:
+    """Value all foreign-currency accounts at the BAZG rate of `stichtag` and book the differences."""
+    from .journal import ensure_open, post
+    when = parse_date(stichtag, "stichtag")
+    if path(book, when).exists():
+        raise BookError(f"Fremdwährungen per {when} sind bereits bewertet")
+    ensure_open(book, when)
+    lines = preview(book, when, fetch)
+    if not lines:
+        raise BookError("Keine Fremdwährungskonten im Kontenplan (waehrung: EUR …)")
+    added = _ensure_accounts(book) if any(l["differenz"] for l in lines) else []
+    saved = {"stichtag": when.isoformat(), "quelle": "BAZG Tageskurse",
+             "konten": [{"konto": l["konto"], "waehrung": l["waehrung"], "fw": l["fw"], "kurs": l["kurs"],
+                         "chf_buch": l["chf_buch"], "chf_neu": l["chf_neu"], "differenz": l["differenz"]} for l in lines]}
+    rows = revaluation_rows(book, saved)
+    touched = post(book, rows) if rows else []
+    write_yaml(path(book, when), saved)
+    return saved, touched + added + [path(book, when)]
+
+
+def _ensure_accounts(book: Book) -> list[Path]:
+    """Books from before multicurrency lack the Kursdifferenz accounts: add them (KMU numbers)."""
+    from .book import Account
+    from .statements import default_group
+    missing = [(book.settings.konto(key), name, klasse)
+               for key, name, klasse in (("kursverlust", "Kursverluste", "aufwand"), ("kursgewinn", "Kursgewinne", "ertrag"))
+               if book.settings.konto(key) not in book.accounts]
+    for nr, name, klasse in missing:
+        book.accounts[nr] = Account(nr=nr, name=name, klasse=klasse, gruppe=default_group(nr, klasse))
+    if missing:
+        book.save_accounts()
+        return [book.root / "kontenplan.yaml"]
+    return []

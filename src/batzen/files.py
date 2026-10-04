@@ -157,7 +157,7 @@ def _cell(value) -> str:
 def render_table(table: MdTable) -> str:
     cols = table.columns
     data = [[_cell(r.get(c, "")) for c in cols] for r in table.rows]
-    widths = [max([len(c)] + [len(row[i]) for row in data]) for i, c in enumerate(cols)]
+    widths = [max([3, len(c)] + [len(row[i]) for row in data]) for i, c in enumerate(cols)]  # "---" minimum
 
     def fmt(cells):
         out = []

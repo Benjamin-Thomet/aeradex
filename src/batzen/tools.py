@@ -40,6 +40,9 @@ Regeln:
   (Konto leer = hinterlegtes Konto). Neuer Lieferant: add_supplier ohne konto, dann dem Menschen das Aufwandkonto
   vorschlagen; er erfasst die Rechnung unter Kreditoren (vorausgefüllt). Nicht als freie Buchung (propose_booking)
   erfassen — sonst fehlen IBAN und Referenz für den Zahlungslauf.
+- Fremdwährung: Beleg in EUR/USD … → waehrung mitgeben und den Betrag in der Fremdwährung; umgerechnet wird
+  zum BAZG-Tageskurs (exchange_rate). Konten mit Fremdwährung (accounts() zeigt waehrung) gehen nur so.
+  Die Bewertung per Stichtag (revaluation_preview) bucht ein Mensch im Abschluss.
 """
 
 
@@ -161,7 +164,7 @@ def list_inbox() -> list | dict:
 # ---------- journal ----------
 
 def propose_booking(datum: str, soll: str, haben: str, betrag: str, text: str, begruendung: str,
-                    beleg_datei: str = "", mwst: str = "") -> dict:
+                    beleg_datei: str = "", mwst: str = "", waehrung: str = "") -> dict:
     """Buchung vorschlagen (wird geprüft, aber erst nach Freigabe durch einen Menschen gebucht).
 
     Args:
@@ -175,8 +178,10 @@ def propose_booking(datum: str, soll: str, haben: str, betrag: str, text: str, b
         mwst: MWST-Code, wenn das Buch MWST-pflichtig ist und der Beleg MWST ausweist: V81/V26/V38 (Vorsteuer
             Material/Dienstleistungen), I81/I26/I38 (Vorsteuer Investitionen/übriger Aufwand), U81/U26/U38 (Umsatz).
             Dann ist betrag BRUTTO (inkl. MWST); die Steuer wird automatisch abgespalten.
+        waehrung: nur bei Fremdwährung (Beleg in EUR/USD … oder Konto mit Fremdwährung, siehe list_accounts):
+            ISO-Code; betrag ist dann in dieser Währung, umgerechnet wird zum BAZG-Tageskurs des Datums.
     """
-    return _call(api.propose, datum, soll, haben, betrag, text, begruendung, beleg_datei, mwst)
+    return _call(api.propose, datum, soll, haben, betrag, text, begruendung, beleg_datei, mwst, waehrung=waehrung)
 
 
 def list_proposals() -> list | dict:
@@ -185,7 +190,7 @@ def list_proposals() -> list | dict:
 
 
 def book_entry(datum: str, soll: str, haben: str, betrag: str, text: str, beleg_datei: str = "",
-               mwst: str = "") -> dict:
+               mwst: str = "", waehrung: str = "") -> dict:
     """Buchung direkt erfassen (nur agent_modus: direkt).
 
     Args:
@@ -196,8 +201,29 @@ def book_entry(datum: str, soll: str, haben: str, betrag: str, text: str, beleg_
         text: Buchungstext.
         beleg_datei: Pfad zur Quittung, z.B. "inbox/x.pdf".
         mwst: MWST-Code (siehe propose_booking); betrag dann brutto.
+        waehrung: Fremdwährung (siehe propose_booking).
     """
-    return _direct(api.post_entry, datum, soll, haben, betrag, text, "", beleg_datei or None, mwst)
+    return _direct(api.post_entry, datum, soll, haben, betrag, text, "", beleg_datei or None, mwst, waehrung)
+
+
+def exchange_rate(waehrung: str, datum: str = "") -> dict:
+    """Offizieller BAZG-Tageskurs (CHF je 1 Einheit), den auch die ESTV verwendet.
+
+    Args:
+        waehrung: ISO-Code, z.B. "EUR".
+        datum: JJJJ-MM-TT (leer = heute; Wochenende = letzter publizierter Tag).
+    """
+    return _call(api.fx_rate, waehrung, datum or None)
+
+
+def revaluation_preview(stichtag: str) -> dict:
+    """Fremdwährungskonten per Stichtag zum BAZG-Kurs bewerten — nur Vorschau, bucht nichts.
+    Gebucht wird die Bewertung von einem Menschen (Abschluss → Fremdwährungen).
+
+    Args:
+        stichtag: JJJJ-MM-TT, meist der 31.12.
+    """
+    return _call(api.fx_preview, stichtag)
 
 
 def book_split(datum: str, text: str, zeilen: list[dict], beleg_datei: str = "") -> dict:
@@ -592,6 +618,7 @@ def read_inbox_file(datei: str) -> list[dict] | str:
 # Order matters for prompt caching: a stable list keeps the cached prefix valid.
 SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
+          exchange_rate, revaluation_preview,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,

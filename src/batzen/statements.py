@@ -150,8 +150,20 @@ def year_end_statement(book: Book, year: int, engine: BalanceEngine | None = Non
                 if m["konto"] in exclude or (not m["cur"] and not m["pri"]):
                     continue
                 detail.append({"konto": m["konto"], "name": m["name"],
-                               "aktuell": m["cur"] * sign, "vorjahr": m["pri"] * sign})
+                               "aktuell": m["cur"] * sign, "vorjahr": m["pri"] * sign, **fw_note(m["konto"])})
         rows.append({"label": label, "aktuell": cur, "vorjahr": pri, "stil": style, "konten": detail})
+
+    from .ledger import fw_balance
+    stichtag = date(year, 12, 31)
+
+    def fw_note(nr):
+        acct = book.accounts[nr]
+        if not acct.is_foreign:
+            return {}
+        return {"fw": f"{acct.waehrung} {fw_balance(book, nr, stichtag) * (1 if acct.klasse == 'aktiv' else -1):,.2f}".replace(",", "'")}
+
+    foreign = [a.nr for a in book.accounts.values() if a.is_foreign]
+    revalued = (book.root / "bewertung" / f"{stichtag.isoformat()}.yaml").exists()
 
     res_c, res_p = col(_PL)
 
@@ -223,6 +235,7 @@ def year_end_statement(book: Book, year: int, engine: BalanceEngine | None = Non
         "differenz": total_a[0] + total_p[0],
         "jahresergebnis": -res_c,
         "gewinnverwendung": profit_allocation(book, year, engine),
+        "fremdwaehrung": {"konten": foreign, "stichtag": stichtag, "bewertet": revalued} if foreign else None,
     }
 
 

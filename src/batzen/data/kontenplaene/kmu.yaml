@@ -105,7 +105,9 @@ konten:
 - {nr: "6850", name: Abschreibungen auf immateriellen Werten, klasse: aufwand}
 - {nr: "6900", name: Zinsaufwand, klasse: aufwand}
 - {nr: "6940", name: Bankspesen, klasse: aufwand}
+- {nr: "6942", name: Kursverluste, klasse: aufwand}
 - {nr: "6950", name: Finanzertrag, klasse: ertrag}
+- {nr: "6952", name: Kursgewinne, klasse: ertrag}
 # --- 7 Betrieblicher Nebenerfolg ---
 - {nr: "7000", name: Ertrag Nebenbetrieb, klasse: ertrag}
 - {nr: "7010", name: Aufwand Nebenbetrieb, klasse: aufwand}

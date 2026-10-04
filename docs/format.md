@@ -41,29 +41,48 @@ konten:
 - `gruppe`: Zeile in Bilanz/Erfolgsrechnung. Standard aus der Kontonummer (KMU-Kontenrahmen), Codes siehe `statements.GROUPS`.
 - `gruppe_negativ`: Darstellung bei Vorzeichenwechsel, z.B. Bank im Minus als Bankverbindlichkeit.
 - `vorjahr`: Vorjahreszahl für das erste Jahr (Spalte «Vorjahr» der ersten Jahresrechnung).
+- `waehrung`: Fremdwährung eines Bilanzkontos (`EUR`, `USD` …), z.B. `{nr: "1021", name: Bank EUR, klasse: aktiv, waehrung: EUR}`.
+  Die Buchhaltung bleibt in CHF; jede Zeile auf diesem Konto trägt zusätzlich den Betrag in der Fremdwährung
+  und den Kurs. `eroeffnung_fw`: Eröffnungssaldo in der Fremdwährung (`eroeffnung` ist der CHF-Wert).
 
 ## journal/JJJJ/JJJJ-MM.md
 
 ```markdown
 # Journal Januar 2026
 
-| Datum      | Beleg  | Text         | Soll | Haben |  Betrag | MWST | Quelle |
-| ---------- | ------ | ------------ | ---- | ----- | ------: | ---- | ------ |
-| 2026-01-05 | 26-001 | Büromaterial | 6500 | 1020  |   45.80 |      |        |
-| 2026-01-10 | 26-002 | Einkauf Coop | 6500 |       |   30.00 |      |        |
-| 2026-01-10 | 26-002 | Einkauf Coop | 6641 |       |   20.00 |      |        |
-| 2026-01-10 | 26-002 | Einkauf Coop |      | 1000  |   50.00 |      |        |
-| 2026-01-12 | 26-003 | Papier       | 6500 |       |  100.00 | V81  |        |
-| 2026-01-12 | 26-003 | Papier       | 1170 |       |    8.10 | V81  |        |
-| 2026-01-12 | 26-003 | Papier       |      | 1020  |  108.10 |      |        |
+| Datum      | Beleg  | Text         | Soll | Haben |  Betrag | FW          | Kurs    | MWST | Quelle |
+| ---------- | ------ | ------------ | ---- | ----- | ------: | ----------- | ------- | ---- | ------ |
+| 2026-01-05 | 26-001 | Büromaterial | 6500 | 1020  |   45.80 |             |         |      |        |
+| 2026-01-10 | 26-002 | Einkauf Coop | 6500 |       |   30.00 |             |         |      |        |
+| 2026-01-10 | 26-002 | Einkauf Coop | 6641 |       |   20.00 |             |         |      |        |
+| 2026-01-10 | 26-002 | Einkauf Coop |      | 1000  |   50.00 |             |         |      |        |
+| 2026-01-12 | 26-003 | Papier       | 6500 |       |  100.00 |             |         | V81  |        |
+| 2026-01-12 | 26-003 | Papier       | 1170 |       |    8.10 |             |         | V81  |        |
+| 2026-01-12 | 26-003 | Papier       |      | 1020  |  108.10 |             |         |      |        |
+| 2026-01-20 | 26-004 | Verkauf DE   | 1021 | 3200  |  944.45 | EUR 1000.00 | 0.94445 |      |        |
 ```
 
 - Eine Zeile mit Soll **und** Haben ist eine einfache Buchung.
 - Sammelbuchung: mehrere Zeilen mit derselben Belegnummer, jede nur mit Soll oder nur mit Haben. Der Beleg als Ganzes muss aufgehen.
 - `Quelle` leer = manuelle Buchung. Sonst gehört die Zeile einem Dokument:
-  `rechnung:R-2026-0001`, `zahlung:R-2026-0001`, `gutschrift:R-2026-0001`, `lohn:2026-01:M0001`, `abschluss:2026`.
+  `rechnung:R-2026-0001`, `zahlung:R-2026-0001`, `gutschrift:R-2026-0001`, `lohn:2026-01:M0001`, `abschluss:2026`, `bewertung:2026-12-31`.
+- `FW`, `Kurs`: bei Fremdwährung der Betrag in der Währung und der Kurs (CHF je Einheit); `Betrag` ist immer CHF
+  und muss `FW × Kurs` auf den Rappen entsprechen. Pflicht für jede Zeile auf einem Konto mit `waehrung`.
 - `MWST`: Code der Zeile (siehe unten). Ältere Dateien ohne diese Spalte bleiben gültig; sie wird beim nächsten Schreiben ergänzt.
 - Text vor und nach der Tabelle bleibt erhalten. Weitere Spalten dürfen ergänzt werden, sie werden mitgeführt.
+
+## Fremdwährungen: Kurse und Bewertung
+
+Kurse sind die Tageskurse des BAZG (dieselben, die die ESTV für die MWST verwendet):
+`https://www.backend-rates.bazg.admin.ch/api/xmldaily?d=JJJJMMTT`. Ohne Kurs bucht batzen zum Kurs des
+Buchungsdatums (Wochenende/Feiertag: letzter publizierter Tag); abgerufene Tabellen liegen unter
+`.batzen/kurse/JJJJ-MM-TT.yaml`. Vorschläge des Agenten halten den Kurs beim Vorschlagen fest.
+
+Per Stichtag (meist 31.12.) bewertet `batzen bewertung 2026-12-31 --buchen` (bzw. Abschluss → Fremdwährungen)
+jedes Fremdwährungskonto zum BAZG-Kurs dieses Tages: Saldo FW × Kurs gegen den CHF-Buchwert, die Differenz geht auf
+Kursgewinn (6952) bzw. Kursverlust (6942) (`konten.kursgewinn`/`kursverlust` in batzen.yaml). Die Bewertung liegt
+unter `bewertung/JJJJ-MM-TT.yaml` und gehört ihren Journalzeilen (`Quelle bewertung:…`, FW 0.00, Kurs des Stichtags).
+`check` meldet Jahre mit Fremdwährungskonten ohne Bewertung per 31.12.
 
 ## MWST
 

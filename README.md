@@ -125,6 +125,17 @@ Beim Import bucht batzen Zahlungen mit QR-/SCOR-Referenz oder Rechnungsnummer se
 eigenen Zahlungsläufen (EndToEndId) und gleicht bereits Gebuchtes (z.B. Löhne) nur ab. Der Rest landet unter
 *Prüfen*; der Agent kann zuordnen oder Buchungen vorschlagen.
 
+### Fremdwährungen
+```bash
+batzen account-add 1021 "Bank EUR" --waehrung EUR
+batzen kurs EUR 2026-03-02                  # BAZG-Tageskurs (die Kurse der ESTV)
+batzen book --datum 2026-03-02 --soll 1021 --haben 3200 --betrag 1000 --waehrung EUR --text "Verkauf DE"
+#   → 1021 an 3200 CHF 944.45, Zeile trägt EUR 1000.00 und den Kurs
+batzen bewertung 2026-12-31                 # Vorschau: Saldo EUR × Stichtagskurs gegen CHF-Buchwert
+batzen bewertung 2026-12-31 --buchen        # Kursdifferenz auf 6952 Kursgewinne / 6942 Kursverluste
+```
+Die Bilanz zeigt Fremdwährungskonten danach zum Kurs des Stichtags, mit dem Saldo in der Währung daneben.
+
 ### Optional: Jev (TypeSafe) für schnelle Kontierung
 [Jev](https://typesafe.ai/) ist ein «System One»-Modell: Es schreibt keinen Text, sondern trifft typisierte
 Entscheidungen mit kalibrierter Konfidenz. batzen nutzt es optional, um für offene Bankbewegungen das Gegenkonto
@@ -200,7 +211,8 @@ Das genaue Dateiformat steht in [docs/format.md](docs/format.md).
 - Jede Journalzeile: gültiges Datum in der richtigen Monatsdatei, existierende Konten, positiver Betrag mit höchstens zwei Nachkommastellen, Belegnummer.
 - Jeder Beleg ist ausgeglichen (Soll = Haben), steht an einer Stelle und an einem Datum, ohne doppelte Zeilen.
 - Die Eröffnungsbilanz geht auf, Erfolgskonten eröffnen bei null.
-- Zeilen mit `Quelle` (`rechnung:`, `zahlung:`, `gutschrift:`, `lohn:`, `abschluss:`) gehören ihrem Dokument und müssen genau dazu passen.
+- Fremdwährungskonten nur als Bilanzkonten; jede Zeile darauf trägt Währung, FW-Betrag und Kurs, CHF = FW × Kurs.
+- Zeilen mit `Quelle` (`rechnung:`, `zahlung:`, `gutschrift:`, `lohn:`, `abschluss:`, `bewertung:` …) gehören ihrem Dokument und müssen genau dazu passen.
 - Ausgestellte Rechnungen und abgeschlossene Lohnabrechnungen sind unverändert (Fingerprint).
 - Die gesperrte Periode ist unverändert (Hash pro Monat). Entsperren geht nur mit Grund und wird protokolliert.
 - Hinweise: Buchungen ohne Beleg-Datei, unverarbeitete Inbox, Lohn-Entwürfe.
@@ -211,9 +223,10 @@ Die Fachlogik (Saldenmotor mit Jahresverkettung, OR-Gliederung, Lohnberechnung i
 
 ## Stand und Roadmap
 
-v0.4: Finanzbuchhaltung, MWST mit eMWST-Export (eCH-0217), Bankimport camt.053 mit automatischem Abgleich, Debitoren mit QR-Rechnung, Kreditoren mit QR-Scan und pain.001, Lohn, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit eingebautem Agenten, lokal oder als Server mit Login.
+v0.4: Finanzbuchhaltung, MWST mit eMWST-Export (eCH-0217), Bankimport camt.053 mit automatischem Abgleich, Fremdwährungskonten mit BAZG-Tageskursen und Stichtagsbewertung, Debitoren mit QR-Rechnung, Kreditoren mit QR-Scan und pain.001, Lohn, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit eingebautem Agenten, lokal oder als Server mit Login.
 
 Als Nächstes:
+- Rechnungen, Kreditoren und pain.001 in Fremdwährung; camt.053 für Fremdwährungskonten
 - Weitere Quellensteuer-Kantone, ALV-Höchstgrenze, Swissdec/ELM
 - Mehrere Mandanten in einer Instanz
 - camt.054 (Sammelgutschriften im Detail), ELM/Swissdec für Lohnmeldungen
