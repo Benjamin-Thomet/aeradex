@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, accounts_datalist %}
+{% from "_macros.html" import errors, accounts_datalist, mwst_select %}
 {% block title %}Prüfen{% endblock %}
 {% block main %}
 <div class="topbar">
@@ -45,6 +45,7 @@
           <tr><td class="muted">Text</td><td>{{ linked.Text }}</td></tr>
           <tr><td class="muted">Soll</td><td class="acc">{{ linked.Soll }} <span class="muted">{{ book.accounts[linked.Soll].name if linked.Soll in book.accounts }}</span></td></tr>
           <tr><td class="muted">Haben</td><td class="acc">{{ linked.Haben }} <span class="muted">{{ book.accounts[linked.Haben].name if linked.Haben in book.accounts }}</span></td></tr>
+          {% if linked.MWST %}<tr><td class="muted">MWST</td><td>{{ linked.MWST }} · {{ vat_codes[linked.MWST].label if linked.MWST in vat_codes }} (Betrag brutto)</td></tr>{% endif %}
           <tr class="total"><td>Betrag CHF</td><td class="num">{{ linked.Betrag|chf }}</td></tr>
         </tbody></table>
         <div class="formfoot">
@@ -66,6 +67,8 @@
           <div class="field wide"><label for="b-text">Text</label><input class="input" id="b-text" name="text" placeholder="z.B. Druckerpapier, Papeterie Muster" required></div>
           <div class="field"><label for="b-soll">Soll (wohin)</label><input class="input" id="b-soll" name="soll" list="konten" placeholder="Konto suchen …" required></div>
           <div class="field"><label for="b-haben">Haben (woher)</label><input class="input" id="b-haben" name="haben" list="konten" placeholder="z.B. 1020 Bank" required></div>
+          {{ mwst_select("mwst", vat, vat_codes, id="b-mwst") }}
+          {% if vat.methode != 'keine' %}<div class="field"><span class="lbl">&nbsp;</span><span class="small muted">Mit Code ist der Betrag brutto; die Steuer wird abgespalten.</span></div>{% endif %}
         </div>
         {{ errors() }}
         <div class="formfoot"><span class="small muted">Wird geprüft, gebucht und in git festgehalten.</span><button class="btn primary" type="submit">Buchen <kbd>⌘↵</kbd></button></div>
@@ -81,7 +84,7 @@
     <span class="beleg">{{ p.ID }}</span>
     <div class="what">
       <strong>{{ p.Text }}</strong>
-      <span class="posting">{{ p.Datum|datum }} · {{ p.Soll }} {{ book.accounts[p.Soll].name if p.Soll in book.accounts }} an {{ p.Haben }} {{ book.accounts[p.Haben].name if p.Haben in book.accounts }} · {{ p.Betrag|chf }}</span>
+      <span class="posting">{{ p.Datum|datum }} · {{ p.Soll }} {{ book.accounts[p.Soll].name if p.Soll in book.accounts }} an {{ p.Haben }} {{ book.accounts[p.Haben].name if p.Haben in book.accounts }} · {{ p.Betrag|chf }}{% if p.MWST %} · {{ p.MWST }} brutto{% endif %}</span>
       <span class="why">{% if p["Begründung"] %}«{{ p["Begründung"] }}»{% endif %} · {% if p.Datei %}<a class="link" href="/datei/{{ p.Datei|urlq }}" target="_blank">{{ p.Datei }}</a>{% else %}keine Beleg-Datei{% endif %}</span>
     </div>
     <span class="actions">

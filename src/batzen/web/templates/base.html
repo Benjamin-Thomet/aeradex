@@ -24,6 +24,7 @@
       <a href="/konten" class="{{ 'active' if p.startswith('/konten') }}">Konten</a>
       <a href="/debitoren" class="{{ 'active' if p.startswith('/debitoren') }}">Debitoren</a>
       <a href="/lohn" class="{{ 'active' if p.startswith('/lohn') }}">Lohn {% if nav.entwuerfe %}<span class="badge">{{ nav.entwuerfe }}</span>{% endif %}</a>
+      {% if vat.methode != 'keine' %}<a href="/mwst" class="{{ 'active' if p.startswith('/mwst') }}">MWST</a>{% endif %}
       <a href="/abschluss" class="{{ 'active' if p.startswith('/abschluss') }}">Abschluss</a>
       <span class="group">System</span>
       <a href="/verlauf" class="{{ 'active' if p.startswith('/verlauf') }}">Verlauf</a>

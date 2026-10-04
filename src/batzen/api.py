@@ -123,6 +123,7 @@ def status(book: Book) -> dict:
                  Decimal("0"))
     return jsonable({
         "firma": book.settings.firma, "buch": book.root, "jahre": book.years(),
+        "mwst_methode": (book.settings.get("mwst") or {}).get("methode") or "keine",
         "sperre_bis": book.settings.sperre_bis, "buchungen": len(book.rows),
         "fluessige_mittel": liquid, "jahresergebnis_laufend": -eng.result(year),
         "offene_rechnungen": len(open_inv), "offen_total": sum((s["offen"] for s in open_inv), Decimal("0")),
@@ -188,10 +189,10 @@ def journal_rows(book: Book, jahr: int | None = None, monat: int | None = None, 
 
 
 def post_entry(book: Book, datum, soll: str, haben: str, betrag, text: str, beleg: str = "",
-               datei: str | None = None) -> dict:
+               datei: str | None = None, mwst: str = "") -> dict:
     _guard(book)
     row, touched = journal.book_entry(book, datum, soll, haben, betrag, text, beleg,
-                                      attachment=Path(datei) if datei else None)
+                                      attachment=Path(datei) if datei else None, mwst=mwst or "")
     return _done(book, f"Beleg {row.beleg} gebucht: {row.text} ({row.soll} an {row.haben} {row.betrag:.2f})",
                  touched, buchung=row)
 
@@ -204,7 +205,7 @@ def post_split(book: Book, datum, text: str, zeilen: list[dict], beleg: str = ""
     d = parse_date(datum, "datum")
     ref = beleg or journal.next_beleg(book, d.year)
     rows = [Row(d, ref, str(z.get("text") or text), str(z.get("soll") or ""), str(z.get("haben") or ""),
-                Decimal(str(z["betrag"]))) for z in zeilen]
+                Decimal(str(z["betrag"])), mwst=str(z.get("mwst") or "").upper()) for z in zeilen]
     touched = journal.post(book, rows, Path(datei) if datei else None)
     return _done(book, f"Beleg {ref} gebucht (Sammelbuchung, {len(rows)} Zeilen): {text}", touched, buchungen=rows)
 
@@ -215,9 +216,11 @@ def reverse_entry(book: Book, beleg: str, datum=None, text: str = "") -> dict:
     return _done(book, f"Beleg {beleg} storniert mit {rows[0].beleg}", touched, buchungen=rows)
 
 
-def propose(book: Book, datum, soll, haben, betrag, text, begruendung: str = "", datei: str = "") -> dict:
+def propose(book: Book, datum, soll, haben, betrag, text, begruendung: str = "", datei: str = "",
+            mwst: str = "") -> dict:
     _guard(book)
-    cells, path = journal.propose(book, datum, soll, haben, betrag, text, begruendung, datei=datei or "")
+    cells, path = journal.propose(book, datum, soll, haben, betrag, text, begruendung, datei=datei or "",
+                                  mwst=mwst or "")
     return _done(book, f"Vorschlag {cells['ID']}: {cells['Text']} ({cells['Soll']} an {cells['Haben']} {cells['Betrag']})",
                  [path], vorschlag=cells)
 
@@ -541,7 +544,8 @@ SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_r
                  "zahlungsfrist_tage", "agent_modus", "sprache", "co")
 
 
-def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None, **fields) -> dict:
+def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None,
+                    mwst: dict | None = None, **fields) -> dict:
     _guard(book)
     unknown = set(fields) - set(SETTINGS_KEYS)
     if unknown:
@@ -559,6 +563,32 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
             if nr:
                 book.account(str(nr))
         data.setdefault("konten", {}).update({k: str(v) for k, v in konten.items() if v})
+    if mwst is not None:
+        methode = mwst.get("methode") or "keine"
+        if methode not in ("keine", "effektiv", "saldo"):
+            raise BookError("MWST-Methode: keine, effektiv oder saldo")
+        if mwst.get("periode") not in (None, "", "quartal", "semester"):
+            raise BookError("MWST-Periode: quartal oder semester")
+        current = dict(data.get("mwst") or {})
+        current["methode"] = methode
+        current["periode"] = mwst.get("periode") or ("semester" if methode == "saldo" else "quartal")
+        if mwst.get("saldosteuersatz") not in (None, ""):
+            rate = Decimal(str(mwst["saldosteuersatz"]))
+            if not (0 <= rate < 20):
+                raise BookError("Saldosteuersatz in Prozent angeben, z.B. 6.2")
+            current["saldosteuersatz"] = float(rate)
+        if methode == "saldo" and not current.get("saldosteuersatz"):
+            raise BookError("Für die Saldosteuersatzmethode den bewilligten Satz angeben")
+        from . import mwst as vat
+        for role, nr in (mwst.get("konten") or {}).items():
+            if nr:
+                book.account(str(nr))
+                current.setdefault("konten", {})[role] = str(nr)
+        if methode != "keine":
+            for role, nr in {**vat.DEFAULT_KONTEN, **(current.get("konten") or {})}.items():
+                if role != "saldosteuer" or methode == "saldo":
+                    book.account(nr)
+        data["mwst"] = current
     book.save_settings()
     return _done(book, "Einstellungen geändert", [book.root / "batzen.yaml"])
 
@@ -603,10 +633,15 @@ def commit_diff(book: Book, commit: str) -> dict:
 
 
 def invoice_preview(book: Book, positionen: list[dict]) -> dict:
-    pos = invoices.normalize_positions(positionen, book.settings.konto("ertrag"))
-    total = sum((p["betrag"] for p in pos), Decimal("0"))
+    from . import mwst as vat
+    cfg = vat.config(book)
+    pos = invoices.normalize_positions(positionen, book.settings.konto("ertrag"),
+                                       "U81" if cfg["methode"] != "keine" else "")
+    netto = sum((p["betrag"] for p in pos), Decimal("0"))
+    breakdown = invoices.mwst_breakdown(pos)
     iban = invoices.qr.normalize_iban(book.settings.get("iban"))
-    return jsonable({"positionen": pos, "total": total,
+    return jsonable({"positionen": pos, "netto": netto, "mwst": breakdown,
+                     "total": netto + sum((b["steuer"] for b in breakdown), Decimal("0")),
                      "referenz_typ": invoices.qr.reference_type_for(iban) if iban else "NON"})
 
 
@@ -684,6 +719,24 @@ def attach_receipt(book: Book, beleg: str, source: str) -> dict:
 
 for _name in ("inbox_add", "attach_receipt"):
     globals()[_name] = _locked(globals()[_name])
+
+
+# ---------- MWST ----------
+
+def mwst_report(book: Book, periode: str) -> dict:
+    from . import mwst
+    return jsonable(mwst.report(book, periode))
+
+
+def mwst_book(book: Book, periode: str) -> dict:
+    _guard(book)
+    from . import mwst
+    rep, touched = mwst.book_report(book, periode)
+    return _done(book, f"MWST-Abrechnung {rep['periode']} gebucht (Zahllast {rep['zahllast']:.2f})", touched,
+                 abrechnung=rep)
+
+
+mwst_book = _locked(mwst_book)
 
 
 def payslip_inputs(book: Book, monat: str, mitarbeiter: str, eingaben: dict) -> dict:

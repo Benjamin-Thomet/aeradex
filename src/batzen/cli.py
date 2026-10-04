@@ -100,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument(f"--{f}", required=True)
     s.add_argument("--beleg", default="")
     s.add_argument("--datei", help="Beleg-Datei (PDF/Bild); aus inbox/ wird sie verschoben")
+    s.add_argument("--mwst", default="", help="MWST-Code (U81, V81, I81, …); Betrag ist dann brutto")
     s = sub.add_parser("book-split", help="Sammelbuchung aus JSON-Zeilen")
     s.add_argument("--datum", required=True)
     s.add_argument("--text", required=True)
@@ -116,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument(f"--{f}", required=True)
     s.add_argument("--begruendung", default="")
     s.add_argument("--datei", default="", help="Beleg-Datei; wird bei approve nach belege/ abgelegt")
+    s.add_argument("--mwst", default="", help="MWST-Code, Betrag brutto")
     sub.add_parser("proposals", help="offene Vorschläge")
     s = sub.add_parser("approve", help="Vorschläge buchen")
     s.add_argument("ids", nargs="+", help="V-001 … oder 'alle'")
@@ -210,6 +212,12 @@ def build_parser() -> argparse.ArgumentParser:
     c = als.add_parser("book")
     c.add_argument("jahr", type=int)
     c.add_argument("--datum")
+    s = sub.add_parser("mwst", help="MWST-Abrechnung")
+    ms = s.add_subparsers(dest="sub", required=True)
+    c = ms.add_parser("abrechnung", help="Ziffern für die ESTV-Abrechnung")
+    c.add_argument("periode", help="z.B. 2026-Q1 oder 2026-S1")
+    c = ms.add_parser("buchen", help="Abrechnung buchen (MWST-Konten auf Abrechnungskonto)")
+    c.add_argument("periode")
     s = sub.add_parser("lock", help="Periode sperren (unveränderlich)")
     s.add_argument("bis")
     s = sub.add_parser("unlock", help="Sperre zurücknehmen (mit Grund)")
@@ -256,13 +264,13 @@ def dispatch(a, book_path: Path | None):
             return api.journal_pdf(book(), a.jahr, a.pdf or None)
         return api.journal_rows(book(), a.jahr, a.monat, a.beleg, a.konto, a.suche, a.limit)
     if c == "book":
-        return api.post_entry(book(), a.datum, a.soll, a.haben, a.betrag, a.text, a.beleg, a.datei)
+        return api.post_entry(book(), a.datum, a.soll, a.haben, a.betrag, a.text, a.beleg, a.datei, a.mwst)
     if c == "book-split":
         return api.post_split(book(), a.datum, a.text, json.loads(a.zeilen), a.beleg, a.datei)
     if c == "reverse":
         return api.reverse_entry(book(), a.beleg, a.datum, a.text)
     if c == "propose":
-        return api.propose(book(), a.datum, a.soll, a.haben, a.betrag, a.text, a.begruendung, a.datei)
+        return api.propose(book(), a.datum, a.soll, a.haben, a.betrag, a.text, a.begruendung, a.datei, a.mwst)
     if c == "proposals":
         return api.proposals(book())
     if c == "approve":
@@ -327,6 +335,10 @@ def dispatch(a, book_path: Path | None):
         if a.sub == "set":
             return api.allocation_set(book(), a.jahr, a.dividende, a.reserve)
         return api.allocation_book(book(), a.jahr, a.datum)
+    if c == "mwst":
+        if a.sub == "abrechnung":
+            return api.mwst_report(book(), a.periode)
+        return api.mwst_book(book(), a.periode)
     if c == "lock":
         return api.lock(book(), a.bis)
     if c == "unlock":
@@ -404,6 +416,14 @@ def render(cmd: str, sub: str | None, result) -> str:
             out.append(f"\n✗ Bilanzdifferenz {result['differenz']}")
         if result.get("pdf"):
             out.append(f"\nPDF {result['pdf']}")
+        return "\n".join(out)
+    if cmd == "mwst" and "ziffern" in result:
+        z = result["ziffern"]
+        out = [f"MWST-Abrechnung {result['periode']} ({result['methode']}) · {result['von']} – {result['bis']}"]
+        for key in sorted(z, key=lambda k: (k[:3], k)):
+            out.append(f"  Ziffer {key:<12}{_fmt(z[key]):>14}")
+        out.append(f"  {'Zahllast' if Decimal(result['zahllast']) >= 0 else 'Guthaben':<19}{_fmt(abs(Decimal(result['zahllast']))):>14}"
+                   + ("   (gebucht)" if result["gebucht"] else ""))
         return "\n".join(out)
     if isinstance(result, dict) and set(result) == {"pdf"}:
         return f"PDF {result['pdf']}"

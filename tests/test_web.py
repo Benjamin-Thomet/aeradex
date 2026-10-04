@@ -217,3 +217,25 @@ def test_ui_and_cli_writes_are_one_history(client, root):
     from batzen import api
     api.post_entry(Book(root), "2026-03-25", "6500", "1020", "5", "von der Kommandozeile")
     assert "von der Kommandozeile" in client.get("/journal?monat=3").text
+
+
+def test_mwst_screens_and_booking(client, root):
+    ok(post(client, "/einstellungen", {"firma": "Muster GmbH", "rechtsform": "GmbH", "uid": "CHE-123.456.789 MWST",
+                                        "telefon": "", "email": "", "iban": "CH93 0076 2011 6238 5295 7",
+                                        "qr_referenz_praefix": "", "zahlungsfrist_tage": "30", "agent_modus": "vorschlag",
+                                        "co": "", "a_strasse": "Bahnhofstrasse", "a_nr": "1", "a_plz": "3000",
+                                        "a_ort": "Bern", "a_land": "CH", "mwst_methode": "effektiv", "mwst_periode": ""}))
+    assert "MWST-Code" in client.get("/journal").text
+    ok(post(client, "/journal/buchen", {"modus": "einfach", "datum": "2026-04-02", "betrag": "108.10", "text": "Papier",
+                                         "soll": "6500", "haben": "1020", "mwst": "V81"}))
+    r = post(client, "/debitoren/vorschau", {"p_text": ["Beratung"], "p_menge": ["10"], "p_einheit": ["h"],
+                                              "p_preis": ["100"], "p_konto": ["3400"], "p_mwst": ["U81"]})
+    assert "1&#39;081.00" in r.text or "1'081.00" in r.text
+    ok(post(client, "/debitoren/neu", {"kunde": "K0001", "datum": "2026-04-03", "p_text": ["Beratung"], "p_menge": ["10"],
+                                        "p_einheit": ["h"], "p_preis": ["100"], "p_konto": ["3400"], "p_mwst": ["U81"]}))
+    page = client.get("/mwst?jahr=2026&periode=2026-Q2").text
+    assert "72.90" in page                                        # 81.00 − 8.10
+    assert client.get("/mwst/pdf?periode=2026-Q2").content.startswith(b"%PDF")
+    ok(post(client, "/mwst/buchen", {"periode": "2026-Q2"}))
+    assert "gebucht" in client.get("/mwst?jahr=2026&periode=2026-Q2").text
+    assert errors(root) == []

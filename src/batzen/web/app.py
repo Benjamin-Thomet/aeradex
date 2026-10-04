@@ -130,6 +130,9 @@ class UI:
             except ValueError:
                 flash = None
         ctx.setdefault("nav", nav_counts(book))
+        from .. import mwst
+        ctx.setdefault("vat", mwst.config(book))
+        ctx.setdefault("vat_codes", mwst.CODES)
         html = self.env.get_template(template).render(
             request=request, book=book, settings=book.settings, csrf=self.csrf, flash=flash,
             path=request.url.path, **ctx)

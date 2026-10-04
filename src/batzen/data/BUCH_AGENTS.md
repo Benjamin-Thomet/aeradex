@@ -32,6 +32,11 @@ Du arbeitest damit über das CLI `batzen` (immer mit `--json`) oder den MCP-Serv
 **Abschluss**: `batzen report --jahr 2026 --pdf`, Gewinnverwendung `batzen allocation set 2026 --dividende … --reserve …`,
 nach der GV `batzen allocation book 2026 --datum …`, Periode sperren `batzen lock 2026-12-31`.
 
+## MWST
+`batzen status --json` zeigt `mwst_methode`. Bei `effektiv`: weist der Beleg MWST aus, mit `--mwst` buchen
+(V81 Vorsteuer Material/Dienstleistungen, I81 Investitionen/übriger Aufwand, U81 Umsatz; 2.6 % = V26/I26/U26)
+und den **Bruttobetrag** angeben. Bei `saldo` oder `keine`: ohne Vorsteuer-Code buchen.
+
 ## Kontierungs-Hinweise (KMU-Kontenrahmen)
 - Bank 1020 · Kasse 1000 · Debitoren 1100 · Kreditoren 2000 · Vorsteuer 1170/1171 · Umsatzsteuer 2200
 - Dienstleistungserlös 3400 · Material 4000 · Drittleistungen 4400 · Lohn 5000 · Miete 6000

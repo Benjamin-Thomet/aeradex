@@ -30,6 +30,9 @@ Regeln:
 - Gebuchtes wird nie gelöscht: Korrekturen per reverse_entry (Storno) bzw. Rechnungen per void/credit.
 - Nach jeder Änderung ist das Buch geprüft und in git committet; bei Fehlern die Meldung lesen und korrigieren.
 - Beträge als Text mit Punkt: "1234.50". Datum als JJJJ-MM-TT.
+- MWST: status() nennt die mwst_methode. Bei "effektiv" und einem Beleg mit ausgewiesener MWST den Code mitgeben
+  (V81/I81 Vorsteuer, U81 Umsatz …) und den BRUTTO-Betrag buchen; die Steuer wird automatisch abgespalten.
+  Bei "saldo" oder "keine" ohne Vorsteuer-Code buchen.
 """
 
 
@@ -151,7 +154,7 @@ def list_inbox() -> list | dict:
 # ---------- journal ----------
 
 def propose_booking(datum: str, soll: str, haben: str, betrag: str, text: str, begruendung: str,
-                    beleg_datei: str = "") -> dict:
+                    beleg_datei: str = "", mwst: str = "") -> dict:
     """Buchung vorschlagen (wird geprüft, aber erst nach Freigabe durch einen Menschen gebucht).
 
     Args:
@@ -162,8 +165,11 @@ def propose_booking(datum: str, soll: str, haben: str, betrag: str, text: str, b
         text: Buchungstext, z.B. "Druckerpapier, Papeterie Muster".
         begruendung: kurz, warum diese Konten (wird dem Menschen gezeigt).
         beleg_datei: Quittung, z.B. "inbox/quittung.pdf" — wird bei der Freigabe nach belege/ abgelegt.
+        mwst: MWST-Code, wenn das Buch MWST-pflichtig ist und der Beleg MWST ausweist: V81/V26/V38 (Vorsteuer
+            Material/Dienstleistungen), I81/I26/I38 (Vorsteuer Investitionen/übriger Aufwand), U81/U26/U38 (Umsatz).
+            Dann ist betrag BRUTTO (inkl. MWST); die Steuer wird automatisch abgespalten.
     """
-    return _call(api.propose, datum, soll, haben, betrag, text, begruendung, beleg_datei)
+    return _call(api.propose, datum, soll, haben, betrag, text, begruendung, beleg_datei, mwst)
 
 
 def list_proposals() -> list | dict:
@@ -171,7 +177,8 @@ def list_proposals() -> list | dict:
     return _call(api.proposals)
 
 
-def book_entry(datum: str, soll: str, haben: str, betrag: str, text: str, beleg_datei: str = "") -> dict:
+def book_entry(datum: str, soll: str, haben: str, betrag: str, text: str, beleg_datei: str = "",
+               mwst: str = "") -> dict:
     """Buchung direkt erfassen (nur agent_modus: direkt).
 
     Args:
@@ -181,8 +188,9 @@ def book_entry(datum: str, soll: str, haben: str, betrag: str, text: str, beleg_
         betrag: positiver Betrag als Text.
         text: Buchungstext.
         beleg_datei: Pfad zur Quittung, z.B. "inbox/x.pdf".
+        mwst: MWST-Code (siehe propose_booking); betrag dann brutto.
     """
-    return _direct(api.post_entry, datum, soll, haben, betrag, text, "", beleg_datei or None)
+    return _direct(api.post_entry, datum, soll, haben, betrag, text, "", beleg_datei or None, mwst)
 
 
 def book_split(datum: str, text: str, zeilen: list[dict], beleg_datei: str = "") -> dict:
@@ -215,6 +223,15 @@ def reverse_entry(beleg: str, datum: str = "", text: str = "") -> dict:
         text: optionaler Text.
     """
     return _direct(api.reverse_entry, beleg, datum or None, text)
+
+
+def mwst_report(periode: str) -> dict:
+    """MWST-Abrechnung einer Periode nach ESTV-Ziffern (Umsatz, Steuer, Vorsteuer, Zahllast).
+
+    Args:
+        periode: z.B. "2026-Q1" (effektive Methode) oder "2026-S1" (Saldosteuersatz).
+    """
+    return _call(api.mwst_report, periode)
 
 
 # ---------- debitoren ----------
@@ -397,7 +414,7 @@ def read_inbox_file(datei: str) -> list[dict] | str:
 
 
 # Order matters for prompt caching: a stable list keeps the cached prefix valid.
-SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox,
+SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, employees, payroll_run, payslip, close_payslip, lohnausweis]

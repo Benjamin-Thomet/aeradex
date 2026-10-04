@@ -31,8 +31,8 @@ from .files import (FormatError, MdTable, fmt_amount, parse_amount, parse_date,
 
 ZERO = Decimal("0")
 
-JOURNAL_COLUMNS = ["Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "Quelle"]
-PROPOSAL_COLUMNS = ["ID", "Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "Begründung", "Datei"]
+JOURNAL_COLUMNS = ["Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "MWST", "Quelle"]
+PROPOSAL_COLUMNS = ["ID", "Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "MWST", "Begründung", "Datei"]
 
 KLASSEN = ("aktiv", "passiv", "aufwand", "ertrag")
 
@@ -89,11 +89,12 @@ class Row:
     quelle: str = ""
     file: str = ""        # relative path of the month file it came from
     line: int = 0         # 1-based row index within that file's table
+    mwst: str = ""        # MWST code (see mwst.py), empty = no VAT relevance
 
     def as_cells(self) -> dict[str, str]:
         return {"Datum": self.datum.isoformat(), "Beleg": self.beleg, "Text": self.text,
                 "Soll": self.soll, "Haben": self.haben, "Betrag": fmt_amount(self.betrag),
-                "Quelle": self.quelle}
+                "MWST": self.mwst, "Quelle": self.quelle}
 
     @property
     def where(self) -> str:
@@ -264,8 +265,9 @@ def _open_month(path: Path, d: date) -> MdTable:
     if path.exists():
         table = read_table(path)
         if table.columns:
-            missing = [c for c in JOURNAL_COLUMNS if c not in table.columns]
-            table.columns += missing
+            for i, col in enumerate(JOURNAL_COLUMNS):
+                if col not in table.columns:       # older files: insert at the canonical place
+                    table.columns.insert(min(i, len(table.columns)), col)
             table.align["Betrag"] = "right"
             return table
     return MdTable(columns=list(JOURNAL_COLUMNS), rows=[],
@@ -283,6 +285,7 @@ def _row_from_cells(cells: dict, rel: str, line: int) -> Row:
         betrag=parse_amount(cells.get("Betrag"), where),
         quelle=cells.get("Quelle", "").strip(),
         file=rel, line=line,
+        mwst=cells.get("MWST", "").strip().upper(),
     )
 
 

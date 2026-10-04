@@ -47,19 +47,45 @@ konten:
 ```markdown
 # Journal Januar 2026
 
-| Datum      | Beleg  | Text         | Soll | Haben |  Betrag | Quelle |
-| ---------- | ------ | ------------ | ---- | ----- | ------: | ------ |
-| 2026-01-05 | 26-001 | Büromaterial | 6500 | 1020  |   45.80 |        |
-| 2026-01-10 | 26-002 | Einkauf Coop | 6500 |       |   30.00 |        |
-| 2026-01-10 | 26-002 | Einkauf Coop | 6641 |       |   20.00 |        |
-| 2026-01-10 | 26-002 | Einkauf Coop |      | 1000  |   50.00 |        |
+| Datum      | Beleg  | Text         | Soll | Haben |  Betrag | MWST | Quelle |
+| ---------- | ------ | ------------ | ---- | ----- | ------: | ---- | ------ |
+| 2026-01-05 | 26-001 | Büromaterial | 6500 | 1020  |   45.80 |      |        |
+| 2026-01-10 | 26-002 | Einkauf Coop | 6500 |       |   30.00 |      |        |
+| 2026-01-10 | 26-002 | Einkauf Coop | 6641 |       |   20.00 |      |        |
+| 2026-01-10 | 26-002 | Einkauf Coop |      | 1000  |   50.00 |      |        |
+| 2026-01-12 | 26-003 | Papier       | 6500 |       |  100.00 | V81  |        |
+| 2026-01-12 | 26-003 | Papier       | 1170 |       |    8.10 | V81  |        |
+| 2026-01-12 | 26-003 | Papier       |      | 1020  |  108.10 |      |        |
 ```
 
 - Eine Zeile mit Soll **und** Haben ist eine einfache Buchung.
 - Sammelbuchung: mehrere Zeilen mit derselben Belegnummer, jede nur mit Soll oder nur mit Haben. Der Beleg als Ganzes muss aufgehen.
 - `Quelle` leer = manuelle Buchung. Sonst gehört die Zeile einem Dokument:
   `rechnung:R-2026-0001`, `zahlung:R-2026-0001`, `gutschrift:R-2026-0001`, `lohn:2026-01:M0001`, `abschluss:2026`.
+- `MWST`: Code der Zeile (siehe unten). Ältere Dateien ohne diese Spalte bleiben gültig; sie wird beim nächsten Schreiben ergänzt.
 - Text vor und nach der Tabelle bleibt erhalten. Weitere Spalten dürfen ergänzt werden, sie werden mitgeführt.
+
+## MWST
+
+`batzen.yaml`:
+
+```yaml
+mwst:
+  methode: effektiv        # keine | effektiv | saldo
+  periode: quartal         # quartal | semester
+  saldosteuersatz: 6.2     # nur bei saldo
+  konten: {vorsteuer: "1170", vorsteuer_inv: "1171", umsatzsteuer: "2200", abrechnung: "2201", saldosteuer: "3809"}
+```
+
+| Code | Bedeutung | Ziffer |
+|---|---|---|
+| U81 / U26 / U38 | Umsatz 8.1 / 2.6 / 3.8 % | 303 / 313 / 343 (Saldo: 322) |
+| U0 | steuerbefreit (Export) | 220 |
+| UA | von der Steuer ausgenommen | 230 |
+| V81 / V26 / V38 | Vorsteuer Material und Dienstleistungen | 400 |
+| I81 / I26 / I38 | Vorsteuer Investitionen und übriger Betriebsaufwand | 405 |
+
+Gebucht wird brutto mit Code; bei der effektiven Methode spaltet batzen die Steuer ab (Netto- und Steuerzeile tragen beide den Code). Bei der Saldosteuersatzmethode bleibt der Umsatz brutto und die Saldosteuer wird mit der Abrechnung gebucht. Gebuchte Abrechnungen liegen unter `mwst/<Periode>.yaml` und gehören ihren Journalzeilen (`Quelle mwst:2026-Q1`).
 
 ## vorschlaege.md
 

@@ -36,7 +36,7 @@ class Issue:
 
 
 def _key(r: Row) -> tuple:
-    return (r.datum, r.beleg, r.soll, r.haben, r.betrag, r.quelle)
+    return (r.datum, r.beleg, r.soll, r.haben, r.betrag, r.quelle, r.mwst)
 
 
 def run(book: Book) -> list[Issue]:
@@ -106,6 +106,9 @@ def run(book: Book) -> list[Issue]:
         if soll != haben:
             add("fehler", group[0].where, f"Beleg {beleg} nicht ausgeglichen: Soll {soll} ≠ Haben {haben}")
 
+    # ---- MWST ----
+    issues += check_mwst(book, rows, by_beleg)
+
     # ---- posting lock ----
     issues += check_lock(book)
 
@@ -129,15 +132,16 @@ def run(book: Book) -> list[Issue]:
         if Counter(map(_key, expected)) != Counter(map(_key, actual)):
             add("fehler", where, "Journalbuchung passt nicht zur Rechnung "
                 f"(erwartet {len(expected)} Zeile(n), gefunden {len(actual)})")
-        settled = owned.get(f"zahlung:{nr}", []) + owned.get(f"gutschrift:{nr}", [])
+        settled_all = owned.get(f"zahlung:{nr}", []) + owned.get(f"gutschrift:{nr}", [])
+        deb = str(meta.get("debitorenkonto"))
+        settled = [r for r in settled_all if r.haben == deb]
+        for beleg in {r.beleg for r in settled_all} - {r.beleg for r in settled}:
+            add("fehler", where, f"Zahlung/Gutschrift {beleg} zu {nr} geht nicht im Haben auf {deb}")
         total = sum((r.betrag for r in settled), ZERO)
         if meta.get("status") == "storniert" and settled:
             add("fehler", where, "stornierte Rechnung hat Zahlungen/Gutschriften")
         elif total > Decimal(str(meta.get("total") or 0)):
             add("fehler", where, f"Zahlungen {total} übersteigen das Total {Decimal(str(meta.get('total'))):.2f}")
-        for r in settled:
-            if r.haben != str(meta.get("debitorenkonto")):
-                add("fehler", r.where, f"Zahlung zu {nr} muss im Haben auf {meta.get('debitorenkonto')} gehen")
     for quelle, group in owned.items():
         kind, _, ref = quelle.partition(":")
         if kind in ("rechnung", "zahlung", "gutschrift") and ref not in all_inv:
@@ -170,7 +174,7 @@ def run(book: Book) -> list[Issue]:
     for quelle, group in owned.items():
         if quelle.startswith("lohn:") and quelle not in known:
             add("fehler", group[0].where, f"Quelle {quelle}: Lohnabrechnung existiert nicht")
-        if quelle.partition(":")[0] not in ("rechnung", "zahlung", "gutschrift", "lohn", "abschluss"):
+        if quelle.partition(":")[0] not in ("rechnung", "zahlung", "gutschrift", "lohn", "abschluss", "mwst"):
             add("warnung", group[0].where, f"unbekannte Quelle '{quelle}'")
 
     # ---- receipts (GeBüV: every booking needs a Beleg) ----
@@ -188,6 +192,63 @@ def run(book: Book) -> list[Issue]:
     return issues
 
 
+def check_mwst(book: Book, rows: list[Row], by_beleg: dict) -> list[Issue]:
+    from . import mwst
+    out = []
+    cfg = mwst.config(book)
+    coded = [r for r in rows if r.mwst]
+    if not coded and cfg["methode"] == "keine":
+        return out
+    tax_accounts = {cfg["konten"]["umsatzsteuer"], cfg["konten"]["vorsteuer"], cfg["konten"]["vorsteuer_inv"]}
+    for r in coded:
+        if r.mwst not in mwst.CODES:
+            out.append(Issue("fehler", r.where, f"Unbekannter MWST-Code {r.mwst}"))
+        elif cfg["methode"] == "keine":
+            out.append(Issue("warnung", r.where, f"MWST-Code {r.mwst}, aber das Buch ist nicht MWST-pflichtig"))
+        elif cfg["methode"] == "saldo" and mwst.CODES[r.mwst].kind in ("vorsteuer", "investition"):
+            out.append(Issue("fehler", r.where, "Vorsteuer-Code bei Saldosteuersatzmethode"))
+    if cfg["methode"] == "effektiv":
+        # Within a Beleg, the tax per code must match the rate on the net amount (± 1 Rappen).
+        for beleg, group in by_beleg.items():
+            per_code: dict[str, list] = {}
+            for r in group:
+                if r.mwst in mwst.CODES and mwst.CODES[r.mwst].rate:
+                    per_code.setdefault(r.mwst, []).append(r)
+            for c, crows in per_code.items():
+                tax = sum((x.betrag for x in crows if (x.soll or x.haben) in tax_accounts), ZERO)
+                net = sum((x.betrag for x in crows if (x.soll or x.haben) not in tax_accounts), ZERO)
+                expected = mwst.tax_from_net(net, mwst.CODES[c].rate)
+                if net and abs(tax - expected) > Decimal("0.02"):
+                    out.append(Issue("warnung", crows[0].where,
+                                     f"Beleg {beleg}: MWST {c} {tax} passt nicht zu {mwst.CODES[c].rate} % auf {net} (erwartet {expected})"))
+        for r in rows:
+            if not r.mwst and not r.quelle and (r.soll in tax_accounts or r.haben in tax_accounts):
+                out.append(Issue("warnung", r.where, "Buchung auf einem MWST-Konto ohne MWST-Code — "
+                                 "erscheint nicht in der MWST-Abrechnung"))
+    # Booked Abrechnungen own their rows; a changed period afterwards needs a correction.
+    folder = book.root / "mwst"
+    owned = defaultdict(list)
+    for r in rows:
+        if r.quelle.startswith("mwst:"):
+            owned[r.quelle].append(r)
+    known = set()
+    for path in sorted(folder.glob("*.yaml")) if folder.exists() else []:
+        saved = read_yaml(path)
+        label = str(saved.get("periode") or path.stem)
+        known.add(f"mwst:{label}")
+        expected = mwst.booking_rows(book, label, saved)
+        if Counter(map(_key, expected)) != Counter(map(_key, owned.get(f"mwst:{label}", []))):
+            out.append(Issue("fehler", book.rel(path), "Buchung der MWST-Abrechnung passt nicht zur gespeicherten Abrechnung"))
+        current = mwst.report(book, label)
+        if current["veraendert"]:
+            out.append(Issue("warnung", book.rel(path), f"Seit der MWST-Abrechnung {label} wurden Buchungen mit "
+                             "MWST-Code geändert — Korrekturabrechnung bei der ESTV nötig"))
+    for quelle, group in owned.items():
+        if quelle not in known:
+            out.append(Issue("fehler", group[0].where, f"Quelle {quelle}: MWST-Abrechnung existiert nicht"))
+    return out
+
+
 # ---------- posting lock ----------
 
 def locks_path(book: Book) -> Path:
@@ -199,7 +260,8 @@ def _month_hashes(book: Book, until: date) -> dict[str, str]:
     for r in book.rows:
         if r.datum <= until:
             groups[f"{r.datum.year}-{r.datum.month:02d}"].append(
-                "|".join([r.datum.isoformat(), r.beleg, r.text, r.soll, r.haben, f"{r.betrag:.2f}", r.quelle]))
+                "|".join([r.datum.isoformat(), r.beleg, r.text, r.soll, r.haben, f"{r.betrag:.2f}", r.quelle]
+                         + ([r.mwst] if r.mwst else [])))
     return {m: hashlib.sha256("\n".join(lines).encode()).hexdigest()[:16] for m, lines in sorted(groups.items())}
 
 

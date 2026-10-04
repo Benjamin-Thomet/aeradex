@@ -163,11 +163,23 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
         for p in meta["positionen"]:
             menge = f"{Decimal(str(p['menge'])).normalize():f} {p.get('einheit') or ''}".strip()
             data.append([P(p["text"], "cell"), menge, chf(p["preis"]), chf(p["betrag"])])
-        data.append([f"Total {meta.get('waehrung', 'CHF')}", "", "", chf(meta["total"])])
+        cur = meta.get('waehrung', 'CHF')
+        sums = []
+        if meta.get("mwst"):
+            data.append([f"Total exkl. MWST", "", "", chf(meta.get("netto"))])
+            sums.append(len(data) - 1)
+            for b in meta["mwst"]:
+                rate = Decimal(str(b.get("satz") or 0))
+                label = (f"MWST {rate:g} % auf {chf(b['netto'])}" if rate else
+                         {"U0": "Steuerbefreite Leistung", "UA": "Von der MWST ausgenommen"}.get(b["code"], b["code"]))
+                data.append([label, "", "", chf(b["steuer"]) if rate else ""])
+        data.append([f"Total {cur}" + (" inkl. MWST" if meta.get("mwst") else ""), "", "", chf(meta["total"])])
         story.append(_grid(data, [width * 0.52, width * 0.14, width * 0.16, width * 0.18],
-                           total_rows=[len(data) - 1], right_cols=(1, 2, 3)))
+                           total_rows=sums + [len(data) - 1], right_cols=(1, 2, 3)))
         uid = (s.get("uid") or "").upper()
-        if s.get("ohne_mwst_hinweis", True) and not uid.endswith("MWST"):
+        if meta.get("mwst") and uid:
+            story += [Spacer(1, 3 * mm), P(f"MWST-Nr. {s.get('uid')}", "small")]
+        elif s.get("ohne_mwst_hinweis", True) and not uid.endswith("MWST") and not meta.get("mwst"):
             story += [Spacer(1, 3 * mm), P("Nicht MWST-pflichtig, es wird keine Mehrwertsteuer erhoben.", "small")]
         story += [Spacer(1, 6 * mm), P(s.get("rechnung_gruss") or "Besten Dank für Ihren Auftrag.")]
         return story
@@ -365,3 +377,41 @@ def receivables_pdf(book: Book, ar: dict) -> bytes:
     doc.build(story)
     return buf.getvalue()
 
+
+
+def mwst_pdf(book: Book, rep: dict) -> bytes:
+    """Summary of a MWST-Abrechnung to transcribe into the ESTV portal."""
+    s = book.settings
+    width = A4[0] - 2 * SIDE
+    buf = io.BytesIO()
+    doc = _doc(buf, f"MWST-Abrechnung {rep['periode']}", s.firma, label=f"{s.firma} · MWST {rep['periode']}")
+    z = rep["ziffern"]
+    labels = [("200", "Total der vereinbarten Entgelte"), ("220", "Steuerbefreite Leistungen"),
+              ("230", "Von der Steuer ausgenommene Leistungen"), ("289", "Total Abzüge"),
+              ("299", "Steuerbares Gesamtentgelt")]
+    if rep["methode"] == "saldo":
+        labels += [("322", f"Leistungen zum Saldosteuersatz {rep['saldosteuersatz']} %")]
+    else:
+        labels += [("303", "Leistungen zum Normalsatz 8.1 %"), ("313", "Reduzierter Satz 2.6 %"),
+                   ("343", "Beherbergung 3.8 %")]
+    data = [["Ziffer", "Bezeichnung", "Entgelt", "Steuer"]]
+    for nr, label in labels:
+        data.append([nr, P(label, "cell"), chf(z.get(nr, 0)), chf(z.get(nr + "_steuer", 0)) if nr + "_steuer" in z else ""])
+    data.append(["399", "Total geschuldete Steuer", "", chf(z.get("399", 0))])
+    if rep["methode"] != "saldo":
+        data += [["400", P("Vorsteuer Material- und Dienstleistungsaufwand", "cell"), "", chf(z.get("400", 0))],
+                 ["405", P("Vorsteuer Investitionen und übriger Betriebsaufwand", "cell"), "", chf(z.get("405", 0))],
+                 ["479", "Total Vorsteuer", "", chf(z.get("479", 0))]]
+    pay = Decimal(str(rep["zahllast"]))
+    data.append(["500" if pay >= 0 else "510", "Zu bezahlender Betrag" if pay >= 0 else "Guthaben", "", chf(abs(pay))])
+    story = [P(f"MWST-Abrechnung {rep['periode']}", "title"),
+             P(f"{s.firma} · {s.get('uid') or ''} · {d(rep['von'])} – {d(rep['bis'])} · "
+               f"{'Saldosteuersatz' if rep['methode'] == 'saldo' else 'effektive Methode'}", "small"),
+             Spacer(1, 6 * mm),
+             _grid(data, [width * 0.1, width * 0.54, width * 0.18, width * 0.18], total_rows=[len(data) - 1],
+                   right_cols=(2, 3)),
+             Spacer(1, 6 * mm),
+             P("Hilfsblatt aus batzen. Die Ziffern entsprechen dem ESTV-Formular mit den Sätzen ab 1.1.2024; "
+               "vor dem Einreichen im ePortal mit dem aktuellen Formular abgleichen.", "small")]
+    doc.build(story)
+    return buf.getvalue()

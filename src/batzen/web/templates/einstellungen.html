@@ -27,6 +27,14 @@
         <span class="actions"><label class="check"><input type="radio" name="agent_modus" value="vorschlag" {{ 'checked' if (settings.get('agent_modus') or 'vorschlag') == 'vorschlag' }}> Vorschlag: Agenten schlagen freie Buchungen nur vor, du gibst frei</label>
         <label class="check"><input type="radio" name="agent_modus" value="direkt" {{ 'checked' if settings.get('agent_modus') == 'direkt' }}> Direkt: Agenten dürfen selbst buchen</label></span></div>
     </div>
+    <div class="field wide"><span class="lbl">Mehrwertsteuer</span>
+      <div class="form four" style="margin-top:4px">
+        <div class="field"><label for="mw-m">Methode</label><select class="input" id="mw-m" name="mwst_methode" style="width:100%">{% for k, l in [("keine", "nicht MWST-pflichtig"), ("effektiv", "effektive Methode"), ("saldo", "Saldosteuersatz")] %}<option value="{{ k }}" {{ 'selected' if vat.methode == k }}>{{ l }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="mw-p">Abrechnung</label><select class="input" id="mw-p" name="mwst_periode" style="width:100%"><option value="">Standard der Methode</option><option value="quartal" {{ 'selected' if vat.periode == 'quartal' }}>quartalsweise</option><option value="semester" {{ 'selected' if vat.periode == 'semester' }}>halbjährlich</option></select></div>
+        <div class="field"><label for="mw-s">Saldosteuersatz %</label><input class="input num" id="mw-s" name="mwst_saldosteuersatz" value="{{ vat.saldosteuersatz if vat.saldosteuersatz|float else '' }}" placeholder="nur Saldo-Methode"></div>
+        <div class="field"><span class="lbl">Konten</span><span class="small muted">Vorsteuer {{ vat.konten.vorsteuer }}/{{ vat.konten.vorsteuer_inv }} · Umsatzsteuer {{ vat.konten.umsatzsteuer }} · Abrechnung {{ vat.konten.abrechnung }}{{ ' · Saldosteuer ' ~ vat.konten.saldosteuer if vat.methode == 'saldo' }}</span></div>
+      </div>
+    </div>
     <details><summary class="lbl" style="cursor:pointer">Systemkonten</summary>
       <div class="form four" style="margin-top:10px">
         {% for role, label in [("bank","Bank"),("debitoren","Debitoren"),("ertrag","Standard-Ertrag"),("gutschrift","Erlösminderung"),("gewinnvortrag","Gewinnvortrag"),("jahresergebnis","Jahresergebnis"),("dividende","Dividende"),("reserve","Gesetzliche Reserve")] %}

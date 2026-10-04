@@ -54,6 +54,9 @@ def validate_rows(book: Book, rows: list[Row]) -> None:
         for nr in (r.soll, r.haben):
             if nr:
                 book.account(nr)
+        if r.mwst:
+            from .mwst import code
+            code(r.mwst)
         belege.setdefault(r.beleg, []).append(r)
     existing = {r.beleg for r in book.rows}
     for beleg, group in belege.items():
@@ -70,13 +73,16 @@ def validate_rows(book: Book, rows: list[Row]) -> None:
 
 
 def book_entry(book: Book, datum, soll: str, haben: str, betrag, text: str,
-               beleg: str = "", quelle: str = "", attachment: Path | None = None) -> tuple[Row, list[Path]]:
-    """Post one simple booking (Soll an Haben). Returns the row and the files touched."""
+               beleg: str = "", quelle: str = "", attachment: Path | None = None,
+               mwst: str = "") -> tuple[Row, list[Path]]:
+    """Post one simple booking (Soll an Haben). With a MWST code the gross amount
+    is split into net and tax (effective method). Returns the row and the files touched."""
+    from .mwst import split
     d = parse_date(datum, "datum")
     row = Row(datum=d, beleg=beleg or next_beleg(book, d.year), text=text.strip(),
               soll=str(soll or "").strip(), haben=str(haben or "").strip(),
               betrag=parse_amount(betrag, "betrag"), quelle=quelle)
-    return row, post(book, [row], attachment)
+    return row, post(book, split(book, row, mwst), attachment)
 
 
 def post(book: Book, rows: list[Row], attachment: Path | None = None) -> list[Path]:
@@ -123,7 +129,7 @@ def reverse(book: Book, beleg: str, datum=None, text: str = "") -> tuple[list[Ro
     d = parse_date(datum, "datum") if datum else date.today()
     ref = next_beleg(book, d.year)
     rows = [Row(datum=d, beleg=ref, text=text or f"Storno {beleg}: {r.text}", soll=r.haben,
-                haben=r.soll, betrag=r.betrag, quelle="") for r in original]
+                haben=r.soll, betrag=r.betrag, quelle="", mwst=r.mwst) for r in original]
     return rows, post(book, rows)
 
 
@@ -158,14 +164,15 @@ def list_proposals(book: Book) -> list[dict]:
 
 
 def propose(book: Book, datum, soll: str, haben: str, betrag, text: str, begruendung: str = "",
-            beleg: str = "", datei: str = "") -> tuple[dict, Path]:
+            beleg: str = "", datei: str = "", mwst: str = "") -> tuple[dict, Path]:
     """Record a booking an agent suggests. It is validated now (so a proposal is
     always postable) but only reaches the journal on approval."""
     d = parse_date(datum, "datum")
     row = Row(datum=d, beleg=beleg or next_beleg(book, d.year), text=text.strip(),
               soll=str(soll or "").strip(), haben=str(haben or "").strip(),
               betrag=parse_amount(betrag, "betrag"))
-    validate_rows(book, [row])
+    from .mwst import split
+    validate_rows(book, split(book, Row(row.datum, row.beleg, row.text, row.soll, row.haben, row.betrag), mwst))
     if datei:
         source = Path(datei) if Path(datei).is_absolute() else book.root / datei
         if not source.exists():
@@ -176,7 +183,7 @@ def propose(book: Book, datum, soll: str, haben: str, betrag, text: str, begruen
     pid = f"V-{max(ids, default=0) + 1:03d}"
     cells = {"ID": pid, "Datum": d.isoformat(), "Beleg": row.beleg, "Text": row.text,
              "Soll": row.soll, "Haben": row.haben, "Betrag": fmt_amount(row.betrag),
-             "Begründung": begruendung.strip(), "Datei": datei or ""}
+             "MWST": (mwst or "").strip().upper(), "Begründung": begruendung.strip(), "Datei": datei or ""}
     table.rows.append(cells)
     write_table(proposals_path(book), table)
     return cells, proposals_path(book)
@@ -197,11 +204,16 @@ def _take_proposals(book: Book, ids: list[str]) -> tuple[list[dict], MdTable]:
 
 def approve(book: Book, ids: list[str]) -> tuple[list[Row], list[Path]]:
     found, table = _take_proposals(book, ids)
-    rows = [Row(datum=parse_date(p["Datum"]), beleg=p["Beleg"], text=p["Text"], soll=p["Soll"],
-                haben=p["Haben"], betrag=parse_amount(p["Betrag"])) for p in found]
+    from .mwst import split
+    rows, firsts = [], []
+    for p in found:
+        row = Row(datum=parse_date(p["Datum"]), beleg=p["Beleg"], text=p["Text"], soll=p["Soll"],
+                  haben=p["Haben"], betrag=parse_amount(p["Betrag"]))
+        firsts.append(row)
+        rows += split(book, row, p.get("MWST", ""))
     touched = post(book, rows)
     # The receipt travels with the proposal: approving files it under belege/.
-    for p, row in zip(found, rows):
+    for p, row in zip(found, firsts):
         if p.get("Datei"):
             source = Path(p["Datei"]) if Path(p["Datei"]).is_absolute() else book.root / p["Datei"]
             if source.exists():

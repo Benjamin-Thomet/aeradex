@@ -198,7 +198,8 @@ async def pruefen_buchen(ui: UI, request: Request):
     f = await request.form()
     datei = f.get("datei") or None
     return await act(request, api.post_entry, "/pruefen", ui.book(), f.get("datum"), acct(f.get("soll")),
-                     acct(f.get("haben")), f.get("betrag"), f.get("text", ""), "", datei and f"inbox/{datei}")
+                     acct(f.get("haben")), f.get("betrag"), f.get("text", ""), "", datei and f"inbox/{datei}",
+                     f.get("mwst", ""))
 
 
 async def vorschlag(ui: UI, request: Request):
@@ -292,16 +293,18 @@ async def journal_buchen(ui: UI, request: Request):
     try:
         if f.get("modus") == "split":
             lines = []
-            for soll, haben, betrag, text in zip(f.getlist("z_soll"), f.getlist("z_haben"), f.getlist("z_betrag"),
-                                                 f.getlist("z_text")):
+            codes = f.getlist("z_mwst") or [""] * len(f.getlist("z_soll"))
+            for soll, haben, betrag, text, code in zip(f.getlist("z_soll"), f.getlist("z_haben"), f.getlist("z_betrag"),
+                                                       f.getlist("z_text"), codes):
                 if not (soll or haben or betrag):
                     continue
-                lines.append({"soll": acct(soll), "haben": acct(haben), "betrag": betrag or "0", "text": text or f.get("text")})
+                lines.append({"soll": acct(soll), "haben": acct(haben), "betrag": betrag or "0",
+                              "text": text or f.get("text"), "mwst": code})
             return await act(request, api.post_split, request.headers.get("hx-current-url", "/journal"), book,
                              f.get("datum"), f.get("text", ""), lines, "", str(tmp) if tmp else None)
         return await act(request, api.post_entry, request.headers.get("hx-current-url", "/journal"), book,
                          f.get("datum"), acct(f.get("soll")), acct(f.get("haben")), f.get("betrag"), f.get("text", ""),
-                         "", str(tmp) if tmp else None)
+                         "", str(tmp) if tmp else None, f.get("mwst", ""))
     finally:
         if tmp and tmp.exists():
             tmp.unlink()
@@ -417,20 +420,24 @@ async def rechnung_neu(ui: UI, request: Request):
 
 def _positions(form) -> list[dict]:
     out = []
-    for text, menge, einheit, preis, konto in zip(form.getlist("p_text"), form.getlist("p_menge"),
-                                                  form.getlist("p_einheit"), form.getlist("p_preis"),
-                                                  form.getlist("p_konto")):
+    codes = form.getlist("p_mwst") or [None] * len(form.getlist("p_text"))
+    for text, menge, einheit, preis, konto, code in zip(form.getlist("p_text"), form.getlist("p_menge"),
+                                                        form.getlist("p_einheit"), form.getlist("p_preis"),
+                                                        form.getlist("p_konto"), codes):
         if not (text or preis):
             continue
         out.append({"text": text, "menge": menge or "1", "einheit": einheit, "preis": preis or "0",
-                    "konto": acct(konto) or None})
+                    "konto": acct(konto) or None, "mwst": code})
     return out
 
 
 async def rechnung_vorschau(ui: UI, request: Request):
     f = await request.form()
+    positions = _positions(f)
+    if not positions:
+        return ui.partial("_vorschau.html")
     try:
-        prev = api.invoice_preview(ui.book(), _positions(f))
+        prev = api.invoice_preview(ui.book(), positions)
     except (BookError, ValueError, ArithmeticError) as exc:
         return ui.partial("_vorschau.html", error=str(exc))
     return ui.partial("_vorschau.html", prev=prev)
@@ -670,6 +677,63 @@ async def abschluss_aktion(ui: UI, request: Request):
     return fail("Unbekannte Aktion")
 
 
+# ---------- MWST ----------
+
+ZIFFERN = [
+    ("200", "Total der vereinbarten Entgelte", "line"),
+    ("220", "Steuerbefreite Leistungen (z.B. Exporte)", "line"),
+    ("230", "Von der Steuer ausgenommene Leistungen", "line"),
+    ("289", "Total Abzüge", "zw"),
+    ("299", "Steuerbares Gesamtentgelt", "zw"),
+]
+ZIFFERN_EFFEKTIV = [
+    ("303", "Leistungen zum Normalsatz 8.1 %", "steuer"),
+    ("313", "Leistungen zum reduzierten Satz 2.6 %", "steuer"),
+    ("343", "Beherbergungsleistungen 3.8 %", "steuer"),
+    ("399", "Total geschuldete Steuer", "zw"),
+    ("400", "Vorsteuer auf Material- und Dienstleistungsaufwand", "line"),
+    ("405", "Vorsteuer auf Investitionen und übrigem Betriebsaufwand", "line"),
+    ("479", "Total Vorsteuer", "zw"),
+]
+
+
+async def mwst_page(ui: UI, request: Request):
+    from .. import mwst
+    book = ui.book()
+    cfg = mwst.config(book)
+    year = year_param(request, book)
+    periods = mwst.periods(book, year)
+    periode = request.query_params.get("periode")
+    if not periode:
+        current = date.today()
+        idx = (current.month - 1) // (6 if cfg["periode"] == "semester" else 3)
+        periode = periods[min(idx, len(periods) - 1)] if current.year == year else periods[-1]
+    rep = mwst.report(book, periode) if cfg["methode"] != "keine" else None
+    overview = [mwst.report(book, p) for p in periods] if cfg["methode"] != "keine" else []
+    if cfg["methode"] == "saldo":
+        lines = ZIFFERN + [("322", f"Leistungen zum Saldosteuersatz {cfg['saldosteuersatz']} %", "steuer"),
+                           ("399", "Total geschuldete Steuer", "zw")]
+    else:
+        lines = ZIFFERN + ZIFFERN_EFFEKTIV
+    return ui.render(request, "mwst.html", book=book, cfg=cfg, rep=rep, year=year, periods=periods,
+                     overview=overview, lines=lines, codes=mwst.CODES)
+
+
+async def mwst_buchen(ui: UI, request: Request):
+    f = await request.form()
+    periode = f.get("periode")
+    return await act(request, api.mwst_book, f"/mwst?periode={periode}&jahr={periode[:4]}", ui.book(), periode)
+
+
+async def mwst_pdf(ui: UI, request: Request):
+    from .. import mwst, pdf as pdfmod
+    book = ui.book()
+    rep = mwst.report(book, request.query_params.get("periode", ""))
+    data = pdfmod.mwst_pdf(book, rep)
+    return Response(data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="MWST {rep["periode"]}.pdf"'})
+
+
 # ---------- Verlauf ----------
 
 async def verlauf(ui: UI, request: Request):
@@ -702,12 +766,15 @@ async def einstellungen_speichern(ui: UI, request: Request):
     f = await request.form()
     fields = {k: (f.get(k) or "").strip() for k in ("firma", "rechtsform", "uid", "telefon", "email", "iban",
                                                      "qr_referenz_praefix", "zahlungsfrist_tage", "agent_modus", "co")}
+    vat = {"methode": f.get("mwst_methode") or "keine", "periode": f.get("mwst_periode") or "",
+           "saldosteuersatz": (f.get("mwst_saldosteuersatz") or "").strip()}
     adresse = {k: (f.get(f"a_{k}") or "").strip() for k in ("strasse", "nr", "plz", "ort", "land")}
     konten = {k: acct(f.get(f"k_{k}")) for k in ("bank", "debitoren", "ertrag", "gutschrift", "gewinnvortrag",
                                                   "jahresergebnis", "dividende", "reserve")}
     if not fields["firma"]:
         return fail("Firmenname ist nötig.")
-    return await act(request, api.settings_update, "/einstellungen", ui.book(), adresse=adresse, konten=konten, **fields)
+    return await act(request, api.settings_update, "/einstellungen", ui.book(), adresse=adresse, konten=konten,
+                     mwst=vat if f.get("mwst_methode") is not None else None, **fields)
 
 
 async def lohn_einstellungen(ui: UI, request: Request):
@@ -791,6 +858,9 @@ def routes(ui: UI) -> list[Route]:
         Route("/lohn/lohnausweis/{jahr:int}/{nr:str}", h(lohnausweis_erstellen), methods=["POST"]),
         Route("/abschluss", h(abschluss)),
         Route("/abschluss/{aktion:str}", h(abschluss_aktion), methods=["POST"]),
+        Route("/mwst", h(mwst_page)),
+        Route("/mwst/buchen", h(mwst_buchen), methods=["POST"]),
+        Route("/mwst/pdf", h(mwst_pdf)),
         Route("/verlauf", h(verlauf)),
         Route("/verlauf/{hash:str}", h(commit)),
         Route("/einstellungen", h(einstellungen)),

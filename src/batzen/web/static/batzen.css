@@ -200,6 +200,8 @@ details.inline > .body { padding-top: 0; }
 .splitrows { display: flex; flex-direction: column; gap: 6px; }
 .splitrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 120px minmax(0, 1.2fr) auto; gap: 6px; }
 .posrow { display: grid; grid-template-columns: minmax(0, 3fr) 80px 70px 110px minmax(0, 1.3fr) auto; gap: 6px; align-items: center; }
+.withvat .posrow, .posrow.poshead:has(+ .withvat) { grid-template-columns: minmax(0, 3fr) 70px 60px 100px minmax(0, 1.1fr) minmax(0, 1.4fr) auto; }
+.splitrows:has(select) .splitrow, .splitrow.poshead:has(+ .splitrows select) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 110px minmax(0, 1fr) minmax(0, 1.2fr) auto; }
 .poshead { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 
 /* review */

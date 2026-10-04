@@ -73,10 +73,14 @@ def add_customer(book: Book, name: str, firma: str = "", strasse: str = "", nr: 
 
 FROZEN = ("nummer", "kunde", "an", "datum", "faellig", "waehrung", "positionen", "total",
           "referenz_typ", "referenz", "debitorenkonto")
+# Added with MWST support; part of the fingerprint only when present, so
+# invoices issued before keep their fingerprint.
+FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto")
 
 
 def fingerprint(meta: dict) -> str:
     frozen = {k: meta.get(k) for k in FROZEN}
+    frozen.update({k: meta.get(k) for k in FROZEN_OPTIONAL if k in meta})
     blob = json.dumps(frozen, sort_keys=True, default=str, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
@@ -116,7 +120,8 @@ def _snapshot_address(cust: dict) -> dict:
             "plz": str(a.get("plz") or ""), "ort": a.get("ort") or "", "land": a.get("land") or "CH"}
 
 
-def normalize_positions(raw: list[dict], default_konto: str) -> list[dict]:
+def normalize_positions(raw: list[dict], default_konto: str, default_mwst: str = "") -> list[dict]:
+    from . import mwst as vat
     out = []
     for i, p in enumerate(raw, 1):
         text = str(p.get("text") or "").strip()
@@ -127,25 +132,53 @@ def normalize_positions(raw: list[dict], default_konto: str) -> list[dict]:
         betrag = money(menge * preis) if p.get("betrag") is None else money(p["betrag"])
         if betrag != money(menge * preis):
             raise BookError(f"Position {i}: Betrag {betrag} ≠ Menge × Preis {money(menge * preis)}")
-        out.append({"text": text, "menge": menge, "einheit": str(p.get("einheit") or ""),
-                    "preis": money(preis), "betrag": betrag,
-                    "konto": str(p.get("konto") or default_konto)})
+        item = {"text": text, "menge": menge, "einheit": str(p.get("einheit") or ""),
+                "preis": money(preis), "betrag": betrag,
+                "konto": str(p.get("konto") or default_konto)}
+        code = str(p.get("mwst") if p.get("mwst") is not None else default_mwst).strip().upper()
+        if code:
+            c = vat.code(code)
+            if c.kind not in ("umsatz", "befreit", "ausgenommen"):
+                raise BookError(f"Position {i}: {code} ist ein Vorsteuer-Code, auf Rechnungen nur U81, U26, U38, U0, UA")
+            item["mwst"] = c.code
+        out.append(item)
     if not out:
         raise BookError("Eine Rechnung braucht mindestens eine Position")
     return out
 
 
+def mwst_breakdown(positions: list[dict]) -> list[dict]:
+    """Net and tax per MWST code — tax is computed on the net sum per rate."""
+    from . import mwst as vat
+    per: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    for p in positions:
+        if p.get("mwst"):
+            per[p["mwst"]] += money(p["betrag"])
+    out = []
+    for c, net in per.items():
+        rate = vat.CODES[c].rate
+        out.append({"code": c, "satz": rate, "netto": net, "steuer": vat.tax_from_net(net, rate) if rate else ZERO})
+    return out
+
+
 def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
                   zahlungsfrist: int | None = None) -> tuple[dict, list[Path]]:
-    """Issue and book an invoice: DR Debitoren / CR Ertrag (per position account)."""
+    """Issue and book an invoice: DR Debitoren / CR Ertrag (per position account),
+    with MWST per rate when the book is MWST-pflichtig."""
+    from . import mwst as vat
     cust = customer(book, kunde)
     d = parse_date(datum, "datum") if datum else date.today()
     ensure_open(book, d)
     s = book.settings
-    pos = normalize_positions(positionen, s.konto("ertrag"))
+    cfg = vat.config(book)
+    pos = normalize_positions(positionen, s.konto("ertrag"), "U81" if cfg["methode"] != "keine" else "")
+    if cfg["methode"] == "keine" and any(p.get("mwst") for p in pos):
+        raise BookError("Dieses Buch ist nicht MWST-pflichtig — Positionen ohne MWST-Code erfassen")
     for p in pos:
         book.account(p["konto"])
-    total = sum((p["betrag"] for p in pos), ZERO)
+    netto = sum((p["betrag"] for p in pos), ZERO)
+    breakdown = mwst_breakdown(pos)
+    total = netto + sum((b["steuer"] for b in breakdown), ZERO)
     if total <= 0:
         raise BookError("Rechnungstotal muss positiv sein")
     nummer = next_invoice_number(book, d.year)
@@ -162,6 +195,9 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
         "debitorenkonto": s.konto("debitoren"),
         "status": "aktiv",
     }
+    if breakdown:
+        meta.update({"netto": netto, "mwst": breakdown, "mwst_methode": cfg["methode"],
+                     "mwst_konto": cfg["konten"]["umsatzsteuer"]})
     meta["fingerprint"] = fingerprint(_canonical(meta))
     path = book.root / "rechnungen" / str(d.year) / f"{nummer}.md"
     rows = booking_rows(meta)
@@ -181,6 +217,12 @@ def _canonical(meta: dict) -> dict:
     reading the YAML back (Decimal vs float, int vs '10')."""
     out = dict(meta)
     out["total"] = f"{money(meta.get('total')):.2f}"
+    if "netto" in meta:
+        out["netto"] = f"{money(meta.get('netto')):.2f}"
+    if "mwst" in meta:
+        out["mwst"] = [{"code": b.get("code"), "satz": f"{Decimal(str(b.get('satz'))):.1f}",
+                        "netto": f"{money(b.get('netto')):.2f}", "steuer": f"{money(b.get('steuer')):.2f}"}
+                       for b in meta.get("mwst") or []]
     out["positionen"] = [{**p, "menge": format(Decimal(str(p.get("menge"))).normalize(), "f"),
                           "preis": f"{money(p.get('preis')):.2f}", "betrag": f"{money(p.get('betrag')):.2f}"}
                          for p in meta.get("positionen") or []]
@@ -194,31 +236,57 @@ def invoice_fingerprint_ok(meta: dict) -> bool:
 
 
 def booking_rows(meta: dict) -> list[Row]:
-    """The journal rows an active invoice owns. One row when every position
-    goes to the same revenue account, else a split booking."""
+    """The journal rows an active invoice owns. One row when every position goes
+    to the same revenue account without MWST, else a split booking: Debitoren
+    gross in Soll; per account and code the net (effective method) or gross
+    (Saldo method) in Haben; per code the Umsatzsteuer (effective method)."""
     nummer = meta["nummer"]
     d = parse_date(meta["datum"])
-    per_konto: dict[str, Decimal] = defaultdict(lambda: ZERO)
-    for p in meta["positionen"]:
-        per_konto[str(p.get("konto"))] += money(p["betrag"])
     name = (meta.get("an") or {}).get("name") or meta.get("kunde")
     text = f"Rechnung {nummer} – {name}"
     quelle = f"rechnung:{nummer}"
     deb = str(meta.get("debitorenkonto"))
-    if len(per_konto) == 1:
-        konto, amount = next(iter(per_konto.items()))
-        return [Row(d, nummer, text, deb, konto, amount, quelle)]
-    rows = [Row(d, nummer, text, deb, "", money(meta["total"]), quelle)]
-    rows += [Row(d, nummer, text, "", konto, amount, quelle) for konto, amount in per_konto.items()]
+    per: dict[tuple[str, str], Decimal] = defaultdict(lambda: ZERO)
+    for p in meta["positionen"]:
+        per[(str(p.get("konto")), str(p.get("mwst") or ""))] += money(p["betrag"])
+    total = money(meta["total"])
+    if not meta.get("mwst"):
+        if len(per) == 1:
+            (konto, _), amount = next(iter(per.items()))
+            return [Row(d, nummer, text, deb, konto, amount, quelle)]
+        rows = [Row(d, nummer, text, deb, "", total, quelle)]
+        return rows + [Row(d, nummer, text, "", k, a, quelle) for (k, _), a in per.items()]
+    tax = {b["code"]: money(b["steuer"]) for b in meta["mwst"]}
+    rows = [Row(d, nummer, text, deb, "", total, quelle)]
+    if meta.get("mwst_methode") == "saldo":
+        # Revenue stays gross: spread each code's tax over its accounts, last one takes the rounding.
+        by_code: dict[str, list] = defaultdict(list)
+        for (konto, code), net in per.items():
+            by_code[code].append((konto, net))
+        for code, items in by_code.items():
+            net_sum = sum((n for _, n in items), ZERO)
+            remaining = tax.get(code, ZERO)
+            for i, (konto, net) in enumerate(items):
+                share = remaining if i == len(items) - 1 else money(tax.get(code, ZERO) * net / net_sum) if net_sum else ZERO
+                remaining -= share
+                rows.append(Row(d, nummer, text, "", konto, net + share, quelle, mwst=code))
+        return rows
+    for (konto, code), net in per.items():
+        rows.append(Row(d, nummer, text, "", konto, net, quelle, mwst=code))
+    for code, amount in tax.items():
+        if amount:
+            rows.append(Row(d, nummer, text, "", str(meta.get("mwst_konto")), amount, quelle, mwst=code))
     return rows
 
 
 def settlements(book: Book) -> dict[str, list[Row]]:
-    """Payment and credit-note rows per invoice number."""
+    """Payment and credit-note rows per invoice number — only the line that
+    clears the receivable (a credit note with MWST also has net and tax lines)."""
     out: dict[str, list[Row]] = defaultdict(list)
+    receivable = {str(m.get("debitorenkonto")) for m in invoices(book).values()} or {book.settings.konto("debitoren")}
     for r in book.rows:
         kind, _, nr = r.quelle.partition(":")
-        if kind in ("zahlung", "gutschrift") and nr:
+        if kind in ("zahlung", "gutschrift") and nr and r.haben in receivable:
             out[nr].append(r)
     return out
 
@@ -260,7 +328,8 @@ def void_invoice(book: Book, nr: str, grund: str = "") -> tuple[dict, list[Path]
     return meta, touched + [path]
 
 
-def _settle(book: Book, nr: str, kind: str, betrag, datum, konto: str, text: str) -> tuple[Row, list[Path]]:
+def _settle(book: Book, nr: str, kind: str, betrag, datum, konto: str, text: str,
+            mwst: str = "") -> tuple[Row, list[Path]]:
     meta = invoice(book, nr)
     if meta.get("status") == "storniert":
         raise BookError(f"{nr} ist storniert")
@@ -273,6 +342,14 @@ def _settle(book: Book, nr: str, kind: str, betrag, datum, konto: str, text: str
     d = parse_date(datum, "datum") if datum else date.today()
     row = Row(d, next_beleg(book, d.year), text, konto, str(meta.get("debitorenkonto")),
               amount, f"{kind}:{nr}")
+    if mwst:
+        from .mwst import config, split
+        if config(book)["methode"] == "effektiv":
+            # A credit note reverses revenue: split like a negative sale.
+            rows = split(book, Row(d, row.beleg, text, str(meta.get("debitorenkonto")), konto, amount), mwst)
+            rows = [Row(r.datum, r.beleg, r.text, r.haben, r.soll, r.betrag, f"{kind}:{nr}", mwst=r.mwst) for r in rows]
+            return row, post(book, rows)
+        row.mwst = mwst
     return row, post(book, [row])
 
 
@@ -284,9 +361,14 @@ def pay_invoice(book: Book, nr: str, betrag=None, datum=None, konto: str | None 
 
 def credit_invoice(book: Book, nr: str, betrag=None, datum=None, konto: str | None = None,
                    grund: str = "") -> tuple[Row, list[Path]]:
-    """Gutschrift: write off (part of) the open receivable, DR Erlösminderung / CR Debitoren."""
+    """Gutschrift: write off (part of) the open receivable, DR Erlösminderung / CR Debitoren.
+    On an invoice with MWST at a single rate the Umsatzsteuer is reduced accordingly."""
     konto = konto or book.settings.konto("gutschrift")
     text = f"Gutschrift zu Rechnung {nr}" + (f": {grund}" if grund else "")
+    meta = invoice(book, nr)
+    codes = [b["code"] for b in meta.get("mwst") or [] if Decimal(str(b.get("satz") or 0))]
+    if len(codes) == 1:
+        return _settle(book, nr, "gutschrift", betrag, datum, konto, text, mwst=codes[0])
     return _settle(book, nr, "gutschrift", betrag, datum, konto, text)
 
 

@@ -20,7 +20,7 @@ batzen dreht das um:
 | **git ist das Audit-Trail** | Jede Änderung ist ein Commit mit sprechender Nachricht. Ein pre-commit-Hook führt `batzen check` aus, ein ungültiges Buch lässt sich nicht committen. |
 | **Unveränderlichkeit, wo das Gesetz sie verlangt** | Gesperrte Perioden sind gehasht, ausgestellte Rechnungen und abgeschlossene Lohnabrechnungen tragen einen Fingerprint. Jede nachträgliche Änderung fällt auf (GeBüV). |
 | **Mensch im Loop** | Im Standardmodus darf ein Agent freie Buchungen nur *vorschlagen*; du gibst sie mit `batzen approve` frei. |
-| **Schweizer Recht eingebaut** | KMU-Kontenrahmen, Bilanz und Erfolgsrechnung nach OR 959a/959b, Anhang, Gewinnverwendung, Swiss QR-Bill (QRR/SCOR), AHV/IV/EO/ALV/UVG/KTG/BVG/FAK, Quellensteuer-Tarife nach KS 45, Lohnausweis Formular 11. |
+| **Schweizer Recht eingebaut** | KMU-Kontenrahmen, Bilanz und Erfolgsrechnung nach OR 959a/959b, Anhang, Gewinnverwendung, MWST (effektiv und Saldosteuersatz, Abrechnung nach ESTV-Ziffern), Swiss QR-Bill (QRR/SCOR), AHV/IV/EO/ALV/UVG/KTG/BVG/FAK, Quellensteuer-Tarife nach KS 45, Lohnausweis Formular 11. |
 
 ## Schnellstart
 
@@ -55,6 +55,7 @@ Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird g
 | **Konten** | Kontenplan bearbeiten, Saldenliste nach Periode, Kontoblatt |
 | **Debitoren** | Kunden, Rechnungen mit Live-Total und QR-PDF, Zahlung zuordnen, Gutschrift, Storno, offene Posten |
 | **Lohn** | Lohnlauf pro Monat, Eingaben (Stunden, QST, Korrekturen), Abschluss, Lohnkonto, Lohnausweis |
+| **MWST** | Abrechnung je Quartal/Semester nach ESTV-Ziffern, Belege je Code, Buchen, PDF-Hilfsblatt |
 | **Abschluss** | Bilanz und Erfolgsrechnung mit Vorjahr und Drill-down, Gewinnverwendung, Anhang, Periode sperren |
 | **Verlauf** | jeder Commit mit Diff, Änderungen von Agenten markiert |
 | **Einstellungen** | Firma, IBAN-Prüfung, Systemkonten, Lohnsätze, Agentenmodus |
@@ -71,6 +72,14 @@ batzen invoice create --kunde K0001 --pos "Beratung;10 h;150" --pos "Spesen;1;80
 batzen invoice match --betrag 1580 --text "<Zeile aus dem Bankauszug>"
 batzen invoice pay R-2026-0001 --datum 2026-03-01
 batzen receivables --pdf
+```
+
+### MWST
+```bash
+batzen book --datum 2026-01-12 --soll 6500 --haben 1020 --betrag 108.10 --mwst V81 --text "Papier"
+#   → 6500 100.00 · 1170 8.10 · an 1020 108.10 (Betrag immer brutto, Steuer wird abgespalten)
+batzen mwst abrechnung 2026-Q1      # Ziffern 200 … 500 wie im ESTV-Formular
+batzen mwst buchen 2026-Q1          # MWST-Konten auf das Abrechnungskonto 2201
 ```
 
 ### Lohn
@@ -148,7 +157,7 @@ Die Fachlogik (Saldenmotor mit Jahresverkettung, OR-Gliederung, Lohnberechnung i
 v0.2: Finanzbuchhaltung, Debitoren mit QR-Rechnung, Lohn, Agenten-Schnittstelle (CLI + MCP), lokale Web-Oberfläche mit eingebautem Agenten.
 
 Als Nächstes:
-- MWST-Abrechnung (effektiv und Saldosteuersatz), MWST-Codes im Journal
+- eMWST-Export (XML) für das ESTV-ePortal
 - Bankimport camt.053 mit automatischem Zahlungsabgleich
 - Kreditoren und pain.001-Zahlungsaufträge
 - Weitere Quellensteuer-Kantone, ALV-Höchstgrenze, Swissdec/ELM

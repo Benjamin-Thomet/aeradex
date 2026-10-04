@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, debitoren_nav, accounts_datalist %}
+{% from "_macros.html" import errors, debitoren_nav, accounts_datalist, mwst_select %}
 {% block title %}Neue Rechnung{% endblock %}
 {% block main %}
 <div class="topbar">
@@ -19,11 +19,11 @@
       <div class="field wide"><label for="r-text">Einleitung (optional)</label><textarea class="input" id="r-text" name="text" placeholder="z.B. Gemäss Offerte vom 15. Januar 2026 stellen wir Ihnen in Rechnung:" style="min-height:60px"></textarea></div>
     </div>
     <div>
-      <div class="posrow poshead"><span>Position</span><span class="right">Menge</span><span>Einheit</span><span class="right">Preis</span><span>Ertragskonto</span><span></span></div>
-      <div class="posrows splitrows" id="posrows" hx-post="/debitoren/vorschau" hx-trigger="input changed delay:300ms from:closest form, load" hx-target="#vorschau" hx-include="closest form">
-        <div class="posrow"><input class="input" name="p_text" placeholder="z.B. Beratung Buchhaltungsprozesse" aria-label="Text" required><input class="input num" name="p_menge" value="1" aria-label="Menge"><input class="input" name="p_einheit" placeholder="h" aria-label="Einheit"><input class="input num" name="p_preis" placeholder="0.00" aria-label="Preis"><input class="input" name="p_konto" list="konten" value="{{ default_konto }}" aria-label="Konto"><button class="btn small ghost" type="button" data-removerow aria-label="Position entfernen">✕</button></div>
+      <div class="posrow poshead"><span>Position</span><span class="right">Menge</span><span>Einheit</span><span class="right">Preis{{ " netto" if vat.methode != "keine" }}</span><span>Ertragskonto</span>{% if vat.methode != 'keine' %}<span>MWST</span>{% endif %}<span></span></div>
+      <div class="posrows splitrows {{ "withvat" if vat.methode != 'keine' }}" id="posrows" hx-post="/debitoren/vorschau" hx-trigger="input changed delay:300ms from:closest form, load" hx-target="#vorschau" hx-include="closest form">
+        <div class="posrow"><input class="input" name="p_text" placeholder="z.B. Beratung Buchhaltungsprozesse" aria-label="Text" required><input class="input num" name="p_menge" value="1" aria-label="Menge"><input class="input" name="p_einheit" placeholder="h" aria-label="Einheit"><input class="input num" name="p_preis" placeholder="0.00" aria-label="Preis"><input class="input" name="p_konto" list="konten" value="{{ default_konto }}" aria-label="Konto">{% if vat.methode != 'keine' %}{{ mwst_select("p_mwst", vat, vat_codes, kinds=("umsatz","befreit","ausgenommen"), selected="U81", label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Position entfernen">✕</button></div>
       </div>
-      <template><div class="posrow"><input class="input" name="p_text" aria-label="Text"><input class="input num" name="p_menge" value="1" aria-label="Menge"><input class="input" name="p_einheit" aria-label="Einheit"><input class="input num" name="p_preis" placeholder="0.00" aria-label="Preis"><input class="input" name="p_konto" list="konten" value="{{ default_konto }}" aria-label="Konto"><button class="btn small ghost" type="button" data-removerow aria-label="Position entfernen">✕</button></div></template>
+      <template><div class="posrow"><input class="input" name="p_text" aria-label="Text"><input class="input num" name="p_menge" value="1" aria-label="Menge"><input class="input" name="p_einheit" aria-label="Einheit"><input class="input num" name="p_preis" placeholder="0.00" aria-label="Preis"><input class="input" name="p_konto" list="konten" value="{{ default_konto }}" aria-label="Konto">{% if vat.methode != 'keine' %}{{ mwst_select("p_mwst", vat, vat_codes, kinds=("umsatz","befreit","ausgenommen"), selected="U81", label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Position entfernen">✕</button></div></template>
       <button class="btn small" type="button" data-addrow="#posrows" style="margin-top:6px">+ Position</button>
     </div>
     <div id="vorschau"></div>
