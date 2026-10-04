@@ -134,6 +134,7 @@ def parse(data: bytes) -> list[dict]:
                 })
         statements.append({
             "id": _text(stmt, "Id") or _text(container, "GrpHdr/MsgId"), "iban": iban,
+            "waehrung": _text(stmt, "Acct/Ccy").upper(),
             "von": _text(stmt, "FrToDt/FrDtTm")[:10], "bis": _text(stmt, "FrToDt/ToDtTm")[:10],
             "eroeffnung": balances.get("OPBD", (None, None))[0], "schluss": balances.get("CLBD", (None, None))[0],
             "schluss_datum": balances.get("CLBD", (None, None))[1], "buchungen": entries,
@@ -200,10 +201,17 @@ def _linked_belege(rows: list[dict]) -> set[str]:
 def _match_existing(book: Book, konto: str, amount: Decimal, when: date, taken: set[str]) -> str | None:
     """A journal row on this account with the same amount and side, closest date within ±7 days."""
     best = None
+    acct = book.accounts.get(konto)
+    foreign = acct.waehrung if acct is not None and acct.is_foreign else ""
     for r in book.rows:
         if r.beleg in taken or abs((r.datum - when).days) > 7:
             continue
-        side = r.betrag if r.soll == konto else (-r.betrag if r.haben == konto else None)
+        value = r.betrag
+        if foreign:                       # a foreign-currency account: compare in its currency
+            if r.waehrung != foreign or r.fw is None:
+                continue
+            value = r.fw
+        side = value if r.soll == konto else (-value if r.haben == konto else None)
         if side is None or side != amount:
             continue
         distance = abs((r.datum - when).days)
@@ -229,9 +237,10 @@ def import_file(book: Book, source: Path) -> tuple[dict, list[Path]]:
     for stmt in statements:
         konto = str(stmt.get("konto") or "") or ledger_account(book, stmt.get("iban", ""))
         acct = book.account(konto)
-        if acct.is_foreign:
-            raise BookError(f"Konto {konto} führt {acct.waehrung}: Bankimport für Fremdwährungskonten folgt noch — "
-                            "Bewegungen bitte im Journal mit Währung buchen")
+        stmt_cur = (stmt.get("waehrung") or "").upper()
+        if stmt_cur and stmt_cur != acct.waehrung:
+            raise BookError(f"Der Auszug ist in {stmt_cur}, Konto {konto} führt {acct.waehrung} — "
+                            "unter bankkonten das richtige Konto zuordnen")
         year = (stmt["bis"] or (stmt["buchungen"][0]["datum"].isoformat() if stmt["buchungen"] else date.today().isoformat()))[:4]
         safe_id = re.sub(r"[^A-Za-z0-9._-]", "_", stmt["id"])[:60] or hashlib.sha1(data).hexdigest()[:10]
         target = book.root / "bank" / "auszuege" / year / f"{safe_id}{suffix}"
@@ -283,7 +292,7 @@ def _auto_book(book: Book, e: dict, konto: str, invoices, kreditoren) -> str | N
     try:
         if amount > 0:
             found, how = invoices.find_match(book, amount, " ".join([e["referenz"], e["text"]]))
-            if found and how in ("referenz", "nummer") and amount <= found["offen"]:
+            if found and how in ("referenz", "nummer") and invoices.amount_fits(book, found, amount, konto):
                 row, _ = invoices.pay_invoice(book, found["nummer"], amount, e["datum"], konto)
                 return row.beleg
         elif amount < 0:
@@ -340,7 +349,14 @@ def _book_with_rule(book: Book, tx: dict, rule: dict):
     amount = parse_amount(tx["Betrag"])
     text = (rule.get("buchungstext") or " ".join(t for t in (tx.get("Gegenpartei"), tx.get("Text")) if t))[:120]
     soll, haben = (tx["Konto"], str(rule["konto"])) if amount > 0 else (str(rule["konto"]), tx["Konto"])
-    return book_entry(book, tx["Datum"], soll, haben, abs(amount), text or "Bankbewegung", mwst=rule.get("mwst") or "")
+    return book_entry(book, tx["Datum"], soll, haben, abs(amount), text or "Bankbewegung", mwst=rule.get("mwst") or "",
+                      waehrung=account_currency(book, tx["Konto"]))
+
+
+def account_currency(book: Book, konto: str) -> str:
+    """'' for a CHF account, else its currency (amounts of its movements are in that currency)."""
+    acct = book.accounts.get(konto)
+    return acct.waehrung if acct is not None and acct.is_foreign else ""
 
 
 def save_rules(book: Book, items: list[dict]) -> Path:
@@ -435,7 +451,8 @@ def book_transaction(book: Book, tid: str, gegenkonto: str, text: str = "", mwst
     konto = tx["Konto"]
     text = text or " ".join(t for t in (tx["Gegenpartei"], tx["Text"]) if t)[:120] or "Bankbewegung"
     soll, haben = (konto, gegenkonto) if amount > 0 else (gegenkonto, konto)
-    row, touched = book_entry(book, tx["Datum"], soll, haben, abs(amount), text, mwst=mwst)
+    row, touched = book_entry(book, tx["Datum"], soll, haben, abs(amount), text, mwst=mwst,
+                              waehrung=account_currency(book, konto))
     return row, touched + _set(book, tid, Status="gebucht", Beleg=row.beleg)
 
 
@@ -508,7 +525,11 @@ def reconciliation(book: Book) -> list[dict]:
             except BookError:
                 continue
             when = parse_date(stmt["schluss_datum"])
-            books = eng.balance_at(konto, when) if when.year in book.years() else ZERO
+            if account_currency(book, konto):
+                from .ledger import fw_balance
+                books = fw_balance(book, konto, when)
+            else:
+                books = eng.balance_at(konto, when) if when.year in book.years() else ZERO
             pending = sum((v for (k, d), v in open_by_konto.items() if k == konto and d <= when.isoformat()), ZERO)
             out.append({"auszug": str(path.relative_to(book.root)), "id": stmt["id"], "konto": konto,
                         "datum": when, "bank": stmt["schluss"], "buch": books, "offen": pending,

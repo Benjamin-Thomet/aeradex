@@ -161,7 +161,7 @@ def run(book: Book) -> list[Issue]:
         settled = [r for r in settled_all if r.haben == deb]
         for beleg in {r.beleg for r in settled_all} - {r.beleg for r in settled}:
             add("fehler", where, f"Zahlung/Gutschrift {beleg} zu {nr} geht nicht im Haben auf {deb}")
-        total = sum((r.betrag for r in settled), ZERO)
+        total = sum(((r.fw or ZERO) if inv.is_foreign(meta) else r.betrag for r in settled), ZERO)
         if meta.get("status") == "storniert" and settled:
             add("fehler", where, "stornierte Rechnung hat Zahlungen/Gutschriften")
         elif total > Decimal(str(meta.get("total") or 0)):

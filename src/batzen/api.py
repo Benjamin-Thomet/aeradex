@@ -191,7 +191,7 @@ def fx_preview(book: Book, stichtag) -> dict:
     from . import fx
     d = parse_date(stichtag, "stichtag")
     return jsonable({"stichtag": d, "gebucht": fx.path(book, d).exists(), "konten": fx.preview(book, d),
-                     "kreditoren": fx.preview_bills(book, d)})
+                     "kreditoren": fx.preview_bills(book, d), "debitoren": fx.preview_invoices(book, d)})
 
 
 def fx_revalue(book: Book, stichtag) -> dict:
@@ -201,7 +201,8 @@ def fx_revalue(book: Book, stichtag) -> dict:
     saved, touched = fx.book_revaluation(book, stichtag)
     # net effect on the result: accounts gain when they grow, supplier debts lose when they grow
     total = (sum((Decimal(str(k["differenz"])) for k in saved["konten"]), Decimal(0))
-             - sum((Decimal(str(k["differenz"])) for k in saved.get("kreditoren") or []), Decimal(0)))
+             - sum((Decimal(str(k["differenz"])) for k in saved.get("kreditoren") or []), Decimal(0))
+             + sum((Decimal(str(k["differenz"])) for k in saved.get("debitoren") or []), Decimal(0)))
     return _done(book, f"Fremdwährungen per {saved['stichtag']} bewertet (Kurserfolg {total:.2f})", touched,
                  bewertung=saved)
 
@@ -304,9 +305,9 @@ def customer_add(book: Book, **fields) -> dict:
 
 
 def invoice_create(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
-                   zahlungsfrist: int | None = None) -> dict:
+                   zahlungsfrist: int | None = None, waehrung: str = "", kurs=None) -> dict:
     _guard(book)
-    meta, touched = invoices.issue_invoice(book, kunde, positionen, datum, text, zahlungsfrist)
+    meta, touched = invoices.issue_invoice(book, kunde, positionen, datum, text, zahlungsfrist, waehrung, kurs)
     meta["_text"] = text
     pdf_path = meta_pdf_path(book, meta)
     pdf_path.write_bytes(pdf.invoice_pdf(book, meta, invoices.customer(book, kunde)))
@@ -335,10 +336,14 @@ def invoice_void(book: Book, nr: str, grund: str = "") -> dict:
     return _done(book, f"Rechnung {nr} storniert" + (f": {grund}" if grund else ""), touched)
 
 
-def invoice_pay(book: Book, nr: str, betrag=None, datum=None, konto: str | None = None) -> dict:
+def invoice_pay(book: Book, nr: str, betrag=None, datum=None, konto: str | None = None, kurs=None, fw=None) -> dict:
+    """Book a payment. `betrag` is in the receiving account's currency; for a foreign invoice paid into
+    a CHF account the CHF credited (default: open amount × BAZG rate); `fw` settles only part of it."""
     _guard(book)
-    row, touched = invoices.pay_invoice(book, nr, betrag, datum, konto)
-    return _done(book, f"Zahlung {row.betrag:.2f} auf Rechnung {nr} verbucht (Beleg {row.beleg})", touched, buchung=row)
+    row, touched = invoices.pay_invoice(book, nr, betrag, datum, konto, kurs, fw)
+    fwtext = f" ({row.waehrung} {row.fw:.2f})" if row.waehrung else ""
+    return _done(book, f"Zahlung {row.betrag:.2f}{fwtext} auf Rechnung {nr} verbucht (Beleg {row.beleg})", touched,
+                 buchung=row)
 
 
 def invoice_credit(book: Book, nr: str, betrag=None, datum=None, konto: str | None = None, grund: str = "") -> dict:

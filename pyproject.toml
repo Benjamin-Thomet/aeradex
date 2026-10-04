@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "batzen"
-version = "0.6.0"
+version = "0.7.0"
 description = "Swiss bookkeeping your agent can run — agent-first open-source accounting and payroll for Switzerland."
 readme = "README.md"
 license = "AGPL-3.0-or-later"

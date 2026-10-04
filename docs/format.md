@@ -138,6 +138,9 @@ Freie Notizen.
 
 Frontmatter mit `nummer, kunde, an` (Adress-Snapshot), `datum, faellig, waehrung, positionen[], total, referenz_typ, referenz, debitorenkonto, status, fingerprint`. Der Text nach dem Frontmatter erscheint als Einleitung auf der Rechnung. Nach der Ausstellung nur noch `status` (via `void`) änderbar.
 
+Rechnungen in Fremdwährung (CHF oder EUR für den QR-Zahlteil) tragen `waehrung` und `kurs`; ihre Journalzeilen
+sind in CHF mit FW und Kurs, Zahlungen gleichen den Buchwert aus (Differenz auf Kursgewinn/-verlust).
+
 Rechnungen, die ausserhalb von batzen erstellt wurden, tragen `extern: {rechnungsnr: …}` und `datei` (das Original
 unter belege/); sie haben eine eigene batzen-Nummer und werden sonst wie alle Rechnungen behandelt.
 
@@ -227,3 +230,21 @@ Status `gebucht`, `abgeglichen`, `offen`, `ignoriert`. `Beleg` verweist auf die 
 ## .batzen/locks.yaml
 
 `bis`, Hash pro gesperrtem Monat, `verlauf` aller Sperren und Entsperrungen (mit Grund).
+
+## mahnungen/R-JJJJ-NNNN.yaml
+
+Die Mahnungen einer Rechnung: `mahnungen: [{stufe, bezeichnung, datum, frist, offen, pdf}]`, die PDFs daneben
+(`R-JJJJ-NNNN-M1.pdf` …). Mahnungen besitzen keine Journalzeilen. Einstellungen: `mahnwesen: {frist_tage: 10,
+texte: {1: …, 2: …, 3: …}}` in batzen.yaml (Platzhalter `{frist}`, `{vorher}`, `{nummer}`).
+
+## bank/regeln.yaml
+
+`regeln: [{id, name, gegenpartei, text, betrag, richtung, konto, mwst, buchungstext, aktiv}]` — gesetzte Kriterien
+müssen alle passen (Texte als Teil, ohne Gross/Klein; Betrag genau; Richtung `belastung`/`gutschrift`). Eine Regel
+greift beim Import erst, wenn keine Rechnung, kein Kreditor und keine bestehende Buchung passt.
+
+## abschluss/dividende-JJJJ.yaml
+
+Die Auszahlung der beschlossenen Dividende: `jahr, datum, brutto, vst` (35 %), `netto, konto, formular` (103),
+`frist` (30 Tage). Besitzt ihre Journalzeilen (`Quelle dividende:JJJJ`: Beschlossene Ausschüttungen an Bank bzw. an
+Verrechnungssteuer `konten.verrechnungssteuer`, Standard 2206).

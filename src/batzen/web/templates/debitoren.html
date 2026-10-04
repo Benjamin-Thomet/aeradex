@@ -22,7 +22,7 @@
       <tbody>
       {% for r in rows %}
         <tr class="row"><td><a class="beleg" href="/debitoren/rechnung/{{ r.nummer }}">{{ r.nummer }}</a></td><td class="num">{{ r.datum|datum }}</td><td>{{ r.name }}</td>
-          <td class="right num">{{ r.total|chf }}</td><td class="right num">{{ r.offen|chf(true) }}</td>
+          <td class="right num">{% if r.waehrung and r.waehrung != 'CHF' %}<span class="small muted">{{ r.waehrung }}</span> {% endif %}{{ r.total|chf }}</td><td class="right num">{{ r.offen|chf(true) }}</td>
           <td>{{ status_pill(r.status) }}{% if r.status in ('offen','teilbezahlt') and r.faellig < today().isoformat() %} <span class="pill red">überfällig</span>{% endif %}</td></tr>
       {% endfor %}
       </tbody>

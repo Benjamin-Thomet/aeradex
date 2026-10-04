@@ -91,7 +91,14 @@ batzen invoice create --kunde K0001 --pos "Beratung;10 h;150" --pos "Spesen;1;80
 batzen invoice match --betrag 1580 --text "<Zeile aus dem Bankauszug>"
 batzen invoice pay R-2026-0001 --datum 2026-03-01
 batzen receivables --pdf
+batzen invoice create --kunde K0002 --pos "Beratung;10 h;150" --waehrung EUR   # QR-Rechnung in EUR, BAZG-Kurs
+batzen mahnung list                            # überfällige Rechnungen
+batzen mahnung erstellen R-2026-0001           # Zahlungserinnerung → 2. → 3. Mahnung, je PDF mit QR-Zahlteil
 ```
+Rechnungen in EUR werden zum BAZG-Kurs des Rechnungsdatums gebucht; beim Zahlungseingang wird der Buchwert
+ausgeglichen und die Differenz als Kursgewinn/-verlust gebucht, Gutschriften laufen zum Rechnungskurs. Mahnungen
+tragen die Referenz der Rechnung, damit der Bankimport die Zahlung zuordnet; Gebühren und Verzugszins fügt batzen
+nicht hinzu (in der Schweiz nur mit Grundlage in den AGB).
 
 ### MWST
 ```bash
@@ -171,8 +178,11 @@ batzen bank zuordnen B… R-2026-0007         # mit Rechnung oder Kreditor begle
 batzen bank abstimmung                      # Schlusssaldo Bank gegen Buchhaltung
 ```
 Beim Import bucht batzen Zahlungen mit QR-/SCOR-Referenz oder Rechnungsnummer selbst, erkennt Zahlungen aus
-eigenen Zahlungsläufen (EndToEndId) und gleicht bereits Gebuchtes (z.B. Löhne) nur ab. Der Rest landet unter
-*Prüfen*; der Agent kann zuordnen oder Buchungen vorschlagen.
+eigenen Zahlungsläufen (EndToEndId) und gleicht bereits Gebuchtes (z.B. Löhne) nur ab. Danach greifen die
+**Bankregeln** für Wiederkehrendes (Miete, Abos, Spesen): «Immer so buchen» bei einer gebuchten Bewegung oder
+`batzen bank regel add --gegenpartei SWISSCOM --konto 6510`. Der Rest landet unter *Prüfen*; der Agent kann zuordnen
+oder Buchungen vorschlagen. Auszüge von Fremdwährungskonten (z.B. EUR) werden in der Kontowährung importiert und
+zum BAZG-Kurs gebucht; die Saldoabstimmung vergleicht den Saldo in der Währung.
 
 ### Fremdwährungen
 ```bash
@@ -214,6 +224,7 @@ batzen payroll lohnausweis 2026 M0001          # Formular 11, ausgefüllt
 batzen report --jahr 2026 --pdf                # Bilanz, Erfolgsrechnung, Gewinnverwendung, Anhang
 batzen allocation set 2026 --dividende 5000 --reserve 500
 batzen allocation book 2026 --datum 2027-05-20 # nach dem GV-Beschluss
+batzen allocation dividende 2026 --datum 2027-06-10  # 65 % auszahlen, 35 % Verrechnungssteuer (Formular 103)
 batzen lock 2026-12-31                         # Periode sperren (gehasht)
 ```
 
@@ -264,7 +275,8 @@ Das genaue Dateiformat steht in [docs/format.md](docs/format.md).
 - Zeilen mit `Quelle` (`rechnung:`, `zahlung:`, `gutschrift:`, `lohn:`, `abschluss:`, `bewertung:` …) gehören ihrem Dokument und müssen genau dazu passen.
 - Ausgestellte Rechnungen und abgeschlossene Lohnabrechnungen sind unverändert (Fingerprint).
 - Die gesperrte Periode ist unverändert (Hash pro Monat). Entsperren geht nur mit Grund und wird protokolliert.
-- Hinweise: Buchungen ohne Beleg-Datei, unverarbeitete Inbox, Lohn-Entwürfe.
+- Die Kasse ist an keinem Tag negativ; abgelieferte Verrechnungssteuer wird nach Ablauf der 30 Tage angemahnt.
+- Hinweise: Buchungen ohne Beleg-Datei, unverarbeitete Inbox, Belege im Eingang, überfällige Rechnungen, Lohn-Entwürfe.
 
 ## Herkunft
 
@@ -287,10 +299,16 @@ Bauen: [docs/plugins.md](docs/plugins.md) und die Vorlage unter `plugins/vorlage
 
 ## Stand und Roadmap
 
-v0.4: Finanzbuchhaltung, MWST mit eMWST-Export (eCH-0217), Bankimport camt.053 mit automatischem Abgleich, Fremdwährungskonten mit BAZG-Tageskursen und Stichtagsbewertung, Plugin-System (v0.6), Debitoren mit QR-Rechnung, Kreditoren mit QR-Scan und pain.001, Lohn, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit eingebautem Agenten, lokal oder als Server mit Login.
+v0.7: Finanzbuchhaltung, MWST mit Bezugsteuer und eMWST-Export (eCH-0217), Bankimport camt.053 (auch
+Fremdwährungskonten) mit automatischem Abgleich und Bankregeln, Fremdwährungen mit BAZG-Tageskursen und
+Stichtagsbewertung, Belegeingang mit OCR und Agent (Quittungen, Lieferantenrechnungen, extern erstellte Rechnungen),
+Debitoren mit QR-Rechnung (CHF/EUR) und Mahnwesen, Kreditoren mit QR-Scan und pain.001 (auch Fremdwährung),
+Dividende mit Verrechnungssteuer, Lohn, Plugin-System, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit
+eingebautem Agenten, lokal oder als Server mit Login.
 
 Als Nächstes:
-- Rechnungen, Kreditoren und pain.001 in Fremdwährung; camt.053 für Fremdwährungskonten
+- Spesenabrechnungen für Mitarbeitende (Quittungen → Lohnlauf), Anlagenbuchhaltung mit Abschreibungen
+- Seiten in der Oberfläche durch Plugins
 - Weitere Quellensteuer-Kantone, ALV-Höchstgrenze, Swissdec/ELM
 - Mehrere Mandanten in einer Instanz
 - camt.054 (Sammelgutschriften im Detail), ELM/Swissdec für Lohnmeldungen

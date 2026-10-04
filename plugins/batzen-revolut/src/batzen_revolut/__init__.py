@@ -151,8 +151,9 @@ def _assign(book, currency: str, konto: str):
     acct = book.account(konto)
     if not acct.is_balance_sheet or acct.klasse != "aktiv":
         raise BookError(f"Konto {konto} ist kein Aktivkonto")
-    if acct.is_foreign or currency != "CHF":
-        raise BookError("Der Bankimport unterstützt Fremdwährungskonten noch nicht — vorerst nur CHF zuordnen")
+    if acct.waehrung != currency:
+        raise BookError(f"Konto {konto} führt {acct.waehrung}, nicht {currency} — für {currency} ein Konto mit "
+                        f"dieser Währung anlegen (batzen account-add … --waehrung {currency})")
     cfg = dict(book.settings.get("revolut") or {})
     cfg["konten"] = {**accounts(book), currency: konto}
     book.settings.data["revolut"] = cfg

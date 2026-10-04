@@ -16,6 +16,8 @@
         <select class="input" id="r-kunde" name="kunde" style="width:100%" required>{% for nr, c in customers.items() %}<option value="{{ nr }}" {{ 'selected' if nr == kunde }}>{{ nr }} · {{ c.firma or c.name }}{{ ' (' ~ c.adresse.ort ~ ')' if c.adresse and c.adresse.ort }}</option>{% endfor %}</select></div>
       <div class="field"><label for="r-datum">Rechnungsdatum</label><input class="input" id="r-datum" type="date" name="datum" value="{{ today }}"></div>
       <div class="field"><label for="r-frist">Zahlungsfrist (Tage)</label><input class="input num" id="r-frist" name="zahlungsfrist" value="{{ settings.get('zahlungsfrist_tage') or 30 }}"></div>
+      <div class="field"><label for="r-w">Währung</label><select class="input" id="r-w" name="waehrung" style="width:100%" hx-get="/kurs" hx-include="closest form" hx-target="#r-kurs-hint" hx-trigger="change"><option>CHF</option><option>EUR</option></select></div>
+      <div class="field"><label for="r-kurs">Kurs (leer = BAZG am Rechnungsdatum)</label><input class="input num" id="r-kurs" name="kurs" placeholder="BAZG"><span class="small" id="r-kurs-hint"></span></div>
       <div class="field wide"><label for="r-text">Einleitung (optional)</label><textarea class="input" id="r-text" name="text" placeholder="z.B. Gemäss Offerte vom 15. Januar 2026 stellen wir Ihnen in Rechnung:" style="min-height:60px"></textarea></div>
     </div>
     <div>

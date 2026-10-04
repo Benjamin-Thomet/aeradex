@@ -75,7 +75,8 @@ FROZEN = ("nummer", "kunde", "an", "datum", "faellig", "waehrung", "positionen",
           "referenz_typ", "referenz", "debitorenkonto")
 # Added with MWST support; part of the fingerprint only when present, so
 # invoices issued before keep their fingerprint.
-FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto", "extern")
+FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto", "extern", "kurs")
+QR_CURRENCIES = ("CHF", "EUR")          # what a Swiss QR-bill can carry
 
 
 def fingerprint(meta: dict) -> str:
@@ -161,8 +162,45 @@ def mwst_breakdown(positions: list[dict]) -> list[dict]:
     return out
 
 
+def currency(meta: dict) -> str:
+    return str(meta.get("waehrung") or "CHF").upper()
+
+
+def is_foreign(meta: dict) -> bool:
+    return currency(meta) != "CHF"
+
+
+def _rate(book: Book, cur: str, d: date, kurs=None) -> Decimal | None:
+    if cur == "CHF":
+        return None
+    if not re.fullmatch(r"[A-Z]{3}", cur):
+        raise BookError(f"Währung '{cur}' ist kein ISO-Code")
+    from . import fx
+    rate = parse_amount(kurs, "kurs") if kurs not in (None, "") else fx.rate(book, cur, d)
+    if rate <= 0:
+        raise BookError("Kurs muss positiv sein")
+    return rate
+
+
+def _to_chf(rows: list[Row], cur: str, rate: Decimal) -> list[Row]:
+    """Rows in the invoice currency → CHF at the invoice rate; the foreign amount stays on each row.
+    The rounding Rappen go to the largest revenue line (never the receivable)."""
+    from .journal import exact_rate
+    for r in rows:
+        r.waehrung, r.fw, r.kurs = cur, r.betrag, rate
+        r.betrag = money(r.betrag * rate)
+    soll = sum((r.betrag for r in rows if r.soll), ZERO)
+    haben = sum((r.betrag for r in rows if r.haben), ZERO)
+    if soll != haben:
+        side = [r for r in rows if r.haben and not r.soll] or [r for r in rows if r.haben]
+        target = max(side, key=lambda r: r.betrag)
+        target.betrag += soll - haben
+        exact_rate(target)
+    return rows
+
+
 def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
-                  zahlungsfrist: int | None = None) -> tuple[dict, list[Path]]:
+                  zahlungsfrist: int | None = None, waehrung: str = "", kurs=None) -> tuple[dict, list[Path]]:
     """Issue and book an invoice: DR Debitoren / CR Ertrag (per position account),
     with MWST per rate when the book is MWST-pflichtig."""
     from . import mwst as vat
@@ -176,6 +214,10 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
         raise BookError("Dieses Buch ist nicht MWST-pflichtig — Positionen ohne MWST-Code erfassen")
     for p in pos:
         book.account(p["konto"])
+    cur = (waehrung or s.get("waehrung") or "CHF").strip().upper()
+    if cur not in QR_CURRENCIES:
+        raise BookError(f"Eine QR-Rechnung gibt es nur in CHF oder EUR, nicht in {cur}")
+    rate = _rate(book, cur, d, kurs)
     netto = sum((p["betrag"] for p in pos), ZERO)
     breakdown = mwst_breakdown(pos)
     total = netto + sum((b["steuer"] for b in breakdown), ZERO)
@@ -188,7 +230,7 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
     meta = {
         "nummer": nummer, "kunde": cust["nummer"], "an": _snapshot_address(cust),
         "datum": d.isoformat(), "faellig": (d + timedelta(days=frist)).isoformat(),
-        "waehrung": s.get("waehrung") or "CHF",
+        "waehrung": cur,
         "positionen": [{**p, "menge": _num(p["menge"])} for p in pos],
         "total": total, "referenz_typ": ref_type,
         "referenz": qr.make_reference(ref_type, nummer, s.get("qr_referenz_praefix") or ""),
@@ -198,6 +240,8 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
     if breakdown:
         meta.update({"netto": netto, "mwst": breakdown, "mwst_methode": cfg["methode"],
                      "mwst_konto": cfg["konten"]["umsatzsteuer"]})
+    if rate is not None:
+        meta["kurs"] = str(rate)
     meta["fingerprint"] = fingerprint(_canonical(meta))
     path = book.root / "rechnungen" / str(d.year) / f"{nummer}.md"
     rows = booking_rows(meta)
@@ -208,7 +252,7 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
 
 def record_external(book: Book, kunde: str, betrag, datum=None, faellig=None, rechnungsnr: str = "",
                     referenz: str = "", referenz_typ: str = "", konto: str = "", mwst: str = "",
-                    datei: str = "", text: str = "") -> tuple[dict, list[Path]]:
+                    datei: str = "", text: str = "", waehrung: str = "", kurs=None) -> tuple[dict, list[Path]]:
     """Book an invoice that was issued outside batzen (Word, another program, by hand), so it
     is an open item like any other: payments, bank matching, credit notes, Mahnungen.
     `betrag` is the gross total as on the invoice; with a MWST code the tax is taken out of it."""
@@ -219,6 +263,8 @@ def record_external(book: Book, kunde: str, betrag, datum=None, faellig=None, re
     ensure_open(book, d)
     s = book.settings
     gross = parse_amount(betrag, "betrag")
+    cur = (waehrung or "CHF").strip().upper()
+    rate = _rate(book, cur, d, kurs)
     if gross <= 0 or gross != money(gross):
         raise BookError("Betrag muss positiv sein und höchstens zwei Nachkommastellen haben")
     konto = str(konto or s.konto("ertrag"))
@@ -244,7 +290,7 @@ def record_external(book: Book, kunde: str, betrag, datum=None, faellig=None, re
         "nummer": nummer, "kunde": cust["nummer"], "an": _snapshot_address(cust),
         "datum": d.isoformat(),
         "faellig": (parse_date(faellig, "faellig") if faellig else d + timedelta(days=frist)).isoformat(),
-        "waehrung": "CHF", "positionen": [position], "total": gross,
+        "waehrung": cur, "positionen": [position], "total": gross,
         "referenz_typ": (referenz_typ or ("SCOR" if (referenz or "").upper().startswith("RF") else
                                           "QRR" if re.fullmatch(r"\d{27}", referenz or "") else "NON")).upper(),
         "referenz": (referenz or "").replace(" ", ""),
@@ -254,6 +300,8 @@ def record_external(book: Book, kunde: str, betrag, datum=None, faellig=None, re
     if code:
         meta.update({"netto": net, "mwst": [{"code": code, "satz": vat.CODES[code].rate, "netto": net, "steuer": tax}],
                      "mwst_methode": cfg["methode"], "mwst_konto": cfg["konten"]["umsatzsteuer"]})
+    if rate is not None:
+        meta["kurs"] = str(rate)
     meta["fingerprint"] = fingerprint(_canonical(meta))
     rows = booking_rows(meta)
     touched = post(book, rows)
@@ -297,6 +345,14 @@ def invoice_fingerprint_ok(meta: dict) -> bool:
 
 
 def booking_rows(meta: dict) -> list[Row]:
+    """The journal rows an active invoice owns, in CHF (a foreign invoice at its rate)."""
+    rows = _booking_rows(meta)
+    if is_foreign(meta):
+        rows = _to_chf(rows, currency(meta), Decimal(str(meta["kurs"])))
+    return rows
+
+
+def _booking_rows(meta: dict) -> list[Row]:
     """The journal rows an active invoice owns. One row when every position goes
     to the same revenue account without MWST, else a split booking: Debitoren
     gross in Soll; per account and code the net (effective method) or gross
@@ -357,8 +413,9 @@ def invoice_state(book: Book, meta: dict, paid_rows: list[Row] | None = None,
     if paid_rows is None:
         paid_rows = settlements(book).get(meta["nummer"], [])
     rows = [r for r in paid_rows if as_of is None or r.datum <= as_of]
-    paid = sum((r.betrag for r in rows if r.quelle.startswith("zahlung:")), ZERO)
-    credited = sum((r.betrag for r in rows if r.quelle.startswith("gutschrift:")), ZERO)
+    amount = (lambda r: r.fw or ZERO) if is_foreign(meta) else (lambda r: r.betrag)
+    paid = sum((amount(r) for r in rows if r.quelle.startswith("zahlung:")), ZERO)
+    credited = sum((amount(r) for r in rows if r.quelle.startswith("gutschrift:")), ZERO)
     total = money(meta.get("total"))
     open_amount = total - paid - credited if meta.get("status") != "storniert" else ZERO
     state = ("storniert" if meta.get("status") == "storniert" else
@@ -368,7 +425,23 @@ def invoice_state(book: Book, meta: dict, paid_rows: list[Row] | None = None,
             "faellig": str(meta.get("faellig")), "total": total, "bezahlt": paid,
             "gutgeschrieben": credited, "offen": open_amount, "status": state,
             "referenz": meta.get("referenz") or "",
-            "extern": (meta.get("extern") or {}).get("rechnungsnr", "") if meta.get("extern") else None}
+            "extern": (meta.get("extern") or {}).get("rechnungsnr", "") if meta.get("extern") else None,
+            "waehrung": currency(meta),
+            "offen_chf": (book_value(book, meta, as_of, rows) if is_foreign(meta) else open_amount)
+            if meta.get("status") != "storniert" else ZERO}
+
+
+def book_value(book: Book, meta: dict, until: date | None = None, paid_rows: list[Row] | None = None) -> Decimal:
+    """CHF value of what is still owed on a foreign invoice: as booked, plus Stichtag
+    revaluations, minus what payments and credit notes cleared — up to `until`."""
+    from . import fx
+    paid_rows = settlements(book).get(meta["nummer"], []) if paid_rows is None else paid_rows
+    deb = str(meta.get("debitorenkonto"))
+    value = sum((r.betrag for r in booking_rows(meta) if r.soll == deb), ZERO)
+    value += sum((diff for d, diff in fx.invoice_revaluations(book).get(meta["nummer"], [])
+                  if until is None or d <= until), ZERO)
+    value -= sum((r.betrag for r in paid_rows if until is None or r.datum <= until), ZERO)
+    return value
 
 
 def void_invoice(book: Book, nr: str, grund: str = "") -> tuple[dict, list[Path]]:
@@ -391,10 +464,14 @@ def void_invoice(book: Book, nr: str, grund: str = "") -> tuple[dict, list[Path]
 
 
 def _settle(book: Book, nr: str, kind: str, betrag, datum, konto: str, text: str,
-            mwst: str = "") -> tuple[Row, list[Path]]:
+            mwst: str = "", kurs=None, fw=None) -> tuple[Row, list[Path]]:
     meta = invoice(book, nr)
     if meta.get("status") == "storniert":
         raise BookError(f"{nr} ist storniert")
+    if is_foreign(meta):
+        return _settle_foreign(book, meta, kind, betrag, datum, konto, text, mwst, kurs, fw)
+    if kind == "zahlung" and book.account(konto).is_foreign:
+        raise BookError(f"Konto {konto} führt {book.account(konto).waehrung}, {nr} lautet auf CHF")
     state = invoice_state(book, meta)
     amount = money(betrag) if betrag not in (None, "") else state["offen"]
     if amount <= 0:
@@ -415,10 +492,87 @@ def _settle(book: Book, nr: str, kind: str, betrag, datum, konto: str, text: str
     return row, post(book, [row])
 
 
-def pay_invoice(book: Book, nr: str, betrag=None, datum=None, konto: str | None = None) -> tuple[Row, list[Path]]:
-    """Book a (partial) payment: DR Bank / CR Debitoren."""
+def _settle_foreign(book: Book, meta: dict, kind: str, betrag, datum, konto: str, text: str, mwst: str,
+                    kurs, fw) -> tuple[Row, list[Path]]:
+    """A foreign invoice: a credit note reverses at the invoice rate; a payment clears the book
+    value and books the difference to what was received as Kursgewinn/-verlust. `betrag` is in
+    the receiving account's currency (into a CHF account: the CHF credited)."""
+    from . import fx
+    nr, cur = meta["nummer"], currency(meta)
+    st = invoice_state(book, meta)
+    open_fw = st["offen"]
+    d = parse_date(datum, "datum") if datum else date.today()
+    deb = str(meta.get("debitorenkonto"))
+    quelle = f"{kind}:{nr}"
+    beleg = next_beleg(book, d.year)
+    if kind == "gutschrift":
+        amount = money(betrag) if betrag not in (None, "") else open_fw
+        if amount <= 0 or amount > open_fw:
+            raise BookError(f"Gutschrift {amount} {cur}: offen sind {open_fw} {cur}")
+        base = Row(d, beleg, text, deb, konto, amount)
+        if mwst:
+            from .mwst import config, split
+            if config(book)["methode"] == "effektiv":
+                rows = [Row(r.datum, r.beleg, r.text, r.haben, r.soll, r.betrag, quelle, mwst=r.mwst)
+                        for r in split(book, base, mwst)]
+            else:
+                rows = [Row(d, beleg, text, konto, deb, amount, quelle, mwst=mwst)]
+        else:
+            rows = [Row(d, beleg, text, konto, deb, amount, quelle)]
+        rows = _to_chf(rows, cur, Decimal(str(meta["kurs"])))
+        return next(r for r in rows if r.haben == deb), post(book, rows)
+    acct = book.account(konto)
+    if acct.is_foreign:
+        if acct.waehrung != cur:
+            raise BookError(f"Konto {konto} führt {acct.waehrung}, {nr} lautet auf {cur}")
+        settle = money(fw if fw not in (None, "") else betrag) if (fw or betrag) not in (None, "") else open_fw
+        rate = parse_amount(kurs, "kurs") if kurs not in (None, "") else fx.rate(book, cur, d)
+        received = money(settle * rate)
+    else:
+        settle = money(fw) if fw not in (None, "") else open_fw
+        rate = None
+        if betrag not in (None, ""):
+            received = money(betrag)                        # what the bank actually credited in CHF
+        else:
+            rate = parse_amount(kurs, "kurs") if kurs not in (None, "") else fx.rate(book, cur, d)
+            received = money(settle * rate)
+    if settle <= 0:
+        raise BookError(f"{nr} ist bereits beglichen")
+    if settle > open_fw:
+        raise BookError(f"{settle} {cur} übersteigt den offenen Betrag {open_fw} {cur} von {nr}")
+    value = book_value(book, meta, d)
+    clear = value if settle == open_fw else money(value * settle / open_fw)
+    rows = [Row(d, beleg, text, "", deb, clear, quelle, waehrung=cur, fw=settle,
+                kurs=(clear / settle).quantize(Decimal("1e-10")).normalize())]
+    bank_row = Row(d, beleg, text, konto, "", received, quelle)
+    if acct.is_foreign:
+        bank_row.waehrung, bank_row.fw, bank_row.kurs = cur, settle, rate
+    rows.append(bank_row)
+    diff = received - clear
+    if diff:
+        fx._ensure_accounts(book)
+    if diff > 0:
+        rows.append(Row(d, beleg, f"Kursgewinn {nr}", "", book.settings.konto("kursgewinn"), diff, quelle))
+    elif diff < 0:
+        rows.append(Row(d, beleg, f"Kursverlust {nr}", book.settings.konto("kursverlust"), "", -diff, quelle))
+    return rows[0], post(book, rows)
+
+
+def amount_fits(book: Book, st: dict, amount: Decimal, konto: str) -> bool:
+    """Could a bank credit of `amount` (in the account's currency) pay this invoice?"""
+    if st.get("waehrung", "CHF") == "CHF":
+        return amount <= st["offen"]
+    acct = book.accounts.get(konto)
+    if acct is not None and acct.is_foreign:
+        return acct.waehrung == st["waehrung"] and amount <= st["offen"]
+    return True                                       # CHF credit for a foreign invoice: the rate decides
+
+
+def pay_invoice(book: Book, nr: str, betrag=None, datum=None, konto: str | None = None, kurs=None,
+                fw=None) -> tuple[Row, list[Path]]:
+    """Book a (partial) payment: DR Bank / CR Debitoren. `betrag` is in the receiving account's currency."""
     konto = konto or book.settings.konto("bank")
-    return _settle(book, nr, "zahlung", betrag, datum, konto, f"Zahlung Rechnung {nr}")
+    return _settle(book, nr, "zahlung", betrag, datum, konto, f"Zahlung Rechnung {nr}", kurs=kurs, fw=fw)
 
 
 def credit_invoice(book: Book, nr: str, betrag=None, datum=None, konto: str | None = None,
@@ -482,8 +636,8 @@ def aged_receivables(book: Book, as_of: date | None = None) -> dict:
             continue
         age = (as_of - issued).days
         label = next(b[0] for b in AGE_BUCKETS if b[1] <= age <= b[2])
-        buckets[label] += st["offen"]
-        total += st["offen"]
+        buckets[label] += st["offen_chf"]
+        total += st["offen_chf"]
         rows.append({**st, "alter_tage": age, "kategorie": label})
     rows.sort(key=lambda r: (r["datum"], r["nummer"]))
     deb = book.settings.konto("debitoren")

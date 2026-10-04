@@ -525,7 +525,8 @@ async def rechnung_erstellen(ui: UI, request: Request):
     f = await request.form()
     return await act(request, api.invoice_create, lambda r: f"/debitoren/rechnung/{r['rechnung']['nummer']}",
                      ui.book(), f.get("kunde"), _positions(f), f.get("datum") or None, f.get("text", ""),
-                     int(f.get("zahlungsfrist")) if f.get("zahlungsfrist") else None)
+                     int(f.get("zahlungsfrist")) if f.get("zahlungsfrist") else None,
+                     "" if (f.get("waehrung") or "CHF") == "CHF" else f.get("waehrung"), f.get("kurs") or None)
 
 
 async def rechnung_aktion(ui: UI, request: Request):
@@ -535,7 +536,7 @@ async def rechnung_aktion(ui: UI, request: Request):
     to = f"/debitoren/rechnung/{nr}"
     if aktion == "zahlung":
         return await act(request, api.invoice_pay, to, book, nr, f.get("betrag") or None, f.get("datum") or None,
-                         acct(f.get("konto")) or None)
+                         acct(f.get("konto")) or None, None, f.get("fw") or None)
     if aktion == "gutschrift":
         return await act(request, api.invoice_credit, to, book, nr, f.get("betrag") or None, f.get("datum") or None,
                          acct(f.get("konto")) or None, f.get("grund", ""))
@@ -733,7 +734,8 @@ async def abschluss(ui: UI, request: Request):
     verlauf = (read_yaml(lock_path).get("verlauf") or []) if lock_path.exists() else []
     fx_view = None
     from .. import kreditoren as kred
-    has_fw_bills = any(kred.is_foreign(m) for m in kred.bills(book).values())
+    has_fw_bills = (any(kred.is_foreign(m) for m in kred.bills(book).values())
+                    or any(invoices.is_foreign(m) for m in invoices.invoices(book).values()))
     if st.get("fremdwaehrung") or has_fw_bills:
         from .. import fx
         try:
@@ -743,7 +745,8 @@ async def abschluss(ui: UI, request: Request):
         done = sorted(p.stem for p in (book.root / "bewertung").glob(f"{year}-*.yaml"))
         try:
             fx_view = {"stichtag": stichtag, "konten": fx.preview(book, stichtag), "bewertet": fx.path(book, stichtag).exists(),
-                       "erledigt": done, "kreditoren": fx.preview_bills(book, stichtag)}
+                       "erledigt": done, "kreditoren": fx.preview_bills(book, stichtag),
+                       "debitoren": fx.preview_invoices(book, stichtag)}
         except BookError as exc:          # no rates yet (future date, offline)
             fx_view = {"stichtag": stichtag, "konten": [], "bewertet": fx.path(book, stichtag).exists(), "fehler": str(exc),
                        "erledigt": done}
@@ -1042,7 +1045,10 @@ async def debitor_extern_erfassen(ui: UI, request: Request):
             book = ui.book()
     except (BookError, ValueError) as exc:
         return fail(str(exc))
-    fields = {k: (f.get(k) or "").strip() for k in ("datum", "faellig", "rechnungsnr", "referenz", "mwst", "entwurf")}
+    fields = {k: (f.get(k) or "").strip() for k in ("datum", "faellig", "rechnungsnr", "referenz", "mwst", "entwurf",
+                                                     "kurs")}
+    if (f.get("waehrung") or "CHF").upper() != "CHF":
+        fields["waehrung"] = f.get("waehrung").upper()
     fields = {k: v for k, v in fields.items() if v}
     if f.get("konto"):
         fields["konto"] = acct(f.get("konto"))

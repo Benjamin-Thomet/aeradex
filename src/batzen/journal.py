@@ -126,6 +126,13 @@ def _rebalance(book: Book, rows: list[Row]) -> None:
         if one_sided:
             target = max(one_sided, key=lambda r: r.betrag)
             target.betrag += (haben - soll) if target.soll else (soll - haben)
+            exact_rate(target)
+
+
+def exact_rate(row: Row) -> None:
+    """A row that absorbed rounding Rappen gets the rate its CHF amount implies, so CHF = FW × Kurs holds."""
+    if row.fw and row.kurs and abs(row.betrag - (row.fw * row.kurs).quantize(Decimal("0.01"))) > Decimal("0.01"):
+        row.kurs = (row.betrag / row.fw).quantize(Decimal("1e-10")).normalize()
 
 
 def post(book: Book, rows: list[Row], attachment: Path | None = None) -> list[Path]:

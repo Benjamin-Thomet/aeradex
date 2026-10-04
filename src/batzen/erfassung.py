@@ -487,15 +487,19 @@ def match_payment(book: Book, meta: dict) -> dict:
         when = date.fromisoformat(value(meta, "datum")) if value(meta, "datum") else None
     except (InvalidOperation, ValueError):
         amount, when = None, None
-    if amount and when and (value(meta, "waehrung") or "CHF") == "CHF":
+    cur = (value(meta, "waehrung") or "CHF").upper()
+    if amount and when:
         near = lambda d: abs((d - when).days) <= 5  # noqa: E731
         taken = {d.get("zahlung", {}).get("bank") for d in drafts(book).values()} - {None}
+        # a movement is in its account's currency: a CHF receipt matches CHF accounts, a EUR receipt EUR accounts
         hits = [t for t in bank.transactions(book) if t["Status"] == "offen" and t["ID"] not in taken
+                and (bank.account_currency(book, t["Konto"]) or "CHF") == cur
                 and parse_amount(t["Betrag"]) == -amount and near(date.fromisoformat(t["Datum"]))]
         if hits:
             t = min(hits, key=lambda t: abs((date.fromisoformat(t["Datum"]) - when).days))
             return {"art": "bank", "bank": t["ID"], "konto": t["Konto"], "quelle": "Bankabgleich",
                     "text": f"Bankbewegung {t['Datum']} {t.get('Gegenpartei') or t.get('Text', '')}"[:120]}
+    if amount and when and cur == "CHF":
         folder_ = book.root / "belege"
         with_file = {p.name.split(" ")[0] for p in folder_.rglob("*") if p.is_file()} if folder_.exists() else set()
         liquid = {nr for nr, a in book.accounts.items() if a.klasse == "aktiv" and nr.startswith("10")}
@@ -779,15 +783,19 @@ def book_receipt(book: Book, draft_id: str, datum, text: str, betrag, konto: str
                   parse_amount(p["betrag"], "betrag"))
         rows += split(book, row, str(p.get("mwst") or "").upper())
     cur = (waehrung or "CHF").upper()
+    fw_account = bank.account_currency(book, haben)
+    if fw_account and cur != fw_account:
+        raise BookError(f"Konto {haben} führt {fw_account}, die Quittung lautet auf {cur}")
     if cur != "CHF":
-        if tx is not None and kurs in (None, ""):
+        if tx is not None and kurs in (None, "") and not fw_account:
             # paid by card from a CHF account: the bank's CHF amount fixes the rate
             kurs = (abs(parse_amount(tx["Betrag"])) / amount).quantize(Decimal("1e-10")).normalize()
         rows = convert(book, rows, cur, kurs)
     if tx is not None:
-        chf = sum((r.betrag for r in rows if r.haben == haben), Decimal(0))
-        if chf != abs(parse_amount(tx["Betrag"])):
-            raise BookError(f"Quittung CHF {chf:.2f} ≠ Bankbewegung CHF {abs(parse_amount(tx['Betrag'])):.2f}")
+        paid = sum(((r.fw or Decimal(0)) if fw_account else r.betrag for r in rows if r.haben == haben), Decimal(0))
+        unit = fw_account or "CHF"
+        if paid != abs(parse_amount(tx["Betrag"])):
+            raise BookError(f"Quittung {unit} {paid:.2f} ≠ Bankbewegung {unit} {abs(parse_amount(tx['Betrag'])):.2f}")
     touched += post(book, rows)
     touched += [attach(book, rows[0], source), source]
     if tx is not None:
