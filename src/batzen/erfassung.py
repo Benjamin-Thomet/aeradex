@@ -571,7 +571,7 @@ def create(book: Book, datei: str, fields: dict, text: str, notes: list[str],
 
 def update(book: Book, draft_id: str, quelle: str, konto: str = "", mwst: str | None = None,
            begruendung: str = "", positionen: list[dict] | None = None, art: str = "",
-           zahlkonto: str = "", **fields) -> tuple[dict, list[Path]]:
+           zahlkonto: str = "", mitarbeiter: str = "", **fields) -> tuple[dict, list[Path]]:
     meta = draft(book, draft_id)
     path = meta.pop("_pfad")
     if art and art != meta.get("art"):
@@ -589,6 +589,11 @@ def update(book: Book, draft_id: str, quelle: str, konto: str = "", mwst: str | 
         if acct.klasse not in ("aktiv", "passiv"):
             raise BookError(f"Zahlkonto {zahlkonto} muss ein Bilanzkonto sein (Kasse, Bank, Kreditkarte, Privat …)")
         meta["zahlung"] = {"art": "konto", "konto": zahlkonto, "quelle": quelle}
+    if mitarbeiter:
+        from . import payroll
+        emp = payroll.employee(book, mitarbeiter)
+        meta["zahlung"] = {"art": "spesen", "mitarbeiter": emp["nummer"], "spesenart": "uebrige", "quelle": quelle,
+                           "text": f"privat bezahlt von {payroll.display_name(emp)} — Spesen über den Lohn"}
     if positionen:
         from .mwst import code as mwst_code
         lines = []
@@ -757,6 +762,13 @@ def book_receipt(book: Book, draft_id: str, datum, text: str, betrag, konto: str
             raise BookError(f"Beleg {pay.get('beleg')} nicht gefunden")
         touched += [attach(book, rows[0], source), source]
         return rows, touched + discard(book, draft_id)
+    if pay.get("art") == "spesen":
+        from . import spesen
+        lines_ = positionen or None
+        meta_, t = spesen.add(book, str(pay.get("mitarbeiter") or ""), datum, text, betrag, konto, mwst, lines_,
+                              pay.get("spesenart") or "uebrige", meta["datei"], waehrung, kurs)
+        book.reload()
+        return [r for r in book.rows if r.quelle == f"spesen:{meta_['nummer']}"], t + discard(book, draft_id)
     d = parse_date(datum, "datum")
     amount = parse_amount(betrag, "betrag")
     lines = positionen or [{"konto": konto, "betrag": str(amount), "mwst": mwst, "text": ""}]

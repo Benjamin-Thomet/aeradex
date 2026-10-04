@@ -26,7 +26,11 @@
         <label class="check"><input type="radio" name="zahlung" value="konto" {{ 'checked' if pay.art not in ('bank', 'buchung') }}> Bezahlt über Konto
           <select class="input" name="zahlkonto" style="width:auto">{% for a in liquid %}<option value="{{ a.nr }}" {{ 'selected' if a.nr == (pay.konto or '') }}>{{ a.nr }} {{ a.name }}</option>{% endfor %}</select>
           {% if pay.art == 'konto' and pay.quelle %}<span class="pill muted">{{ pay.quelle }}</span>{% endif %}</label>
-        <span class="small muted">Privat bezahlt? Das Konto gegenüber der Person wählen (z.B. Kontokorrent Gesellschafter).</span>
+        {% if employees %}<label class="check"><input type="radio" name="zahlung" value="spesen" {{ 'checked' if pay.art == 'spesen' }}> Privat bezahlt von
+          <select class="input" name="mitarbeiter" style="width:auto">{% for nr, e in employees.items() %}<option value="{{ nr }}" {{ 'selected' if nr == pay.mitarbeiter }}>{{ e.vorname }} {{ e.nachname }}</option>{% endfor %}</select>
+          <select class="input" name="spesenart" style="width:auto"><option value="uebrige">übrige Spesen</option><option value="reise" {{ 'selected' if pay.spesenart == 'reise' }}>Reise/Verpflegung/Übernachtung</option></select>
+          — Rückzahlung mit dem nächsten Lohn</label>{% endif %}
+        <span class="small muted">Privat bezahlt von Gesellschaftern? Das Konto gegenüber der Person wählen (z.B. Kontokorrent).</span>
       </div>
       <div class="form">
         <div class="field"><label for="q-d">Datum{{ src('datum') }}</label><input class="input" id="q-d" type="date" name="datum" value="{{ ev.datum or today }}" required></div>

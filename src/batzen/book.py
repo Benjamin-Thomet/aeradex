@@ -53,6 +53,7 @@ DEFAULT_SYSTEM_ACCOUNTS = {
     "kursgewinn": "6952",
     "kursverlust": "6942",
     "verrechnungssteuer": "2206",
+    "spesen": "2210",
 }
 
 

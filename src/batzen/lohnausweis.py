@@ -48,7 +48,12 @@ def annual_totals(book: Book, year: int, nr: str) -> dict:
     z1 = _fr(total("bruttolohn") + total("kinderzulagen") + total("korrektur"))
     z9 = _fr(total("ahv") + total("alv") + total("uvg"))
     z10_1 = _fr(total("bvg"))
-    return {"monate": len(closed), "entwuerfe": len(slips) - len(closed),
+    from . import spesen
+    paid = [n for p in closed for n in (p.get("eingaben") or {}).get("spesen") or []]
+    claims = spesen.claims(book)
+    uebrige = sum((spesen.amount_chf(book, claims[n]) for n in paid if n in claims and claims[n].get("art") == "uebrige"),
+                  Decimal("0"))
+    return {"monate": len(closed), "entwuerfe": len(slips) - len(closed), "spesen_uebrige": uebrige,
             "z1": z1, "z8": z1, "z9": z9, "z10_1": z10_1, "z11": z1 - z9 - z10_1,
             "z12": _fr(total("quellensteuer")), "ktg": _fr(total("ktg")),
             "netto_ausbezahlt": total("nettolohn")}
@@ -113,6 +118,8 @@ def build_pdf(book: Book, year: int, nr: str, on_date: date | None = None) -> by
         "DezZahlNull_10_1": _num_field(totals["z10_1"]),
         "DezZahlNull_11": _num_field(totals["z11"]),
         "DezZahlNull_12": _num_field(totals["z12"]),
+        **({"DezZahlNull_13_1_2": _num_field(_fr(totals["spesen_uebrige"])),
+            "TextLinks_13_1_2-Art": "Effektive Spesen gemäss Belegen"} if totals["spesen_uebrige"] else {}),
         "TextLinks_15_1": remarks[0] if remarks else "",
         "TextLinks_15_2": remarks[1] if len(remarks) > 1 else "",
         "TextLinks_I": f"{s.adresse.get('ort') or ''}, {on_date:%d.%m.%Y}".strip(", "),

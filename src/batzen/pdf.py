@@ -311,7 +311,13 @@ def payslip_pdf(book: Book, meta: dict, emp: dict) -> bytes:
         rows.append(["Kinderzulagen", "", "", chf(w["kinderzulagen"])])
     if Decimal(str(w.get("korrektur") or 0)):
         rows.append([(meta.get("eingaben") or {}).get("korrektur_text") or "Korrektur", "", "", chf(w["korrektur"])])
-    rows.append(["Nettolohn (Auszahlung)", "", "", chf(w["nettolohn"])])
+    if Decimal(str(w.get("spesen") or 0)):
+        rows.append(["Nettolohn", "", "", chf(w["nettolohn"])])
+        rows.append([f"Spesen (effektiv, {', '.join((meta.get('eingaben') or {}).get('spesen') or [])})", "", "",
+                     chf(w["spesen"])])
+        rows.append(["Auszahlung", "", "", chf(w["auszahlung"])])
+    else:
+        rows.append(["Nettolohn (Auszahlung)", "", "", chf(w["nettolohn"])])
     story.append(_grid(rows, [width * 0.46, width * 0.18, width * 0.16, width * 0.2],
                        total_rows=[brutto_row, abz_row, len(rows) - 1], right_cols=(1, 2, 3)))
     if s.get("iban"):

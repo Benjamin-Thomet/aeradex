@@ -69,6 +69,7 @@ Die Hooks sind [pluggy](https://pluggy.readthedocs.io/)-Hooks (dasselbe System w
 | `batzen_tools()` | `[Funktion]` | Werkzeuge für Agenten (MCP und Chat in der Oberfläche) | eingeschaltet |
 | `batzen_instructions()` | `str` | kurzer Hinweis an den Agenten, wann er die Werkzeuge nutzt | eingeschaltet |
 | `batzen_commands()` | `[Command]` | Befehle `batzen <name> …` | eingeschaltet |
+| `batzen_pages()` | `[Page]` | eigene Seiten in der Oberfläche (Seitenleiste «Plugins») | eingeschaltet |
 
 ### Kontenplan-Vorlagen (Daten)
 
@@ -176,6 +177,23 @@ def batzen_commands():
 ```
 
 Ein Name, den batzen schon verwendet, wird übersprungen; Plugin-Befehle tragen darum am besten das Plugin im Namen.
+
+### Seiten in der Oberfläche
+
+```python
+from batzen.plugins import Page
+
+@hookimpl
+def batzen_pages():
+    return [Page("anlagen", "Anlagen", "anlagen.html", context=lambda book, query: {...},
+                 actions={"erfassen": lambda book, form: api.write(book, "…", erfassen, …)})]
+```
+
+Die Seite liegt unter `/p/<plugin>/<slug>`, die Vorlage im Ordner `templates/` des Plugin-Pakets (in
+`package-data` aufnehmen). Sie darf `{% extends "base.html" %}` und die Makros aus `_macros.html` verwenden.
+Formulare posten an `/p/<plugin>/<slug>/<aktion>`; die Aktion bekommt die Formularfelder als dict und schreibt über
+`api.write`. Im Serverbetrieb dürfen nur Benutzer mit Schreibrecht posten. Beispiel:
+[`plugins/batzen-anlagen`](../plugins/batzen-anlagen).
 
 ## Testen
 

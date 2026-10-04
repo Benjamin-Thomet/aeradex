@@ -343,7 +343,12 @@ def _body(emp: dict, meta: dict) -> str:
         add(label, w[key], "−")
     add("Kinderzulagen", w["kinderzulagen"])
     add("Korrektur", w["korrektur"])
-    add("**Nettolohn (Auszahlung)**", w["nettolohn"])
+    if Decimal(str(w.get("spesen") or 0)):
+        add("**Nettolohn**", w["nettolohn"])
+        add(f"Spesen ({', '.join(meta['eingaben'].get('spesen') or [])})", w["spesen"])
+        add("**Auszahlung**", w["auszahlung"])
+    else:
+        add("**Nettolohn (Auszahlung)**", w["nettolohn"])
     lines += ["", "Status: " + meta["status"] + ". Diese Tabelle wird von batzen erzeugt; "
               "Eingaben im Frontmatter unter `eingaben:` ändern und `batzen payroll run` erneut ausführen."]
     return "\n".join(lines)
@@ -354,6 +359,26 @@ def _save(book: Book, emp: dict, meta: dict) -> Path:
     clean = {k: v for k, v in meta.items() if not k.startswith("_")}
     write_frontmatter(path, clean, _body(emp, clean))
     return path
+
+
+def _with_expenses(book: Book, meta: dict) -> None:
+    """Add the employee's expense claims to a draft: those it already lists plus every open one up to the
+    month's end. They are paid out with the net wage and are not part of the gross (no social insurance)."""
+    from . import spesen
+    year, month = int(meta["jahr"]), int(meta["monat"])
+    end = date(year, month, calendar.monthrange(year, month)[1])
+    listed = [str(n) for n in (meta["eingaben"].get("spesen") or []) if str(n) in spesen.claims(book)]
+    fresh = [m["nummer"] for m in spesen.open_claims(book, meta["mitarbeiter"], end) if m["nummer"] not in listed]
+    numbers = sorted(set(listed + fresh))
+    if numbers:
+        meta["eingaben"]["spesen"] = numbers
+        meta["spesenkonto"] = spesen.konto(book)
+        total = sum((spesen.amount_chf(book, spesen.claim(book, n)) for n in numbers), ZERO)
+        meta["werte"]["spesen"] = money(total)
+        meta["werte"]["auszahlung"] = money(D(meta["werte"]["nettolohn"]) + total)
+    else:
+        meta["eingaben"].pop("spesen", None)
+        meta.pop("spesenkonto", None)
 
 
 def run(book: Book, year: int, month: int, nr: str | None = None, inputs: dict | None = None) -> list[tuple[dict, Path]]:
@@ -378,6 +403,7 @@ def run(book: Book, year: int, month: int, nr: str | None = None, inputs: dict |
         if inputs:
             meta["eingaben"].update({k: v for k, v in inputs.items() if v is not None})
         meta["werte"] = calculate(emp, cfg, year, month, meta["eingaben"])
+        _with_expenses(book, meta)
         meta.pop("ag", None)
         meta.pop("fingerprint", None)
         out.append((meta, _save(book, emp, meta)))
@@ -403,6 +429,9 @@ def booking_rows(meta: dict, cfg: dict) -> list[Row]:
         (k["lohnaufwand"], k["uvg"], D(w["uvg"]), "AN NBU"),
         (k["lohnaufwand"], k["quellensteuer"], D(w["quellensteuer"]), "Quellensteuer"),
     ]
+    if D(w.get("spesen")):
+        lines.append((str(meta.get("spesenkonto") or "2210"), k["auszahlung"], D(w["spesen"]),
+                      "Spesen (effektiv)"))
     for code in AG_ORDER:
         expense, payable = cfg["ag_konten"][code]
         lines.append((str(expense), str(payable), D(ag.get(code)), f"AG {AG_LABEL[code]}"))
@@ -425,6 +454,8 @@ def close(book: Book, year: int, month: int, nr: str) -> tuple[dict, list[Path]]
     emp = employee(book, nr)
     # Recalculate once more so the frozen figures match the current inputs.
     meta["werte"] = calculate(emp, cfg, year, month, meta.get("eingaben") or {})
+    meta.setdefault("eingaben", {})
+    _with_expenses(book, meta)
     w = meta["werte"]
     meta["ag"] = employer_contributions(cfg, w["bruttolohn"], w["bvg"], emp.get("ag_bvg_betrag"))
     meta["status"] = "abgeschlossen"

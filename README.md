@@ -218,6 +218,14 @@ batzen payroll run 2026-01 --mitarbeiter M0001 --qst-gesamtpensum 80
 batzen payroll close 2026-01 M0001             # einfrieren, verbuchen, PDF
 batzen payroll lohnausweis 2026 M0001          # Formular 11, ausgefüllt
 ```
+**Spesen:** Auslagen, die Mitarbeitende privat bezahlt haben (Quittung unter Prüfen hochladen und «Privat bezahlt
+von …» wählen, oder Lohn → Spesen, oder `batzen spesen add`), werden gegen 2210 «Sonstige kurzfristige Verbindlichkeiten» (`konten.spesen`) gebucht
+und mit dem nächsten Lohn ausbezahlt — nicht AHV-pflichtig, nach dem Nettolohn. Übrige effektive Spesen erscheinen
+im Lohnausweis unter Ziffer 13.1.2, Reisespesen sind mit dem Kreuz in 13.1.1 abgedeckt.
+
+Lohnmeldungen über ELM (Swissdec) gibt es nicht: übermitteln darf nur von Swissdec zertifizierte Lohnsoftware.
+Lohnausweis (Formular 11) und Lohnkonto entstehen als PDF.
+
 
 ### Abschluss
 ```bash
@@ -299,19 +307,18 @@ Bauen: [docs/plugins.md](docs/plugins.md) und die Vorlage unter `plugins/vorlage
 
 ## Stand und Roadmap
 
-v0.7: Finanzbuchhaltung, MWST mit Bezugsteuer und eMWST-Export (eCH-0217), Bankimport camt.053 (auch
+v0.8: Finanzbuchhaltung, MWST mit Bezugsteuer und eMWST-Export (eCH-0217), Bankimport camt.053 (auch
 Fremdwährungskonten) mit automatischem Abgleich und Bankregeln, Fremdwährungen mit BAZG-Tageskursen und
 Stichtagsbewertung, Belegeingang mit OCR und Agent (Quittungen, Lieferantenrechnungen, extern erstellte Rechnungen),
 Debitoren mit QR-Rechnung (CHF/EUR) und Mahnwesen, Kreditoren mit QR-Scan und pain.001 (auch Fremdwährung),
-Dividende mit Verrechnungssteuer, Lohn, Plugin-System, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit
+Dividende mit Verrechnungssteuer, Lohn mit Spesen, Anlagenbuchhaltung (Plugin), Plugin-System mit eigenen Seiten, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit
 eingebautem Agenten, lokal oder als Server mit Login.
 
 Als Nächstes:
-- Spesenabrechnungen für Mitarbeitende (Quittungen → Lohnlauf), Anlagenbuchhaltung mit Abschreibungen
-- Seiten in der Oberfläche durch Plugins
-- Weitere Quellensteuer-Kantone, ALV-Höchstgrenze, Swissdec/ELM
+- Swissdec-Zertifizierung für Lohnmeldungen über ELM (Voraussetzung: Zertifizierung durch Swissdec)
+- Weitere Quellensteuer-Kantone, ALV-Höchstgrenze
 - Mehrere Mandanten in einer Instanz
-- camt.054 (Sammelgutschriften im Detail), ELM/Swissdec für Lohnmeldungen
+- camt.054 (Sammelgutschriften im Detail)
 
 Vor dem ersten Einsatz mit echten Rechnungen: ein erzeugtes PDF im offiziellen SIX-Validator prüfen (https://validation.iso-payments.ch/). Sozialversicherungssätze in `lohn/einstellungen.yaml` an deine Ausgleichskasse, UVG- und KTG-Police anpassen.
 

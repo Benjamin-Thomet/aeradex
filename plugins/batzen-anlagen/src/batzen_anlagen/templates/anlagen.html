@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Anlagen {{ jahr }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Anlagen</h1><div class="sub">Anlagenspiegel {{ jahr }} · Abschreibungen per 31.12. (im Anschaffungsjahr anteilig nach Monaten)</div></div>
+  <form class="actions" method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in jahre|reverse %}<option {{ 'selected' if y == jahr }}>{{ y }}</option>{% endfor %}</select></form>
+</div>
+<div class="panel">
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Anlage</th><th>Konto</th><th class="right">Anfang</th><th class="right">Zugang</th><th class="right">Abschreibung</th><th class="right">Abgang</th><th class="right">Ende</th><th></th></tr></thead>
+    <tbody>{% for a in spiegel.anlagen %}
+      <tr class="row"><td><span class="beleg">{{ a.nummer }}</span> {{ a.bezeichnung }}<br><span class="small muted">{{ a.methode }} {{ a.satz }} %</span></td><td class="acc">{{ a.konto }}</td>
+        <td class="right num">{{ a.anfang|chf(true) }}</td><td class="right num">{{ a.zugang|chf(true) }}</td>
+        <td class="right num">{{ a.abschreibung|chf(true) }}{% if a.offen %} <span class="pill warn">offen</span>{% endif %}</td>
+        <td class="right num">{{ a.abgang|chf(true) }}</td><td class="right num">{{ a.ende|chf }}</td>
+        <td class="right">{% if not a.abgang %}<details class="drawer"><summary class="btn small ghost" title="Verkauf oder Entsorgung">⋯</summary>
+          <form class="panel" hx-post="/p/anlagen/anlagen/abgang" hx-target="find .errors" style="position:absolute;right:40px;z-index:3;padding:12px;width:280px;text-align:left;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px">
+            <input type="hidden" name="nummer" value="{{ a.nummer }}">
+            <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></div>
+            <div class="field"><label>Verkaufserlös (0 = entsorgt)</label><input class="input num" name="erloes" value="0"></div>
+            {{ errors() }}<button class="btn small danger" type="submit">Ausbuchen</button></form></details>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="8" class="empty">Keine Anlagen in diesem Jahr.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><td colspan="2">Total</td><td class="right num">{{ spiegel.total.anfang|chf }}</td><td class="right num">{{ spiegel.total.zugang|chf }}</td><td class="right num">{{ spiegel.total.abschreibung|chf }}</td><td class="right num">{{ spiegel.total.abgang|chf }}</td><td class="right num total">{{ spiegel.total.ende|chf }}</td><td></td></tr></tfoot>
+  </table></div>
+  {% if vorschau %}
+  <form class="body" hx-post="/p/anlagen/anlagen/abschreiben" hx-target="find .errors" hx-confirm="Abschreibungen {{ jahr }} buchen?">
+    <input type="hidden" name="jahr" value="{{ jahr }}">
+    <p class="small">Offen für {{ jahr }}: {% for v in vorschau %}{{ v.nummer }} {{ v.betrag|chf }}{{ ', ' if not loop.last }}{% endfor %}</p>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Bucht per 31.12.{{ jahr }} Abschreibungen an die Anlagekonten.</span><button class="btn primary" type="submit">Abschreibungen {{ jahr }} buchen</button></div>
+  </form>{% endif %}
+</div>
+<div class="panel">
+  <header><h2>Anlage erfassen</h2><span class="hint">die Anschaffung selbst ist meist schon gebucht (z.B. als Kreditor auf 1520)</span></header>
+  <form class="body" hx-post="/p/anlagen/anlagen/erfassen" hx-target="find .errors">
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label>Bezeichnung</label><input class="input" name="bezeichnung" required placeholder="z.B. Laptop Lea"></div>
+      <div class="field"><label>Anschaffung am</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}" required></div>
+      <div class="field"><label>Wert CHF</label><input class="input num" name="wert" required></div>
+      <div class="field"><label>Kategorie (ESTV-Höchstsatz)</label><select class="input" name="kategorie" style="width:100%"><option value="">— eigener Satz —</option>{% for k, v in kategorien.items() %}<option value="{{ k }}">{{ v[0] }} ({{ v[2] }} % degr.)</option>{% endfor %}</select></div>
+      <div class="field"><label>Konto (leer = aus Kategorie)</label><select class="input" name="konto" style="width:100%"><option value="">—</option>{% for a in konten_aktiv %}<option value="{{ a.nr }}">{{ a.nr }} {{ a.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Methode</label><select class="input" name="methode" style="width:100%"><option value="degressiv">degressiv (vom Buchwert)</option><option value="linear">linear (vom Anschaffungswert)</option></select></div>
+      <div class="field"><label>Satz % (leer = ESTV)</label><input class="input num" name="satz" placeholder="ESTV"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Höchstsätze gemäss ESTV-Merkblatt A 1995 (Geschäftsbetriebe), linear die Hälfte — vor Gebrauch prüfen.</span><button class="btn primary" type="submit">Erfassen</button></div>
+  </form>
+</div>
+{% endblock %}

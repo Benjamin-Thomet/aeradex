@@ -614,7 +614,9 @@ async def lohn(ui: UI, request: Request):
         rows.append({"emp": emp, "slip": slip, "warnings": payslip_warnings(slip, emp) if slip else []})
     totals = {k: sum((Decimal(str(r["slip"]["werte"][k])) for r in rows if r["slip"]), ZERO)
               for k in ("bruttolohn", "total_abzuege", "nettolohn")}
-    return ui.render(request, "lohn.html", book=book, monat=monat, months=months, rows=rows, totals=totals,
+    from .. import spesen as sp
+    expense_rows = sp.summary(book)
+    return ui.render(request, "lohn.html", spesen=expense_rows, accounts=account_options(book), book=book, monat=monat, months=months, rows=rows, totals=totals,
                      y=y, m=m, tab="lauf")
 
 
@@ -865,6 +867,57 @@ async def bank_regel(ui: UI, request: Request):
                      f.get("text", ""), None, "", "", f.get("buchungstext", ""))
 
 
+async def spesen_aktion(ui: UI, request: Request):
+    f = await request.form()
+    back = request.headers.get("hx-current-url") or "/lohn#spesen"
+    if request.path_params.get("nr"):
+        return await act(request, api.expense_remove, back, ui.book(), request.path_params["nr"])
+    upload = f.get("datei")
+    datei = None
+    if upload is not None and getattr(upload, "filename", ""):
+        res = await asyncio.to_thread(api.inbox_add, ui.book(), upload.filename, await upload.read())
+        datei = res["datei"]
+    return await act(request, api.expense_add, back, ui.book(), f.get("mitarbeiter", ""), f.get("datum"),
+                     f.get("text", ""), f.get("betrag"), acct(f.get("konto")), f.get("mwst") or "", None,
+                     f.get("art") or "uebrige", datei or "")
+
+
+# ---------- pages of plugins ----------
+
+def _plugin_page(book: Book, plugin: str, slug: str):
+    from .. import plugins
+    for name, page in plugins.pages(book):
+        if name == plugin and page.slug == slug:
+            return page
+    return None
+
+
+async def plugin_seite(ui: UI, request: Request):
+    book = ui.book()
+    page = _plugin_page(book, request.path_params["plugin"], request.path_params["slug"])
+    if page is None:
+        return PlainTextResponse("Seite nicht gefunden (Plugin nicht eingeschaltet?)", status_code=404)
+    try:
+        ctx = await asyncio.to_thread(page.context, book, dict(request.query_params))
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return ui.render(request, f"plugins/{request.path_params['plugin']}/{page.template}", book=book,
+                     page=page, plugin=request.path_params["plugin"], **(ctx or {}))
+
+
+async def plugin_aktion(ui: UI, request: Request):
+    book = ui.book()
+    page = _plugin_page(book, request.path_params["plugin"], request.path_params["slug"])
+    fn = page.actions.get(request.path_params["aktion"]) if page else None
+    if fn is None:
+        return fail("Unbekannte Aktion")
+    form = await request.form()
+    data = {k: (form.getlist(k) if len(form.getlist(k)) > 1 else form.get(k)) for k in form.keys()}
+    back = request.headers.get("hx-current-url") or f"/p/{request.path_params['plugin']}/{page.slug}"
+    return await act(request, fn, lambda r: (r.get("weiter") if isinstance(r, dict) and r.get("weiter") else back),
+                     book, data)
+
+
 # ---------- Kreditoren ----------
 
 def _qr_hint(book: Book, rel: str) -> dict | None:
@@ -989,6 +1042,7 @@ async def quittung_pruefen(ui: UI, request: Request):
     liquid = [a for a in book.accounts.values() if a.aktiv_ and (a.klasse == "aktiv" and a.nr.startswith("10")
                                                                     or a.klasse == "passiv")]
     return ui.render(request, "quittung.html", book=book, entwurf=meta, ev=v, pay=pay, open_tx=open_tx,
+                     employees={nr: e for nr, e in payroll.employees(book).items() if e.get("aktiv", True)},
                      liquid=liquid, kind=file_kind(book.root / meta["datei"]), quellen_felder=meta.get("felder") or {},
                      accounts=account_options(book), currencies=currencies(book), tab="pruefen",
                      today=date.today().isoformat())
@@ -1002,6 +1056,8 @@ async def quittung_buchen(ui: UI, request: Request):
         zahlung = {"art": "bank", "bank": how[5:]}
     elif how.startswith("buchung:"):
         zahlung = {"art": "buchung", "beleg": how[8:]}
+    elif how == "spesen":
+        zahlung = {"art": "spesen", "mitarbeiter": f.get("mitarbeiter") or "", "spesenart": f.get("spesenart") or "uebrige"}
     else:
         zahlung = {"art": "konto", "konto": acct(f.get("zahlkonto")) or ui.book().settings.konto("bank")}
     codes = f.getlist("p_mwst") or [""] * len(f.getlist("p_konto"))
@@ -1432,6 +1488,10 @@ def routes(ui: UI) -> list[Route]:
         Route("/bank/regel", h(bank_regel), methods=["POST"]),
         Route("/bank/regel/{id:str}/entfernen", h(bank_regel), methods=["POST"]),
         Route("/bank/{id:str}/{aktion:str}", h(bank_aktion), methods=["POST"]),
+        Route("/p/{plugin:str}/{slug:str}", h(plugin_seite)),
+        Route("/p/{plugin:str}/{slug:str}/{aktion:str}", h(plugin_aktion), methods=["POST"]),
+        Route("/lohn/spesen", h(spesen_aktion), methods=["POST"]),
+        Route("/lohn/spesen/{nr:str}/entfernen", h(spesen_aktion), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),
         Route("/kreditoren/einlesen", h(eingang_einlesen), methods=["POST"]),

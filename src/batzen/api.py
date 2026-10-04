@@ -1161,11 +1161,11 @@ def _bill_draft_store(book: Book, datei: str, fields: dict, text: str, notes: li
 
 def bill_draft_update(book: Book, entwurf: str, quelle: str = "Hand", konto: str = "", mwst: str | None = None,
                       begruendung: str = "", positionen: list[dict] | None = None, art: str = "",
-                      zahlkonto: str = "", **fields) -> dict:
+                      zahlkonto: str = "", mitarbeiter: str = "", **fields) -> dict:
     from . import erfassung
     _guard(book)
     meta, touched = erfassung.update(book, entwurf, quelle, konto, mwst, begruendung, positionen, art, zahlkonto,
-                                     **fields)
+                                     mitarbeiter, **fields)
     return _done(book, f"Beleg-Entwurf {entwurf} ergänzt ({quelle}" + (f": Konto {konto}" if konto else "") + ")",
                  touched, entwurf=meta)
 
@@ -1210,7 +1210,8 @@ def receipt_book(book: Book, entwurf: str, datum, text: str, betrag, konto: str 
                                            waehrung, kurs, zahlung)
     pay = (zahlung or {}).get("art")
     msg = (f"Quittung {entwurf} an Beleg {rows[0].beleg} abgelegt" if pay == "buchung"
-           else f"Quittung {entwurf} gebucht: Beleg {rows[0].beleg} {text}")
+           else f"Quittung {entwurf} als Spesenbeleg {rows[0].beleg} erfasst — wird mit dem nächsten Lohn ausbezahlt"
+           if pay == "spesen" else f"Quittung {entwurf} gebucht: Beleg {rows[0].beleg} {text}")
     return _done(book, msg, touched, buchungen=rows)
 
 
@@ -1307,3 +1308,33 @@ def dividend_pay(book: Book, jahr: int, datum=None, konto: str = "") -> dict:
 
 
 dividend_pay = _locked(dividend_pay)
+
+
+# ---------- Spesen ----------
+
+def expense_add(book: Book, mitarbeiter: str, datum, text: str, betrag, konto: str = "", mwst: str = "",
+                positionen: list[dict] | None = None, art: str = "uebrige", datei: str = "", waehrung: str = "",
+                kurs=None) -> dict:
+    """An expense an employee paid: booked against the expenses-owed account (2210), paid with the next payslip."""
+    from . import spesen
+    _guard(book)
+    meta, touched = spesen.add(book, mitarbeiter, datum, text, betrag, konto, mwst, positionen, art, datei,
+                               waehrung, kurs)
+    return _done(book, f"Spesenbeleg {meta['nummer']} {meta['name']}: {meta['text']} ({meta['betrag']})", touched,
+                 spesen=meta)
+
+
+def expense_list(book: Book, mitarbeiter: str = "", offen: bool = False) -> list[dict]:
+    from . import spesen
+    return jsonable([s for s in spesen.summary(book) if (not mitarbeiter or s["mitarbeiter"] == mitarbeiter)
+                     and (not offen or not s["lohn"])])
+
+
+def expense_remove(book: Book, nummer: str) -> dict:
+    from . import spesen
+    _guard(book)
+    return _done(book, f"Spesenbeleg {nummer} entfernt", spesen.remove(book, nummer))
+
+
+expense_add = _locked(expense_add)
+expense_remove = _locked(expense_remove)

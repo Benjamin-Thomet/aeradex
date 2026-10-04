@@ -104,6 +104,23 @@ class Command:
 
 
 @dataclass
+class Page:
+    """A page in the web UI: ``/p/<plugin>/<slug>``, listed in the sidebar under «Plugins».
+
+    ``template`` is a Jinja file in the plugin package's ``templates/`` folder (it may
+    ``{% extends "base.html" %}`` and use the core macros); ``context(book, query)``
+    returns its variables. ``actions`` are form posts to ``/p/<plugin>/<slug>/<name>``:
+    ``fn(book, form) -> dict`` — write through ``api.write`` so the book is checked and
+    committed. A result may carry ``"weiter": "<url>"`` to go elsewhere afterwards.
+    """
+    slug: str
+    label: str
+    template: str
+    context: Callable[[Book, dict], dict] = lambda book, query: {}
+    actions: dict[str, Callable[[Book, dict], Any]] = field(default_factory=dict)
+
+
+@dataclass
 class Finding:
     """A `check` result from a plugin rule. level: fehler | warnung | hinweis."""
     level: str
@@ -149,6 +166,10 @@ class Spec:
     @hookspec
     def batzen_commands(self) -> list[Command]:
         """CLI commands."""
+
+    @hookspec
+    def batzen_pages(self) -> list[Page]:
+        """Pages in the web UI (templates in the plugin package's templates/ folder)."""
 
 
 # ---------- discovery ----------
@@ -316,6 +337,27 @@ def agent_tools(book: Book | None) -> list[Callable]:
 def agent_instructions(book: Book | None) -> str:
     parts = [p.strip() for p in manager(book).hook.batzen_instructions() if p and p.strip()]
     return "\n".join(parts)
+
+
+def pages(book: Book | None) -> list[tuple[str, Page]]:
+    """(plugin, page) for every page of the plugins this book enables."""
+    out = []
+    for impl in manager(book).hook.batzen_pages.get_hookimpls():
+        try:
+            for page in impl.function() or []:
+                out.append((impl.plugin_name, page))
+        except Exception:
+            continue
+    return out
+
+
+def template_dir(name: str) -> Path | None:
+    """The templates/ folder next to a plugin's module (convention)."""
+    plugin = installed().get(name)
+    if plugin is None or not plugin.ok or not getattr(plugin.module, "__file__", None):
+        return None
+    folder = Path(plugin.module.__file__).parent / "templates"
+    return folder if folder.is_dir() else None
 
 
 def commands() -> dict[str, tuple[str, Command]]:

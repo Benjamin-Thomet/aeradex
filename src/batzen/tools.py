@@ -412,6 +412,15 @@ def bank_rules() -> list | dict:
     return _call(api.bank_rules)
 
 
+def expenses(offen: bool = True) -> list | dict:
+    """Spesenbelege der Mitarbeitenden (privat bezahlt, Rückzahlung über den Lohn).
+
+    Args:
+        offen: nur noch nicht ausbezahlte.
+    """
+    return _call(api.expense_list, "", offen)
+
+
 def overdue_invoices() -> list | dict:
     """Überfällige Kundenrechnungen mit den bisherigen Mahnungen und dem nächsten Schritt.
     Mahnungen erstellt ein Mensch (Debitoren → Mahnungen bzw. `batzen mahnung erstellen`)."""
@@ -455,7 +464,8 @@ def create_bill_draft(datei: str, art: str = "") -> dict:
 
 def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", betrag: str = "", datum: str = "",
                         faellig: str = "", rechnungsnr: str = "", name: str = "", iban: str = "", waehrung: str = "",
-                        aufteilung: list[dict] | None = None, art: str = "", zahlkonto: str = "") -> dict:
+                        aufteilung: list[dict] | None = None, art: str = "", zahlkonto: str = "",
+                        mitarbeiter: str = "") -> dict:
     """Einen Beleg-Entwurf kontieren und fehlende/falsch erkannte Felder korrigieren. Bucht nichts —
     ein Mensch prüft den Entwurf und bucht. Auch im agent_modus 'vorschlag' erlaubt.
 
@@ -479,12 +489,14 @@ def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", b
             debitor (eigene Rechnung an einen Kunden).
         zahlkonto: nur bei Quittungen, wenn das erkannte Zahlkonto falsch ist (z.B. "1000" Kasse bei Barzahlung,
             ein Kreditkartenkonto, oder das Konto gegenüber der Person, die privat bezahlt hat).
+        mitarbeiter: nur bei Quittungen, die eine Mitarbeiterin/ein Mitarbeiter privat bezahlt hat (z.B. "M0001"):
+            dann wird sie als Spesenbeleg erfasst und mit dem nächsten Lohn zurückbezahlt.
     """
     fields = {k: v for k, v in (("betrag", betrag), ("datum", datum), ("faellig", faellig),
                                 ("rechnungsnr", rechnungsnr), ("name", name), ("iban", iban),
                                 ("waehrung", (waehrung or "").upper())) if v}
     return _call(api.bill_draft_update, id, "Agent", konto, mwst or None, begruendung, positionen=aufteilung,
-                 art=art, zahlkonto=zahlkonto, **fields)
+                 art=art, zahlkonto=zahlkonto, mitarbeiter=mitarbeiter, **fields)
 
 
 def scan_qr_bill(datei: str) -> dict:
@@ -715,7 +727,7 @@ def read_inbox_file(datei: str) -> list[dict] | str:
 SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
           exchange_rate, revaluation_preview,
-          bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices, bank_rules,
+          bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices, bank_rules, expenses,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,

@@ -248,3 +248,11 @@ greift beim Import erst, wenn keine Rechnung, kein Kreditor und keine bestehende
 Die Auszahlung der beschlossenen Dividende: `jahr, datum, brutto, vst` (35 %), `netto, konto, formular` (103),
 `frist` (30 Tage). Besitzt ihre Journalzeilen (`Quelle dividende:JJJJ`: Beschlossene Ausschüttungen an Bank bzw. an
 Verrechnungssteuer `konten.verrechnungssteuer`, Standard 2206).
+
+## spesen/JJJJ/SP-JJJJ-NNNN.yaml
+
+Spesenbeleg einer Mitarbeiterin/eines Mitarbeiters: `nummer, mitarbeiter, name, datum, text, art` (`reise` →
+Lohnausweis 13.1.1, `uebrige` → 13.1.2), `betrag`, `konto`/`mwst` oder `positionen`, optional `waehrung`/`kurs`,
+`spesenkonto` (Standard 2210), `datei`. Besitzt seine Journalzeilen (`Quelle spesen:SP-…`: Aufwand an Spesenkonto).
+Ausbezahlt ist ein Beleg, wenn eine Lohnabrechnung ihn unter `eingaben.spesen` nennt; abgeschlossen bucht sie
+Spesenkonto an Auszahlungskonto (`werte.spesen`, `werte.auszahlung` = Nettolohn + Spesen).

@@ -29,6 +29,10 @@ This file is for developing batzen itself. Agents *operating a book* read the
   nothing is booked twice; own invoices from outside batzen become `invoices.record_external`. Reader chain (QR, PDF text, Tesseract OCR,
   plugin readers via `batzen_beleg_leser`), account chain (known supplier → Jev → agent via `web/chat` backends,
   writing through the `complete_bill_draft` tool). Never books; IBAN/name conflicts are flagged, never auto-matched.
+- `spesen.py`: employee expense claims (own their rows on 2210); `payroll.run/close` add open claims to the payslip
+  (`werte.spesen`, `auszahlung`) without touching the wage calculation; Lohnausweis 13.1.2.
+- `mahnungen.py`: reminders (3 steps, PDF with QR-bill for the open amount). Plugin pages: `plugins.Page`, routes
+  `/p/<plugin>/<slug>`, templates from the plugin's `templates/` folder (`web/app.py` `_PluginTemplates`).
 - `bank.py` (camt.053 import, matching, reconciliation), `kreditoren.py` (QR scan, pain.001), `mwst.py` (incl. eCH-0217).
 - Writes are serialised by a lock file (`.batzen/write.lock`) so UI, CLI, MCP and chat never interleave.
 

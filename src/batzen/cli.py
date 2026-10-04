@@ -274,6 +274,22 @@ def build_parser() -> argparse.ArgumentParser:
     c = ks.add_parser("entwurf-verwerfen", help="Entwurf verwerfen (Datei bleibt in der Inbox)")
     c.add_argument("id")
 
+    s = sub.add_parser("spesen", help="Spesen der Mitarbeitenden (Rückzahlung über den Lohn)")
+    ss = s.add_subparsers(dest="sub", required=True)
+    c = ss.add_parser("list")
+    c.add_argument("--offen", action="store_true")
+    c = ss.add_parser("add")
+    c.add_argument("--mitarbeiter", required=True)
+    c.add_argument("--datum", required=True)
+    c.add_argument("--betrag", required=True)
+    c.add_argument("--konto", required=True)
+    c.add_argument("--text", default="")
+    c.add_argument("--art", default="uebrige", choices=["reise", "uebrige"])
+    c.add_argument("--mwst", default="")
+    c.add_argument("--datei", default="")
+    c = ss.add_parser("remove")
+    c.add_argument("nummer")
+
     s = sub.add_parser("mahnung", help="Mahnwesen: überfällige Rechnungen und Mahnungen (PDF mit QR-Zahlteil)")
     ms = s.add_subparsers(dest="sub", required=True)
     c = ms.add_parser("list", help="überfällige Rechnungen")
@@ -597,6 +613,12 @@ def dispatch(a, book_path: Path | None):
             return api.bill_draft_agent(b, a.id)
         if a.sub == "entwurf-verwerfen":
             return api.bill_draft_discard(b, a.id)
+    if c == "spesen":
+        if a.sub == "list":
+            return api.expense_list(book(), "", a.offen)
+        if a.sub == "remove":
+            return api.expense_remove(book(), a.nummer)
+        return api.expense_add(book(), a.mitarbeiter, a.datum, a.text, a.betrag, a.konto, a.mwst, None, a.art, a.datei)
     if c == "mahnung":
         if a.sub == "list":
             return api.reminders(book(), a.datum)

@@ -200,7 +200,7 @@ def run(book: Book) -> list[Issue]:
         if quelle.startswith("lohn:") and quelle not in known:
             add("fehler", group[0].where, f"Quelle {quelle}: Lohnabrechnung existiert nicht")
         if quelle.partition(":")[0] not in ("rechnung", "zahlung", "gutschrift", "lohn", "abschluss", "mwst",
-                                             "kreditor", "kzahlung", "bewertung", "dividende", *plugin_sources):
+                                             "kreditor", "kzahlung", "bewertung", "dividende", "spesen", *plugin_sources):
             add("warnung", group[0].where, f"unbekannte Quelle '{quelle}' (fehlt ein Plugin?)")
 
     # ---- documents of plugins own their rows like invoices do ----
@@ -245,6 +245,37 @@ def run(book: Book) -> list[Issue]:
         kind, _, ref = quelle.partition(":")
         if kind in ("kreditor", "kzahlung") and ref not in all_bills:
             add("fehler", group[0].where, f"Quelle {quelle}: Kreditor {ref} existiert nicht")
+
+    # ---- expense claims own their rows; each is paid by one payslip at most ----
+    from . import spesen as sp
+    try:
+        all_claims = sp.claims(book)
+    except (FormatError, BookError) as exc:
+        all_claims = {}
+        add("fehler", "spesen", str(exc))
+    for nr, meta in all_claims.items():
+        try:
+            expected = sp.booking_rows(book, meta)
+        except (BookError, KeyError, FormatError) as exc:
+            add("fehler", book.rel(meta["_pfad"]), f"Spesenbeleg {nr}: {exc}")
+            continue
+        if Counter(map(_key, expected)) != Counter(map(_key, owned.get(f"spesen:{nr}", []))):
+            add("fehler", book.rel(meta["_pfad"]), f"Buchung passt nicht zum Spesenbeleg {nr}")
+    seen: dict[str, str] = {}
+    for p in payroll.payslips(book):
+        for nr in (p.get("eingaben") or {}).get("spesen") or []:
+            where = f"{int(p['jahr'])}-{int(p['monat']):02d}:{p['mitarbeiter']}"
+            if nr in seen:
+                add("fehler", "spesen", f"Spesenbeleg {nr} steht auf zwei Lohnabrechnungen ({seen[nr]}, {where})")
+            elif nr not in all_claims:
+                add("fehler", "spesen", f"Lohnabrechnung {where} nennt den Spesenbeleg {nr}, den es nicht gibt")
+            seen[nr] = where
+    for quelle, group in owned.items():
+        if quelle.startswith("spesen:") and quelle.partition(":")[2] not in all_claims:
+            add("fehler", group[0].where, f"Quelle {quelle}: Spesenbeleg existiert nicht")
+    unpaid = [nr for nr in all_claims if nr not in seen]
+    if unpaid:
+        add("hinweis", "spesen", f"{len(unpaid)} Spesenbeleg(e) noch nicht über den Lohn ausbezahlt")
 
     # ---- a cash box can never hold less than nothing ----
     for nr, acct in accounts.items():

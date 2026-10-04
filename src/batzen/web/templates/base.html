@@ -28,6 +28,8 @@
       <a href="/lohn" class="{{ 'active' if p.startswith('/lohn') }}">Lohn {% if nav.entwuerfe %}<span class="badge">{{ nav.entwuerfe }}</span>{% endif %}</a>
       {% if vat.methode != 'keine' %}<a href="/mwst" class="{{ 'active' if p.startswith('/mwst') }}">MWST</a>{% endif %}
       <a href="/abschluss" class="{{ 'active' if p.startswith('/abschluss') }}">Abschluss</a>
+      {% if plugin_pages %}<span class="group">Plugins</span>
+      {% for pg in plugin_pages %}<a href="{{ pg.url }}" class="{{ 'active' if p.startswith(pg.url) }}">{{ pg.label }}</a>{% endfor %}{% endif %}
       <span class="group">System</span>
       <a href="/verlauf" class="{{ 'active' if p.startswith('/verlauf') }}">Verlauf</a>
       <a href="/einstellungen" class="{{ 'active' if p.startswith('/einstellungen') }}">Einstellungen</a>

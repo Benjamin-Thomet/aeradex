@@ -20,7 +20,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import quote
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import BaseLoader, ChoiceLoader, Environment, FileSystemLoader, TemplateNotFound, select_autoescape
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -93,8 +93,24 @@ def neg(value) -> bool:
         return False
 
 
+class _PluginTemplates(BaseLoader):
+    """Templates of plugins as "plugins/<name>/<file>", from the plugin package's templates/ folder."""
+
+    def get_source(self, environment, template):
+        parts = template.split("/", 2)
+        if len(parts) != 3 or parts[0] != "plugins" or ".." in parts[2]:
+            raise TemplateNotFound(template)
+        from .. import plugins
+        folder = plugins.template_dir(parts[1])
+        path = folder / parts[2] if folder else None
+        if path is None or not path.is_file():
+            raise TemplateNotFound(template)
+        mtime = path.stat().st_mtime
+        return path.read_text(encoding="utf-8"), str(path), lambda: path.exists() and path.stat().st_mtime == mtime
+
+
 def make_env() -> Environment:
-    env = Environment(loader=FileSystemLoader(HERE / "templates"),
+    env = Environment(loader=ChoiceLoader([FileSystemLoader(HERE / "templates"), _PluginTemplates()]),
                       autoescape=select_autoescape(["html"]), trim_blocks=True, lstrip_blocks=True)
     env.filters.update(chf=chf, minus=minus, qty=qty, datum=datum, pct=pct, neg=neg, urlq=lambda v: quote(str(v)))
     static = HERE / "static"
@@ -140,6 +156,12 @@ class UI:
         from .. import mwst
         ctx.setdefault("vat", mwst.config(book))
         ctx.setdefault("vat_codes", mwst.CODES)
+        try:
+            from .. import plugins
+            ctx.setdefault("plugin_pages", [{"url": f"/p/{name}/{pg.slug}", "label": pg.label}
+                                            for name, pg in plugins.pages(book)])
+        except Exception:
+            ctx.setdefault("plugin_pages", [])
         html = self.env.get_template(template).render(
             request=request, book=book, settings=book.settings, csrf=getattr(request.state, "csrf", self.csrf),
             flash=flash, path=request.url.path, user=getattr(request.state, "user", None), **ctx)
