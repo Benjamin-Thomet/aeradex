@@ -80,6 +80,15 @@
   </div>
 </div>
 
+{% if bank_open %}
+<div class="panel">
+  <header><h2>Offene Bankbewegungen</h2><a class="hint link" href="/bank">Alle {{ bank_open|length }} bearbeiten →</a></header>
+  <ul class="todo">{% for t in bank_open[:5] %}
+    <li><a href="/bank#{{ t.ID }}"><span class="stripe {{ 'info' if t.Betrag|float > 0 else 'warn' }}"></span><div><div class="t">{{ t.Gegenpartei or t.Text or 'Bankbewegung' }}</div><div class="d">{{ t.Datum|datum }} · {{ t.Text }}</div></div><span class="num">{{ t.Betrag|chf(sign=true) }}</span></a></li>
+  {% endfor %}</ul>
+</div>
+{% endif %}
+
 <div class="panel" id="vorschlaege">
   <header><h2>Vorschläge</h2><span class="hint">Freigeben bucht und committet; die Begründung kommt vom Agenten</span></header>
   {% for p in proposals %}
@@ -88,7 +97,7 @@
     <div class="what">
       <strong>{{ p.Text }}</strong>
       <span class="posting">{{ p.Datum|datum }} · {{ p.Soll }} {{ book.accounts[p.Soll].name if p.Soll in book.accounts }} an {{ p.Haben }} {{ book.accounts[p.Haben].name if p.Haben in book.accounts }} · {{ p.Betrag|chf }}{% if p.MWST %} · {{ p.MWST }} brutto{% endif %}</span>
-      <span class="why">{% if p["Begründung"] %}«{{ p["Begründung"] }}»{% endif %} · {% if p.Datei %}<a class="link" href="/datei/{{ p.Datei|urlq }}" target="_blank">{{ p.Datei }}</a>{% else %}keine Beleg-Datei{% endif %}</span>
+      <span class="why">{% if p["Begründung"] %}«{{ p["Begründung"] }}»{% endif %} · {% if p.Datei %}<a class="link" href="/datei/{{ p.Datei|urlq }}" target="_blank">{{ p.Datei }}</a>{% elif p.Bank %}Bankbewegung {{ p.Bank }}{% else %}keine Beleg-Datei{% endif %}</span>
     </div>
     <span class="actions">
       <form hx-post="/vorschlaege/verwerfen" hx-target="find .errors"><input type="hidden" name="id" value="{{ p.ID }}"><button class="btn small" type="submit">Verwerfen</button>{{ errors() }}</form>

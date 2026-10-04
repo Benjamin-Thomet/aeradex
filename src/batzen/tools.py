@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import contextvars
+from decimal import Decimal
 import os
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,8 @@ Regeln:
 - MWST: status() nennt die mwst_methode. Bei "effektiv" und einem Beleg mit ausgewiesener MWST den Code mitgeben
   (V81/I81 Vorsteuer, U81 Umsatz …) und den BRUTTO-Betrag buchen; die Steuer wird automatisch abgespalten.
   Bei "saldo" oder "keine" ohne Vorsteuer-Code buchen.
+- Bankbewegungen: bank_transactions() zeigt offene Posten aus importierten Kontoauszügen. Passt eine zu einer
+  offenen Rechnung/einem Kreditor: assign_bank_transaction. Sonst propose_bank_booking mit Gegenkonto.
 - Lieferantenrechnungen (PDF/Foto mit QR-Zahlteil): scan_qr_bill → bekannter Lieferant: add_supplier_bill
   (Konto leer = hinterlegtes Konto). Neuer Lieferant: add_supplier ohne konto, dann dem Menschen das Aufwandkonto
   vorschlagen; er erfasst die Rechnung unter Kreditoren (vorausgefüllt). Nicht als freie Buchung (propose_booking)
@@ -441,6 +444,61 @@ def create_payment_run(nummern: list[str], ausfuehrung: str) -> dict:
     return _call(api.payment_run, nummern, ausfuehrung)
 
 
+# ---------- bank ----------
+
+def bank_transactions(status: str = "offen") -> list | dict:
+    """Bankbewegungen aus importierten Kontoauszügen (camt.053). Betrag positiv = Gutschrift, negativ = Belastung.
+
+    Args:
+        status: offen (Standard), gebucht, abgeglichen, ignoriert; leer = alle.
+    """
+    return _call(api.bank_list, status)
+
+
+def assign_bank_transaction(id: str, nummer: str) -> dict:
+    """Offene Bankbewegung mit einer offenen Kundenrechnung (R-…) oder Lieferantenrechnung (E-…) begleichen.
+
+    Args:
+        id: ID der Bankbewegung, z.B. "B1a2b3c4d5e".
+        nummer: "R-2026-0001" oder "E-2026-0003".
+    """
+    return _call(api.bank_assign, id, nummer)
+
+
+def propose_bank_booking(id: str, konto: str, text: str, begruendung: str, mwst: str = "") -> dict:
+    """Buchung für eine offene Bankbewegung vorschlagen (Gegenkonto wählen, z.B. 6940 Bankspesen). Datum, Betrag und
+    Bankkonto kommen aus der Bewegung; nach der Freigabe gilt die Bewegung als gebucht.
+
+    Args:
+        id: ID der Bankbewegung.
+        konto: Gegenkonto (Aufwand, Ertrag, …).
+        text: Buchungstext.
+        begruendung: kurz, warum dieses Konto.
+        mwst: MWST-Code, falls die Bewegung MWST enthält (Betrag ist brutto).
+    """
+    try:
+        b = book()
+        from . import bank as bk
+        tx = bk.find(b, id)
+    except BookError as exc:
+        return {"ok": False, "fehler": str(exc)}
+    amount = Decimal(tx["Betrag"])
+    soll, haben = (tx["Konto"], konto) if amount > 0 else (konto, tx["Konto"])
+    return _call(api.propose, tx["Datum"], soll, haben, str(abs(amount)), text, begruendung, "", mwst, id)
+
+
+def book_bank_transaction(id: str, konto: str, text: str = "", mwst: str = "") -> dict:
+    """Offene Bankbewegung direkt gegen ein Konto buchen (nur agent_modus: direkt).
+
+    Args:
+        id: ID der Bankbewegung.
+        konto: Gegenkonto.
+        text: Buchungstext.
+        mwst: MWST-Code (Betrag brutto).
+    """
+    return _direct(api.bank_book, id, konto, text, mwst)
+
+
 # ---------- lohn ----------
 
 def employees() -> list | dict:
@@ -525,5 +583,6 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
-          create_payment_run, employees, payroll_run, payslip, close_payslip, lohnausweis]
+          create_payment_run, bank_transactions, assign_bank_transaction, propose_bank_booking,
+          book_bank_transaction, employees, payroll_run, payslip, close_payslip, lohnausweis]
 CHAT_ONLY = [read_inbox_file]

@@ -30,6 +30,10 @@ IBAN, Betrag und Referenz. Bekannter Lieferant → `add_supplier_bill` mit desse
 ohne Konto anlegen und dem Menschen das Aufwandkonto vorschlagen (im Vorschlagsmodus legt er es fest).
 Zahlen: `batzen zahlungslauf erstellen E-2026-0001 … --datum …` erzeugt die pain.001-Datei fürs E-Banking.
 
+**Kontoauszug (camt.053) in `inbox/`**: `batzen bank import inbox/x.xml`. Danach `batzen bank list --status offen`:
+passt eine Bewegung zu einer offenen Rechnung/einem Kreditor → `batzen bank zuordnen ID NUMMER`; sonst
+Buchung vorschlagen (MCP: propose_bank_booking) mit dem Gegenkonto.
+
 **Zahlungseingang**: `batzen invoice match --betrag 1500 --text "<Bankzeile>"` → `batzen invoice pay R-2026-0001 --datum …`
 
 **Lohnlauf**: `batzen payroll run 2026-01` → prüfen (`payroll show`) → `batzen payroll close 2026-01 M0001`.

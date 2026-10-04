@@ -54,6 +54,7 @@ Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird g
 | **Journal** | Monate, Suche und Filter, einfache und Sammelbuchungen mit Beleg-Datei, Storno, Belege nachreichen |
 | **Konten** | Kontenplan bearbeiten, Saldenliste nach Periode, Kontoblatt |
 | **Debitoren** | Kunden, Rechnungen mit Live-Total und QR-PDF, Zahlung zuordnen, Gutschrift, Storno, offene Posten |
+| **Bank** | camt.053 importieren, automatische Zuordnung, offene Bewegungen buchen/zuordnen/ignorieren, Saldoabstimmung |
 | **Kreditoren** | QR-Rechnungen aus der Inbox erkennen und erfassen, Lieferanten, offene Posten, Zahlungslauf als pain.001-Datei, Ausführung verbuchen |
 | **Lohn** | Lohnlauf pro Monat, Eingaben (Stunden, QST, Korrekturen), Abschluss, Lohnkonto, Lohnausweis |
 | **MWST** | Abrechnung je Quartal/Semester nach ESTV-Ziffern, Belege je Code, Buchen, PDF-Hilfsblatt |
@@ -81,6 +82,7 @@ batzen book --datum 2026-01-12 --soll 6500 --haben 1020 --betrag 108.10 --mwst V
 #   → 6500 100.00 · 1170 8.10 · an 1020 108.10 (Betrag immer brutto, Steuer wird abgespalten)
 batzen mwst abrechnung 2026-Q1      # Ziffern 200 … 500 wie im ESTV-Formular
 batzen mwst buchen 2026-Q1          # MWST-Konten auf das Abrechnungskonto 2201
+batzen mwst export 2026-Q1          # eMWST-Datei (eCH-0217 v2.0) für den Upload im ESTV-Portal
 ```
 
 ### Kreditoren und Zahlungen
@@ -93,6 +95,18 @@ batzen zahlungslauf bezahlt 2026-03-20-ab12cd.xml                         # nach
 ```
 Die Zahlungsdatei folgt den Swiss Payment Standards (pain.001.001.09) und validiert gegen die offiziellen
 SIX-Schemas SPS 2025 und 2026. QR-Codes lesen: `pip install -e ".[scan]"`.
+
+### Bank (camt.053)
+```bash
+batzen bank import inbox/auszug-maerz.xml   # Kontoauszug aus dem E-Banking (ISO 20022 camt.053)
+batzen bank list --status offen
+batzen bank book B1a2b3c4d5e --konto 6940 --text "Kontoführung"
+batzen bank zuordnen B… R-2026-0007         # mit Rechnung oder Kreditor begleichen
+batzen bank abstimmung                      # Schlusssaldo Bank gegen Buchhaltung
+```
+Beim Import bucht batzen Zahlungen mit QR-/SCOR-Referenz oder Rechnungsnummer selbst, erkennt Zahlungen aus
+eigenen Zahlungsläufen (EndToEndId) und gleicht bereits Gebuchtes (z.B. Löhne) nur ab. Der Rest landet unter
+*Prüfen*; der Agent kann zuordnen oder Buchungen vorschlagen.
 
 ### Lohn
 ```bash
@@ -169,8 +183,6 @@ Die Fachlogik (Saldenmotor mit Jahresverkettung, OR-Gliederung, Lohnberechnung i
 v0.3: Finanzbuchhaltung, MWST, Debitoren mit QR-Rechnung, Kreditoren mit QR-Scan und pain.001, Lohn, Agenten-Schnittstelle (CLI + MCP), lokale Web-Oberfläche mit eingebautem Agenten.
 
 Als Nächstes:
-- eMWST-Export (XML) für das ESTV-ePortal
-- Bankimport camt.053 mit automatischem Zahlungsabgleich
 - Weitere Quellensteuer-Kantone, ALV-Höchstgrenze, Swissdec/ELM
 - Login für den Betrieb auf einem Server (mehrere Benutzer, Mandanten)
 

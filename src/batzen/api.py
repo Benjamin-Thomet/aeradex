@@ -217,10 +217,10 @@ def reverse_entry(book: Book, beleg: str, datum=None, text: str = "") -> dict:
 
 
 def propose(book: Book, datum, soll, haben, betrag, text, begruendung: str = "", datei: str = "",
-            mwst: str = "") -> dict:
+            mwst: str = "", bank: str = "") -> dict:
     _guard(book)
     cells, path = journal.propose(book, datum, soll, haben, betrag, text, begruendung, datei=datei or "",
-                                  mwst=mwst or "")
+                                  mwst=mwst or "", bank=bank or "")
     return _done(book, f"Vorschlag {cells['ID']}: {cells['Text']} ({cells['Soll']} an {cells['Haben']} {cells['Betrag']})",
                  [path], vorschlag=cells)
 
@@ -545,7 +545,7 @@ SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_r
 
 
 def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None,
-                    mwst: dict | None = None, **fields) -> dict:
+                    mwst: dict | None = None, bankkonten: dict | None = None, **fields) -> dict:
     _guard(book)
     unknown = set(fields) - set(SETTINGS_KEYS)
     if unknown:
@@ -563,6 +563,17 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
             if nr:
                 book.account(str(nr))
         data.setdefault("konten", {}).update({k: str(v) for k, v in konten.items() if v})
+    if bankkonten is not None:
+        clean = {}
+        for iban, nr in bankkonten.items():
+            iban = invoices.qr.normalize_iban(iban)
+            if not iban:
+                continue
+            if not invoices.qr.iban_is_valid(iban):
+                raise BookError(f"IBAN {iban}: Prüfsumme stimmt nicht")
+            book.account(str(nr))
+            clean[iban] = str(nr)
+        data["bankkonten"] = clean
     if mwst is not None:
         methode = mwst.get("methode") or "keine"
         if methode not in ("keine", "effektiv", "saldo"):
@@ -824,6 +835,65 @@ def payables(book: Book) -> dict:
     return jsonable(kred.open_payables(book))
 
 
+# ---------- Bank ----------
+
+def bank_import(book: Book, datei: str) -> dict:
+    _guard(book)
+    from . import bank
+    source = Path(datei) if Path(datei).is_absolute() else book.root / datei
+    if not source.is_file():
+        source = Path(datei)
+    if not source.is_file():
+        raise BookError(f"Datei {datei} nicht gefunden")
+    summary, touched = bank.import_file(book, source)
+    if source.resolve().is_relative_to((book.root / "inbox").resolve()):
+        source.unlink()
+        touched.append(source)
+    msg = (f"Kontoauszug importiert: {summary['neu']} neue Bewegungen — {summary['gebucht']} gebucht, "
+           f"{summary['abgeglichen']} abgeglichen, {summary['offen']} offen"
+           + (f", {summary['doppelt']} schon bekannt" if summary["doppelt"] else ""))
+    return _done(book, msg, touched, import_=summary)
+
+
+def bank_list(book: Book, status: str = "") -> list[dict]:
+    from . import bank
+    return [{k: v for k, v in t.items() if not k.startswith("_")} for t in bank.transactions(book)
+            if not status or t["Status"] == status]
+
+
+def bank_book(book: Book, id: str, konto: str, text: str = "", mwst: str = "") -> dict:
+    _guard(book)
+    from . import bank
+    row, touched = bank.book_transaction(book, id, konto, text, mwst)
+    return _done(book, f"Bankbewegung {id} gebucht als Beleg {row.beleg}", touched, buchung=row)
+
+
+def bank_assign(book: Book, id: str, nummer: str) -> dict:
+    _guard(book)
+    from . import bank
+    row, touched = bank.assign(book, id, nummer)
+    return _done(book, f"Bankbewegung {id} mit {nummer} verbucht (Beleg {row.beleg})", touched, buchung=row)
+
+
+def bank_link(book: Book, id: str, beleg: str) -> dict:
+    _guard(book)
+    from . import bank
+    touched = bank.link(book, id, beleg)
+    return _done(book, f"Bankbewegung {id} mit Beleg {beleg} abgeglichen", touched)
+
+
+def bank_ignore(book: Book, id: str, grund: str) -> dict:
+    _guard(book)
+    from . import bank
+    touched = bank.ignore(book, id, grund)
+    return _done(book, f"Bankbewegung {id} ignoriert: {grund}", touched)
+
+
+def bank_reconciliation(book: Book) -> list[dict]:
+    from . import bank
+    return jsonable(bank.reconciliation(book))
+
+
 # ---------- MWST ----------
 
 def mwst_report(book: Book, periode: str) -> dict:
@@ -881,5 +951,6 @@ def payslip_inputs(book: Book, monat: str, mitarbeiter: str, eingaben: dict) -> 
 payslip_inputs = _locked(payslip_inputs)
 
 
-for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_void", "payment_run", "payment_run_book"):
+for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_void", "payment_run", "payment_run_book",
+              "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore"):
     globals()[_name] = _locked(globals()[_name])

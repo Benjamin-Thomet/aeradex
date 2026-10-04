@@ -158,6 +158,13 @@ die Zahlung als `Quelle kzahlung:E-…` (Kreditoren an Bank).
 Zahlungsdateien `JJJJ-MM-TT-xxxxxx.xml` (ISO 20022 pain.001.001.09, Swiss Payment Standards) zum Hochladen im E-Banking.
 Eine QR-IBAN kann nicht belastet werden; dann `zahlungs_iban` in `batzen.yaml` setzen.
 
+## bank/
+
+`bank/auszuege/<JJJJ>/<Auszug-ID>.xml`: die Kontoauszüge wie von der Bank geliefert (camt.053, sie sind der Beleg).
+`bank/<JJJJ>.md`: eine Zeile pro Bankbewegung: `ID | Datum | Konto | Betrag | Gegenpartei | Referenz | Text | Status | Beleg | Auszug`,
+Status `gebucht`, `abgeglichen`, `offen`, `ignoriert`. `Beleg` verweist auf die Journalbuchung. Zuordnung IBAN → Konto in
+`batzen.yaml` unter `bankkonten: {CH…: "1020"}` (Standard: die eigene IBAN → Bankkonto).
+
 ## .batzen/locks.yaml
 
 `bis`, Hash pro gesperrtem Monat, `verlauf` aller Sperren und Entsperrungen (mit Grund).

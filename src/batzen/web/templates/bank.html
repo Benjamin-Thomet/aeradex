@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, accounts_datalist, mwst_select %}
+{% block title %}Bank{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Bank</h1><div class="sub">Kontoauszüge im Format camt.053 aus dem E-Banking. Klare Zahlungen bucht batzen selbst, bereits Gebuchtes wird nur abgeglichen.</div></div>
+  <form class="actions" hx-post="/bank/import" hx-encoding="multipart/form-data" hx-target="find .errors">
+    <input class="input" type="file" name="datei" accept=".xml,.camt,.053" aria-label="camt.053-Datei" style="width:260px">
+    <button class="btn primary" type="submit">Auszug importieren</button>{{ errors() }}
+  </form>
+</div>
+{{ accounts_datalist(accounts) }}
+{% if rec %}
+<div class="panel">
+  <header><h2>Abstimmung</h2><span class="hint">Schlusssaldo laut Bank gegen die Buchhaltung</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Auszug</th><th>Konto</th><th>Per</th><th class="right">Bank</th><th class="right">Buchhaltung</th><th class="right">noch offen</th><th class="right">Differenz</th></tr></thead>
+    <tbody>{% for r in rec|reverse %}<tr class="row"><td class="small">{{ r.id }}</td><td class="acc">{{ r.konto }}</td><td class="num">{{ r.datum|datum }}</td>
+      <td class="right num">{{ r.bank|chf }}</td><td class="right num">{{ r.buch|chf }}</td><td class="right num">{{ r.offen|chf(true) }}</td>
+      <td class="right">{% if r.differenz|float %}<span class="pill red">{{ r.differenz|chf }}</span>{% else %}<span class="pill ok">stimmt</span>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+<div class="panel">
+  <header><h2>Bewegungen</h2>
+    <span class="actions">{% for k, l in [("offen", "Offen"), ("gebucht", "Gebucht"), ("abgeglichen", "Abgeglichen"), ("ignoriert", "Ignoriert"), ("", "Alle")] %}<a class="btn small {{ '' if k == status else 'ghost' }}" href="/bank?status={{ k }}">{{ l }}{% if k and counts[k] %} <span class="count">{{ counts[k] }}</span>{% endif %}</a>{% endfor %}</span></header>
+  {% if rows %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Datum</th><th>Gegenpartei / Text</th><th class="right">Betrag</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for t in rows %}{% set credit = t.Betrag|float > 0 %}
+      <tr class="row" id="{{ t.ID }}">
+        <td class="num">{{ t.Datum|datum }}</td>
+        <td><strong>{{ t.Gegenpartei or '—' }}</strong><br><span class="small muted">{{ t.Text }}{% if t.Referenz %} · Ref. {{ t.Referenz }}{% endif %}</span></td>
+        <td class="right num">{{ t.Betrag|chf(sign=true) }}</td>
+        <td>{% if t.Status == 'offen' %}<span class="pill warn">offen</span>{% elif t.Status == 'ignoriert' %}<span class="pill muted">ignoriert</span>{% else %}<a class="pill ok" href="/journal?jahr={{ t.Datum[:4] }}&monat=alle&q={{ t.Beleg|urlq }}">{{ t.Status }} · {{ t.Beleg }}</a>{% endif %}</td>
+        <td class="right">{% if t.Status == 'offen' %}
+          <details class="drawer"><summary class="btn small">Bearbeiten</summary>
+            <div class="panel" style="position:absolute;right:40px;z-index:3;padding:14px;display:flex;flex-direction:column;gap:12px;width:360px;text-align:left;box-shadow:var(--shadow)">
+              <form hx-post="/bank/{{ t.ID }}/buchen" hx-target="find .errors" style="display:flex;flex-direction:column;gap:8px">
+                <span class="lbl">Buchen gegen Konto ({{ t.Konto }} {{ 'an' if credit else 'von' }} …)</span>
+                <input class="input" name="konto" list="konten" placeholder="{{ 'z.B. 3400 Ertrag' if credit else 'z.B. 6940 Bankspesen' }}" required>
+                <input class="input" name="text" value="{{ (t.Gegenpartei ~ ' ' ~ t.Text)|trim|truncate(100, true, '') }}">
+                {{ mwst_select("mwst", vat, vat_codes, label=false) }}
+                {{ errors() }}<button class="btn small primary" type="submit">Buchen</button>
+              </form>
+              {% set candidates = open_inv if credit else open_bills %}
+              {% if candidates %}
+              <form hx-post="/bank/{{ t.ID }}/zuordnen" hx-target="find .errors" style="display:flex;flex-direction:column;gap:8px">
+                <span class="lbl">{{ 'Kundenrechnung' if credit else 'Lieferantenrechnung' }} begleichen</span>
+                <select class="input" name="nummer" style="width:100%">{% for c in candidates %}<option value="{{ c.nummer }}" {{ 'selected' if c.offen|float == (t.Betrag|float)|abs }}>{{ c.nummer }} · {{ c.name }} · offen {{ c.offen|chf }}</option>{% endfor %}</select>
+                {{ errors() }}<button class="btn small" type="submit">Zuordnen</button>
+              </form>{% endif %}
+              <form hx-post="/bank/{{ t.ID }}/abgleichen" hx-target="find .errors" style="display:flex;gap:6px;align-items:center">
+                <input class="input" name="beleg" placeholder="schon gebucht? Beleg-Nr." style="flex:1"><button class="btn small" type="submit">Verknüpfen</button>{{ errors() }}
+              </form>
+              <form hx-post="/bank/{{ t.ID }}/ignorieren" hx-target="find .errors" style="display:flex;gap:6px;align-items:center">
+                <input class="input" name="grund" placeholder="Grund zum Ignorieren" required style="flex:1"><button class="btn small ghost" type="submit">Ignorieren</button>{{ errors() }}
+              </form>
+            </div>
+          </details>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty">{% if status == 'offen' %}Keine offenen Bankbewegungen. Neuen Auszug oben importieren (E-Banking → Kontoauszug als camt.053 / ISO 20022 exportieren).{% else %}Keine Bewegungen mit diesem Status.{% endif %}</div>{% endif %}
+</div>
+<p class="small muted">Tipp: Den Agenten fragen «Verbuche die offenen Bankbewegungen» — er ordnet zu oder schlägt Buchungen vor, du gibst unter Prüfen frei.</p>
+{% endblock %}

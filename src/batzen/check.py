@@ -203,8 +203,31 @@ def run(book: Book) -> list[Issue]:
         if kind in ("kreditor", "kzahlung") and ref not in all_bills:
             add("fehler", group[0].where, f"Quelle {quelle}: Kreditor {ref} existiert nicht")
 
+    # ---- bank statements ----
+    from . import bank
+    try:
+        bank_rows = bank.transactions(book)
+    except FormatError as exc:
+        bank_rows = []
+        add("fehler", "bank", str(exc))
+    belege_set = set(by_beleg)
+    statement_belege = set()
+    for t in bank_rows:
+        if t.get("Status") in ("gebucht", "abgeglichen"):
+            if t.get("Beleg") not in belege_set:
+                add("fehler", f"bank/{t['_jahr']}.md", f"Bankbewegung {t['ID']}: Beleg {t.get('Beleg')} existiert nicht")
+            statement_belege.add(t.get("Beleg"))
+    open_count = sum(1 for t in bank_rows if t.get("Status") == "offen")
+    if open_count:
+        add("hinweis", "bank", f"{open_count} offene Bankbewegung(en) zu verbuchen")
+    for rec in bank.reconciliation(book):
+        if rec["differenz"]:
+            add("warnung", rec["auszug"], f"Kontoauszug {rec['id']}: Schlusssaldo Bank {rec['bank']:.2f}, Buchhaltung "
+                f"{rec['buch']:.2f} per {rec['datum']} (+ offen {rec['offen']:.2f}) — Differenz {rec['differenz']:.2f}")
+
     # ---- receipts (GeBüV: every booking needs a Beleg) ----
-    manual = {r.beleg: r for r in rows if not r.quelle or r.quelle.startswith("kreditor:")}
+    manual = {r.beleg: r for r in rows if (not r.quelle or r.quelle.startswith("kreditor:"))
+              and r.beleg not in statement_belege}
     receipts_dir = book.root / "belege"
     names = {p.name for p in receipts_dir.rglob("*") if p.is_file()} if receipts_dir.exists() else set()
     missing = [b for b in manual if not any(n == b or n.startswith(b + " ") for n in names)]

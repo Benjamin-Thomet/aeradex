@@ -251,6 +251,28 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("datei")
     c.add_argument("--datum")
 
+    s = sub.add_parser("bank", help="Kontoauszüge (camt.053)")
+    bs = s.add_subparsers(dest="sub", required=True)
+    c = bs.add_parser("import", help="camt.053-Datei importieren und abgleichen")
+    c.add_argument("datei")
+    c = bs.add_parser("list")
+    c.add_argument("--status", default="", choices=["", "offen", "gebucht", "abgeglichen", "ignoriert"])
+    c = bs.add_parser("book", help="offene Bewegung gegen ein Konto buchen")
+    c.add_argument("id")
+    c.add_argument("--konto", required=True)
+    c.add_argument("--text", default="")
+    c.add_argument("--mwst", default="")
+    c = bs.add_parser("zuordnen", help="mit Rechnung (R-…) oder Kreditor (E-…) begleichen")
+    c.add_argument("id")
+    c.add_argument("nummer")
+    c = bs.add_parser("abgleichen", help="mit bestehendem Beleg verknüpfen")
+    c.add_argument("id")
+    c.add_argument("beleg")
+    c = bs.add_parser("ignorieren")
+    c.add_argument("id")
+    c.add_argument("--grund", required=True)
+    bs.add_parser("abstimmung", help="Schlusssaldo Bank gegen Buchhaltung")
+
     s = sub.add_parser("mwst", help="MWST-Abrechnung")
     ms = s.add_subparsers(dest="sub", required=True)
     c = ms.add_parser("abrechnung", help="Ziffern für die ESTV-Abrechnung")
@@ -407,6 +429,21 @@ def dispatch(a, book_path: Path | None):
             from . import kreditoren as kred
             return api.jsonable(kred.runs(b))
         return api.payment_run_book(b, a.datei, a.datum)
+    if c == "bank":
+        b = book()
+        if a.sub == "import":
+            return api.bank_import(b, a.datei)
+        if a.sub == "list":
+            return api.bank_list(b, a.status)
+        if a.sub == "book":
+            return api.bank_book(b, a.id, a.konto, a.text, a.mwst)
+        if a.sub == "zuordnen":
+            return api.bank_assign(b, a.id, a.nummer)
+        if a.sub == "abgleichen":
+            return api.bank_link(b, a.id, a.beleg)
+        if a.sub == "ignorieren":
+            return api.bank_ignore(b, a.id, a.grund)
+        return api.bank_reconciliation(b)
     if c == "mwst":
         if a.sub == "abrechnung":
             return api.mwst_report(book(), a.periode)
@@ -479,6 +516,9 @@ def render(cmd: str, sub: str | None, result) -> str:
     if cmd == "invoice" and sub == "list":
         return _table(result, [("nummer", "Rechnung"), ("datum", "Datum"), ("name", "Kunde"), ("total", "Total"),
                                ("offen", "Offen"), ("status", "Status")], right=("total", "offen"))
+    if cmd == "bank" and sub == "list":
+        return _table(result, [("ID", "ID"), ("Datum", "Datum"), ("Betrag", "Betrag"), ("Gegenpartei", "Gegenpartei"),
+                               ("Text", "Text"), ("Status", "Status"), ("Beleg", "Beleg")], right=("Betrag",))
     if cmd == "kreditor" and sub == "list":
         return _table(result, [("nummer", "Kreditor"), ("datum", "Datum"), ("name", "Lieferant"), ("rechnungsnr", "Rg.-Nr."),
                                ("faellig", "Fällig"), ("total", "Betrag"), ("offen", "Offen"), ("status", "Status")],

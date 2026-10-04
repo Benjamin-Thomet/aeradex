@@ -187,7 +187,9 @@ async def pruefen(ui: UI, request: Request):
     issues = [i for i in checks.run(book) if not (i.level == "hinweis" and i.where.startswith("lohn/"))
               and i.where != "inbox"]
     qrbill = _qr_hint(book, f"inbox/{current.name}") if current and file_kind(current) in ("pdf", "image") else None
-    return ui.render(request, "pruefen.html", book=book, files=files, current=current, qrbill=qrbill,
+    from .. import bank
+    bank_open = [t for t in bank.transactions(book) if t["Status"] == "offen"]
+    return ui.render(request, "pruefen.html", book=book, files=files, current=current, qrbill=qrbill, bank_open=bank_open,
                      kind=file_kind(current) if current else None, text=text, proposals=proposals, linked=linked,
                      drafts=draft_rows(book), issues=issues, accounts=account_options(book),
                      next_beleg=journal.next_beleg(book, date.today().year))
@@ -686,6 +688,59 @@ async def abschluss_aktion(ui: UI, request: Request):
     return fail("Unbekannte Aktion")
 
 
+# ---------- Bank ----------
+
+async def bank_page(ui: UI, request: Request):
+    from .. import bank, invoices as inv, kreditoren as kred
+    book = ui.book()
+    status = request.query_params.get("status", "offen")
+    rows = [t for t in bank.transactions(book) if not status or t["Status"] == status]
+    rows.sort(key=lambda t: (t["Datum"], t["ID"]), reverse=status != "offen")
+    paid = inv.settlements(book)
+    open_inv = [inv.invoice_state(book, m, paid.get(k, [])) for k, m in inv.invoices(book).items()]
+    open_inv = [x for x in open_inv if x["status"] in ("offen", "teilbezahlt")]
+    kp = kred.payments(book)
+    open_bills = [kred.state(book, m, kp.get(k, [])) for k, m in kred.bills(book).items()]
+    open_bills = [x for x in open_bills if x["status"] in ("offen", "angewiesen")]
+    counts = defaultdict(int)
+    for t in bank.transactions(book):
+        counts[t["Status"]] += 1
+    return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts,
+                     rec=bank.reconciliation(book), open_inv=open_inv, open_bills=open_bills,
+                     accounts=account_options(book))
+
+
+async def bank_upload(ui: UI, request: Request):
+    f = await request.form()
+    upload = f.get("datei")
+    if not upload or not getattr(upload, "filename", ""):
+        return fail("Keine Datei gewählt.")
+    tmpdir = Path(tempfile.mkdtemp(prefix="batzen-"))
+    tmp = tmpdir / Path(upload.filename).name
+    tmp.write_bytes(await upload.read())
+    try:
+        return await act(request, api.bank_import, "/bank", ui.book(), str(tmp))
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+async def bank_aktion(ui: UI, request: Request):
+    f = await request.form()
+    tid, aktion = request.path_params["id"], request.path_params["aktion"]
+    to = request.headers.get("hx-current-url", "/bank")
+    book = ui.book()
+    if aktion == "buchen":
+        return await act(request, api.bank_book, to, book, tid, acct(f.get("konto")), f.get("text", ""), f.get("mwst", ""))
+    if aktion == "zuordnen":
+        return await act(request, api.bank_assign, to, book, tid, f.get("nummer", ""))
+    if aktion == "abgleichen":
+        return await act(request, api.bank_link, to, book, tid, (f.get("beleg") or "").strip())
+    if aktion == "ignorieren":
+        return await act(request, api.bank_ignore, to, book, tid, f.get("grund", ""))
+    return fail("Unbekannte Aktion")
+
+
 # ---------- Kreditoren ----------
 
 def _qr_hint(book: Book, rel: str) -> dict | None:
@@ -1022,6 +1077,9 @@ def routes(ui: UI) -> list[Route]:
         Route("/debitoren/kunden/{nr:str}", h(kunde_speichern), methods=["POST"]),
         Route("/debitoren/rechnung/{nr:str}", h(rechnung)),
         Route("/debitoren/rechnung/{nr:str}/{aktion:str}", h(rechnung_aktion), methods=["POST"]),
+        Route("/bank", h(bank_page)),
+        Route("/bank/import", h(bank_upload), methods=["POST"]),
+        Route("/bank/{id:str}/{aktion:str}", h(bank_aktion), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),
         Route("/kreditoren/neu", h(kreditor_erfassen), methods=["POST"]),

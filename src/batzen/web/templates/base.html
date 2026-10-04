@@ -19,6 +19,7 @@
       <span class="group">Arbeit</span>
       <a href="/" class="{{ 'active' if p == '/' }}">Übersicht</a>
       <a href="/pruefen" class="{{ 'active' if p.startswith('/pruefen') }}">Prüfen {% if nav.pruefen %}<span class="badge">{{ nav.pruefen }}</span>{% endif %}</a>
+      <a href="/bank" class="{{ 'active' if p.startswith('/bank') }}">Bank {% if nav.bank %}<span class="badge">{{ nav.bank }}</span>{% endif %}</a>
       <a href="/journal" class="{{ 'active' if p.startswith('/journal') }}">Journal</a>
       <span class="group">Bücher</span>
       <a href="/konten" class="{{ 'active' if p.startswith('/konten') }}">Konten</a>

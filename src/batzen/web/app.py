@@ -153,9 +153,11 @@ def nav_counts(book: Book) -> dict:
     proposals = journal.list_proposals(book)
     drafts = [p for p in payroll.payslips(book) if p.get("status") != "abgeschlossen"]
     from .. import check
+    from .. import bank
     errors = sum(1 for i in check.run(book) if i.level == "fehler")
+    bank_open = sum(1 for t in bank.transactions(book) if t["Status"] == "offen")
     return {"inbox": len(files), "vorschlaege": len(proposals), "entwuerfe": len(drafts), "fehler": errors,
-            "pruefen": len(files) + len(proposals) + len(drafts)}
+            "bank": bank_open, "pruefen": len(files) + len(proposals) + len(drafts) + bank_open}
 
 
 def done(message: str, to: str, kind: str = "ok") -> Response:

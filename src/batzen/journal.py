@@ -164,7 +164,7 @@ def list_proposals(book: Book) -> list[dict]:
 
 
 def propose(book: Book, datum, soll: str, haben: str, betrag, text: str, begruendung: str = "",
-            beleg: str = "", datei: str = "", mwst: str = "") -> tuple[dict, Path]:
+            beleg: str = "", datei: str = "", mwst: str = "", bank: str = "") -> tuple[dict, Path]:
     """Record a booking an agent suggests. It is validated now (so a proposal is
     always postable) but only reaches the journal on approval."""
     d = parse_date(datum, "datum")
@@ -173,6 +173,14 @@ def propose(book: Book, datum, soll: str, haben: str, betrag, text: str, begruen
               betrag=parse_amount(betrag, "betrag"))
     from .mwst import split
     validate_rows(book, split(book, Row(row.datum, row.beleg, row.text, row.soll, row.haben, row.betrag), mwst))
+    if bank:
+        from . import bank as bk
+        tx = bk.find(book, bank)
+        if tx["Status"] != "offen":
+            raise BookError(f"Bankbewegung {bank} ist {tx['Status']}")
+        amount = parse_amount(tx["Betrag"])
+        if abs(amount) != row.betrag or (tx["Konto"] not in (row.soll, row.haben)):
+            raise BookError(f"Vorschlag passt nicht zur Bankbewegung {bank} ({tx['Konto']}, {amount})")
     if datei:
         source = Path(datei) if Path(datei).is_absolute() else book.root / datei
         if not source.exists():
@@ -183,7 +191,8 @@ def propose(book: Book, datum, soll: str, haben: str, betrag, text: str, begruen
     pid = f"V-{max(ids, default=0) + 1:03d}"
     cells = {"ID": pid, "Datum": d.isoformat(), "Beleg": row.beleg, "Text": row.text,
              "Soll": row.soll, "Haben": row.haben, "Betrag": fmt_amount(row.betrag),
-             "MWST": (mwst or "").strip().upper(), "Begründung": begruendung.strip(), "Datei": datei or ""}
+             "MWST": (mwst or "").strip().upper(), "Begründung": begruendung.strip(), "Datei": datei or "",
+             "Bank": bank or ""}
     table.rows.append(cells)
     write_table(proposals_path(book), table)
     return cells, proposals_path(book)
@@ -212,6 +221,10 @@ def approve(book: Book, ids: list[str]) -> tuple[list[Row], list[Path]]:
         firsts.append(row)
         rows += split(book, row, p.get("MWST", ""))
     touched = post(book, rows)
+    for p, row in zip(found, firsts):
+        if p.get("Bank"):
+            from . import bank as bk
+            touched += bk._set(book, p["Bank"], Status="gebucht", Beleg=row.beleg)
     # The receipt travels with the proposal: approving files it under belege/.
     for p, row in zip(found, firsts):
         if p.get("Datei"):

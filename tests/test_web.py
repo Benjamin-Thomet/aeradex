@@ -270,3 +270,19 @@ def test_kreditoren_from_inbox_qr_to_payment(client, root, tmp_path):
     ok(post(client, "/kreditoren/zahlungslauf/bezahlt", {"datei": datei, "datum": "2026-03-20"}))
     assert "bezahlt" in client.get(f"/kreditoren/rechnung/{nr}").text
     assert errors(root) == []
+
+
+def test_bank_screen_import_and_book(client, root):
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from camt_sample import entry, statement
+    data = statement("CH9300762011623852957", "30000.00",
+                     [(entry("7.50", "DBIT", "2026-03-31", ustrd="Kontoführung", acct_ref="F1"), "-7.50")],
+                     "2026-03-01", "2026-03-31")
+    ok(post(client, "/bank/import", files={"datei": ("maerz.xml", data, "application/xml")}))
+    page = client.get("/bank").text
+    tid = page.split('<tr class="row" id="')[1].split('"')[0]
+    assert "Kontoführung" in page and "offen" in client.get("/pruefen").text
+    ok(post(client, f"/bank/{tid}/buchen", {"konto": "6940  Bankspesen", "text": "Kontoführung März", "mwst": ""}))
+    assert "gebucht" in client.get("/bank?status=gebucht").text
+    assert errors(root) == []

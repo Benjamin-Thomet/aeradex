@@ -32,7 +32,7 @@ from .files import (FormatError, MdTable, fmt_amount, parse_amount, parse_date,
 ZERO = Decimal("0")
 
 JOURNAL_COLUMNS = ["Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "MWST", "Quelle"]
-PROPOSAL_COLUMNS = ["ID", "Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "MWST", "Begründung", "Datei"]
+PROPOSAL_COLUMNS = ["ID", "Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "MWST", "Begründung", "Datei", "Bank"]
 
 KLASSEN = ("aktiv", "passiv", "aufwand", "ertrag")
 
