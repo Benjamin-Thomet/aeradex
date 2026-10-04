@@ -31,7 +31,7 @@ from .book import Book, BookError, Row
 from .files import CENT, MdTable, parse_amount, parse_date, read_table, write_table
 
 ZERO = Decimal("0")
-COLUMNS = ["ID", "Datum", "Konto", "Betrag", "Gegenpartei", "Referenz", "Text", "Status", "Beleg", "Auszug"]
+COLUMNS = ["ID", "Datum", "Konto", "Betrag", "Gegenpartei", "Referenz", "Text", "Status", "Beleg", "Auszug", "Hinweis"]
 
 
 # ---------- parsing (namespace-agnostic: camt.053.001.02/.04/.08) ----------

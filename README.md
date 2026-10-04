@@ -125,6 +125,20 @@ Beim Import bucht batzen Zahlungen mit QR-/SCOR-Referenz oder Rechnungsnummer se
 eigenen Zahlungsläufen (EndToEndId) und gleicht bereits Gebuchtes (z.B. Löhne) nur ab. Der Rest landet unter
 *Prüfen*; der Agent kann zuordnen oder Buchungen vorschlagen.
 
+### Optional: Jev (TypeSafe) für schnelle Kontierung
+[Jev](https://typesafe.ai/) ist ein «System One»-Modell: Es schreibt keinen Text, sondern trifft typisierte
+Entscheidungen mit kalibrierter Konfidenz. batzen nutzt es optional, um für offene Bankbewegungen das Gegenkonto
+vorzuschlagen, mit dem bisherigen Konto derselben Gegenpartei als stärkstem Hinweis.
+```bash
+export TYPESAFE_API_KEY=…              # Early-Access-Schlüssel von console.typesafe.ai
+# Einstellungen → Jev einschalten (pro Buch), Schwelle wählen
+batzen bank kontieren                  # oder Knopf «Konten vorschlagen (Jev)» auf der Bank-Seite
+```
+Ab der Schwelle entsteht ein Vorschlag unter *Prüfen*, darunter nur ein Hinweis; gebucht wird nie automatisch.
+Gesendet werden Gegenpartei, Mitteilung, Betrag, Kontenplan und bis zu fünf frühere Buchungen derselben
+Gegenpartei. Bewegungen von Mitarbeitenden werden nie gesendet. TypeSafe ist ein US-Anbieter (Early Access,
+nicht Open Source); für Mandantenbücher Einverständnis klären.
+
 ### Lohn
 ```bash
 batzen employee add --vorname Lea --nachname Muster --monatslohn 6000 --pensum 80 --bvg-betrag 250 \

@@ -142,6 +142,12 @@ aktiv: true
 
 Frontmatter: `mitarbeiter, name, jahr, monat, status (entwurf|abgeschlossen), eingaben{stunden, bvg, kinderzulagen, korrektur, korrektur_text, qst_satzbestimmend, qst_gesamtpensum}, werte{…}`, nach Abschluss zusätzlich `ag{…}` und `fingerprint`. Der Text darunter wird erzeugt. Eingaben ändert man im Entwurf und rechnet mit `batzen payroll run` neu.
 
+## Jev (optional)
+
+```yaml
+jev: {aktiv: true, schwelle: 0.7, modell: jev-latest}   # plus TYPESAFE_API_KEY in der Umgebung
+```
+
 ## lieferanten/L0001-name.md
 
 Frontmatter: `nummer, name, adresse{…}, iban, konto` (Standard-Aufwandkonto), `mwst` (Standard-Code), `email`.
@@ -161,7 +167,8 @@ Eine QR-IBAN kann nicht belastet werden; dann `zahlungs_iban` in `batzen.yaml` s
 ## bank/
 
 `bank/auszuege/<JJJJ>/<Auszug-ID>.xml`: die Kontoauszüge wie von der Bank geliefert (camt.053, sie sind der Beleg).
-`bank/<JJJJ>.md`: eine Zeile pro Bankbewegung: `ID | Datum | Konto | Betrag | Gegenpartei | Referenz | Text | Status | Beleg | Auszug`,
+`bank/<JJJJ>.md`: eine Zeile pro Bankbewegung: `ID | Datum | Konto | Betrag | Gegenpartei | Referenz | Text | Status | Beleg | Auszug | Hinweis`
+(`Hinweis`: z.B. unsicherer Jev-Vorschlag),
 Status `gebucht`, `abgeglichen`, `offen`, `ignoriert`. `Beleg` verweist auf die Journalbuchung. Zuordnung IBAN → Konto in
 `batzen.yaml` unter `bankkonten: {CH…: "1020"}` (Standard: die eigene IBAN → Bankkonto).
 

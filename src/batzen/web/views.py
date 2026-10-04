@@ -705,7 +705,8 @@ async def bank_page(ui: UI, request: Request):
     counts = defaultdict(int)
     for t in bank.transactions(book):
         counts[t["Status"]] += 1
-    return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts,
+    from .. import jev
+    return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts, jev=jev.config(book),
                      rec=bank.reconciliation(book), open_inv=open_inv, open_bills=open_bills,
                      accounts=account_options(book))
 
@@ -723,6 +724,16 @@ async def bank_upload(ui: UI, request: Request):
     finally:
         if tmp.exists():
             tmp.unlink()
+
+
+async def bank_jev(ui: UI, request: Request):
+    return await act(request, api.bank_suggest, "/bank", ui.book())
+
+
+async def jev_einstellung(ui: UI, request: Request):
+    f = await request.form()
+    return await act(request, api.settings_update, "/einstellungen#jev", ui.book(),
+                     jev={"aktiv": f.get("aktiv") == "1", "schwelle": f.get("schwelle") or None})
 
 
 async def bank_aktion(ui: UI, request: Request):
@@ -988,6 +999,7 @@ async def einstellungen(ui: UI, request: Request):
                      iban_problem=iban_problem(iban) if iban else "Keine IBAN hinterlegt",
                      qr_iban=is_qr_iban(iban) if iban else False, issues=checks.run(book),
                      accounts=account_options(book), cred=credentials_status(book.settings.get("agent_backend")),
+                     jev=__import__("batzen.jev", fromlist=["config"]).config(book),
                      backends=__import__("batzen.web.chat", fromlist=["BACKENDS"]).BACKENDS)
 
 
@@ -1085,6 +1097,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/debitoren/rechnung/{nr:str}/{aktion:str}", h(rechnung_aktion), methods=["POST"]),
         Route("/bank", h(bank_page)),
         Route("/bank/import", h(bank_upload), methods=["POST"]),
+        Route("/bank/jev", h(bank_jev), methods=["POST"]),
         Route("/bank/{id:str}/{aktion:str}", h(bank_aktion), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),
@@ -1118,5 +1131,6 @@ def routes(ui: UI) -> list[Route]:
         Route("/einstellungen", h(einstellungen_speichern), methods=["POST"]),
         Route("/einstellungen/lohn", h(lohn_einstellungen), methods=["POST"]),
         Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),
+        Route("/einstellungen/jev", h(jev_einstellung), methods=["POST"]),
         Route("/pdf/{kind:str}", h(pdf_report)),
     ]

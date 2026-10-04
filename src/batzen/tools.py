@@ -487,6 +487,17 @@ def propose_bank_booking(id: str, konto: str, text: str, begruendung: str, mwst:
     return _call(api.propose, tx["Datum"], soll, haben, str(abs(amount)), text, begruendung, "", mwst, id)
 
 
+def suggest_bank_accounts(ids: list[str] | None = None) -> dict:
+    """Lässt Jev (TypeSafe, falls im Buch eingeschaltet) Gegenkonten für offene Bankbewegungen vorschlagen:
+    sichere Fälle werden Vorschläge unter Prüfen, unsichere bekommen nur einen Hinweis. Schnell und günstig —
+    vor eigenen Vorschlägen aufrufen und die Hinweise als zweite Meinung nutzen.
+
+    Args:
+        ids: nur diese Bewegungen; leer = alle offenen.
+    """
+    return _call(api.bank_suggest, ids or None)
+
+
 def book_bank_transaction(id: str, konto: str, text: str = "", mwst: str = "") -> dict:
     """Offene Bankbewegung direkt gegen ein Konto buchen (nur agent_modus: direkt).
 
@@ -583,6 +594,6 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
-          create_payment_run, bank_transactions, assign_bank_transaction, propose_bank_booking,
+          create_payment_run, bank_transactions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
           book_bank_transaction, employees, payroll_run, payslip, close_payslip, lohnausweis]
 CHAT_ONLY = [read_inbox_file]

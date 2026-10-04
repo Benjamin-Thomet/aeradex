@@ -545,7 +545,8 @@ SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_r
 
 
 def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None,
-                    mwst: dict | None = None, bankkonten: dict | None = None, **fields) -> dict:
+                    mwst: dict | None = None, bankkonten: dict | None = None, jev: dict | None = None,
+                    **fields) -> dict:
     _guard(book)
     unknown = set(fields) - set(SETTINGS_KEYS)
     if unknown:
@@ -565,6 +566,17 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
             if nr:
                 book.account(str(nr))
         data.setdefault("konten", {}).update({k: str(v) for k, v in konten.items() if v})
+    if jev is not None:
+        current = dict(data.get("jev") or {})
+        current["aktiv"] = bool(jev.get("aktiv"))
+        if jev.get("schwelle") not in (None, ""):
+            value = float(jev["schwelle"])
+            if not 0.3 <= value <= 0.99:
+                raise BookError("Jev-Schwelle zwischen 0.3 und 0.99")
+            current["schwelle"] = value
+        if jev.get("modell"):
+            current["modell"] = str(jev["modell"])
+        data["jev"] = current
     if bankkonten is not None:
         clean = {}
         for iban, nr in bankkonten.items():
@@ -891,6 +903,21 @@ def bank_ignore(book: Book, id: str, grund: str) -> dict:
     return _done(book, f"Bankbewegung {id} ignoriert: {grund}", touched)
 
 
+def bank_suggest(book: Book, ids: list[str] | None = None, schwelle: float | None = None) -> dict:
+    """Jev (TypeSafe): counter-account proposals for open bank transactions."""
+    _guard(book)
+    from . import jev
+    res = jev.suggest_bank(book, ids, schwelle)
+    touched = res.pop("_touched")
+    msg = (f"Jev: {len(res['vorgeschlagen'])} Vorschläge, {len(res['unsicher'])} unsicher (nur Hinweis)"
+           + (f", {len(res['uebersprungen'])} übersprungen (Mitarbeitende)" if res["uebersprungen"] else "")
+           + (f", {len(res['fehler'])} Fehler" if res["fehler"] else ""))
+    if touched:
+        return _done(book, msg, touched, jev=res)
+    book.reload()
+    return jsonable({"ok": True, "meldung": msg, "commit": None, "jev": res})
+
+
 def bank_reconciliation(book: Book) -> list[dict]:
     from . import bank
     return jsonable(bank.reconciliation(book))
@@ -954,5 +981,5 @@ payslip_inputs = _locked(payslip_inputs)
 
 
 for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_void", "payment_run", "payment_run_book",
-              "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore"):
+              "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore", "bank_suggest"):
     globals()[_name] = _locked(globals()[_name])

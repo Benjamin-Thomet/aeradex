@@ -272,6 +272,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("id")
     c.add_argument("--grund", required=True)
     bs.add_parser("abstimmung", help="Schlusssaldo Bank gegen Buchhaltung")
+    c = bs.add_parser("kontieren", help="Gegenkonten mit Jev (TypeSafe) vorschlagen")
+    c.add_argument("ids", nargs="*", help="nur diese Bewegungen")
+    c.add_argument("--schwelle", type=float, help="Konfidenz ab der ein Vorschlag entsteht (Standard aus Einstellungen)")
 
     s = sub.add_parser("mwst", help="MWST-Abrechnung")
     ms = s.add_subparsers(dest="sub", required=True)
@@ -460,6 +463,8 @@ def dispatch(a, book_path: Path | None):
             return api.bank_link(b, a.id, a.beleg)
         if a.sub == "ignorieren":
             return api.bank_ignore(b, a.id, a.grund)
+        if a.sub == "kontieren":
+            return api.bank_suggest(b, a.ids or None, a.schwelle)
         return api.bank_reconciliation(b)
     if c == "mwst":
         if a.sub == "abrechnung":

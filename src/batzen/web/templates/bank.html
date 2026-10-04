@@ -4,10 +4,12 @@
 {% block main %}
 <div class="topbar">
   <div><h1>Bank</h1><div class="sub">Kontoauszüge im Format camt.053 aus dem E-Banking. Klare Zahlungen bucht batzen selbst, bereits Gebuchtes wird nur abgeglichen.</div></div>
+  <span class="actions">
+  {% if jev.bereit and counts['offen'] %}<form hx-post="/bank/jev" hx-target="find .errors"><button class="btn" type="submit" title="Schnelle Kontierung mit TypeSafe Jev; sichere Fälle werden Vorschläge">Konten vorschlagen (Jev)</button>{{ errors() }}</form>{% endif %}
   <form class="actions" hx-post="/bank/import" hx-encoding="multipart/form-data" hx-target="find .errors">
     <input class="input" type="file" name="datei" accept=".xml,.camt,.053" aria-label="camt.053-Datei" style="width:260px">
     <button class="btn primary" type="submit">Auszug importieren</button>{{ errors() }}
-  </form>
+  </form></span>
 </div>
 {{ accounts_datalist(accounts) }}
 {% if rec %}
@@ -31,7 +33,7 @@
     {% for t in rows %}{% set credit = t.Betrag|float > 0 %}
       <tr class="row" id="{{ t.ID }}">
         <td class="num">{{ t.Datum|datum }}</td>
-        <td><strong>{{ t.Gegenpartei or '—' }}</strong><br><span class="small muted">{{ t.Text }}{% if t.Referenz %} · Ref. {{ t.Referenz }}{% endif %}</span></td>
+        <td><strong>{{ t.Gegenpartei or '—' }}</strong><br><span class="small muted">{{ t.Text }}{% if t.Referenz %} · Ref. {{ t.Referenz }}{% endif %}</span>{% if t.Hinweis and t.Status == 'offen' %}<br><span class="pill info" title="{{ t.Hinweis }}">{{ t.Hinweis|truncate(70) }}</span>{% endif %}</td>
         <td class="right num">{{ t.Betrag|chf(sign=true) }}</td>
         <td>{% if t.Status == 'offen' %}<span class="pill warn">offen</span>{% elif t.Status == 'ignoriert' %}<span class="pill muted">ignoriert</span>{% else %}<a class="pill ok" href="/journal?jahr={{ t.Datum[:4] }}&monat=alle&q={{ t.Beleg|urlq }}">{{ t.Status }} · {{ t.Beleg }}</a>{% endif %}</td>
         <td class="right">{% if t.Status == 'offen' %}
