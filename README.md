@@ -62,7 +62,14 @@ Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird g
 | **Verlauf** | jeder Commit mit Diff, Änderungen von Agenten markiert |
 | **Einstellungen** | Firma, IBAN-Prüfung, Systemkonten, Lohnsätze, Agentenmodus |
 
-Rechts sitzt der **Agent** (Claude): «Bereite die Quittungen in der Inbox vor», «Welche Rechnungen sind überfällig?». Er arbeitet mit denselben Werkzeugen wie der MCP-Server; seine Vorschläge erscheinen sofort unter *Prüfen*. Er läuft über dein lokales **Claude Code** (dein Login, kein API-Schlüssel nötig) oder, falls gesetzt, über die Claude API (`ANTHROPIC_API_KEY`); `BATZEN_CHAT_BACKEND=api|claude-code` erzwingt eines davon. Mit Claude Code darf er zusätzlich Dateien in `inbox/` und `belege/` lesen (auch PDFs und Fotos), aber nichts direkt ändern. Ändert ein Agent oder das CLI das Buch, aktualisiert sich die offene Seite selbst.
+Rechts sitzt der **Agent** (Claude): «Bereite die Quittungen in der Inbox vor», «Welche Rechnungen sind überfällig?». Er arbeitet mit denselben Werkzeugen wie der MCP-Server; seine Vorschläge erscheinen sofort unter *Prüfen*. Er läuft wahlweise über **Claude Code**, **Codex** oder **opencode** (jeweils dein eigener Login, kein zusätzlicher Schlüssel) oder über die Claude API (`ANTHROPIC_API_KEY`). Auswahl pro Buch unter *Einstellungen → Agent*, oder `BATZEN_CHAT_BACKEND=claude-code|codex|opencode|api`. Der Agent darf das Buch lesen, ändern kann er es nur über die batzen-Werkzeuge (Codex läuft in der Read-only-Sandbox, opencode ohne Edit/Shell). Im Verlauf steht, welcher Agent was gemacht hat.
+
+**Eigene Agenten im Terminal** nutzen denselben MCP-Server:
+```bash
+claude mcp add batzen -- batzen --buch <buch> mcp
+codex mcp add batzen -- batzen --buch <buch> mcp
+opencode mcp add batzen      # oder in opencode.json unter "mcp"
+``` Ändert ein Agent oder das CLI das Buch, aktualisiert sich die offene Seite selbst.
 
 Tastatur: `N` neue Buchung, `/` Suche, `A` Agent, `⌘/Ctrl+Enter` Formular absenden.
 

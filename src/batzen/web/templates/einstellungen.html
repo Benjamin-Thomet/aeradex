@@ -66,8 +66,16 @@
 </form>
 
 <div class="panel">
-  <header><h2>Agent (Claude)</h2>{% if cred.ok %}<span class="pill ok">bereit · {{ cred.quelle }}</span>{% else %}<span class="pill warn">nicht eingerichtet</span>{% endif %}</header>
+  <header><h2>Agent im Seitenpanel</h2>{% if cred.ok %}<span class="pill ok">bereit · {{ cred.quelle }}</span>{% else %}<span class="pill warn">nicht bereit</span>{% endif %}</header>
   <div class="body">
+    <form class="actions" hx-post="/einstellungen/agent" hx-target="find .errors">
+      <label class="lbl" for="ag-b">Agent</label>
+      <select class="input" id="ag-b" name="agent_backend">
+        <option value="auto" {{ 'selected' if (settings.get('agent_backend') or 'auto') == 'auto' }}>Automatisch</option>
+        {% for k, label in backends.items() %}<option value="{{ k }}" {{ 'selected' if settings.get('agent_backend') == k }}>{{ label }}{{ '' if cred.verfuegbar[k] else ' (nicht bereit)' }}</option>{% endfor %}
+      </select>
+      <button class="btn small" type="submit">Übernehmen</button>{{ errors() }}
+    </form>
     <p>{% if cred.ok %}Der Agent im Seitenpanel nutzt dieselben Werkzeuge wie das CLI und der MCP-Server. Seine Commits sind im Verlauf als «Agent» markiert.{% else %}{{ cred.hinweis }}{% endif %}</p>
     <p class="small muted">Für Claude Code, opencode und andere: <code>claude mcp add batzen -- batzen --buch {{ book.root }} mcp</code></p>
   </div>

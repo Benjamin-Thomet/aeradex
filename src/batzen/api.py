@@ -541,7 +541,7 @@ def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | N
 
 
 SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_referenz_praefix",
-                 "zahlungsfrist_tage", "agent_modus", "sprache", "co", "zahlungs_iban")
+                 "zahlungsfrist_tage", "agent_modus", "sprache", "co", "zahlungs_iban", "agent_backend")
 
 
 def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None,
@@ -552,6 +552,8 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
         raise BookError(f"Diese Einstellungen sind nicht änderbar: {', '.join(sorted(unknown))}")
     if fields.get("agent_modus") not in (None, "vorschlag", "direkt"):
         raise BookError("agent_modus muss 'vorschlag' oder 'direkt' sein")
+    if fields.get("agent_backend") not in (None, "", "auto", "claude-code", "codex", "opencode", "api"):
+        raise BookError("Agent: auto, claude-code, codex, opencode oder api")
     data = book.settings.data
     for key, value in fields.items():
         if value is not None:

@@ -17,7 +17,11 @@ from pathlib import Path
 # the MCP server and the chat agent set an agent identity so the audit trail
 # shows which changes a person made and which an agent made.
 AUTHOR: contextvars.ContextVar[str | None] = contextvars.ContextVar("batzen_author", default=None)
-AGENT_AUTHOR = "batzen Agent (Claude) <agent@batzen.local>"
+AGENT_AUTHOR = "batzen Agent <agent@batzen.local>"
+
+
+def agent_author(tool: str) -> str:
+    return f"batzen Agent ({tool}) <agent@batzen.local>"
 
 HOOK = """#!/bin/sh
 # Installed by batzen: refuse a commit that leaves the book invalid.

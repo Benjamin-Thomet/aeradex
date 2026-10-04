@@ -987,7 +987,8 @@ async def einstellungen(ui: UI, request: Request):
     return ui.render(request, "einstellungen.html", book=book, cfg=payroll.config(book),
                      iban_problem=iban_problem(iban) if iban else "Keine IBAN hinterlegt",
                      qr_iban=is_qr_iban(iban) if iban else False, issues=checks.run(book),
-                     accounts=account_options(book), cred=credentials_status())
+                     accounts=account_options(book), cred=credentials_status(book.settings.get("agent_backend")),
+                     backends=__import__("batzen.web.chat", fromlist=["BACKENDS"]).BACKENDS)
 
 
 async def einstellungen_speichern(ui: UI, request: Request):
@@ -1005,6 +1006,11 @@ async def einstellungen_speichern(ui: UI, request: Request):
         return fail("Firmenname ist nötig.")
     return await act(request, api.settings_update, "/einstellungen", ui.book(), adresse=adresse, konten=konten,
                      mwst=vat if f.get("mwst_methode") is not None else None, **fields)
+
+
+async def agent_einstellung(ui: UI, request: Request):
+    f = await request.form()
+    return await act(request, api.settings_update, "/einstellungen", ui.book(), agent_backend=f.get("agent_backend") or "auto")
 
 
 async def lohn_einstellungen(ui: UI, request: Request):
@@ -1111,5 +1117,6 @@ def routes(ui: UI) -> list[Route]:
         Route("/einstellungen", h(einstellungen)),
         Route("/einstellungen", h(einstellungen_speichern), methods=["POST"]),
         Route("/einstellungen/lohn", h(lohn_einstellungen), methods=["POST"]),
+        Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),
         Route("/pdf/{kind:str}", h(pdf_report)),
     ]

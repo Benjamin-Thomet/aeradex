@@ -48,33 +48,60 @@ def _api_credentials() -> str | None:
     return None
 
 
-def backend() -> str | None:
-    """Which agent runs the drawer: BATZEN_CHAT_BACKEND=api|claude-code, else
-    the API when credentials exist, else the local Claude Code login."""
-    forced = os.environ.get("BATZEN_CHAT_BACKEND")
-    if forced in ("api", "claude-code"):
-        return forced
+BACKENDS = {"claude-code": "Claude Code", "codex": "Codex", "opencode": "opencode", "api": "Claude API"}
+
+
+def _codex_logged_in() -> bool:
+    try:
+        r = subprocess.run(["codex", "login", "status"], capture_output=True, text=True, timeout=10)
+        return r.returncode == 0 and "not logged in" not in (r.stdout + r.stderr).lower()
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def available() -> dict[str, bool]:
+    """Which agent backends can run on this machine."""
+    api = False
     if _api_credentials():
         try:
             import anthropic  # noqa: F401
-            return "api"
+            api = True
         except ImportError:
             pass
-    if shutil.which("claude"):
-        return "claude-code"
+    return {"claude-code": bool(shutil.which("claude")),
+            "codex": bool(shutil.which("codex")) and _codex_logged_in(),
+            "opencode": bool(shutil.which("opencode")),
+            "api": api}
+
+
+def backend(preferred: str | None = None) -> str | None:
+    """The drawer's agent: BATZEN_CHAT_BACKEND, else the book's `agent_backend` setting,
+    else the first available of Claude API, Claude Code, Codex, opencode."""
+    choice = os.environ.get("BATZEN_CHAT_BACKEND") or preferred or "auto"
+    if choice in BACKENDS:
+        return choice
+    avail = available()
+    for name in ("api", "claude-code", "codex", "opencode"):
+        if avail[name]:
+            return name
     return None
 
 
-def credentials_status() -> dict:
-    """Whether the drawer can run, and on what — without calling anything."""
-    kind = backend()
-    if kind == "api":
-        return {"ok": True, "quelle": f"Claude API ({_api_credentials()})", "hinweis": ""}
-    if kind == "claude-code":
-        return {"ok": True, "quelle": "Claude Code (dein Login auf diesem Rechner)", "hinweis": ""}
-    return {"ok": False, "quelle": None,
-            "hinweis": "Kein Agent verfügbar. Installiere Claude Code und melde dich an, oder setze "
-                       "ANTHROPIC_API_KEY (pip install 'batzen[ui]') und starte `batzen ui` neu."}
+def credentials_status(preferred: str | None = None) -> dict:
+    """Whether the drawer can run, and on what — without calling a model."""
+    kind = backend(preferred)
+    avail = available()
+    if kind is None:
+        return {"ok": False, "quelle": None, "verfuegbar": avail,
+                "hinweis": "Kein Agent verfügbar. Claude Code, Codex oder opencode installieren und anmelden, "
+                           "oder ANTHROPIC_API_KEY setzen, dann `batzen ui` neu starten."}
+    if not avail.get(kind):
+        return {"ok": False, "quelle": BACKENDS[kind], "verfuegbar": avail,
+                "hinweis": f"{BACKENDS[kind]} ist gewählt, aber nicht bereit (installiert und angemeldet?)."
+                           + (" Für Codex: `codex login`." if kind == "codex" else "")}
+    label = {"api": f"Claude API ({_api_credentials()})", "claude-code": "Claude Code (dein Login)",
+             "codex": "Codex (dein Login)", "opencode": "opencode (deine Anbieter)"}[kind]
+    return {"ok": True, "quelle": label, "verfuegbar": avail, "hinweis": ""}
 
 
 def page_label(path: str) -> str:
@@ -211,7 +238,7 @@ class Agent(BaseAgent):
 
     def run(self, events: queue.Queue, prompt: str) -> None:
         tools.BOOK_ROOT.set(self.root)
-        gitlog.AUTHOR.set(gitlog.AGENT_AUTHOR)
+        gitlog.AUTHOR.set(gitlog.agent_author("Claude API"))
         import anthropic
         self.messages.append({"role": "user", "content": prompt})
         try:
@@ -251,21 +278,76 @@ class Agent(BaseAgent):
             raise
 
 
-class CodeAgent(BaseAgent):
-    """Claude via the local Claude Code CLI (`claude -p`), using the person's own
-    login. Its tools are the batzen MCP server; it may additionally read files in
-    inbox/ and belege/ (PDFs and images included) but cannot edit anything
-    except through batzen."""
+class CLIAgent(BaseAgent):
+    """An agent that runs as a local CLI in headless mode, with the batzen MCP
+    server as its tools and the person's own login. It can read files in the
+    book, but change the book only through batzen."""
+
+    label = "Agent"
 
     def __init__(self, root: Path):
         super().__init__(root)
         self.session_id: str | None = None
-        self._config = Path(tempfile.mkdtemp(prefix="batzen-chat-")) / "mcp.json"
-        self._config.write_text(json.dumps({"mcpServers": {"batzen": {
-            "command": sys.executable, "args": ["-m", "batzen", "--buch", str(root), "mcp"]}}}))
+        self.tmp = Path(tempfile.mkdtemp(prefix="batzen-chat-"))
+
+    def mcp_command(self) -> list[str]:
+        return [sys.executable, "-m", "batzen", "--buch", str(self.root), "mcp"]
+
+    def mcp_env(self) -> dict:
+        """Passed to the MCP server so its commits name the agent that made them."""
+        return {"BATZEN_AUTHOR": gitlog.agent_author(self.label)}
 
     def forget(self) -> None:
         self.session_id = None
+
+    def first_prompt(self, prompt: str) -> str:
+        """CLIs without a system-prompt flag get the rules with the first message."""
+        if self.session_id:
+            return prompt
+        return ("Regeln für diese Sitzung (batzen-Buchhaltung):\n" + self.system_prompt_text()
+                + "\n\n---\n\n" + prompt)
+
+    def command(self, prompt: str) -> list[str]:
+        raise NotImplementedError
+
+    def env(self) -> dict:
+        return dict(os.environ)
+
+    def handle(self, event: dict, events: queue.Queue) -> dict | None:
+        """Translate one JSON line; return it when it is the final result."""
+        raise NotImplementedError
+
+    def run(self, events: queue.Queue, prompt: str) -> None:
+        proc = subprocess.Popen(self.command(prompt), cwd=self.root, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding="utf-8", errors="replace", env=self.env())
+        final = None
+        for line in proc.stdout:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            result = self.handle(event, events)
+            if result is not None:
+                final = result
+        proc.wait()
+        if final is None and proc.returncode != 0:
+            err = (proc.stderr.read() or "").strip()
+            raise RuntimeError(f"{self.label} hat abgebrochen (Exit {proc.returncode}). {err[-300:]}")
+        if final and final.get("error"):
+            self.emit(events, {"type": "error", "text": f"{self.label}: {final['error'][:300]}"})
+
+
+class CodeAgent(CLIAgent):
+    """Claude Code (`claude -p`)."""
+
+    label = "Claude Code"
+
+    def __init__(self, root: Path):
+        super().__init__(root)
+        self._config = self.tmp / "mcp.json"
+        self._config.write_text(json.dumps({"mcpServers": {"batzen": {
+            "command": self.mcp_command()[0], "args": self.mcp_command()[1:], "env": self.mcp_env()}}}))
 
     def command(self, prompt: str) -> list[str]:
         cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose",
@@ -279,46 +361,130 @@ class CodeAgent(BaseAgent):
             cmd += ["--resume", self.session_id]
         return cmd
 
-    def run(self, events: queue.Queue, prompt: str) -> None:
-        proc = subprocess.Popen(self.command(prompt), cwd=self.root, stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                encoding="utf-8", errors="replace")
-        result = None
-        for line in proc.stdout:
-            try:
-                event = json.loads(line)
-            except ValueError:
-                continue
-            kind = event.get("type")
-            if event.get("session_id"):
-                self.session_id = event["session_id"]
-            if kind == "assistant":
-                for block in event.get("message", {}).get("content", []):
-                    if block.get("type") == "text" and block.get("text", "").strip():
-                        self.emit(events, {"type": "text", "html": render_text(block["text"])})
-                    elif block.get("type") == "tool_use" and block.get("name") != "ToolSearch":
-                        name = block["name"].removeprefix("mcp__batzen__")
-                        self.emit(events, {"type": "tool", "text": describe_call(name, block.get("input") or {})})
-            elif kind == "user":
-                for block in event.get("message", {}).get("content", []):
-                    if block.get("type") == "tool_result" and block.get("is_error"):
-                        content = block.get("content")
-                        text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
-                        self.emit(events, {"type": "tool_error", "text": text[:300]})
-            elif kind == "result":
-                result = event
-        proc.wait()
-        if result is None:
-            err = (proc.stderr.read() or "").strip()
-            raise RuntimeError(f"Claude Code hat abgebrochen (Exit {proc.returncode}). {err[-300:]}")
-        if result.get("is_error") or result.get("subtype") not in ("success", None):
-            self.emit(events, {"type": "error", "text": f"Claude Code: {result.get('subtype')} "
-                                                         f"{str(result.get('result') or '')[:300]}"})
+    def handle(self, event: dict, events: queue.Queue) -> dict | None:
+        kind = event.get("type")
+        if event.get("session_id"):
+            self.session_id = event["session_id"]
+        if kind == "assistant":
+            for block in event.get("message", {}).get("content", []):
+                if block.get("type") == "text" and block.get("text", "").strip():
+                    self.emit(events, {"type": "text", "html": render_text(block["text"])})
+                elif block.get("type") == "tool_use" and block.get("name") != "ToolSearch":
+                    name = block["name"].removeprefix("mcp__batzen__")
+                    self.emit(events, {"type": "tool", "text": describe_call(name, block.get("input") or {})})
+        elif kind == "user":
+            for block in event.get("message", {}).get("content", []):
+                if block.get("type") == "tool_result" and block.get("is_error"):
+                    content = block.get("content")
+                    text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+                    self.emit(events, {"type": "tool_error", "text": text[:300]})
+        elif kind == "result":
+            failed = event.get("is_error") or event.get("subtype") not in ("success", None)
+            return {"error": f"{event.get('subtype')} {str(event.get('result') or '')}" if failed else ""}
+        return None
+
+
+class CodexAgent(CLIAgent):
+    """OpenAI Codex (`codex exec --json`), read-only sandbox: it may read the
+    book but change it only through the batzen MCP tools."""
+
+    label = "Codex"
+
+    def command(self, prompt: str) -> list[str]:
+        mcp = self.mcp_command()
+        cmd = ["codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only",
+               "-C", str(self.root),
+               "-c", f"mcp_servers.batzen.command={json.dumps(mcp[0])}",
+               "-c", f"mcp_servers.batzen.args={json.dumps(mcp[1:])}",
+               "-c", f"mcp_servers.batzen.env={{BATZEN_AUTHOR={json.dumps(self.mcp_env()['BATZEN_AUTHOR'])}}}"]
+        if os.environ.get("BATZEN_CHAT_MODEL"):
+            cmd += ["-m", os.environ["BATZEN_CHAT_MODEL"]]
+        if self.session_id:
+            return cmd + ["resume", self.session_id, prompt]
+        return cmd + [self.first_prompt(prompt)]
+
+    def handle(self, event: dict, events: queue.Queue) -> dict | None:
+        kind = event.get("type")
+        if kind == "thread.started" and event.get("thread_id"):
+            self.session_id = event["thread_id"]
+        elif kind in ("item.started", "item.completed"):
+            item = event.get("item") or {}
+            itype = item.get("type")
+            if kind == "item.completed" and itype == "agent_message" and (item.get("text") or "").strip():
+                self.emit(events, {"type": "text", "html": render_text(item["text"])})
+            elif itype == "mcp_tool_call" and kind == "item.started":
+                args = item.get("arguments") if isinstance(item.get("arguments"), dict) else {}
+                self.emit(events, {"type": "tool", "text": describe_call(item.get("tool", "?"), args)})
+            elif itype == "mcp_tool_call" and kind == "item.completed" and item.get("status") == "failed":
+                self.emit(events, {"type": "tool_error", "text": str(item.get("error") or "Tool fehlgeschlagen")[:300]})
+            elif itype == "command_execution" and kind == "item.started":
+                self.emit(events, {"type": "tool", "text": f"liest: {str(item.get('command'))[:120]}"})
+        elif kind == "turn.completed":
+            return {"error": ""}
+        elif kind == "turn.failed":
+            return {"error": str((event.get("error") or {}).get("message") or "Abbruch")}
+        return None
+
+
+class OpencodeAgent(CLIAgent):
+    """opencode (`opencode run --format json`) with a private config: batzen
+    MCP server, editing, shell and web denied."""
+
+    label = "opencode"
+
+    def __init__(self, root: Path):
+        super().__init__(root)
+        self._config = self.tmp / "opencode.json"
+        self._config.write_text(json.dumps({
+            "$schema": "https://opencode.ai/config.json",
+            "mcp": {"batzen": {"type": "local", "command": self.mcp_command(), "enabled": True,
+                               "environment": self.mcp_env()}},
+            "permission": {"edit": "deny", "bash": "deny", "webfetch": "deny"},
+        }))
+
+    def env(self) -> dict:
+        return {**os.environ, "OPENCODE_CONFIG": str(self._config)}
+
+    def command(self, prompt: str) -> list[str]:
+        cmd = ["opencode", "run", "--format", "json", "--dir", str(self.root)]
+        if os.environ.get("BATZEN_CHAT_MODEL"):
+            cmd += ["-m", os.environ["BATZEN_CHAT_MODEL"]]
+        if self.session_id:
+            cmd += ["--session", self.session_id]
+        return cmd + [self.first_prompt(prompt)]
+
+    def handle(self, event: dict, events: queue.Queue) -> dict | None:
+        if event.get("sessionID"):
+            self.session_id = event["sessionID"]
+        kind = event.get("type")
+        part = event.get("part") or {}
+        if kind == "text" and (part.get("text") or "").strip():
+            self.emit(events, {"type": "text", "html": render_text(part["text"])})
+        elif kind == "tool_use":
+            state = part.get("state") or {}
+            name = str(part.get("tool", "?")).removeprefix("batzen_")
+            self.emit(events, {"type": "tool", "text": describe_call(name, state.get("input") or {})})
+            if state.get("status") == "error":
+                self.emit(events, {"type": "tool_error", "text": str(state.get("error") or "")[:300]})
+        elif kind == "error":
+            err = event.get("error") or {}
+            message = err.get("data", {}).get("message") if isinstance(err, dict) else str(err)
+            return {"error": str(message or err)}
+        elif kind == "step_finish" and part.get("reason") == "stop":
+            return {"error": ""}
+        return None
+
+
+AGENTS = {"api": Agent, "claude-code": CodeAgent, "codex": CodexAgent, "opencode": OpencodeAgent}
 
 
 def agent(ui) -> BaseAgent:
-    if ui.chat is None:
-        ui.chat = Agent(ui.root) if backend() == "api" else CodeAgent(ui.root)
+    """The drawer's agent for this book; switching the backend in the settings starts a new conversation."""
+    from ..book import Book
+    kind = backend(Book(ui.root).settings.get("agent_backend"))
+    if ui.chat is None or getattr(ui.chat, "kind", None) != kind:
+        ui.chat = AGENTS.get(kind, CodeAgent)(ui.root)
+        ui.chat.kind = kind
     return ui.chat
 
 
@@ -331,7 +497,8 @@ def routes(ui) -> list[Route]:
         message = (form.get("message") or "").strip()
         if not message:
             return JSONResponse({"ok": False, "fehler": "Leere Nachricht"}, status_code=400)
-        cred = credentials_status()
+        from ..book import Book
+        cred = credentials_status(Book(ui.root).settings.get("agent_backend"))
         if not cred["ok"]:
             return JSONResponse({"ok": False, "fehler": cred["hinweis"]}, status_code=400)
         try:
