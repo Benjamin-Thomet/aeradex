@@ -216,6 +216,53 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
     return buf.getvalue()
 
 
+# ---------- Reminder (Mahnung) ----------
+
+def reminder_pdf(book: Book, meta: dict, state: dict, entry: dict, text: str, customer: dict | None) -> bytes:
+    """A reminder letter with a QR-bill for the open amount (same reference as the invoice)."""
+    s = book.settings
+    width = A4[0] - 2 * SIDE
+    a = meta.get("an") or {}
+    cur = meta.get("waehrung", "CHF")
+    lines = [a.get("name")] + ([a.get("zusatz")] if a.get("zusatz") else []) + [
+        " ".join(x for x in (a.get("strasse"), a.get("nr")) if x),
+        " ".join(x for x in (a.get("plz"), a.get("ort")) if x)]
+    if a.get("land") and a.get("land") != "CH":
+        lines.append(a["land"])
+    slip_meta = {**meta, "total": state["offen"]}
+    title = f"{entry['bezeichnung']} zu Rechnung {meta['nummer']}"
+    story = [_letterhead(book, width), Spacer(1, max(0, ADDRESS_TOP - TOP - 22 * mm)),
+             Table([[None, [P(l) for l in lines if l]]], colWidths=[width * 0.55, width * 0.45],
+                   style=[("LEFTPADDING", (0, 0), (-1, -1), 0)]),
+             Spacer(1, 14 * mm), P(title, "title"),
+             P(f"{s.adresse.get('ort') or ''}, {d(entry['datum'])}".strip(", "), "small"), Spacer(1, 6 * mm),
+             P(text), Spacer(1, 6 * mm)]
+    data = [["Rechnung", "Datum", "Fällig", f"Betrag {cur}"],
+            [meta["nummer"], d(meta["datum"]), d(meta["faellig"]), chf(state["total"])]]
+    if state.get("bezahlt"):
+        data.append(["Bereits bezahlt", "", "", "−" + chf(state["bezahlt"])])
+    if state.get("gutgeschrieben"):
+        data.append(["Gutschrift", "", "", "−" + chf(state["gutgeschrieben"])])
+    data.append([f"Offen, zahlbar bis {d(entry['frist'])}", "", "", chf(state["offen"])])
+    story.append(_grid(data, [width * 0.46, width * 0.17, width * 0.17, width * 0.20],
+                       total_rows=[len(data) - 1], right_cols=(3,)))
+    if meta.get("referenz"):
+        story += [Spacer(1, 3 * mm), P(f"Referenz {qr.format_reference(meta['referenz'])}", "small")]
+    story += [Spacer(1, 6 * mm), P("Freundliche Grüsse"), P(s.firma)]
+    buf = io.BytesIO()
+    doc = BaseDocTemplate(buf, pagesize=A4, leftMargin=SIDE, rightMargin=SIDE, topMargin=TOP, bottomMargin=BOTTOM,
+                          title=title, author=s.firma)
+
+    def slip(c, dd):
+        _footer(c, dd, "", y=SLIP_HEIGHT + 3 * mm, rule=False)
+        qr.draw_payment_slip(c, slip_meta, customer, s, s.get("sprache") or "de")
+
+    doc.addPageTemplates([PageTemplate("slip", [Frame(SIDE, SLIP_RESERVE, width, A4[1] - TOP - SLIP_RESERVE, 0, 0, 0, 0)],
+                                       onPage=slip)])
+    doc.build(story)
+    return buf.getvalue()
+
+
 # ---------- Payslip ----------
 
 def payslip_pdf(book: Book, meta: dict, emp: dict) -> bytes:

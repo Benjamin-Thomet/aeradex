@@ -452,6 +452,23 @@ async def debitoren(ui: UI, request: Request):
                      ocr=bool(erfassung.ocr_languages()), jev=jev.config(book))
 
 
+async def mahnungen_page(ui: UI, request: Request):
+    from .. import mahnungen
+    book = ui.book()
+    return ui.render(request, "mahnungen.html", book=book, rows=mahnungen.overdue(book), tab="mahnungen",
+                     today=date.today().isoformat(), frist=mahnungen.config(book)["frist_tage"])
+
+
+async def mahnungen_erstellen(ui: UI, request: Request):
+    f = await request.form()
+    nummern = f.getlist("nr")
+    if not nummern:
+        return fail("Keine Rechnung gewählt.")
+    frist = int(f.get("frist")) if (f.get("frist") or "").isdigit() else None
+    return await act(request, api.reminder_create, "/debitoren/mahnungen", ui.book(), nummern,
+                     f.get("datum") or None, frist)
+
+
 async def rechnung(ui: UI, request: Request):
     book = ui.book()
     nr = request.path_params["nr"]
@@ -464,7 +481,9 @@ async def rechnung(ui: UI, request: Request):
     pdf = meta["_pfad"].with_suffix(".pdf")
     if meta.get("extern") and meta.get("datei"):        # issued outside batzen: show the original
         pdf = book.root / meta["datei"]
+    from .. import mahnungen
     return ui.render(request, "rechnung.html", book=book, meta=meta, state=state, paid=paid,
+                     reminders=mahnungen.history(book, nr),
                      pdf=book.rel(pdf) if pdf.exists() else None, tab="rechnungen",
                      today=date.today().isoformat(), bank=book.settings.konto("bank"))
 
@@ -1379,6 +1398,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/debitoren/vorschau", h(rechnung_vorschau), methods=["POST"]),
         Route("/debitoren/zuordnen", h(zuordnen), methods=["POST"]),
         Route("/debitoren/offene-posten", h(offene_posten)),
+        Route("/debitoren/mahnungen", h(mahnungen_page)),
+        Route("/debitoren/mahnungen", h(mahnungen_erstellen), methods=["POST"]),
         Route("/debitoren/kunden", h(kunden)),
         Route("/debitoren/kunden/neu", h(kunde_speichern), methods=["POST"]),
         Route("/debitoren/kunden/{nr:str}", h(kunde_speichern), methods=["POST"]),

@@ -277,6 +277,17 @@ def run(book: Book) -> list[Issue]:
     if missing:
         add("hinweis", "belege", f"{len(missing)} Buchung(en) ohne Beleg-Datei, z.B. {', '.join(sorted(missing)[:5])}")
 
+    from . import mahnungen
+    try:
+        late = mahnungen.overdue(book)
+    except (FormatError, BookError):
+        late = []
+    if late:
+        due = [r["nummer"] for r in late if r["bereit"]]
+        add("hinweis", "debitoren", f"{len(late)} Rechnung(en) überfällig"
+            + (f", {len(due)} bereit für die nächste Mahnung ({', '.join(due[:4])}{' …' if len(due) > 4 else ''})"
+               if due else ""))
+
     from . import erfassung
     try:
         bill_drafts = erfassung.drafts(book)

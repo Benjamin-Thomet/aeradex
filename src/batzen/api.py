@@ -1223,3 +1223,27 @@ def invoice_external(book: Book, kunde: str, betrag, entwurf: str = "", **fields
 
 receipt_book = _locked(receipt_book)
 invoice_external = _locked(invoice_external)
+
+
+# ---------- Mahnwesen ----------
+
+def reminders(book: Book, as_of=None) -> list[dict]:
+    """Overdue invoices with the reminders sent and the next step."""
+    from . import mahnungen
+    return jsonable(mahnungen.overdue(book, parse_date(as_of, "datum") if as_of else None))
+
+
+def reminder_create(book: Book, nummern: list[str], datum=None, frist_tage: int | None = None) -> dict:
+    """Write the next reminder (PDF with QR-bill) for each invoice."""
+    from . import mahnungen
+    _guard(book)
+    made, touched = [], []
+    for nr in nummern:
+        entry, paths = mahnungen.create(book, nr, datum, frist_tage)
+        made.append({"rechnung": nr, **entry})
+        touched += paths
+    label = ", ".join(f"{m['rechnung']} ({m['bezeichnung']})" for m in made)
+    return _done(book, f"Mahnungen erstellt: {label}", touched, mahnungen=made)
+
+
+reminder_create = _locked(reminder_create)

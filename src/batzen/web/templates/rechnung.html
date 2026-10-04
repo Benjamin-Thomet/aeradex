@@ -30,6 +30,8 @@
         <tr class="total"><td>Offen</td><td class="right num">{{ state.offen|chf }}</td></tr>
       </tbody></table></div>
       {% if paid %}<div class="body"><span class="lbl">Buchungen</span>{% for r in paid %}<span class="small"><span class="beleg">{{ r.beleg }}</span> {{ r.datum|datum }} · {{ r.text }} · {{ r.betrag|chf }}</span>{% endfor %}</div>{% endif %}
+      {% if reminders %}<div class="body"><span class="lbl">Mahnungen</span>{% for m in reminders %}<span class="small"><a class="link" href="/datei/{{ m.pdf|urlq }}" target="_blank">{{ m.bezeichnung }}</a> vom {{ m.datum|datum }} · Frist {{ m.frist|datum }} · offen {{ m.offen|chf }}</span>{% endfor %}</div>
+      {% elif state.status in ('offen', 'teilbezahlt') and state.faellig < today %}<div class="body"><a class="btn small" href="/debitoren/mahnungen">Überfällig — mahnen</a></div>{% endif %}
     </div>
     {% if state.status in ('offen', 'teilbezahlt') %}
     {{ accounts_datalist([]) }}

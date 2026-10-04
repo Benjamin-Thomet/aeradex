@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, debitoren_nav %}
+{% block title %}Mahnungen{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Debitoren</h1><div class="sub">Überfällige Rechnungen · Zahlungserinnerung, 2. und 3. Mahnung mit QR-Zahlteil für den offenen Betrag</div></div>
+</div>
+{{ debitoren_nav(tab) }}
+<form class="panel" hx-post="/debitoren/mahnungen" hx-target="find .errors">
+  <header><h2>Überfällig</h2><span class="hint">ohne Gebühren und Zinsen — die braucht eine Grundlage in den AGB</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th></th><th>Rechnung</th><th>Kunde</th><th>Fällig</th><th class="right">Tage</th><th class="right">Offen</th><th>Bisher</th><th>Nächster Schritt</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr class="row">
+        <td>{% if r.bereit %}<input type="checkbox" name="nr" value="{{ r.nummer }}" checked aria-label="{{ r.nummer }} mahnen">{% endif %}</td>
+        <td><a class="beleg" href="/debitoren/rechnung/{{ r.nummer }}">{{ r.nummer }}</a></td><td>{{ r.name }}</td>
+        <td class="num">{{ r.faellig|datum }}</td><td class="right num">{{ r.tage }}</td><td class="right num">{{ r.offen|chf }}</td>
+        <td>{% for m in r.mahnungen %}<a class="pill muted" href="/datei/{{ m.pdf|urlq }}" target="_blank" title="Frist {{ m.frist|datum }}">{{ m.bezeichnung }} {{ m.datum|datum('%d.%m.') }}</a> {% else %}<span class="small muted">—</span>{% endfor %}</td>
+        <td>{% if r.naechste_stufe %}{{ r.naechste_bezeichnung }}{% if not r.bereit %} <span class="small muted">ab {{ r.ab|datum }}</span>{% endif %}{% else %}<span class="pill red">Betreibung prüfen</span>{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="8" class="empty">Keine überfälligen Rechnungen.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if rows|selectattr('bereit')|list %}
+  <div class="body">
+    <div class="form three">
+      <div class="field"><label for="m-d">Datum</label><input class="input" id="m-d" type="date" name="datum" value="{{ today }}"></div>
+      <div class="field"><label for="m-f">Frist (Tage)</label><input class="input num" id="m-f" name="frist" value="{{ frist }}"></div>
+    </div>
+    {{ errors() }}
+    <div class="formfoot"><span class="small muted">Erstellt je ein PDF mit QR-Zahlteil (gleiche Referenz wie die Rechnung) unter mahnungen/ — verschicken tust du sie.</span><button class="btn primary" type="submit">Mahnungen erstellen</button></div>
+  </div>
+  {% endif %}
+</form>
+{% endblock %}

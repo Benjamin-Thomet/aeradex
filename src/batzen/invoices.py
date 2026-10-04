@@ -210,7 +210,7 @@ def record_external(book: Book, kunde: str, betrag, datum=None, faellig=None, re
                     referenz: str = "", referenz_typ: str = "", konto: str = "", mwst: str = "",
                     datei: str = "", text: str = "") -> tuple[dict, list[Path]]:
     """Book an invoice that was issued outside batzen (Word, another program, by hand), so it
-    is an open item like any other: payments, bank matching, credit notes, reminders.
+    is an open item like any other: payments, bank matching, credit notes, Mahnungen.
     `betrag` is the gross total as on the invoice; with a MWST code the tax is taken out of it."""
     from . import mwst as vat
     from .journal import attach

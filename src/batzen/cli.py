@@ -270,6 +270,15 @@ def build_parser() -> argparse.ArgumentParser:
     c = ks.add_parser("entwurf-verwerfen", help="Entwurf verwerfen (Datei bleibt in der Inbox)")
     c.add_argument("id")
 
+    s = sub.add_parser("mahnung", help="Mahnwesen: überfällige Rechnungen und Mahnungen (PDF mit QR-Zahlteil)")
+    ms = s.add_subparsers(dest="sub", required=True)
+    c = ms.add_parser("list", help="überfällige Rechnungen")
+    c.add_argument("--datum")
+    c = ms.add_parser("erstellen", help="nächste Mahnstufe erstellen")
+    c.add_argument("nummern", nargs="+")
+    c.add_argument("--datum")
+    c.add_argument("--frist", type=int, help="Frist in Tagen (Standard 10)")
+
     s = sub.add_parser("eingang", help="Belegeingang: Quittungen, Lieferantenrechnungen, eigene Rechnungen einlesen")
     es = s.add_subparsers(dest="sub", required=True)
     c = es.add_parser("einlesen", help="Belege einlesen → Entwürfe (nichts wird gebucht)")
@@ -571,6 +580,10 @@ def dispatch(a, book_path: Path | None):
             return api.bill_draft_agent(b, a.id)
         if a.sub == "entwurf-verwerfen":
             return api.bill_draft_discard(b, a.id)
+    if c == "mahnung":
+        if a.sub == "list":
+            return api.reminders(book(), a.datum)
+        return api.reminder_create(book(), a.nummern, a.datum, a.frist)
     if c == "eingang":
         from . import erfassung
         b = book()
@@ -727,6 +740,13 @@ def render(cmd: str, sub: str | None, result) -> str:
         out.append(f"  {'Zahllast' if Decimal(result['zahllast']) >= 0 else 'Guthaben':<19}{_fmt(abs(Decimal(result['zahllast']))):>14}"
                    + ("   (gebucht)" if result["gebucht"] else ""))
         return "\n".join(out)
+    if cmd == "mahnung" and sub == "list" and isinstance(result, list):
+        if not result:
+            return "Keine überfälligen Rechnungen."
+        return _table([{**r, "stand": r["letzte"]["bezeichnung"] if r["letzte"] else "—",
+                        "naechste": r["naechste_bezeichnung"] + ("" if r["bereit"] else f" ab {r['ab']}")} for r in result],
+                      [("nummer", "Rechnung"), ("name", "Kunde"), ("faellig", "Fällig"), ("tage", "Tage"),
+                       ("offen", "Offen"), ("stand", "Gemahnt"), ("naechste", "Nächster Schritt")], right=("tage", "offen"))
     if cmd in ("kreditor", "eingang") and sub in ("einlesen", "entwuerfe", "list") and isinstance(result, list):
         if not result:
             return "Keine Entwürfe."
