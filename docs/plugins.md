@@ -225,7 +225,7 @@ Kommandozeile: `batzen plugins katalog`.
 ```bash
 batzen plugins installieren revolut --ungeprueft      # zum Prüfen installieren
 # Code lesen: Was tut das Plugin, schreibt es nur über api.write, sendet es Daten nach aussen?
-batzen plugins pruefen revolut --von "Benjamin Thomet"  # Tests laufen, Fingerabdruck in den Katalog
+batzen plugins pruefen revolut --von "Anna Muster"  # Tests laufen, Fingerabdruck in den Katalog
 batzen plugins zurueckziehen revolut                  # Prüfung zurücknehmen
 ```
 

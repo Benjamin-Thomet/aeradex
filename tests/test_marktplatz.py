@@ -48,9 +48,9 @@ def test_review_records_fingerprint_and_watches_the_code(tmp_path, katalog):
     book = make_book(tmp_path / "b", plugins=["testplug"])
     e = marktplatz.entries(book)[0]
     assert not e["geprueft"] and e["rechte"] == ["eigene Prüfregeln"]
-    reviewed = marktplatz.review("testplug", "Benjamin Thomet", tests=False)
+    reviewed = marktplatz.review("testplug", "Anna Muster", tests=False)
     assert reviewed["status"] == "geprüft" and reviewed["pruefung"]["sha256"] == marktplatz.tree_hash(pkg)
-    assert json.loads(path.read_text())["plugins"][0]["pruefung"]["von"] == "Benjamin Thomet"
+    assert json.loads(path.read_text())["plugins"][0]["pruefung"]["von"] == "Anna Muster"
     e = marktplatz.entries(book)[0]
     assert e["geprueft"] and e["code"] == "unverändert"
     assert not [i for i in check.run(Book(book.root)) if "nicht der geprüfte" in i.message]

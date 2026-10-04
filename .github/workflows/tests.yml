@@ -1,0 +1,57 @@
+# Alle Tests bei jedem Push und Pull Request, auf jeder unterstützten Python-Version.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: OCR (Tesseract mit Deutsch, Französisch, Italienisch)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu tesseract-ocr-fra tesseract-ocr-ita
+      - name: batzen und die Plugins installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[ui,mcp,dev,scan]"
+          for p in plugins/batzen-*; do pip install -e "$p"; done
+          pip install -e plugins/vorlage
+      - name: git-Identität für die Testbücher
+        run: |
+          git config --global user.name "batzen CI"
+          git config --global user.email "ci@example.org"
+      - name: Tests
+        run: pytest -q
+
+  build:
+    # Prüft, dass sich alle Pakete bauen lassen und ihre Daten enthalten.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install build
+      - run: |
+          python -m build --outdir dist .
+          for p in plugins/batzen-*; do python -m build --outdir dist "$p"; done
+      - name: Paketdaten vorhanden
+        run: |
+          unzip -l dist/batzen-*.whl | grep -q "data/plugin_katalog.json"
+          unzip -l dist/batzen-*.whl | grep -q "web/templates/journal.html"
+          unzip -l dist/batzen-*.whl | grep -q "data/forms/lohnausweis_form11_de.pdf"
+          unzip -l dist/batzen_anlagen-*.whl | grep -q "templates/anlagen.html"

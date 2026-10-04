@@ -5,6 +5,12 @@ Die erste agentenorientierte Open-Source-Buchhaltung für die Schweiz: Finanzbuc
 
 > *Batzen*: alte Schweizer Münze, und auf Schweizerdeutsch einfach Geld («e Batze Gäld»).
 
+> **Vorschau — ohne Gewähr.** batzen ist neu und noch nicht in breitem produktivem Einsatz. Prüfe die Zahlen
+> selbst, bevor du dich darauf verlässt — besonders Lohn (Sozialversicherungssätze, Quellensteuer), MWST-Ziffern
+> und Abschreibungssätze — und lass den Jahresabschluss von einer Fachperson ansehen. Die Software steht unter der
+> AGPL und wird ohne jede Gewährleistung bereitgestellt (siehe [LICENSE](LICENSE)). Lohnmeldungen über ELM
+> (Swissdec) sind nicht möglich: dafür braucht es eine Zertifizierung durch Swissdec.
+
 ---
 
 ## Warum noch eine Buchhaltung?
@@ -76,7 +82,7 @@ Tastatur: `N` neue Buchung, `/` Suche, `A` Agent, `⌘/Ctrl+Enter` Formular abse
 ### Auf dem eigenen Server (mit Login)
 
 ```bash
-batzen user add benjamin --rolle admin --anzeige "Benjamin Thomet"
+batzen user add anna --rolle admin --anzeige "Anna Muster"
 batzen user add treuhand --rolle lesen
 batzen --buch /srv/buecher/muster serve --port 8080 --https     # hinter Caddy/nginx mit HTTPS
 ```

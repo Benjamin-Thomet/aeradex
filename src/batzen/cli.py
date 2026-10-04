@@ -400,7 +400,7 @@ def build_parser() -> argparse.ArgumentParser:
             c.add_argument("name")
         if name == "add":
             c.add_argument("--rolle", choices=["lesen", "buchhaltung", "admin"], default="buchhaltung")
-            c.add_argument("--anzeige", default="", help="Name im Änderungsverlauf, z.B. 'Benjamin Thomet'")
+            c.add_argument("--anzeige", default="", help="Name im Änderungsverlauf, z.B. 'Anna Muster'")
         if name in ("add", "passwort"):
             c.add_argument("--passwort-stdin", action="store_true", help="Passwort von stdin lesen (für Skripte)")
     s = sub.add_parser("ui", help="Oberfläche im Browser starten (lokal)")

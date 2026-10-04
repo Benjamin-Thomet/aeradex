@@ -1,0 +1,49 @@
+# Veröffentlichung auf PyPI — nur von Hand gestartet (Actions → Release → Run workflow)
+# und erst nach Freigabe in der Umgebung «pypi» (Repository-Einstellungen → Environments →
+# pypi → Required reviewers). Ohne Passwort oder Token: PyPI «Trusted Publishing» für dieses
+# Repository und diesen Workflow einrichten (pypi.org → Account → Publishing).
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      paket:
+        description: "Welches Paket veröffentlichen"
+        required: true
+        type: choice
+        options: [batzen, batzen-anlagen, batzen-revolut, batzen-kontenplan-verein]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Ordner des Pakets
+        id: pfad
+        run: |
+          if [ "${{ inputs.paket }}" = "batzen" ]; then echo "dir=." >> "$GITHUB_OUTPUT"; else echo "dir=plugins/${{ inputs.paket }}" >> "$GITHUB_OUTPUT"; fi
+      - run: pip install build
+      - run: python -m build --outdir dist "${{ steps.pfad.outputs.dir }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write          # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

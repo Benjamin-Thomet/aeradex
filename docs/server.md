@@ -26,7 +26,7 @@
 # als eigener Systembenutzer, z.B. "batzen"
 python3 -m venv ~/venv && ~/venv/bin/pip install "batzen[ui,scan] @ git+https://github.com/…/batzen"
 git clone <repo-des-buchs> ~/buecher/muster       # oder: batzen init ~/buecher/muster --firma …
-~/venv/bin/batzen user add benjamin --rolle admin --anzeige "Benjamin Thomet"
+~/venv/bin/batzen user add anna --rolle admin --anzeige "Anna Muster"
 ~/venv/bin/batzen user add treuhand --rolle lesen --anzeige "Treuhand Muster"
 ~/venv/bin/batzen --buch ~/buecher/muster serve --port 8080 --https
 ```
