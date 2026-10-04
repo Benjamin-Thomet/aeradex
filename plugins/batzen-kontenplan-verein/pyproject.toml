@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "batzen-kontenplan-verein"
+version = "0.1.0"
+description = "Kontenplan für Schweizer Vereine (Art. 60 ff. ZGB) — Datenplugin für batzen"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+dependencies = ["batzen>=0.6"]
+
+[project.entry-points."batzen.plugins"]
+kontenplan-verein = "batzen_kontenplan_verein"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+batzen_kontenplan_verein = ["*.yaml"]

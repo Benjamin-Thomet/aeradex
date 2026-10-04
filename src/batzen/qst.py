@@ -43,12 +43,22 @@ def parse_code(code: str) -> tuple[str, int, str]:
     return family, children, kist
 
 
+def _dirs() -> list[Path]:
+    """Built-in tables plus those of installed plugins (e.g. other cantons)."""
+    try:
+        from . import plugins
+        return [TARIF_DIR] + [d for d in plugins.qst_dirs() if d != TARIF_DIR]
+    except ImportError:          # pluggy missing: built-in tables only
+        return [TARIF_DIR]
+
+
 @lru_cache(maxsize=None)
 def _table(kanton: str, jahr: int) -> dict:
-    path = TARIF_DIR / f"{kanton.upper()}-{jahr}.json"
-    if not path.exists():
-        raise UnknownTariff(f"Keine Tariftabelle für {kanton.upper()} {jahr}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    for folder in _dirs():
+        path = folder / f"{kanton.upper()}-{jahr}.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    raise UnknownTariff(f"Keine Tariftabelle für {kanton.upper()} {jahr}")
 
 
 @lru_cache(maxsize=None)
@@ -71,11 +81,11 @@ def _uppers(kanton: str, jahr: int, family: str, kist: str) -> tuple[int, ...]:
 
 def available() -> list[tuple[str, int]]:
     """Every (Kanton, Jahr) that has a table on file, newest year first."""
-    found = []
-    for path in TARIF_DIR.glob("*-*.json"):
+    found = set()
+    for path in [p for folder in _dirs() for p in folder.glob("*-*.json")]:
         kanton, _, jahr = path.stem.partition("-")
         if jahr.isdigit():
-            found.append((kanton.upper(), int(jahr)))
+            found.add((kanton.upper(), int(jahr)))
     return sorted(found, key=lambda kj: (kj[0], -kj[1]))
 
 

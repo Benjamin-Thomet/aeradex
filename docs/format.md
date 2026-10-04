@@ -25,7 +25,12 @@ konten:                       # Systemkonten
   jahresergebnis: '2979'
   dividende: '2261'
   reserve: '2950'
+plugins: [revolut]          # optional: Plugins, die dieses Buch braucht (siehe docs/plugins.md)
 ```
+
+Steht ein Plugin unter `plugins:`, das nicht installiert ist, meldet `batzen check` einen Fehler — Buchungen, die
+dem Plugin gehören, könnten sonst nicht geprüft werden. Plugin-Einstellungen stehen unter dem Plugin-Namen
+(z.B. `revolut: {konten: {CHF: "1022"}}`).
 
 ## kontenplan.yaml
 

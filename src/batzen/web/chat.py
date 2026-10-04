@@ -201,7 +201,7 @@ class BaseAgent:
         agents_md = self.root / "AGENTS.md"
         if agents_md.exists():
             book_rules = agents_md.read_text(encoding="utf-8")
-        return (tools.INSTRUCTIONS + "\n\nDu arbeitest in der batzen-Oberfläche; der Mensch sieht deine "
+        return (tools.instructions_for(self.root) + "\n\nDu arbeitest in der batzen-Oberfläche; der Mensch sieht deine "
                 "Vorschläge sofort unter «Prüfen». Antworte knapp auf Deutsch (Schweizer Schreibweise, kein ß), "
                 "nenne Belegnummern und Beträge, die die Tools zurückgeben.\n\n" + book_rules)
 
@@ -223,7 +223,7 @@ class Agent(BaseAgent):
         from anthropic import beta_tool
 
         wrapped = []
-        for fn in tools.SHARED + tools.CHAT_ONLY:
+        for fn in tools.shared_for(self.root) + tools.CHAT_ONLY:
             @functools.wraps(fn)
             def call(*args, __fn=fn, **kwargs):
                 self.emit(events, {"type": "tool", "text": describe_call(__fn.__name__, kwargs)})

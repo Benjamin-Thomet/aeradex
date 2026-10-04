@@ -213,10 +213,13 @@ def _match_existing(book: Book, konto: str, amount: Decimal, when: date, taken: 
 
 
 def import_file(book: Book, source: Path) -> tuple[dict, list[Path]]:
-    """Import a camt.053 file: store it, record its transactions, book or reconcile what matches."""
-    from . import invoices, kreditoren
+    """Import a statement (camt.053 or a format from a plugin): store it, record its
+    transactions, book or reconcile what matches."""
+    from . import invoices, kreditoren, plugins
     data = Path(source).read_bytes()
-    statements = parse(data)
+    fmt = plugins.bank_format_for(book, Path(source).name, data)
+    statements = fmt.parse(data, book)
+    suffix = Path(source).suffix.lower() or (fmt.suffixes[0] if fmt.suffixes else "")
     existing = transactions(book)
     known = {r["ID"] for r in existing}
     taken = _linked_belege(existing)
@@ -224,15 +227,19 @@ def import_file(book: Book, source: Path) -> tuple[dict, list[Path]]:
     touched: list[Path] = []
     summary = {"auszuege": [], "neu": 0, "doppelt": 0, "gebucht": 0, "abgeglichen": 0, "offen": 0}
     for stmt in statements:
-        konto = ledger_account(book, stmt["iban"])
+        konto = str(stmt.get("konto") or "") or ledger_account(book, stmt.get("iban", ""))
+        acct = book.account(konto)
+        if acct.is_foreign:
+            raise BookError(f"Konto {konto} führt {acct.waehrung}: Bankimport für Fremdwährungskonten folgt noch — "
+                            "Bewegungen bitte im Journal mit Währung buchen")
         year = (stmt["bis"] or (stmt["buchungen"][0]["datum"].isoformat() if stmt["buchungen"] else date.today().isoformat()))[:4]
         safe_id = re.sub(r"[^A-Za-z0-9._-]", "_", stmt["id"])[:60] or hashlib.sha1(data).hexdigest()[:10]
-        target = book.root / "bank" / "auszuege" / year / f"{safe_id}.xml"
+        target = book.root / "bank" / "auszuege" / year / f"{safe_id}{suffix}"
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.exists():
             shutil.copy(source, target)
             touched.append(target)
-        summary["auszuege"].append({"id": stmt["id"], "iban": stmt["iban"], "konto": konto,
+        summary["auszuege"].append({"id": stmt["id"], "iban": stmt.get("iban", ""), "konto": konto, "format": fmt.name,
                                     "schluss": stmt["schluss"], "schluss_datum": stmt["schluss_datum"]})
         for e in stmt["buchungen"]:
             tid = _tx_id(stmt["id"], e)
@@ -371,16 +378,20 @@ def reconciliation(book: Book) -> list[dict]:
     for r in transactions(book):
         if r["Status"] == "offen":
             open_by_konto[(r["Konto"], r["Datum"])] += parse_amount(r["Betrag"])
-    for path in sorted(folder.glob("*/*.xml")) if folder.exists() else []:
+    from . import plugins
+    for path in sorted(folder.glob("*/*")) if folder.exists() else []:
+        if not path.is_file():
+            continue
         try:
-            statements = parse(path.read_bytes())
+            data = path.read_bytes()
+            statements = plugins.bank_format_for(book, path.name, data).parse(data, book)
         except BookError:
             continue
         for stmt in statements:
             if stmt["schluss"] is None or not stmt["schluss_datum"]:
                 continue
             try:
-                konto = ledger_account(book, stmt["iban"])
+                konto = str(stmt.get("konto") or "") or ledger_account(book, stmt.get("iban", ""))
             except BookError:
                 continue
             when = parse_date(stmt["schluss_datum"])

@@ -75,9 +75,13 @@ def init_book(path: Path, firma: str, jahr: int | None = None, kontenplan: str =
     if (root / "batzen.yaml").exists():
         raise BookError(f"{root} enthält bereits ein Buch")
     root.mkdir(parents=True, exist_ok=True)
-    template = DATA / "kontenplaene" / f"{kontenplan}.yaml"
-    if not template.exists():
-        raise BookError(f"Kontenplan-Vorlage '{kontenplan}' unbekannt")
+    from . import plugins
+    templates = plugins.kontenplaene()
+    if kontenplan not in templates:
+        raise BookError(f"Kontenplan-Vorlage '{kontenplan}' unbekannt (vorhanden: {', '.join(sorted(templates))})")
+    template = templates[kontenplan]
+    from .files import read_yaml as _read
+    system_overrides = {k: str(v) for k, v in ((_read(template) or {}).get("systemkonten") or {}).items()}
     data = {
         "firma": firma, "rechtsform": rechtsform, "uid": settings.get("uid", ""),
         "adresse": {"strasse": settings.get("strasse", ""), "nr": settings.get("nr", ""),
@@ -90,7 +94,7 @@ def init_book(path: Path, firma: str, jahr: int | None = None, kontenplan: str =
         "agent_modus": "vorschlag",
         "konten": {"bank": "1020", "debitoren": "1100", "ertrag": "3400", "gutschrift": "3800",
                    "gewinnvortrag": "2970", "jahresergebnis": "2979", "dividende": "2261",
-                   "reserve": "2950"},
+                   "reserve": "2950", **system_overrides},
     }
     write_yaml(root / "batzen.yaml", data)
     shutil.copy(template, root / "kontenplan.yaml")
@@ -1042,3 +1046,61 @@ for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_v
     globals()[_name] = _locked(globals()[_name])
 
 fx_revalue = _locked(fx_revalue)
+
+
+# ---------- plugins ----------
+
+def plugin_list(book: Book | None = None) -> list[dict]:
+    from . import plugins
+    return plugins.describe(book)
+
+
+def plugin_enable(book: Book, name: str) -> dict:
+    """Switch a plugin on for this book (it must be installed)."""
+    from . import plugins
+    _guard(book)
+    plugin = plugins.installed().get(name)
+    if plugin is None:
+        raise BookError(f"Plugin '{name}' ist nicht installiert (pip install batzen-{name}); "
+                        f"installiert: {', '.join(sorted(plugins.installed())) or 'keine'}")
+    if not plugin.ok:
+        raise BookError(f"Plugin '{name}' kann nicht laufen: {plugin.fehler}")
+    names = list(plugins.enabled_names(book))
+    if name in names:
+        raise BookError(f"Plugin '{name}' ist bereits eingeschaltet")
+    book.settings.data["plugins"] = names + [name]
+    book.save_settings()
+    return _done(book, f"Plugin {name} eingeschaltet", [book.root / "batzen.yaml"])
+
+
+def plugin_disable(book: Book, name: str) -> dict:
+    """Switch a plugin off. Refused while journal rows still belong to its documents."""
+    from . import plugins
+    names = list(plugins.enabled_names(book))
+    if name not in names:
+        raise BookError(f"Plugin '{name}' ist nicht eingeschaltet")
+    plugin = plugins.installed().get(name)
+    mine = ({src.prefix for src in plugin.module.batzen_sources() or []}
+            if plugin and plugin.ok and hasattr(plugin.module, "batzen_sources") else set())
+    used = sorted({r.quelle for r in book.rows if r.quelle.partition(":")[0] in mine})
+    if used:
+        raise BookError(f"Plugin '{name}' besitzt noch Journalzeilen ({', '.join(used[:3])} …) — "
+                        "erst diese Dokumente stornieren")
+    book.settings.data["plugins"] = [n for n in names if n != name]
+    book.save_settings()
+    return _done(book, f"Plugin {name} ausgeschaltet", [book.root / "batzen.yaml"])
+
+
+def write(book: Book, message: str, fn, *args, **kwargs) -> dict:
+    """The one way for a plugin to change a book: the book must be valid before,
+    `fn(book, *args, **kwargs)` returns the paths it touched (or a tuple
+    (result, paths)), then the book is checked and committed — or the change is refused."""
+    _guard(book)
+    out = fn(book, *args, **kwargs)
+    result, paths = (out if isinstance(out, tuple) and len(out) == 2 else (None, out))
+    return _done(book, message, list(paths or []), **({"ergebnis": result} if result is not None else {}))
+
+
+plugin_enable = _locked(plugin_enable)
+plugin_disable = _locked(plugin_disable)
+write = _locked(write)

@@ -1,0 +1,11 @@
+# Mini-Kontenplan für Plugin-Tests
+systemkonten: {ertrag: "3600"}
+konten:
+- {nr: "1020", name: Bank, klasse: aktiv}
+- {nr: "1100", name: Forderungen, klasse: aktiv}
+- {nr: "2000", name: Verbindlichkeiten, klasse: passiv}
+- {nr: "2800", name: Kapital, klasse: passiv}
+- {nr: "2970", name: Vortrag, klasse: passiv}
+- {nr: "2979", name: Jahresergebnis, klasse: passiv}
+- {nr: "3600", name: Spenden, klasse: ertrag}
+- {nr: "6500", name: Verwaltung, klasse: aufwand}

@@ -624,3 +624,28 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           create_payment_run, bank_transactions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
           book_bank_transaction, employees, payroll_run, payslip, close_payslip, lohnausweis]
 CHAT_ONLY = [read_inbox_file]
+
+# Public names for plugin tools: wrap an api function so errors come back as {"ok": False, …}.
+call = _call
+direct = _direct
+
+
+def _plugin_book(root: Path | None) -> Book | None:
+    try:
+        return Book(root) if root else book()
+    except BookError:
+        return None
+
+
+def shared_for(root: Path | None = None) -> list:
+    """The built-in tools plus those of the plugins the book enables."""
+    from . import plugins
+    names = {fn.__name__ for fn in SHARED + CHAT_ONLY}
+    extra = [fn for fn in plugins.agent_tools(_plugin_book(root)) if fn.__name__ not in names]
+    return SHARED + extra
+
+
+def instructions_for(root: Path | None = None) -> str:
+    from . import plugins
+    more = plugins.agent_instructions(_plugin_book(root))
+    return INSTRUCTIONS + (f"\nPlugins dieses Buchs:\n{more}\n" if more else "")

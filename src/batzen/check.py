@@ -52,6 +52,9 @@ def run(book: Book) -> list[Issue]:
         return [Issue("fehler", "batzen.yaml", str(exc))]
     if not s.firma:
         add("fehler", "batzen.yaml", "firma fehlt")
+    from . import plugins
+    for problem in plugins.problems(book):
+        add("fehler", "batzen.yaml", problem)
     if s.get("iban") and iban_problem(normalize_iban(s.get("iban"))):
         add("warnung", "batzen.yaml", f"IBAN: {iban_problem(normalize_iban(s.get('iban')))}")
     try:
@@ -192,12 +195,30 @@ def run(book: Book) -> list[Issue]:
             if actual:
                 add("fehler", where, "Entwurf hat Buchungen im Journal")
             add("hinweis", where, "Lohnabrechnung ist noch ein Entwurf")
+    plugin_sources = plugins.sources(book)
     for quelle, group in owned.items():
         if quelle.startswith("lohn:") and quelle not in known:
             add("fehler", group[0].where, f"Quelle {quelle}: Lohnabrechnung existiert nicht")
         if quelle.partition(":")[0] not in ("rechnung", "zahlung", "gutschrift", "lohn", "abschluss", "mwst",
-                                             "kreditor", "kzahlung", "bewertung"):
-            add("warnung", group[0].where, f"unbekannte Quelle '{quelle}'")
+                                             "kreditor", "kzahlung", "bewertung", *plugin_sources):
+            add("warnung", group[0].where, f"unbekannte Quelle '{quelle}' (fehlt ein Plugin?)")
+
+    # ---- documents of plugins own their rows like invoices do ----
+    for prefix, src in plugin_sources.items():
+        try:
+            expected = src.rows(book) or {}
+        except (BookError, FormatError) as exc:
+            add("fehler", prefix, f"{src.label}: {exc}")
+            continue
+        mine = {q: g for q, g in owned.items() if q.partition(":")[0] == prefix}
+        for quelle in sorted(set(expected) | set(mine)):
+            want, have = expected.get(quelle, []), mine.get(quelle, [])
+            if Counter(map(_key, want)) != Counter(map(_key, have)):
+                where = have[0].where if have else prefix
+                add("fehler", where, f"{src.label} {quelle.partition(':')[2]}: Journalbuchung passt nicht zum Dokument "
+                    f"(erwartet {len(want)} Zeile(n), gefunden {len(have)})")
+    for f in plugins.check_findings(book, rows):
+        add(f.level if f.level in ("fehler", "warnung", "hinweis") else "fehler", f.where, f.message)
 
     # ---- kreditoren ----
     from . import kreditoren as kred

@@ -221,9 +221,24 @@ Das genaue Dateiformat steht in [docs/format.md](docs/format.md).
 
 Die Fachlogik (Saldenmotor mit Jahresverkettung, OR-Gliederung, Lohnberechnung inkl. Quellensteuer nach KS 45, Swiss QR-Bill, Lohnausweis) stammt aus der produktiv genutzten internen Buchhaltung von Thomet GmbH und wurde gegen deren echte Zahlen geprüft: Bilanz, Erfolgsrechnung und Lohnabrechnungen stimmen auf den Rappen.
 
+## Plugins und Mitmachen
+
+batzen ist Community-getragen. Was nicht in den Kern gehört — eine weitere Bank, ein Kanton, ein Kontenplan, ein
+Export — kommt als Plugin, ein gewöhnliches Python-Paket:
+
+```bash
+pip install batzen-revolut && batzen plugins ein revolut
+batzen init ~/buecher/turnverein --firma "Turnverein Muster" --kontenplan verein   # mit batzen-kontenplan-verein
+```
+
+Plugins schreiben nur über die Prüfung von batzen; Buchungen, die ihnen gehören, prüft `batzen check` wie
+Rechnungen und Lohn; ein Buch ohne ein Plugin, das es braucht, ist ungültig statt still unvollständig.
+Bauen: [docs/plugins.md](docs/plugins.md) und die Vorlage unter `plugins/vorlage`. Verzeichnis und Wunschliste:
+[PLUGINS.md](PLUGINS.md). Beitragen: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Stand und Roadmap
 
-v0.4: Finanzbuchhaltung, MWST mit eMWST-Export (eCH-0217), Bankimport camt.053 mit automatischem Abgleich, Fremdwährungskonten mit BAZG-Tageskursen und Stichtagsbewertung, Debitoren mit QR-Rechnung, Kreditoren mit QR-Scan und pain.001, Lohn, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit eingebautem Agenten, lokal oder als Server mit Login.
+v0.4: Finanzbuchhaltung, MWST mit eMWST-Export (eCH-0217), Bankimport camt.053 mit automatischem Abgleich, Fremdwährungskonten mit BAZG-Tageskursen und Stichtagsbewertung, Plugin-System (v0.6), Debitoren mit QR-Rechnung, Kreditoren mit QR-Scan und pain.001, Lohn, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit eingebautem Agenten, lokal oder als Server mit Login.
 
 Als Nächstes:
 - Rechnungen, Kreditoren und pain.001 in Fremdwährung; camt.053 für Fremdwährungskonten

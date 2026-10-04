@@ -330,7 +330,33 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("ui", help="Oberfläche im Browser starten (lokal)")
     s.add_argument("--port", type=int, default=5151)
     s.add_argument("--kein-browser", action="store_true", help="Browser nicht automatisch öffnen")
+
+    s = sub.add_parser("plugins", help="Plugins anzeigen, ein- und ausschalten")
+    ps = s.add_subparsers(dest="sub")
+    ps.add_parser("list", help="installierte Plugins (Standard)")
+    for name, text in (("ein", "für dieses Buch einschalten"), ("aus", "für dieses Buch ausschalten")):
+        c = ps.add_parser(name, help=text)
+        c.add_argument("name")
+    _plugin_commands(sub)
     return p
+
+
+def _plugin_commands(sub) -> None:
+    """Commands contributed by installed plugins; a name batzen already uses is skipped."""
+    try:
+        from . import plugins
+        found = plugins.commands()
+    except ImportError:
+        return
+    taken = set(sub.choices)
+    for name, (plugin, cmd) in found.items():
+        if name in taken:
+            continue
+        parser = sub.add_parser(name, help=f"{cmd.help} [Plugin {plugin}]")
+        try:
+            cmd.setup(parser)
+        except Exception as exc:  # a broken plugin must not break the CLI
+            parser.description = f"Plugin-Fehler: {exc}"
 
 
 def dispatch(a, book_path: Path | None):
@@ -338,6 +364,25 @@ def dispatch(a, book_path: Path | None):
         return Book(find_root(book_path))
 
     c = a.cmd
+    if c == "plugins":
+        if a.sub == "ein":
+            return api.plugin_enable(book(), a.name)
+        if a.sub == "aus":
+            return api.plugin_disable(book(), a.name)
+        try:
+            return api.plugin_list(book())
+        except BookError:
+            return api.plugin_list(None)
+    from . import plugins
+    plugin_cmds = plugins.commands()
+    if c in plugin_cmds:
+        name, cmd = plugin_cmds[c]
+        if not cmd.needs_book:
+            return cmd.run(None, a)
+        b = book()
+        if name not in plugins.enabled_names(b):
+            raise BookError(f"Plugin '{name}' ist für dieses Buch nicht eingeschaltet (batzen plugins ein {name})")
+        return cmd.run(b, a)
     if c == "init":
         fields = {f: getattr(a, f) for f in ("uid", "strasse", "nr", "plz", "ort", "iban", "telefon", "email")}
         return api.init_book(Path(a.ordner), a.firma, a.jahr, a.kontenplan, a.rechtsform,
@@ -582,6 +627,19 @@ def render(cmd: str, sub: str | None, result) -> str:
             out.append(f"  Ziffer {key:<12}{_fmt(z[key]):>14}")
         out.append(f"  {'Zahllast' if Decimal(result['zahllast']) >= 0 else 'Guthaben':<19}{_fmt(abs(Decimal(result['zahllast']))):>14}"
                    + ("   (gebucht)" if result["gebucht"] else ""))
+        return "\n".join(out)
+    if cmd == "plugins" and isinstance(result, list):
+        if not result:
+            return "Keine Plugins installiert. Plugins sind Python-Pakete: pip install batzen-<name>"
+        out = []
+        for r in result:
+            mark = ("✗" if not r["ok"] else "◆" if r["nur_daten"] else "●" if r["eingeschaltet"] else "○")
+            out.append(f"{mark} {r['name']:<20} {r['version']:<8} {r['beschreibung']}")
+            if r["fehler"]:
+                out.append(f"    ✗ {r['fehler']}")
+            elif r["hooks"]:
+                out.append(f"    {', '.join(r['hooks'])}")
+        out.append("\n● eingeschaltet  ○ installiert, für dieses Buch aus  ◆ nur Daten (immer verfügbar)  ✗ Problem")
         return "\n".join(out)
     if isinstance(result, dict) and set(result) == {"pdf"}:
         return f"PDF {result['pdf']}"

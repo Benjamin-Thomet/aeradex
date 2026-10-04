@@ -17,12 +17,15 @@ except ImportError:  # mcp 1.x
 
 from . import tools
 
-server = MCPServer("batzen", instructions=tools.INSTRUCTIONS)
-for fn in tools.SHARED:
-    server.tool()(fn)
+def build_server():
+    """The tools of batzen plus those of the plugins the book enables."""
+    server = MCPServer("batzen", instructions=tools.instructions_for())
+    for fn in tools.shared_for():
+        server.tool()(fn)
+    return server
 
 
 def serve() -> None:
     from . import gitlog
     os.environ.setdefault("BATZEN_AUTHOR", gitlog.AGENT_AUTHOR)
-    server.run("stdio")
+    build_server().run("stdio")

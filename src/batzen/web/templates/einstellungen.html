@@ -94,6 +94,25 @@
   </form>
 </div>
 
+<div class="panel" id="plugins">
+  <header><h2>Plugins</h2><span class="hint">Erweiterungen der Community · <code>pip install batzen-…</code></span></header>
+  {% if plugin_rows %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Plugin</th><th>Was es beiträgt</th><th class="right"></th></tr></thead>
+    <tbody>{% for p in plugin_rows %}
+      <tr class="row"><td><strong>{{ p.name }}</strong> <span class="small muted">{{ p.version }}</span><br><span class="small">{{ p.beschreibung }}</span></td>
+        <td class="small muted">{% if p.fehler %}<span class="pill warn">{{ p.fehler }}</span>{% else %}{{ p.hooks|join(", ") }}{% endif %}</td>
+        <td class="right">
+          {% if p.nur_daten %}<span class="pill muted" title="Vorlagen und Tabellen sind immer verfügbar">Daten</span>
+          {% elif p.eingeschaltet %}<form hx-post="/einstellungen/plugins/aus" hx-target="find .errors" hx-confirm="Plugin {{ p.name }} für dieses Buch ausschalten?"><input type="hidden" name="name" value="{{ p.name }}"><span class="pill ok">ein</span> <button class="btn small" type="submit">Ausschalten</button>{{ errors() }}</form>
+          {% elif p.ok %}<form hx-post="/einstellungen/plugins/ein" hx-target="find .errors"><input type="hidden" name="name" value="{{ p.name }}"><button class="btn small primary" type="submit">Einschalten</button>{{ errors() }}</form>{% endif %}
+        </td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="body"><p class="small muted">Keine Plugins installiert. Plugins sind Python-Pakete, z.B. <code>pip install batzen-revolut</code>; danach erscheinen sie hier.</p></div>{% endif %}
+  <div class="body"><p class="small muted">Installiert heisst nicht eingeschaltet: ein Plugin wirkt erst in einem Buch, das es einschaltet, und schreibt nur über die Prüfung von batzen. Plugins sind Programmcode — nur aus vertrauenswürdigen Quellen installieren.</p></div>
+</div>
+
 <div class="panel" id="pruefung">
   <header><h2>Prüfung des Buchs</h2><span class="hint">batzen check</span></header>
   {% if issues %}<ul class="todo">{% for i in issues %}<li><a href="#pruefung"><span class="stripe {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}"></span><div><div class="t">{{ i.message }}</div><div class="d">{{ i.where }}</div></div><span class="pill {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}">{{ i.level }}</span></a></li>{% endfor %}</ul>

@@ -20,6 +20,10 @@ This file is for developing batzen itself. Agents *operating a book* read the
   Templates are Jinja in `web/templates/`, styles in `web/static/batzen.css` (tokens at the top, light + dark).
 - `web/auth.py`: server mode (`batzen serve`): users outside the book, scrypt hashes, signed session cookies,
   roles, login throttle. The middleware in `web/app.py` sets the git author per request.
+- `plugins.py`: plugin API (pluggy hooks, discovery via entry points `batzen.plugins`, per-book activation in
+  `batzen.yaml → plugins`). `builtin.py` provides the core's own data and the camt.053 format through the same hooks.
+  `testing.py`: helpers for plugin tests. Example plugins and the template live in `plugins/`; docs in `docs/plugins.md`.
+  When a feature could be a plugin (a bank, a canton, an export), prefer a plugin over growing the core.
 - `bank.py` (camt.053 import, matching, reconciliation), `kreditoren.py` (QR scan, pain.001), `mwst.py` (incl. eCH-0217).
 - Writes are serialised by a lock file (`.batzen/write.lock`) so UI, CLI, MCP and chat never interleave.
 

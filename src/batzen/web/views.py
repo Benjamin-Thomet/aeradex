@@ -262,13 +262,18 @@ def journal_groups(book: Book, year: int, month: int | None, konto: str, quelle:
             "haben": habenset.pop() if len(habenset) == 1 else "div.",
             "total": sum((r.betrag for r in group if r.soll), ZERO),
             "receipts": receipts, "locked": bool(lock and first.datum <= lock),
-            "doc": doc_link(first.quelle),
+            "doc": doc_link(first.quelle, book),
         })
     return out
 
 
-def doc_link(quelle: str) -> str | None:
+def doc_link(quelle: str, book: Book | None = None) -> str | None:
     kind, _, ref = quelle.partition(":")
+    if book is not None and kind:
+        from .. import plugins
+        src = plugins.sources(book).get(kind)
+        if src is not None:
+            return src.link(ref) if src.link else None
     if kind in ("rechnung", "zahlung", "gutschrift"):
         return f"/debitoren/rechnung/{ref}"
     if kind == "lohn":
@@ -754,7 +759,11 @@ async def bank_page(ui: UI, request: Request):
     for t in bank.transactions(book):
         counts[t["Status"]] += 1
     from .. import jev
+    from .. import plugins
+    formats = plugins.bank_formats(book)
     return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts, jev=jev.config(book),
+                     bank_accept=",".join(sorted({x for f in formats for x in f.suffixes} | {".camt", ".053"})),
+                     bank_labels=", ".join(f.label for f in formats),
                      rec=bank.reconciliation(book), open_inv=open_inv, open_bills=open_bills,
                      accounts=account_options(book))
 
@@ -782,6 +791,12 @@ async def jev_einstellung(ui: UI, request: Request):
     f = await request.form()
     return await act(request, api.settings_update, "/einstellungen#jev", ui.book(),
                      jev={"aktiv": f.get("aktiv") == "1", "schwelle": f.get("schwelle") or None})
+
+
+async def plugin_einstellung(ui: UI, request: Request):
+    f = await request.form()
+    fn = api.plugin_enable if request.path_params["aktion"] == "ein" else api.plugin_disable
+    return await act(request, fn, "/einstellungen#plugins", ui.book(), f.get("name", ""))
 
 
 async def bank_aktion(ui: UI, request: Request):
@@ -1048,7 +1063,8 @@ async def einstellungen(ui: UI, request: Request):
                      qr_iban=is_qr_iban(iban) if iban else False, issues=checks.run(book),
                      accounts=account_options(book), cred=credentials_status(book.settings.get("agent_backend")),
                      jev=__import__("batzen.jev", fromlist=["config"]).config(book),
-                     backends=__import__("batzen.web.chat", fromlist=["BACKENDS"]).BACKENDS)
+                     backends=__import__("batzen.web.chat", fromlist=["BACKENDS"]).BACKENDS,
+                     plugin_rows=api.plugin_list(book))
 
 
 async def einstellungen_speichern(ui: UI, request: Request):
@@ -1181,5 +1197,6 @@ def routes(ui: UI) -> list[Route]:
         Route("/einstellungen/lohn", h(lohn_einstellungen), methods=["POST"]),
         Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),
         Route("/einstellungen/jev", h(jev_einstellung), methods=["POST"]),
+        Route("/einstellungen/plugins/{aktion:str}", h(plugin_einstellung), methods=["POST"]),
         Route("/pdf/{kind:str}", h(pdf_report)),
     ]

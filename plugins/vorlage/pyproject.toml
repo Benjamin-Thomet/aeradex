@@ -1,0 +1,24 @@
+# Vorlage für ein batzen-Plugin. Kopieren, dann überall «beispiel» durch den eigenen Namen ersetzen:
+#   cp -r plugins/vorlage ../batzen-meinplugin && cd ../batzen-meinplugin
+#   grep -rl beispiel . | xargs sed -i 's/beispiel/meinplugin/g' && mv src/batzen_beispiel src/batzen_meinplugin
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "batzen-beispiel"
+version = "0.1.0"
+description = "Beispiel-Plugin für batzen"
+license = "AGPL-3.0-or-later"     # oder eine mit der AGPL verträgliche Lizenz
+requires-python = ">=3.11"
+dependencies = ["batzen>=0.6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+# Der Name links ist der Plugin-Name im Buch: batzen plugins ein beispiel
+[project.entry-points."batzen.plugins"]
+beispiel = "batzen_beispiel"
+
+[tool.setuptools.packages.find]
+where = ["src"]
