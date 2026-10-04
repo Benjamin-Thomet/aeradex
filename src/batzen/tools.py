@@ -33,6 +33,10 @@ Regeln:
 - MWST: status() nennt die mwst_methode. Bei "effektiv" und einem Beleg mit ausgewiesener MWST den Code mitgeben
   (V81/I81 Vorsteuer, U81 Umsatz …) und den BRUTTO-Betrag buchen; die Steuer wird automatisch abgespalten.
   Bei "saldo" oder "keine" ohne Vorsteuer-Code buchen.
+- Lieferantenrechnungen (PDF/Foto mit QR-Zahlteil): scan_qr_bill → bekannter Lieferant: add_supplier_bill
+  (Konto leer = hinterlegtes Konto). Neuer Lieferant: add_supplier ohne konto, dann dem Menschen das Aufwandkonto
+  vorschlagen; er erfasst die Rechnung unter Kreditoren (vorausgefüllt). Nicht als freie Buchung (propose_booking)
+  erfassen — sonst fehlen IBAN und Referenz für den Zahlungslauf.
 """
 
 
