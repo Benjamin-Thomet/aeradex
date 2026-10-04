@@ -66,6 +66,16 @@ Rechts sitzt der **Agent** (Claude): «Bereite die Quittungen in der Inbox vor»
 
 Tastatur: `N` neue Buchung, `/` Suche, `A` Agent, `⌘/Ctrl+Enter` Formular absenden.
 
+### Auf dem eigenen Server (mit Login)
+
+```bash
+batzen user add benjamin --rolle admin --anzeige "Benjamin Thomet"
+batzen user add treuhand --rolle lesen
+batzen --buch /srv/buecher/muster serve --port 8080 --https     # hinter Caddy/nginx mit HTTPS
+```
+Rollen `lesen`, `buchhaltung`, `admin`; jede Änderung trägt im git-Verlauf den Namen der angemeldeten Person.
+Anleitung mit systemd, Caddy und Datensicherung: [docs/server.md](docs/server.md).
+
 ### Debitoren und QR-Rechnungen
 ```bash
 batzen customer add --name "Anna Beispiel" --firma "Beispiel AG" --strasse Marktgasse --nr 5 --plz 3011 --ort Bern
@@ -180,11 +190,12 @@ Die Fachlogik (Saldenmotor mit Jahresverkettung, OR-Gliederung, Lohnberechnung i
 
 ## Stand und Roadmap
 
-v0.3: Finanzbuchhaltung, MWST, Debitoren mit QR-Rechnung, Kreditoren mit QR-Scan und pain.001, Lohn, Agenten-Schnittstelle (CLI + MCP), lokale Web-Oberfläche mit eingebautem Agenten.
+v0.4: Finanzbuchhaltung, MWST mit eMWST-Export (eCH-0217), Bankimport camt.053 mit automatischem Abgleich, Debitoren mit QR-Rechnung, Kreditoren mit QR-Scan und pain.001, Lohn, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit eingebautem Agenten, lokal oder als Server mit Login.
 
 Als Nächstes:
 - Weitere Quellensteuer-Kantone, ALV-Höchstgrenze, Swissdec/ELM
-- Login für den Betrieb auf einem Server (mehrere Benutzer, Mandanten)
+- Mehrere Mandanten in einer Instanz
+- camt.054 (Sammelgutschriften im Detail), ELM/Swissdec für Lohnmeldungen
 
 Vor dem ersten Einsatz mit echten Rechnungen: ein erzeugtes PDF im offiziellen SIX-Validator prüfen (https://validation.iso-payments.ch/). Sozialversicherungssätze in `lohn/einstellungen.yaml` an deine Ausgleichskasse, UVG- und KTG-Police anpassen.
 

@@ -324,6 +324,9 @@ def agent(ui) -> BaseAgent:
 
 def routes(ui) -> list[Route]:
     async def send(request: Request):
+        user = getattr(request.state, "user", None)
+        if user is not None and not user.can_write:
+            return JSONResponse({"ok": False, "fehler": "Der Agent ist mit Leserecht nicht verfügbar."}, status_code=403)
         form = await request.form()
         message = (form.get("message") or "").strip()
         if not message:

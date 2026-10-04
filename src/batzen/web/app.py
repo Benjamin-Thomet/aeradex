@@ -108,13 +108,20 @@ def make_env() -> Environment:
 class UI:
     """Holds the book location, the session token and the template env."""
 
-    def __init__(self, root: Path, token: str | None = None):
+    def __init__(self, root: Path, token: str | None = None, auth_dir: Path | None = None,
+                 https: bool = False):
         self.root = Path(root).resolve()
         self.token = token or secrets.token_urlsafe(24)
         self.csrf = hmac.new(self.token.encode(), b"csrf", hashlib.sha256).hexdigest()[:32]
         self.env = make_env()
         self.version = 0          # bumped by the file watcher
         self.chat = None          # set lazily by chat.py
+        # Server mode: users and signed sessions instead of the one-time token.
+        self.users = self.sessions = self.throttle = None
+        self.https = https
+        if auth_dir is not None:
+            from .auth import Sessions, Throttle, UserStore
+            self.users, self.sessions, self.throttle = UserStore(auth_dir), Sessions(auth_dir), Throttle()
 
     def book(self) -> Book:
         return Book(self.root)
@@ -134,8 +141,8 @@ class UI:
         ctx.setdefault("vat", mwst.config(book))
         ctx.setdefault("vat_codes", mwst.CODES)
         html = self.env.get_template(template).render(
-            request=request, book=book, settings=book.settings, csrf=self.csrf, flash=flash,
-            path=request.url.path, **ctx)
+            request=request, book=book, settings=book.settings, csrf=getattr(request.state, "csrf", self.csrf),
+            flash=flash, path=request.url.path, user=getattr(request.state, "user", None), **ctx)
         response = HTMLResponse(html, status_code=http_status)
         if raw:
             response.delete_cookie(FLASH)
@@ -210,6 +217,8 @@ class SessionMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path.startswith("/static/"):
             return await call_next(request)
+        if self.ui.users is not None:
+            return await self.server_mode(request, call_next)
         token = request.query_params.get("t")
         if token is not None:
             if not hmac.compare_digest(token, self.ui.token):
@@ -229,6 +238,50 @@ class SessionMiddleware(BaseHTTPMiddleware):
             if not hmac.compare_digest(sent, self.ui.csrf):
                 return PlainTextResponse("CSRF-Token fehlt oder ist falsch.", status_code=403)
         return await call_next(request)
+
+
+    async def server_mode(self, request: Request, call_next):
+        from .. import gitlog
+        from .auth import ADMIN_ONLY, SESSION_COOKIE
+        ui, path = self.ui, request.url.path
+        if path in ("/login", "/healthz"):
+            if request.method == "POST" and not self._same_origin(request):
+                return PlainTextResponse("Fremde Herkunft abgelehnt.", status_code=403)
+            return await call_next(request)
+        session = ui.sessions.read(request.cookies.get(SESSION_COOKIE, ""))
+        user = ui.users.get(session["u"]) if session else None
+        if user is None or ui.users.version(user.name) != session.get("v", 0):
+            target = "/login" + (f"?weiter={quote(path)}" if path not in ("/", "/logout") else "")
+            if request.headers.get("hx-request"):
+                return Response(status_code=401, headers={"HX-Redirect": target})
+            return RedirectResponse(target, status_code=303)
+        request.state.user = user
+        request.state.csrf = ui.sessions.csrf(session)
+        if request.method == "POST":
+            if not self._same_origin(request):
+                return PlainTextResponse("Fremde Herkunft abgelehnt.", status_code=403)
+            if not hmac.compare_digest(request.headers.get("x-csrf", ""), request.state.csrf):
+                return PlainTextResponse("CSRF-Token fehlt oder ist falsch.", status_code=403)
+            if path != "/logout":
+                refusal = None
+                if not user.can_write:
+                    refusal = "Nur Leserecht — Änderungen sind deiner Rolle nicht erlaubt."
+                elif any(path == p or path.startswith(p + "/") for p in ADMIN_ONLY) and not user.is_admin:
+                    refusal = "Nur Admins dürfen Einstellungen ändern und Perioden sperren."
+                if refusal:
+                    # HTMX forms show it in their error box; anything else gets a plain 403.
+                    return fail(refusal) if request.headers.get("hx-request") else PlainTextResponse(refusal, status_code=403)
+        token = gitlog.AUTHOR.set(user.git_author)
+        try:
+            return await call_next(request)
+        finally:
+            gitlog.AUTHOR.reset(token)
+
+    @staticmethod
+    def _same_origin(request: Request) -> bool:
+        origin = request.headers.get("origin")
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        return not origin or origin.split("://", 1)[-1] == host
 
 
 LOCKED_PAGE = """<!doctype html><meta charset="utf-8"><title>batzen</title>
@@ -285,11 +338,55 @@ async def watch(ui: UI) -> None:
         ui.version += 1
 
 
-def create_app(root: Path, token: str | None = None) -> Starlette:
+def login_routes(ui: UI) -> list[Route]:
+    from .auth import SESSION_COOKIE, SESSION_DAYS
+
+    async def login(request: Request):
+        weiter = request.query_params.get("weiter", "/")
+        if not weiter.startswith("/") or weiter.startswith("//"):
+            weiter = "/"
+        error = None
+        if request.method == "POST":
+            form = await request.form()
+            name = (form.get("name") or "").strip().lower()
+            address = request.headers.get("x-forwarded-for", request.client.host if request.client else "?").split(",")[0]
+            if ui.throttle.blocked(f"u:{name}", f"a:{address}"):
+                error = "Zu viele Fehlversuche. Bitte in 5 Minuten erneut versuchen."
+            else:
+                user = await asyncio.to_thread(ui.users.check, name, form.get("passwort") or "")
+                if user:
+                    ui.throttle.clear(f"u:{name}", f"a:{address}")
+                    response = RedirectResponse(weiter, status_code=303)
+                    response.set_cookie(SESSION_COOKIE, ui.sessions.issue(user.name, ui.users.version(user.name)),
+                                        max_age=SESSION_DAYS * 86400, httponly=True, samesite="lax",
+                                        secure=ui.https or request.headers.get("x-forwarded-proto") == "https")
+                    return response
+                ui.throttle.fail(f"u:{name}", f"a:{address}")
+                error = "Benutzername oder Passwort falsch."
+        book = ui.book()
+        html = ui.env.get_template("login.html").render(firma=book.settings.firma, error=error, weiter=weiter)
+        return HTMLResponse(html, status_code=401 if error else 200)
+
+    async def logout(request: Request):
+        response = RedirectResponse("/login", status_code=303)
+        response.delete_cookie(SESSION_COOKIE)
+        if request.headers.get("hx-request"):
+            response = Response(status_code=204, headers={"HX-Redirect": "/login"})
+            response.delete_cookie(SESSION_COOKIE)
+        return response
+
+    async def healthz(request: Request):
+        return PlainTextResponse("ok")
+
+    return [Route("/login", login, methods=["GET", "POST"]), Route("/logout", logout, methods=["POST"]),
+            Route("/healthz", healthz)]
+
+
+def create_app(root: Path, token: str | None = None, auth_dir: Path | None = None, https: bool = False) -> Starlette:
     from . import views, chat
 
-    ui = UI(root, token)
-    routes = views.routes(ui) + chat.routes(ui) + [
+    ui = UI(root, token, auth_dir, https)
+    routes = views.routes(ui) + chat.routes(ui) + (login_routes(ui) if auth_dir is not None else []) + [
         Route("/datei/{path:path}", serve_file(ui)),
         Route("/events", events(ui)),
         Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
@@ -321,3 +418,17 @@ def run(root: Path, port: int = 5151, open_browser: bool = True) -> None:
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+
+
+def run_server(root: Path, host: str = "127.0.0.1", port: int = 8080, config: Path | None = None,
+               https: bool = False) -> None:
+    """Multi-user mode with login (behind a TLS reverse proxy such as Caddy or nginx)."""
+    import uvicorn
+
+    from .auth import UserStore, config_dir
+    directory = config_dir(config)
+    if not UserStore(directory).has_admin():
+        raise SystemExit(f"Noch kein Admin in {directory}/users.yaml — zuerst: batzen user add NAME --rolle admin")
+    app = create_app(root, auth_dir=directory, https=https)
+    print(f"batzen läuft für {app.state.ui.book().settings.firma} auf http://{host}:{port} (Login, Benutzer in {directory})")
+    uvicorn.run(app, host=host, port=port, log_level="warning", proxy_headers=True, forwarded_allow_ips="*")

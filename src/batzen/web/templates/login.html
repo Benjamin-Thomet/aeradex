@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Anmelden · {{ firma }}</title>
+<link rel="stylesheet" href="/static/batzen.css?v={{ asset }}">
+<style>
+  .loginwrap { min-height: 100%; display: grid; place-items: center; padding-inline: 16px; padding-block: 40px; }
+  .loginbox { width: min(380px, 100%); display: flex; flex-direction: column; gap: 18px; }
+  .loginbox .panel { padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+</style>
+</head>
+<body>
+<div class="loginwrap">
+  <div class="loginbox">
+    <div class="brand"><span class="coin" aria-hidden="true">b</span><b>batzen</b></div>
+    <form class="panel" method="post" action="/login?weiter={{ weiter|urlq }}">
+      <div><h1 style="font-size:20px;margin:0">{{ firma }}</h1><p class="small muted">Anmelden, um die Buchhaltung zu öffnen.</p></div>
+      {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+      <div class="field"><label for="n">Benutzername</label><input class="input" id="n" name="name" autocomplete="username" required autofocus></div>
+      <div class="field"><label for="p">Passwort</label><input class="input" id="p" name="passwort" type="password" autocomplete="current-password" required></div>
+      <button class="btn primary" type="submit" style="justify-content:center">Anmelden</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

@@ -295,6 +295,23 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--kanton", required=True)
     s.add_argument("--jahr", type=int, required=True)
     sub.add_parser("mcp", help="MCP-Server (stdio) für Claude Code, opencode & Co. starten")
+    s = sub.add_parser("serve", help="Mehrbenutzer-Server mit Login (hinter HTTPS-Proxy)")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8080)
+    s.add_argument("--config", help="Verzeichnis mit users.yaml und secret (Standard ~/.config/batzen)")
+    s.add_argument("--https", action="store_true", help="Cookies nur über HTTPS senden (empfohlen)")
+    s = sub.add_parser("user", help="Benutzer für batzen serve")
+    us = s.add_subparsers(dest="sub", required=True)
+    for name in ("add", "list", "passwort", "remove"):
+        c = us.add_parser(name)
+        c.add_argument("--config")
+        if name != "list":
+            c.add_argument("name")
+        if name == "add":
+            c.add_argument("--rolle", choices=["lesen", "buchhaltung", "admin"], default="buchhaltung")
+            c.add_argument("--anzeige", default="", help="Name im Änderungsverlauf, z.B. 'Benjamin Thomet'")
+        if name in ("add", "passwort"):
+            c.add_argument("--passwort-stdin", action="store_true", help="Passwort von stdin lesen (für Skripte)")
     s = sub.add_parser("ui", help="Oberfläche im Browser starten (lokal)")
     s.add_argument("--port", type=int, default=5151)
     s.add_argument("--kein-browser", action="store_true", help="Browser nicht automatisch öffnen")
@@ -563,6 +580,49 @@ def main(argv: list[str] | None = None) -> int:
         if a.buch:
             os.environ["BATZEN_BUCH"] = a.buch
         serve()
+        return 0
+    if a.cmd == "user":
+        from .web.auth import UserStore, config_dir
+        store = UserStore(config_dir(a.config))
+        try:
+            if a.sub == "list":
+                for u in store.list():
+                    print(f"{u.name:<16} {u.rolle:<12} {u.anzeige}")
+                return 0
+            if a.sub == "remove":
+                store.remove(a.name)
+                print(f"✓ Benutzer {a.name} entfernt")
+                return 0
+            if a.passwort_stdin:
+                password = sys.stdin.readline().rstrip("\n")
+            else:
+                import getpass
+                password = getpass.getpass("Passwort: ")
+                if getpass.getpass("Wiederholen: ") != password:
+                    print("✗ Passwörter stimmen nicht überein", file=sys.stderr)
+                    return 2
+            if a.sub == "add":
+                u = store.add(a.name, password, a.rolle, a.anzeige)
+                print(f"✓ Benutzer {u.name} ({u.rolle}) angelegt in {store.path}")
+            else:
+                store.set_password(a.name, password)
+                print(f"✓ Passwort für {a.name} geändert; bestehende Anmeldungen sind beendet")
+            return 0
+        except ValueError as exc:
+            print(f"✗ {exc}", file=sys.stderr)
+            return 2
+    if a.cmd == "serve":
+        try:
+            from .web.app import run_server
+        except ImportError as exc:
+            print(f"✗ Für den Server fehlen Pakete ({exc.name}): pip install 'batzen[ui]'", file=sys.stderr)
+            return 2
+        try:
+            root = find_root(Path(a.buch) if a.buch else None)
+        except BookError as exc:
+            print(f"✗ {exc}", file=sys.stderr)
+            return 2
+        run_server(root, a.host, a.port, Path(a.config) if a.config else None, a.https)
         return 0
     if a.cmd == "ui":
         try:

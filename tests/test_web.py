@@ -286,3 +286,60 @@ def test_bank_screen_import_and_book(client, root):
     ok(post(client, f"/bank/{tid}/buchen", {"konto": "6940  Bankspesen", "text": "Kontoführung März", "mwst": ""}))
     assert "gebucht" in client.get("/bank?status=gebucht").text
     assert errors(root) == []
+
+
+@pytest.fixture
+def server(root, tmp_path):
+    from batzen.web.auth import UserStore
+    cfg = tmp_path / "cfg"
+    store = UserStore(cfg)
+    store.add("anna", "geheim-genug-1", "admin", "Anna Admin")
+    store.add("bruno", "geheim-genug-2", "buchhaltung", "Bruno Buch")
+    store.add("lea", "geheim-genug-3", "lesen", "Lea Lesen")
+    app = create_app(root, auth_dir=cfg)
+    with TestClient(app) as c:
+        c.app_ui = app.state.ui
+        yield c
+
+
+def login(c, name, password):
+    c.cookies.clear()
+    r = c.post("/login", data={"name": name, "passwort": password}, follow_redirects=False)
+    if r.status_code == 303:
+        page = c.get("/").text
+        c.csrf = page.split('"X-CSRF": "')[1].split('"')[0]
+    return r
+
+
+def test_server_login_roles_and_authorship(server, root):
+    c = server
+    assert c.get("/", follow_redirects=False).headers["location"].startswith("/login")
+    assert c.get("/?t=anything", follow_redirects=False).status_code == 303          # no token back door
+    assert login(c, "anna", "falsch").status_code == 401
+    assert login(c, "bruno", "geheim-genug-2").status_code == 303
+    r = post(c, "/journal/buchen", {"modus": "einfach", "datum": "2026-04-02", "betrag": "10", "text": "Test",
+                                     "soll": "6500", "haben": "1020"})
+    ok(r)
+    assert gitlog.log(root, 1)[0]["autor"] == "Bruno Buch"
+    r = post(c, "/einstellungen", {"firma": "X"})
+    assert "Nur Admins" in r.text
+    assert login(c, "lea", "geheim-genug-3").status_code == 303
+    assert c.get("/journal").status_code == 200
+    r = post(c, "/journal/buchen", {"modus": "einfach", "datum": "2026-04-02", "betrag": "1", "text": "x",
+                                     "soll": "6500", "haben": "1020"})
+    assert "Leserecht" in r.text
+    assert c.post("/chat/send", data={"message": "hi"}, headers={"X-CSRF": c.csrf}).status_code == 403
+    r = c.post("/journal/buchen", data={}, headers={"X-CSRF": "falsch"})
+    assert r.status_code == 403
+
+
+def test_login_throttle_and_password_change_ends_sessions(server):
+    c = server
+    for _ in range(5):
+        login(c, "anna", "falsch")
+    assert "Zu viele Fehlversuche" in login(c, "anna", "geheim-genug-1").text
+    c.app_ui.throttle.failures.clear()
+    assert login(c, "anna", "geheim-genug-1").status_code == 303
+    assert c.get("/", follow_redirects=False).status_code == 200
+    c.app_ui.users.set_password("anna", "ganz-neues-passwort")
+    assert c.get("/", follow_redirects=False).status_code == 303                       # old session ended

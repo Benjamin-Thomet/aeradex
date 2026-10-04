@@ -36,10 +36,13 @@
       {% if nav.fehler %}<a href="/einstellungen#pruefung" class="link"><span class="dot bad"></span>{{ nav.fehler }} Fehler im Buch</a>
       {% else %}<span><span class="dot"></span>Geprüft · 0 Fehler</span>{% endif %}
       <span title="{{ book.root }}">{{ book.root.name }}</span>
+      {% if user %}<span>{{ user.anzeige }} · {{ {"lesen": "Leserecht", "buchhaltung": "Buchhaltung", "admin": "Admin"}[user.rolle] }}</span>
+      <form hx-post="/logout"><button class="btn small ghost" type="submit">Abmelden</button></form>{% endif %}
       <button class="btn small ghost" id="themeBtn" type="button">Hell / Dunkel</button>
     </div>
   </nav>
   <main class="main" id="main">
+    {% if user and not user.can_write %}<div class="alert info">Du hast Leserecht: Ansehen und Berichte ja, Änderungen nein.</div>{% endif %}
     {% block main %}{% endblock %}
   </main>
 </div>

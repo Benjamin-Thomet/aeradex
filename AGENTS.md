@@ -18,6 +18,9 @@ This file is for developing batzen itself. Agents *operating a book* read the
   `web/views.py`: one handler per page/form; forms post via HTMX and get `204 + HX-Redirect` or an error box.
   `web/chat.py`: Claude via the SDK tool runner over `tools.py`; commits it makes are attributed to the agent.
   Templates are Jinja in `web/templates/`, styles in `web/static/batzen.css` (tokens at the top, light + dark).
+- `web/auth.py`: server mode (`batzen serve`): users outside the book, scrypt hashes, signed session cookies,
+  roles, login throttle. The middleware in `web/app.py` sets the git author per request.
+- `bank.py` (camt.053 import, matching, reconciliation), `kreditoren.py` (QR scan, pain.001), `mwst.py` (incl. eCH-0217).
 - Writes are serialised by a lock file (`.batzen/write.lock`) so UI, CLI, MCP and chat never interleave.
 
 ## Rules
