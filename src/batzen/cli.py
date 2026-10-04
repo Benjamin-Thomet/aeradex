@@ -257,6 +257,10 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("periode", help="z.B. 2026-Q1 oder 2026-S1")
     c = ms.add_parser("buchen", help="Abrechnung buchen (MWST-Konten auf Abrechnungskonto)")
     c.add_argument("periode")
+    c = ms.add_parser("export", help="eMWST-Datei (eCH-0217) fürs ESTV-Portal")
+    c.add_argument("periode")
+    c.add_argument("--korrektur", action="store_true", help="als Korrekturabrechnung")
+    c.add_argument("--out")
     s = sub.add_parser("lock", help="Periode sperren (unveränderlich)")
     s.add_argument("bis")
     s = sub.add_parser("unlock", help="Sperre zurücknehmen (mit Grund)")
@@ -406,6 +410,8 @@ def dispatch(a, book_path: Path | None):
     if c == "mwst":
         if a.sub == "abrechnung":
             return api.mwst_report(book(), a.periode)
+        if a.sub == "export":
+            return api.mwst_export(book(), a.periode, a.korrektur, a.out)
         return api.mwst_book(book(), a.periode)
     if c == "lock":
         return api.lock(book(), a.bis)
@@ -430,6 +436,8 @@ def render(cmd: str, sub: str | None, result) -> str:
             lines.append(f"  commit {result['commit']}")
         if result.get("pdf"):
             lines.append(f"  PDF {result['pdf']}")
+        if result.get("datei") and isinstance(result.get("datei"), str):
+            lines.append(f"  Datei {result['datei']}")
         return "\n".join(lines)
     if cmd == "check":
         if not result["probleme"]:

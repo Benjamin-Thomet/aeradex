@@ -885,6 +885,19 @@ async def mwst_buchen(ui: UI, request: Request):
     return await act(request, api.mwst_book, f"/mwst?periode={periode}&jahr={periode[:4]}", ui.book(), periode)
 
 
+async def mwst_xml(ui: UI, request: Request):
+    from .. import mwst
+    book = ui.book()
+    periode = request.query_params.get("periode", "")
+    try:
+        data = mwst.ech0217(book, periode, request.query_params.get("korrektur") == "1")
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    label = mwst.resolve(periode)[2]
+    return Response(data, media_type="application/xml",
+                    headers={"Content-Disposition": f'attachment; filename="eMWST {label}.xml"'})
+
+
 async def mwst_pdf(ui: UI, request: Request):
     from .. import mwst, pdf as pdfmod
     book = ui.book()
@@ -928,7 +941,8 @@ async def einstellungen_speichern(ui: UI, request: Request):
                                                      "qr_referenz_praefix", "zahlungsfrist_tage", "agent_modus", "co",
                                                      "zahlungs_iban")}
     vat = {"methode": f.get("mwst_methode") or "keine", "periode": f.get("mwst_periode") or "",
-           "saldosteuersatz": (f.get("mwst_saldosteuersatz") or "").strip()}
+           "saldosteuersatz": (f.get("mwst_saldosteuersatz") or "").strip(),
+           "taetigkeit": (f.get("mwst_taetigkeit") or "").strip(), "abrechnungsart": f.get("mwst_abrechnungsart") or ""}
     adresse = {k: (f.get(f"a_{k}") or "").strip() for k in ("strasse", "nr", "plz", "ort", "land")}
     konten = {k: acct(f.get(f"k_{k}")) for k in ("bank", "debitoren", "ertrag", "gutschrift", "gewinnvortrag",
                                                   "jahresergebnis", "dividende", "reserve")}
@@ -1033,6 +1047,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/mwst", h(mwst_page)),
         Route("/mwst/buchen", h(mwst_buchen), methods=["POST"]),
         Route("/mwst/pdf", h(mwst_pdf)),
+        Route("/mwst/xml", h(mwst_xml)),
         Route("/verlauf", h(verlauf)),
         Route("/verlauf/{hash:str}", h(commit)),
         Route("/einstellungen", h(einstellungen)),

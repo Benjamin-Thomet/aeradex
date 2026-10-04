@@ -579,6 +579,18 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
             current["saldosteuersatz"] = float(rate)
         if methode == "saldo" and not current.get("saldosteuersatz"):
             raise BookError("Für die Saldosteuersatzmethode den bewilligten Satz angeben")
+        if mwst.get("taetigkeit") not in (None, ""):
+            current["taetigkeit"] = str(mwst["taetigkeit"]).strip()
+        if mwst.get("abrechnungsart") in ("vereinbart", "vereinnahmt"):
+            current["abrechnungsart"] = mwst["abrechnungsart"]
+        previous = (data.get("mwst") or {}).get("methode") or "keine"
+        if methode != previous:
+            from . import mwst as vat_check
+            kinds = {vat_check.CODES[r.mwst].kind for r in book.rows if r.mwst in vat_check.CODES}
+            if methode == "saldo" and kinds & {"vorsteuer", "investition"} or methode == "keine" and kinds:
+                raise BookError("Im Buch gibt es bereits Buchungen mit MWST-Codes der bisherigen Methode. Ein "
+                                "Methodenwechsel gilt erst ab einer neuen Steuerperiode: im neuen Geschäftsjahr "
+                                "ein neues Buch eröffnen oder die Codes zuerst stornieren.")
         from . import mwst as vat
         for role, nr in (mwst.get("konten") or {}).items():
             if nr:
@@ -828,6 +840,18 @@ def mwst_book(book: Book, periode: str) -> dict:
 
 
 mwst_book = _locked(mwst_book)
+
+
+def mwst_export(book: Book, periode: str, korrektur: bool = False, out: str | None = None) -> dict:
+    """eCH-0217 XML for upload in the ESTV portal (written to mwst/, not committed until the Abrechnung is booked)."""
+    from . import mwst
+    data = mwst.ech0217(book, periode, korrektur)
+    label = mwst.resolve(periode)[2]
+    path = Path(out) if out else book.root / "mwst" / f"eMWST {label}{' Korrektur' if korrektur else ''}.xml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return {"ok": True, "meldung": f"eMWST-Datei {label} erstellt — im ESTV-Portal unter «MWST abrechnen» hochladen",
+            "datei": str(path)}
 
 
 def payslip_inputs(book: Book, monat: str, mitarbeiter: str, eingaben: dict) -> dict:

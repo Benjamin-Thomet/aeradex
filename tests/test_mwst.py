@@ -99,3 +99,24 @@ def test_proposal_with_mwst_splits_on_approval(book):
     rows = Book(book.root).rows
     assert sum(r.betrag for r in rows if r.soll == "1170") == D("4.42")
     assert errors(book.root) == []
+
+
+def test_emwst_export(book):
+    import re
+    api.invoice_create(Book(book.root), "K0001", [{"text": "Beratung", "menge": 1, "preis": "1950.83"}], "2026-02-01")
+    api.post_entry(Book(book.root), "2026-02-05", "6500", "1020", "108.10", "Papier", mwst="V81")
+    xml = mwst.ech0217(Book(book.root), "2026-Q1").decode()
+    assert "<eCH-0217:uid>CHE123456789</eCH-0217:uid>" in xml
+    assert re.search(r"<eCH-0217:payableTax>(.*?)<", xml).group(1) == "149.92"     # 1950.83 × 8.1 % − 8.10
+    import os
+    xsd = os.environ.get("BATZEN_ECH0217_XSD")          # eCH-0217-2-0-0.xsd with its imports, mirrored locally
+    if xsd and Path(xsd).exists():
+        from lxml import etree
+        schema = etree.XMLSchema(etree.parse(xsd))
+        assert schema.validate(etree.fromstring(xml.encode())), schema.error_log
+
+
+def test_method_switch_with_existing_codes_is_refused(book):
+    api.post_entry(book, "2026-01-10", "6500", "1020", "108.10", "Papier", mwst="V81")
+    with pytest.raises(BookError, match="Methodenwechsel"):
+        api.settings_update(Book(book.root), mwst={"methode": "saldo", "saldosteuersatz": "6.2"})

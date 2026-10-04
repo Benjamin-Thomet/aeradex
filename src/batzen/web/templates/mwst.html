@@ -4,10 +4,11 @@
 {% block main %}
 <div class="topbar">
   <div><h1>MWST-Abrechnung{% if rep %} {{ rep.periode }}{% endif %}</h1>
-    <div class="sub">{{ {"effektiv": "Effektive Methode", "saldo": "Saldosteuersatz " ~ vat.saldosteuersatz ~ " %"}.get(vat.methode, "nicht MWST-pflichtig") }}{% if rep %} · {{ rep.von|datum }} – {{ rep.bis|datum }}{% endif %} · Ziffern nach ESTV-Formular (Sätze ab 2024), vor dem Einreichen abgleichen</div></div>
+    <div class="sub">{{ {"effektiv": "Effektive Methode", "saldo": "Saldosteuersatz " ~ vat.saldosteuersatz ~ " %"}.get(vat.methode, "nicht MWST-pflichtig") }}{% if rep %} · {{ rep.von|datum }} – {{ rep.bis|datum }}{% endif %} · eMWST-Datei nach eCH-0217 v2.0 für den Upload im ESTV-Portal</div></div>
   <div class="actions">
     <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in book.years()|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
-    {% if rep %}<a class="btn" href="/mwst/pdf?periode={{ rep.periode }}" target="_blank">PDF</a>{% endif %}
+    {% if rep %}<a class="btn" href="/mwst/pdf?periode={{ rep.periode }}" target="_blank">PDF</a>
+    <a class="btn primary" href="/mwst/xml?periode={{ rep.periode }}{{ '&korrektur=1' if rep.veraendert }}" title="eCH-0217 für das ESTV-Portal">eMWST-Datei{{ ' (Korrektur)' if rep.veraendert }}</a>{% endif %}
   </div>
 </div>
 {% if not rep %}
@@ -16,6 +17,7 @@
 <nav class="tabs" style="padding:0">
   {% for r in overview %}<a href="/mwst?jahr={{ year }}&periode={{ r.periode }}" class="{{ 'on' if r.periode == rep.periode }}">{{ r.periode[5:] or r.periode }} <span class="count">{{ 'gebucht' if r.gebucht else (r.zahllast|chf if r.zahllast|float else '') }}</span></a>{% endfor %}
 </nav>
+{% if rep.ziffern.differenz|float %}<div class="alert info">Die Steuer auf den Belegen ({{ rep.ziffern['399_gebucht']|chf }}) weicht um {{ rep.ziffern.differenz|chf }} von der Berechnung der ESTV (Umsatz × Satz) ab. Beim Buchen der Abrechnung geht die Differenz auf Konto {{ vat.konten.differenz }}.</div>{% endif %}
 {% if rep.veraendert %}<div class="alert warn">Seit dem Buchen dieser Abrechnung wurden Buchungen mit MWST-Code im Zeitraum geändert. Bei der ESTV eine Korrekturabrechnung einreichen.</div>{% endif %}
 <div class="grid2 even">
   <div class="panel">
