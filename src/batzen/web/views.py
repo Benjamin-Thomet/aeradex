@@ -749,7 +749,9 @@ async def abschluss(ui: UI, request: Request):
                        "erledigt": done}
     return ui.render(request, "abschluss.html", book=book, year=year, st=st, years=book.years(),
                      anhang=statements.anhang(book, year), verlauf=list(reversed(verlauf))[:5],
-                     gv_date=date(year + 1, 6, 30).isoformat(), fx=fx_view)
+                     gv_date=date(year + 1, 6, 30).isoformat(), fx=fx_view,
+                     div=(read_yaml(statements.dividend_path(book, year)) if statements.dividend_path(book, year).exists()
+                          else None))
 
 
 async def abschluss_aktion(ui: UI, request: Request):
@@ -764,6 +766,8 @@ async def abschluss_aktion(ui: UI, request: Request):
         return await act(request, api.allocation_book, to, book, year, f.get("datum") or None)
     if aktion == "bewertung":
         return await act(request, api.fx_revalue, to, book, f.get("stichtag") or f"{year}-12-31")
+    if aktion == "dividende":
+        return await act(request, api.dividend_pay, to, book, year, f.get("datum") or None, f.get("konto") or "")
     if aktion == "anhang":
         return await act(request, api.anhang_save, to, book, year, f.get("text", ""))
     if aktion == "sperre":

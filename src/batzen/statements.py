@@ -352,3 +352,55 @@ def book_allocation(book: Book, year: int, datum=None):
     write_yaml(path, {"jahr": year, "dividende": alloc["dividende"], "reserve": alloc["reserve"],
                       "gebucht": True, "datum": d.isoformat()})
     return rows, touched + [path]
+
+
+# ---------- Dividende: Auszahlung mit Verrechnungssteuer ----------
+
+VST_SATZ = Decimal("0.35")
+
+
+def dividend_path(book: Book, year: int):
+    return book.root / "abschluss" / f"dividende-{year}.yaml"
+
+
+def dividend_rows(book: Book, saved: dict) -> list:
+    """The payout owns its rows: Beschlossene Ausschüttungen an Bank (65 %) und an Verrechnungssteuer (35 %)."""
+    from .book import Row
+    from .files import parse_date
+    d = parse_date(saved["datum"])
+    year = int(saved["jahr"])
+    beleg, quelle = f"DIV-{year}", f"dividende:{year}"
+    brutto, vst = Decimal(str(saved["brutto"])), Decimal(str(saved["vst"]))
+    s = book.settings
+    return [Row(d, beleg, f"Dividende {year}: Auszahlung netto", s.konto("dividende"), str(saved["konto"]),
+                brutto - vst, quelle),
+            Row(d, beleg, f"Dividende {year}: Verrechnungssteuer 35 %", s.konto("dividende"),
+                s.konto("verrechnungssteuer"), vst, quelle)]
+
+
+def pay_dividend(book: Book, year: int, datum=None, konto: str = ""):
+    """Pay out the dividend decided for `year`: 65 % to the shareholders, 35 % Verrechnungssteuer
+    owed to the ESTV — to be declared with Formular 103 and paid within 30 days."""
+    from datetime import timedelta
+    from .book import BookError
+    from .files import parse_date, write_yaml
+    from .journal import ensure_open, post
+    alloc = profit_allocation(book, year)
+    if not alloc["gebucht"]:
+        raise BookError(f"Gewinnverwendung {year} ist noch nicht gebucht")
+    brutto = Decimal(str(alloc["dividende"]))
+    if not brutto:
+        raise BookError(f"Für {year} ist keine Dividende beschlossen")
+    if dividend_path(book, year).exists():
+        raise BookError(f"Dividende {year} ist bereits ausbezahlt")
+    d = parse_date(datum, "datum") if datum else date.today()
+    ensure_open(book, d)
+    konto = konto or book.settings.konto("bank")
+    book.account(konto)
+    book.account(book.settings.konto("verrechnungssteuer"))
+    vst = (brutto * VST_SATZ).quantize(Decimal("0.01"))
+    saved = {"jahr": year, "datum": d.isoformat(), "brutto": brutto, "vst": vst, "netto": brutto - vst,
+             "konto": konto, "formular": "103", "frist": (d + timedelta(days=30)).isoformat()}
+    touched = post(book, dividend_rows(book, saved))
+    write_yaml(dividend_path(book, year), saved)
+    return saved, touched + [dividend_path(book, year)]

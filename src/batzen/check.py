@@ -14,7 +14,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from . import invoices as inv
-from . import payroll
+from . import payroll, statements
 from .book import Book, BookError, Row
 from .files import FormatError, parse_date, read_yaml, write_yaml
 from .qrbill_ch import iban_problem, normalize_iban
@@ -200,7 +200,7 @@ def run(book: Book) -> list[Issue]:
         if quelle.startswith("lohn:") and quelle not in known:
             add("fehler", group[0].where, f"Quelle {quelle}: Lohnabrechnung existiert nicht")
         if quelle.partition(":")[0] not in ("rechnung", "zahlung", "gutschrift", "lohn", "abschluss", "mwst",
-                                             "kreditor", "kzahlung", "bewertung", *plugin_sources):
+                                             "kreditor", "kzahlung", "bewertung", "dividende", *plugin_sources):
             add("warnung", group[0].where, f"unbekannte Quelle '{quelle}' (fehlt ein Plugin?)")
 
     # ---- documents of plugins own their rows like invoices do ----
@@ -245,6 +245,45 @@ def run(book: Book) -> list[Issue]:
         kind, _, ref = quelle.partition(":")
         if kind in ("kreditor", "kzahlung") and ref not in all_bills:
             add("fehler", group[0].where, f"Quelle {quelle}: Kreditor {ref} existiert nicht")
+
+    # ---- a cash box can never hold less than nothing ----
+    for nr, acct in accounts.items():
+        if acct.klasse != "aktiv" or acct.is_foreign or not (nr == "1000" or "kasse" in acct.name.lower()):
+            continue
+        moves = defaultdict(lambda: ZERO)
+        for r in rows:
+            if r.soll == nr:
+                moves[r.datum] += r.betrag
+            elif r.haben == nr:
+                moves[r.datum] -= r.betrag
+        running = acct.eroeffnung
+        for day in sorted(moves):
+            running += moves[day]
+            if running < 0:
+                add("warnung", nr, f"Kasse {nr} am {day:%d.%m.%Y} negativ ({running:.2f}) — fehlt eine Einlage, "
+                    "ein Bankbezug oder wurde eine Zahlung über die falsche Kasse gebucht?")
+                break
+
+    # ---- dividend payouts own their rows ----
+    known_div = set()
+    folder = book.root / "abschluss"
+    for path in sorted(folder.glob("dividende-*.yaml")) if folder.exists() else []:
+        saved = read_yaml(path) or {}
+        quelle = f"dividende:{saved.get('jahr')}"
+        known_div.add(quelle)
+        if Counter(map(_key, statements.dividend_rows(book, saved))) != Counter(map(_key, owned.get(quelle, []))):
+            add("fehler", book.rel(path), "Buchung der Dividendenauszahlung passt nicht zur gespeicherten Auszahlung")
+        vst_acct = book.settings.konto("verrechnungssteuer")
+        frist = parse_date(saved.get("frist")) if saved.get("frist") else None
+        if frist and vst_acct in accounts:
+            from .ledger import BalanceEngine
+            today = date.today()
+            if today > frist and today.year in book.years() and BalanceEngine(book).balance_at(vst_acct, today) < 0:
+                add("warnung", book.rel(path), f"Verrechnungssteuer {saved.get('vst')} war bis {frist:%d.%m.%Y} "
+                    "abzuliefern (Formular 103) — Konto noch nicht ausgeglichen")
+    for quelle, group in owned.items():
+        if quelle.startswith("dividende:") and quelle not in known_div:
+            add("fehler", group[0].where, f"Quelle {quelle}: Auszahlung existiert nicht")
 
     # ---- bank rules ----
     from . import bank as bank_mod

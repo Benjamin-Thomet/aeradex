@@ -89,6 +89,16 @@
       <div class="field"><label>Datum des GV-Beschlusses ({{ year + 1 }})</label><input class="input" type="date" name="datum" value="{{ gv_date }}"></div>
       {{ errors() }}<div class="formfoot"><span class="small muted">Bucht Gewinnvortrag an Dividende / Reserve</span><button class="btn primary" type="submit">Nach GV-Beschluss buchen</button></div>
     </form>{% endif %}
+    {% elif g.dividende|float %}
+    {% if div %}
+    <div class="body"><span class="small">Dividende ausbezahlt am {{ div.datum|datum }}: netto {{ div.netto|chf }}, Verrechnungssteuer {{ div.vst|chf }} — Formular 103 und Zahlung an die ESTV bis {{ div.frist|datum }}.</span></div>
+    {% else %}
+    <form class="body" hx-post="/abschluss/dividende" hx-target="find .errors" hx-confirm="Dividende {{ year }} auszahlen?" style="border-top:1px solid var(--rule)">
+      <input type="hidden" name="jahr" value="{{ year }}">
+      <div class="form"><div class="field"><label>Auszahlungsdatum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></div>
+        <div class="field"><span class="lbl">Aufteilung</span><span class="small">netto 65 % {{ (g.dividende|float * 0.65)|round(2)|chf }} an die Gesellschafter · Verrechnungssteuer 35 % {{ (g.dividende|float * 0.35)|round(2)|chf }}</span></div></div>
+      {{ errors() }}<div class="formfoot"><span class="small muted">Die Verrechnungssteuer ist innert 30 Tagen mit Formular 103 zu deklarieren und zu bezahlen (bei Beteiligungen ≥ 10 % evtl. Meldeverfahren, Formular 106).</span><button class="btn primary" type="submit">Dividende auszahlen</button></div>
+    </form>{% endif %}
     {% endif %}
   </div>
   <div class="panel">

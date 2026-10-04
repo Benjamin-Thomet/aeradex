@@ -224,6 +224,10 @@ def build_parser() -> argparse.ArgumentParser:
     c = als.add_parser("book")
     c.add_argument("jahr", type=int)
     c.add_argument("--datum")
+    c = als.add_parser("dividende", help="beschlossene Dividende auszahlen (65 %%) und Verrechnungssteuer (35 %%) buchen")
+    c.add_argument("jahr", type=int)
+    c.add_argument("--datum")
+    c.add_argument("--konto", default="", help="Bankkonto (Standard 1020)")
     s = sub.add_parser("lieferant", help="Lieferanten")
     ls = s.add_subparsers(dest="sub", required=True)
     ls.add_parser("list")
@@ -536,6 +540,8 @@ def dispatch(a, book_path: Path | None):
     if c == "allocation":
         if a.sub == "set":
             return api.allocation_set(book(), a.jahr, a.dividende, a.reserve)
+        if a.sub == "dividende":
+            return api.dividend_pay(book(), a.jahr, a.datum, a.konto)
         return api.allocation_book(book(), a.jahr, a.datum)
     if c == "lieferant":
         if a.sub == "list":

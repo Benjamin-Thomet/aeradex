@@ -52,6 +52,7 @@ DEFAULT_SYSTEM_ACCOUNTS = {
     "kreditoren": "2000",
     "kursgewinn": "6952",
     "kursverlust": "6942",
+    "verrechnungssteuer": "2206",
 }
 
 

@@ -1291,3 +1291,14 @@ def bank_rule_remove(book: Book, regel: str) -> dict:
 bank_rule_add = _locked(bank_rule_add)
 bank_rule_from = _locked(bank_rule_from)
 bank_rule_remove = _locked(bank_rule_remove)
+
+
+def dividend_pay(book: Book, jahr: int, datum=None, konto: str = "") -> dict:
+    """Pay the dividend decided for `jahr`: 65 % to the shareholders, 35 % Verrechnungssteuer."""
+    _guard(book)
+    saved, touched = statements.pay_dividend(book, jahr, datum, konto)
+    return _done(book, f"Dividende {jahr} ausbezahlt: netto {saved['netto']:.2f}, Verrechnungssteuer {saved['vst']:.2f} "
+                 f"— Formular 103 bis {saved['frist']}", touched, dividende=saved)
+
+
+dividend_pay = _locked(dividend_pay)
