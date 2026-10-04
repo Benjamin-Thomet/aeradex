@@ -1338,3 +1338,51 @@ def expense_remove(book: Book, nummer: str) -> dict:
 
 expense_add = _locked(expense_add)
 expense_remove = _locked(expense_remove)
+
+
+# ---------- several bookings at once (the journal grid) ----------
+
+class RowErrors(BookError):
+    """Some lines of a batch were refused; `fehler` maps the line number (1-based) to the reason."""
+
+    def __init__(self, fehler: dict[int, str]):
+        self.fehler = fehler
+        super().__init__("Nichts gebucht — bitte korrigieren:\n" +
+                         "\n".join(f"Zeile {n}: {msg}" for n, msg in sorted(fehler.items())))
+
+
+def post_entries(book: Book, zeilen: list[dict]) -> dict:
+    """Book several simple bookings in one go — all or none, one commit. Each line:
+    {datum, text, soll, haben, betrag, mwst?, waehrung?, kurs?, beleg?}."""
+    from .files import FormatError
+    _guard(book)
+    if not zeilen:
+        raise BookError("Keine Buchungen")
+    taken: set[str] = set()
+    prepared, errors = [], {}
+    for n, z in enumerate(zeilen, 1):
+        try:
+            if not str(z.get("text") or "").strip():
+                raise BookError("Text fehlt")
+            for side in ("soll", "haben"):
+                if not str(z.get(side) or "").strip():
+                    raise BookError(f"{side.capitalize()}-Konto fehlt")
+                book.account(str(z[side]).strip())
+            row, rows = journal.prepare_entry(book, z.get("datum"), z["soll"], z["haben"], z.get("betrag"), z["text"],
+                                              z.get("beleg") or "", mwst=(z.get("mwst") or "").upper(),
+                                              waehrung=z.get("waehrung") or "", kurs=z.get("kurs") or None,
+                                              taken=taken)
+            taken.add(row.beleg)
+            prepared.append((row, rows))
+        except (BookError, FormatError, ValueError) as exc:
+            errors[n] = str(exc).replace("Fehler: ", "")
+    if errors:
+        raise RowErrors(errors)
+    touched = journal.post(book, [r for _, rows in prepared for r in rows])
+    first, last = prepared[0][0].beleg, prepared[-1][0].beleg
+    label = first if len(prepared) == 1 else f"{first} … {last}"
+    return _done(book, f"{len(prepared)} Buchung(en) erfasst ({label})", touched,
+                 buchungen=[row for row, _ in prepared])
+
+
+post_entries = _locked(post_entries)

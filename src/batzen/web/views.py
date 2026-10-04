@@ -3,6 +3,7 @@ each POST calls exactly one `api` write through `act`."""
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import threading
 import tempfile
@@ -311,7 +312,9 @@ async def journal_page(ui: UI, request: Request):
                      names={a.nr: a.name for a in book.accounts.values()}, accounts=account_options(book),
                      quellen=QUELLEN, q=qp.get("q", ""), konto=qp.get("konto", ""), quelle=qp.get("quelle", ""),
                      ohne_beleg=bool(qp.get("ohne_beleg")), next_beleg=journal.next_beleg(book, year),
-                     currencies=currencies(book))
+                     currencies=currencies(book),
+                     account_names={a.nr: a.name + (f" ({a.waehrung})" if a.is_foreign else "")
+                                    for a in book.accounts.values() if a.aktiv_})
 
 
 async def journal_buchen(ui: UI, request: Request):
@@ -342,6 +345,75 @@ async def journal_buchen(ui: UI, request: Request):
     finally:
         if tmp and tmp.exists():
             tmp.unlink()
+
+
+def grid_date(raw: str, previous: date | None, year: int) -> date:
+    """Excel-ish dates: 2026-03-05, 05.03.2026, 5.3.26, 5.3. (year of the line above) — empty = as above."""
+    import re as _re
+    raw = (raw or "").strip()
+    if not raw:
+        if previous is None:
+            raise BookError("Datum fehlt")
+        return previous
+    m = _re.fullmatch(r"(\d{1,2})\.(\d{1,2})\.?(\d{2}|\d{4})?", raw)
+    if m:
+        y = m.group(3)
+        y = (2000 + int(y) if len(y) == 2 else int(y)) if y else (previous.year if previous else year)
+        try:
+            return date(y, int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            raise BookError(f"'{raw}' ist kein Datum") from None
+    return parse_date(raw, "datum")
+
+
+def grid_amount(raw: str) -> str:
+    """'1'234.50', '1 234,50', '1234,5', 'CHF 12.00' → '1234.50'."""
+    import re as _re
+    text = _re.sub(r"(?i)chf|fr\.|sfr|['’ \u00a0]", "", raw or "").strip()
+    if "," in text and "." in text:
+        text = text.replace(",", "") if text.rfind(".") > text.rfind(",") else text.replace(".", "").replace(",", ".")
+    elif "," in text:
+        text = text.replace(",", ".")
+    return text
+
+
+async def journal_raster(ui: UI, request: Request):
+    """The booking grid: every non-empty line is one booking; all or none are booked."""
+    f = await request.form()
+    book = ui.book()
+    year = int(f.get("jahr") or date.today().year)
+    cols = {k: f.getlist(k) for k in ("datum", "text", "soll", "haben", "betrag", "mwst")}
+    n = max((len(v) for v in cols.values()), default=0)
+    entries, where, problems, previous = [], [], {}, None
+    for i in range(n):
+        cell = {k: (v[i] if i < len(v) else "").strip() for k, v in cols.items()}
+        if not any(cell[k] for k in ("text", "soll", "haben", "betrag")):
+            if cell["datum"]:
+                previous = None
+            continue
+        try:
+            previous = grid_date(cell["datum"], previous, year)
+        except (BookError, ValueError) as exc:
+            problems[i + 1] = str(exc)
+            continue
+        entries.append({"datum": previous.isoformat(), "text": cell["text"], "soll": acct(cell["soll"]),
+                        "haben": acct(cell["haben"]), "betrag": grid_amount(cell["betrag"]),
+                        "mwst": cell["mwst"].split(" ", 1)[0].upper()})
+        where.append(i + 1)
+    if not entries and not problems:
+        return fail("Keine Buchungen im Raster.")
+    if not problems:
+        try:
+            result = await asyncio.to_thread(api.post_entries, book, entries)
+        except api.RowErrors as exc:
+            problems = {where[k - 1]: msg for k, msg in exc.fehler.items()}
+        except BookError as exc:
+            return fail(str(exc))
+        else:
+            return done(result.get("meldung", "Gebucht"), request.headers.get("hx-current-url") or "/journal")
+    response = fail("Nichts gebucht — " + "; ".join(f"Zeile {k}: {v}" for k, v in sorted(problems.items())))
+    response.headers["HX-Trigger"] = json.dumps({"rasterFehler": {str(k): v for k, v in problems.items()}})
+    return response
 
 
 async def journal_storno(ui: UI, request: Request):
@@ -1492,6 +1564,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/p/{plugin:str}/{slug:str}/{aktion:str}", h(plugin_aktion), methods=["POST"]),
         Route("/lohn/spesen", h(spesen_aktion), methods=["POST"]),
         Route("/lohn/spesen/{nr:str}/entfernen", h(spesen_aktion), methods=["POST"]),
+        Route("/journal/raster", h(journal_raster), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),
         Route("/kreditoren/einlesen", h(eingang_einlesen), methods=["POST"]),

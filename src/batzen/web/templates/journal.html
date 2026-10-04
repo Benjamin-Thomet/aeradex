@@ -12,8 +12,34 @@
 </div>
 {{ accounts_datalist(accounts) }}
 
-<details class="panel drawer" id="neueBuchung">
-  <summary><header style="border-bottom:0"><h2>+ Neue Buchung</h2><span class="hint">Taste N · nächster Beleg {{ next_beleg }}</span></header></summary>
+{% macro gridrow() %}<tr><td class="nr"></td>
+  <td><input name="datum" data-col="0" aria-label="Datum" autocomplete="off"></td>
+  <td><input name="text" data-col="1" aria-label="Beschreibung" autocomplete="off"></td>
+  <td><input name="soll" data-col="2" list="konten" aria-label="Soll" autocomplete="off"><small class="accname"></small></td>
+  <td><input name="haben" data-col="3" list="konten" aria-label="Haben" autocomplete="off"><small class="accname"></small></td>
+  <td><input name="betrag" data-col="4" class="num" inputmode="decimal" aria-label="Betrag" autocomplete="off"></td>
+  {% if vat.methode != 'keine' %}<td><input name="mwst" data-col="5" list="mwstcodes" aria-label="MWST-Code" autocomplete="off"></td>{% endif %}
+  <td class="x"><button class="btn small ghost" type="button" data-gridremove tabindex="-1" aria-label="Zeile entfernen">✕</button></td></tr>{% endmacro %}
+<div class="panel" id="neueBuchung">
+  <header><h2>Buchungen erfassen</h2><span class="hint">Taste N · Enter = nächste Zeile · leeres Datum = wie oben · aus Excel einfügen · ⌘↵ / Ctrl+↵ bucht</span></header>
+  <form id="raster" class="raster" hx-post="/journal/raster" hx-target="find .errors" data-accounts='{{ account_names|tojson }}' data-key="{{ settings.firma }}">
+    <input type="hidden" name="jahr" value="{{ year }}">
+    {% if vat.methode != 'keine' %}<datalist id="mwstcodes">{% for c in vat_codes.values() if not (vat.methode == 'saldo' and c.kind in ('vorsteuer', 'investition')) %}<option value="{{ c.code }}">{{ c.label }}</option>{% endfor %}</datalist>{% endif %}
+    <div class="tablewrap"><table class="grid">
+      <thead><tr><th class="nr">#</th><th class="c-datum">Datum</th><th>Beschreibung</th><th class="c-konto">Soll</th><th class="c-konto">Haben</th><th class="c-betrag right">Betrag</th>{% if vat.methode != 'keine' %}<th class="c-mwst">MWST</th>{% endif %}<th class="x"></th></tr></thead>
+      <tbody>{% for _ in range(5) %}{{ gridrow() }}{% endfor %}</tbody>
+      <tfoot><tr><td></td><td colspan="4" class="small muted"><span id="rasterAnzahl">0</span> Buchung(en)</td><td class="right num" id="rasterSumme">0.00</td><td colspan="{{ 2 if vat.methode != 'keine' else 1 }}"></td></tr></tfoot>
+    </table></div>
+    <template>{{ gridrow() }}</template>
+    <div class="body" style="padding-top:8px">
+      {{ errors() }}
+      <div class="formfoot"><span class="small muted">Jede Zeile ist eine Buchung{{ ' (mit MWST-Code: Betrag brutto)' if vat.methode != 'keine' }}. Gebucht wird alles oder nichts — fehlerhafte Zeilen werden rot markiert.</span>
+        <span class="actions"><button class="btn ghost" type="button" data-gridclear>Leeren</button><button class="btn primary" type="submit">Alle buchen <kbd>⌘↵</kbd></button></span></div>
+    </div>
+  </form>
+</div>
+<details class="panel drawer" id="einzelBuchung">
+  <summary><header style="border-bottom:0"><h2>Sammelbuchung, Beleg-Datei oder Fremdwährung</h2><span class="hint">nächster Beleg {{ next_beleg }}</span></header></summary>
   <form class="body" hx-post="/journal/buchen" hx-target="find .errors" hx-encoding="multipart/form-data" style="border-top:1px solid var(--rule)">
     <div class="actions">
       <label class="check"><input type="radio" name="modus" value="einfach" data-mode checked> Einfache Buchung</label>

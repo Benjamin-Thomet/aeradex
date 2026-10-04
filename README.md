@@ -51,7 +51,7 @@ Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird g
 |---|---|
 | **Übersicht** | Liquidität, Ergebnis, offene Debitoren, was ansteht, letzte Änderungen |
 | **Prüfen** | Inbox mit Vorschau (PDF, Bild, Text), Buchung daneben erfassen, Agenten-Vorschläge freigeben, Lohnentwürfe abschliessen |
-| **Journal** | Monate, Suche und Filter, einfache und Sammelbuchungen mit Beleg-Datei, Storno, Belege nachreichen |
+| **Journal** | Buchungen in einem Raster wie in Excel erfassen (Datum, Beschreibung, Soll, Haben, Betrag, MWST-Code; Enter, leeres Datum = wie oben, Zeilen aus Excel einfügen, alles oder nichts buchen), Monate, Suche, Storno, Belege |
 | **Konten** | Kontenplan bearbeiten, Saldenliste nach Periode, Kontoblatt |
 | **Debitoren** | Kunden, Rechnungen mit Live-Total und QR-PDF, Zahlung zuordnen, Gutschrift, Storno, offene Posten |
 | **Bank** | camt.053 importieren, automatische Zuordnung, offene Bewegungen buchen/zuordnen/ignorieren, Saldoabstimmung |

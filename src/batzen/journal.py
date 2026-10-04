@@ -72,6 +72,23 @@ def validate_rows(book: Book, rows: list[Row]) -> None:
             raise BookError(f"Beleg {beleg} ist nicht ausgeglichen: Soll {s} ≠ Haben {h}")
 
 
+def prepare_entry(book: Book, datum, soll: str, haben: str, betrag, text: str, beleg: str = "", quelle: str = "",
+                  mwst: str = "", waehrung: str = "", kurs=None, taken: set[str] | None = None) -> tuple[Row, list[Row]]:
+    """The rows of one simple booking (Soll an Haben), validated but not written. `taken` holds
+    Beleg numbers already given out in the same batch."""
+    from .mwst import split
+    d = parse_date(datum, "datum")
+    row = Row(datum=d, beleg=beleg or next_beleg(book, d.year, taken), text=text.strip(),
+              soll=str(soll or "").strip(), haben=str(haben or "").strip(),
+              betrag=parse_amount(betrag, "betrag"), quelle=quelle)
+    rows = convert(book, split(book, row, mwst), waehrung, kurs)
+    if row not in rows:     # MWST split: report the gross as the booking
+        gross = max(rows, key=lambda r: r.betrag)
+        row.betrag, row.waehrung, row.fw, row.kurs = gross.betrag, gross.waehrung, gross.fw, gross.kurs
+    validate_rows(book, rows)
+    return row, rows
+
+
 def book_entry(book: Book, datum, soll: str, haben: str, betrag, text: str,
                beleg: str = "", quelle: str = "", attachment: Path | None = None,
                mwst: str = "", waehrung: str = "", kurs=None) -> tuple[Row, list[Path]]:
@@ -79,15 +96,7 @@ def book_entry(book: Book, datum, soll: str, haben: str, betrag, text: str,
     is split into net and tax (effective method). With a foreign `waehrung`,
     `betrag` is in that currency and is converted at `kurs` (default: the BAZG
     daily rate of the booking date). Returns the row and the files touched."""
-    from .mwst import split
-    d = parse_date(datum, "datum")
-    row = Row(datum=d, beleg=beleg or next_beleg(book, d.year), text=text.strip(),
-              soll=str(soll or "").strip(), haben=str(haben or "").strip(),
-              betrag=parse_amount(betrag, "betrag"), quelle=quelle)
-    rows = convert(book, split(book, row, mwst), waehrung, kurs)
-    if row not in rows:     # MWST split: report the gross as the booking
-        gross = max(rows, key=lambda r: r.betrag)
-        row.betrag, row.waehrung, row.fw, row.kurs = gross.betrag, gross.waehrung, gross.fw, gross.kurs
+    row, rows = prepare_entry(book, datum, soll, haben, betrag, text, beleg, quelle, mwst, waehrung, kurs)
     return row, post(book, rows, attachment)
 
 

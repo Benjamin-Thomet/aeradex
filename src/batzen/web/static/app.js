@@ -57,6 +57,97 @@
     $$("[data-removerow]", list).forEach(b => { b.onclick = () => { b.closest(".splitrow, .posrow").remove(); list.dispatchEvent(new Event("input", { bubbles: true })); }; });
   }
 
+  // ---- booking grid (journal): a spreadsheet for simple bookings ----
+  function bindGrid(root) {
+    const form = $("#raster", root);
+    if (!form || form.dataset.bound) return;
+    form.dataset.bound = "1";
+    const body = $("tbody", form), tpl = $("template", form);
+    const accounts = JSON.parse(form.dataset.accounts || "{}");
+    const key = "batzen-raster:" + (form.dataset.key || "");
+    const rows = () => $$("tr", body);
+    const cells = tr => $$("input", tr);
+    const empty = tr => cells(tr).every(c => !c.value.trim());
+    const amount = v => { let t = (v || "").replace(/chf|fr\.|['’\s]/gi, ""); if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(".") > t.lastIndexOf(",") ? t.replace(/,/g, "") : t.replace(/\./g, "").replace(",", "."); else t = t.replace(",", "."); return parseFloat(t); };
+    const fmt = n => n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    function addRow() { body.appendChild(tpl.content.cloneNode(true)); return rows()[rows().length - 1]; }
+    function hint(input) {
+      const small = input.nextElementSibling; if (!small) return;
+      const nr = (input.value || "").trim().split(" ")[0];
+      small.textContent = nr ? (accounts[nr] || "unbekanntes Konto") : "";
+      small.classList.toggle("bad", !!nr && !accounts[nr]);
+    }
+    function update(save = true) {
+      let sum = 0, n = 0, prev = "";
+      rows().forEach((tr, i) => {
+        $(".nr", tr).textContent = i + 1;
+        const c = cells(tr);
+        if (!empty(tr)) { n++; const v = amount(c[4].value); if (!isNaN(v)) sum += v; }
+        c[0].placeholder = prev ? "wie oben" : "TT.MM.";
+        if (c[0].value.trim()) prev = c[0].value;
+        hint(c[2]); hint(c[3]);
+      });
+      if (!rows().length || !empty(rows()[rows().length - 1])) addRow(), update(false);
+      if (n) form.setAttribute("data-dirty", ""); else form.removeAttribute("data-dirty");
+      $("#rasterAnzahl").textContent = n; $("#rasterSumme").textContent = fmt(sum);
+      if (save) store.set(key, JSON.stringify(rows().filter(tr => !empty(tr)).map(tr => cells(tr).map(c => c.value))));
+    }
+    // Like Excel: Enter after tabbing across a row goes back to the column the row was started in.
+    let startCol = 0, startRow = null;
+    form.addEventListener("focusin", e => {
+      if (!e.target.matches("input[data-col]")) return;
+      const tr = e.target.closest("tr");
+      if (tr !== startRow) { startRow = tr; startCol = +e.target.dataset.col; }
+    });
+    function move(input, dr) {
+      const tr = input.closest("tr"), col = dr > 0 && startRow === tr ? startCol : +input.dataset.col;
+      let target = dr > 0 ? tr.nextElementSibling : tr.previousElementSibling;
+      if (!target && dr > 0) target = addRow();
+      if (target) { const c = cells(target).find(x => +x.dataset.col === col); if (c) { c.focus(); c.select && c.select(); } }
+    }
+    form.addEventListener("input", e => { e.target.closest("tr").classList.remove("err"); update(); });
+    form.addEventListener("keydown", e => {
+      if (!e.target.matches("input[data-col]") || e.metaKey || e.ctrlKey || e.altKey) return;
+      const listCell = e.target.hasAttribute("list");
+      if (e.key === "Enter") { e.preventDefault(); move(e.target, e.shiftKey ? -1 : 1); }
+      else if (!listCell && e.key === "ArrowDown") { e.preventDefault(); move(e.target, 1); }
+      else if (!listCell && e.key === "ArrowUp") { e.preventDefault(); move(e.target, -1); }
+    });
+    form.addEventListener("paste", e => {
+      const text = (e.clipboardData || window.clipboardData).getData("text");
+      if (!e.target.matches("input[data-col]") || !/[\t\n]/.test(text.trim())) return;
+      e.preventDefault();
+      const lines = text.replace(/\r/g, "").replace(/\n+$/, "").split("\n");
+      let tr = e.target.closest("tr");
+      const width = cells(tr).length;
+      // whole rows copied from a sheet start in the first column, wherever the cursor is
+      const col = lines.every(l => l.split("\t").length >= width - 1) ? 0 : +e.target.dataset.col;
+      lines.forEach((line, i) => {
+        if (i > 0) tr = tr.nextElementSibling || addRow();
+        const c = cells(tr);
+        line.split("\t").forEach((v, j) => { const cell = c.find(x => +x.dataset.col === col + j); if (cell) cell.value = v.trim(); });
+      });
+      update();
+    });
+    form.addEventListener("click", e => {
+      if (e.target.closest("[data-gridremove]")) { e.target.closest("tr").remove(); update(); }
+      if (e.target.closest("[data-gridclear]") && confirm("Alle Zeilen leeren?")) { rows().forEach(tr => tr.remove()); for (let i = 0; i < 5; i++) addRow(); update(); }
+    });
+    form.addEventListener("rasterFehler", e => {
+      const marks = (e.detail && (e.detail.value || e.detail)) || {};
+      rows().forEach(tr => { tr.classList.remove("err"); tr.title = ""; });
+      Object.keys(marks).filter(k => /^\d+$/.test(k)).forEach(k => { const tr = rows()[+k - 1]; if (tr) { tr.classList.add("err"); tr.title = marks[k]; } });
+    });
+    form.addEventListener("htmx:afterRequest", e => { if (e.detail.xhr && e.detail.xhr.status === 204) { try { localStorage.removeItem(key); } catch (x) { /* */ } form.removeAttribute("data-dirty"); } });
+    let saved = [];
+    try { saved = JSON.parse(store.get(key) || "[]"); } catch (x) { saved = []; }
+    if (saved.length) {
+      saved.forEach((vals, i) => { const tr = rows()[i] || addRow(); cells(tr).forEach((c, j) => { c.value = vals[j] || ""; }); });
+      toast("Nicht gebuchte Zeilen von vorhin wiederhergestellt");
+    }
+    update(false);
+  }
+
   // ---- agent drawer ----
   function bindChat() {
     const app = $("#app"), chat = $("#chat"), open = $("#chatOpen"), close = $("#chatClose");
@@ -101,13 +192,13 @@
   // htmx: refused posts swap an error box into the form; network errors become a toast
   document.addEventListener("htmx:responseError", e => toast("Fehler " + e.detail.xhr.status + ": " + (e.detail.xhr.responseText || "").slice(0, 200), true));
   document.addEventListener("htmx:sendError", () => toast("batzen ist nicht erreichbar. Läuft `batzen ui` noch?", true));
-  document.addEventListener("htmx:afterSwap", e => { if (e.detail.target.id === "page") { bindPage(e.detail.target); bindTheme(); $("#livebar").hidden = true; } });
+  document.addEventListener("htmx:afterSwap", e => { if (e.detail.target.id === "page") { bindPage(e.detail.target); bindTheme(); bindGrid(e.detail.target); $("#livebar").hidden = true; } });
   document.addEventListener("htmx:beforeRequest", e => { const b = e.detail.elt.querySelector && e.detail.elt.querySelector("button[type=submit]"); if (b) b.disabled = true; });
   document.addEventListener("htmx:afterRequest", e => { const b = e.detail.elt.querySelector && e.detail.elt.querySelector("button[type=submit]"); if (b) b.disabled = false; });
 
-  bindTheme(); bindPage(document); bindChat(); bindLive();
+  bindTheme(); bindPage(document); bindChat(); bindLive(); bindGrid(document);
   if ($("#toast")) toast();
-  if (new URLSearchParams(location.search).get("neu")) { const d = $("#neueBuchung"); if (d) { d.open = true; const i = $("input", d); if (i) i.focus(); } }
+  if (new URLSearchParams(location.search).get("neu")) { const d = $("#neueBuchung"); if (d) { d.open = true; const i = $("input[data-col]", d) || $("input", d); if (i) i.focus(); } }
 })();
 
 // ---------- agent drawer: send, stream, restore ----------

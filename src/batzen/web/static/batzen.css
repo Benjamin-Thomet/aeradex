@@ -281,3 +281,21 @@ details.inline > .body { padding-top: 0; }
   .splitrow, .posrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* booking grid: a spreadsheet for simple bookings */
+table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
+table.grid th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; text-align: left; padding: 8px; border-bottom: 1px solid var(--rule-strong); }
+table.grid td { border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); padding: 0; vertical-align: top; }
+table.grid td.nr, table.grid th.nr { width: 34px; color: var(--faint); text-align: right; padding: 8px 6px; font-family: var(--f-num); font-size: 12px; border-right: 1px solid var(--rule); }
+table.grid td.x, table.grid th.x { width: 40px; border-right: 0; text-align: center; }
+table.grid .c-datum { width: 110px; } table.grid .c-konto { width: 150px; } table.grid .c-betrag { width: 120px; } table.grid .c-mwst { width: 84px; }
+table.grid input { width: 100%; border: 0; background: transparent; padding: 8px; font: inherit; color: var(--ink); border-radius: 0; }
+table.grid input.num { text-align: right; font-family: var(--f-num); }
+table.grid input:focus { outline: 2px solid var(--red); outline-offset: -2px; background: var(--paper); }
+table.grid small.accname { display: block; font-size: 11px; color: var(--muted); padding: 0 8px 5px; margin-top: -4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+table.grid small.accname:empty { display: none; }
+table.grid small.accname.bad { color: var(--red); }
+table.grid tr.err td { background: var(--red-soft); }
+table.grid tfoot td { border: 0; padding: 8px; font-family: var(--f-num); }
+table.grid td.x .btn { opacity: .35; } table.grid tr:hover td.x .btn { opacity: 1; }
+@media (max-width: 760px) { table.grid { min-width: 720px; } }
