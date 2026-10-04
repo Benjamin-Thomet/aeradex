@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, kreditoren_nav, status_pill %}
+{% from "_macros.html" import errors, kreditoren_nav, status_pill, eingang_upload, eingang_table %}
 {% block title %}Kreditoren{% endblock %}
 {% block main %}
 <div class="topbar">
@@ -8,39 +8,8 @@
 </div>
 {{ kreditoren_nav(tab) }}
 <div class="panel" id="entwuerfe">
-  <header><h2>Rechnungen einlesen</h2><span class="hint">QR-Zahlteil · Text · {{ 'OCR' if ocr else 'OCR (Tesseract fehlt)' }} → Konto: Lieferant · {{ 'Jev' if jev.bereit else 'Jev (aus)' }} · Agent</span></header>
-  <form class="body" hx-post="/kreditoren/einlesen" hx-encoding="multipart/form-data" hx-target="find .errors" hx-indicator="find .busy">
-    <div class="dropzone">
-      <input class="input" type="file" name="dateien" multiple accept=".pdf,image/*" aria-label="Rechnungen (PDF, Fotos)">
-      <span class="small muted">PDFs, Scans oder Handyfotos — mehrere auf einmal. Gebucht wird nichts: jede Datei wird ein Entwurf, den du prüfst.</span>
-    </div>
-    {{ errors() }}
-    <div class="formfoot"><span class="busy small muted htmx-indicator">Lese Rechnungen … (OCR kann einige Sekunden dauern)</span><button class="btn primary" type="submit">Einlesen</button></div>
-  </form>
-  <form class="body" hx-post="/kreditoren/einstellung" hx-target="find .errors" hx-trigger="change" style="padding-top:0">
-    <label class="check"><input type="checkbox" name="agent_automatisch" value="1" {{ 'checked' if auto_agent }}> Weiss niemand das Konto (kein bekannter Lieferant, Jev unsicher), übernimmt automatisch der Agent ({{ settings.get('agent_backend') or 'automatisch gewählt' }})</label>
-    {{ errors() }}
-  </form>
-  {% if drafts %}
-  <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Entwurf</th><th>Lieferant</th><th>Rg.-Nr.</th><th class="right">Betrag</th><th>Konto</th><th>Status</th><th class="right"></th></tr></thead>
-    <tbody>{% for d in drafts %}{% set k = d.konto or {} %}
-      <tr class="row">
-        <td><span class="beleg">{{ d.id }}</span><br><a class="small link" href="/datei/{{ d.datei|urlq }}" target="_blank">{{ d.datei.split('/')[-1] }}</a></td>
-        <td>{{ dv(d, 'name') or '—' }}</td><td class="small">{{ dv(d, 'rechnungsnr') }}</td>
-        <td class="right num">{{ dv(d, 'betrag')|chf if dv(d, 'betrag') else '—' }}</td>
-        <td>{% if k.wert %}<span class="acc">{{ k.wert }}</span> <span class="small muted">{{ book.accounts[k.wert].name if k.wert in book.accounts }}</span><br><span class="pill {{ 'info' if k.quelle.startswith('Agent') else 'muted' }}" title="{{ k.begruendung or '' }}">{{ k.quelle }}</span>{% else %}—{% endif %}</td>
-        <td>{% if d.status == 'bereit' %}<span class="pill ok">bereit</span>{% elif d.status == 'agent' %}<span class="pill info">Agent arbeitet …</span>{% elif d.status == 'konflikt' %}<span class="pill red">Name ≠ IBAN</span>{% elif d.status == 'unvollstaendig' %}<span class="pill warn">unvollständig</span>{% else %}<span class="pill warn">Konto offen</span>{% endif %}
-          {% set last = (d.hinweise or [])|reject("equalto", d.konflikt)|list %}{% if d.konflikt %}<div class="small muted" title="{{ d.konflikt }}">Rechnung nennt einen anderen Namen als der Inhaber der IBAN</div>{% elif last %}<div class="small muted" title="{{ last|join(' · ') }}">{{ last[-1]|truncate(70) }}</div>{% endif %}</td>
-        <td class="right"><span class="actions">
-          <a class="btn small {{ 'primary' if d.status == 'bereit' }}" href="/kreditoren/neu?entwurf={{ d.id }}">Prüfen</a>
-          {% if d.status != 'agent' %}<form hx-post="/kreditoren/entwurf/{{ d.id }}/agent" hx-target="find .errors"><button class="btn small ghost" type="submit" title="Agent liest die Rechnung und kontiert">Agent fragen</button>{{ errors() }}</form>{% endif %}
-          <form hx-post="/kreditoren/entwurf/{{ d.id }}/verwerfen" hx-target="find .errors" hx-confirm="Entwurf {{ d.id }} verwerfen? Die Datei bleibt in der Inbox."><button class="btn small ghost" type="submit" aria-label="Verwerfen">✕</button>{{ errors() }}</form>
-        </span></td>
-      </tr>
-    {% endfor %}</tbody>
-  </table></div>
-  {% endif %}
+  {{ eingang_upload("kreditor", "Rechnungen einlesen", "PDFs, Scans oder Handyfotos — mehrere auf einmal.", ocr, jev, auto_agent, settings.get('agent_backend')) }}
+  {% if drafts %}{{ eingang_table(drafts, book, dv) }}{% endif %}
 </div>
 <form class="panel" hx-post="/kreditoren/zahlungslauf" hx-target="find .errors">
   <header><h2>Rechnungen</h2>

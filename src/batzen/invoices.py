@@ -75,7 +75,7 @@ FROZEN = ("nummer", "kunde", "an", "datum", "faellig", "waehrung", "positionen",
           "referenz_typ", "referenz", "debitorenkonto")
 # Added with MWST support; part of the fingerprint only when present, so
 # invoices issued before keep their fingerprint.
-FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto")
+FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto", "extern")
 
 
 def fingerprint(meta: dict) -> str:
@@ -206,6 +206,67 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
     return meta, touched + [path]
 
 
+def record_external(book: Book, kunde: str, betrag, datum=None, faellig=None, rechnungsnr: str = "",
+                    referenz: str = "", referenz_typ: str = "", konto: str = "", mwst: str = "",
+                    datei: str = "", text: str = "") -> tuple[dict, list[Path]]:
+    """Book an invoice that was issued outside batzen (Word, another program, by hand), so it
+    is an open item like any other: payments, bank matching, credit notes, reminders.
+    `betrag` is the gross total as on the invoice; with a MWST code the tax is taken out of it."""
+    from . import mwst as vat
+    from .journal import attach
+    cust = customer(book, kunde)
+    d = parse_date(datum, "datum") if datum else date.today()
+    ensure_open(book, d)
+    s = book.settings
+    gross = parse_amount(betrag, "betrag")
+    if gross <= 0 or gross != money(gross):
+        raise BookError("Betrag muss positiv sein und höchstens zwei Nachkommastellen haben")
+    konto = str(konto or s.konto("ertrag"))
+    book.account(konto)
+    cfg = vat.config(book)
+    code = (mwst or "").strip().upper()
+    net, tax = gross, ZERO
+    if code:
+        c = vat.code(code)
+        if c.kind not in ("umsatz", "befreit", "ausgenommen"):
+            raise BookError(f"{code} ist kein Umsatz-Code (U81, U26, U38, U0, UA)")
+        if cfg["methode"] == "keine":
+            raise BookError("Dieses Buch ist nicht MWST-pflichtig — ohne MWST-Code erfassen")
+        if c.rate:
+            tax = vat.tax_from_gross(gross, c.rate)
+            net = gross - tax
+    nummer = next_invoice_number(book, d.year)
+    label = f"Rechnung {rechnungsnr}" if rechnungsnr else "Rechnung"
+    position = {"text": f"{label} (ausserhalb von batzen erstellt)", "menge": 1, "einheit": "", "preis": net,
+                "betrag": net, "konto": konto, **({"mwst": code} if code else {})}
+    frist = int(s.get("zahlungsfrist_tage") or 30)
+    meta = {
+        "nummer": nummer, "kunde": cust["nummer"], "an": _snapshot_address(cust),
+        "datum": d.isoformat(),
+        "faellig": (parse_date(faellig, "faellig") if faellig else d + timedelta(days=frist)).isoformat(),
+        "waehrung": "CHF", "positionen": [position], "total": gross,
+        "referenz_typ": (referenz_typ or ("SCOR" if (referenz or "").upper().startswith("RF") else
+                                          "QRR" if re.fullmatch(r"\d{27}", referenz or "") else "NON")).upper(),
+        "referenz": (referenz or "").replace(" ", ""),
+        "debitorenkonto": s.konto("debitoren"), "status": "aktiv",
+        "extern": {"rechnungsnr": rechnungsnr or ""},
+    }
+    if code:
+        meta.update({"netto": net, "mwst": [{"code": code, "satz": vat.CODES[code].rate, "netto": net, "steuer": tax}],
+                     "mwst_methode": cfg["methode"], "mwst_konto": cfg["konten"]["umsatzsteuer"]})
+    meta["fingerprint"] = fingerprint(_canonical(meta))
+    rows = booking_rows(meta)
+    touched = post(book, rows)
+    if datei:
+        source = Path(datei) if Path(datei).is_absolute() else book.root / datei
+        target = attach(book, rows[0], source)
+        meta["datei"] = str(target.relative_to(book.root))
+        touched += [target, source]
+    path = book.root / "rechnungen" / str(d.year) / f"{nummer}.md"
+    write_frontmatter(path, meta, text)
+    return meta, touched + [path]
+
+
 def _num(value: Decimal):
     """Quantities stay as typed: 10 not 10.00, 1.5 not 1.50."""
     value = Decimal(str(value))
@@ -306,7 +367,8 @@ def invoice_state(book: Book, meta: dict, paid_rows: list[Row] | None = None,
             "name": (meta.get("an") or {}).get("name"), "datum": str(meta.get("datum")),
             "faellig": str(meta.get("faellig")), "total": total, "bezahlt": paid,
             "gutgeschrieben": credited, "offen": open_amount, "status": state,
-            "referenz": meta.get("referenz") or ""}
+            "referenz": meta.get("referenz") or "",
+            "extern": (meta.get("extern") or {}).get("rechnungsnr", "") if meta.get("extern") else None}
 
 
 def void_invoice(book: Book, nr: str, grund: str = "") -> tuple[dict, list[Path]]:
@@ -386,6 +448,9 @@ def find_match(book: Book, betrag, text: str) -> tuple[dict | None, str | None]:
             return s, "referenz"
     for s in candidates:
         if s["nummer"].upper() in text.upper():
+            return s, "nummer"
+        ext = (s.get("extern") or "").upper()
+        if len(ext) >= 4 and re.search(r"(?<![0-9A-Z])" + re.escape(ext) + r"(?![0-9A-Z])", text.upper()):
             return s, "nummer"
     try:
         target = money(betrag)

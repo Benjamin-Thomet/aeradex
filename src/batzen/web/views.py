@@ -185,7 +185,11 @@ def payslip_warnings(slip: dict, emp: dict) -> list[str]:
 async def pruefen(ui: UI, request: Request):
     book = ui.book()
     inbox = book.root / "inbox"
-    files = [p for p in sorted(inbox.iterdir()) if p.is_file() and not p.name.startswith(".")] if inbox.exists() else []
+    from .. import erfassung
+    all_drafts = list(erfassung.drafts(book).values())
+    drafted = {d.get("datei") for d in all_drafts}
+    files = [p for p in sorted(inbox.iterdir()) if p.is_file() and not p.name.startswith(".")
+             and f"inbox/{p.name}" not in drafted] if inbox.exists() else []
     chosen = request.query_params.get("datei")
     current = next((p for p in files if p.name == chosen), files[0] if files else None)
     proposals = journal.list_proposals(book)
@@ -200,7 +204,8 @@ async def pruefen(ui: UI, request: Request):
     bank_open = [t for t in bank.transactions(book) if t["Status"] == "offen"]
     return ui.render(request, "pruefen.html", book=book, files=files, current=current, qrbill=qrbill, bank_open=bank_open,
                      kind=file_kind(current) if current else None, text=text, proposals=proposals, linked=linked,
-                     drafts=draft_rows(book), issues=issues, accounts=account_options(book),
+                     drafts=all_drafts, payslip_drafts=draft_rows(book), dv=erfassung.value,
+                     issues=issues, accounts=account_options(book),
                      currencies=currencies(book), next_beleg=journal.next_beleg(book, date.today().year))
 
 
@@ -441,7 +446,10 @@ async def debitoren(ui: UI, request: Request):
     rows = api.invoice_list(book, status)
     rows.sort(key=lambda r: r["nummer"], reverse=True)
     ar = invoices.aged_receivables(book)
-    return ui.render(request, "debitoren.html", book=book, rows=rows, status=status, ar=ar, tab="rechnungen")
+    from .. import erfassung, jev
+    return ui.render(request, "debitoren.html", book=book, rows=rows, status=status, ar=ar, tab="rechnungen",
+                     drafts=list(erfassung.drafts(book, "debitor").values()), dv=erfassung.value,
+                     ocr=bool(erfassung.ocr_languages()), jev=jev.config(book))
 
 
 async def rechnung(ui: UI, request: Request):
@@ -454,6 +462,8 @@ async def rechnung(ui: UI, request: Request):
     state = invoices.invoice_state(book, meta)
     paid = invoices.settlements(book).get(nr, [])
     pdf = meta["_pfad"].with_suffix(".pdf")
+    if meta.get("extern") and meta.get("datei"):        # issued outside batzen: show the original
+        pdf = book.root / meta["datei"]
     return ui.render(request, "rechnung.html", book=book, meta=meta, state=state, paid=paid,
                      pdf=book.rel(pdf) if pdf.exists() else None, tab="rechnungen",
                      today=date.today().isoformat(), bank=book.settings.konto("bank"))
@@ -838,7 +848,7 @@ async def kreditoren_page(ui: UI, request: Request):
     rows = [r for r in rows if not status or r["status"] == status]
     rows.sort(key=lambda r: (r["status"] not in ("offen", "angewiesen"), r["faellig"], r["nummer"]))
     from .. import erfassung, jev
-    drafts = list(erfassung.drafts(book).values())
+    drafts = list(erfassung.drafts(book, "kreditor").values())
     return ui.render(request, "kreditoren.html", book=book, rows=rows, status=status, op=kred.open_payables(book),
                      tab="rechnungen", default_date=_next_workday().isoformat(), drafts=drafts,
                      auto_agent=erfassung.agent_auto(book), jev=jev.config(book),
@@ -863,48 +873,149 @@ def _agent_in_background(root: Path, ids: list[str]) -> None:
         threading.Thread(target=work, daemon=True).start()
 
 
-async def kreditoren_einlesen(ui: UI, request: Request):
+EINGANG_BACK = {"kreditor": "/kreditoren#entwuerfe", "debitor": "/debitoren#entwuerfe", "quittung": "/pruefen#eingang",
+                "": "/pruefen#eingang"}
+
+
+async def eingang_einlesen(ui: UI, request: Request):
+    """Upload (or an inbox file from Prüfen) → drafts. PDFs and images are read; anything else
+    (bank statements, CSV) only lands in the inbox."""
     from .. import erfassung
     form = await request.form()
+    art = (form.get("art") or ("kreditor" if request.url.path.startswith("/kreditoren") else "")).strip()
     uploads = [u for u in form.getlist("dateien") if getattr(u, "filename", "")]
-    datei = form.get("datei")                # an inbox file (from Prüfen)
+    datei = form.get("datei")
     if not uploads and not datei:
         return fail("Keine Datei gewählt.")
-    created, errors_ = [], []
+    created, errors_, stored = [], [], 0
     targets = [datei] if datei else []
     for upload in uploads:
         try:
             res = await asyncio.to_thread(api.inbox_add, ui.book(), upload.filename, await upload.read())
-            targets.append(res["datei"])
         except BookError as exc:
             errors_.append(f"{upload.filename}: {exc}")
+            continue
+        if file_kind(Path(res["datei"])) in ("pdf", "image") or res["datei"].endswith(".txt"):
+            targets.append(res["datei"])
+        else:
+            stored += 1
     for target in targets:
         try:
-            res = await asyncio.to_thread(api.bill_draft_create, ui.book(), target)
+            res = await asyncio.to_thread(api.bill_draft_create, ui.book(), target, art)
             created.append(res["entwurf"])
         except BookError as exc:
             errors_.append(f"{Path(target).name}: {exc}")
     if erfassung.agent_auto(ui.book()):
         _agent_in_background(ui.root, [d["id"] for d in created if erfassung.needs_agent(d)])
-    if errors_ and not created:
+    if errors_ and not created and not stored:
         return fail(" · ".join(errors_))
-    msg = f"{len(created)} Rechnung(en) eingelesen" + (f" · Probleme: {' · '.join(errors_)}" if errors_ else "")
-    return done(msg, "/kreditoren#entwuerfe", "warn" if errors_ else "ok")
+    kinds = defaultdict(int)
+    for d in created:
+        kinds[erfassung.ARTEN[d["art"]]] += 1
+    msg = ", ".join(f"{n}× {k}" for k, n in kinds.items()) or "Datei(en) in der Inbox"
+    if stored and created:
+        msg += f", {stored} weitere Datei(en) in der Inbox"
+    if errors_:
+        msg += f" · Probleme: {' · '.join(errors_)}"
+    return done(msg, EINGANG_BACK.get(art, "/pruefen#eingang"), "warn" if errors_ else "ok")
 
 
-async def kreditoren_entwurf(ui: UI, request: Request):
+async def eingang_entwurf(ui: UI, request: Request):
     draft_id, aktion = request.path_params["id"], request.path_params["aktion"]
+    back = request.headers.get("hx-current-url") or "/pruefen#eingang"
     if aktion == "agent":
         try:
             await asyncio.to_thread(api.bill_draft_mark, ui.book(), draft_id, "agent", "An den Agenten übergeben")
         except BookError as exc:
             return fail(str(exc))
         _agent_in_background(ui.root, [draft_id])
-        return done(f"{draft_id} ist beim Agenten — die Seite aktualisiert sich, sobald er fertig ist",
-                    "/kreditoren#entwuerfe")
+        return done(f"{draft_id} ist beim Agenten — die Seite aktualisiert sich, sobald er fertig ist", back)
     if aktion == "verwerfen":
-        return await act(request, api.bill_draft_discard, "/kreditoren#entwuerfe", ui.book(), draft_id)
+        return await act(request, api.bill_draft_discard, back, ui.book(), draft_id)
+    if aktion == "art":
+        f = await request.form()
+        return await act(request, api.bill_draft_update, back, ui.book(), draft_id, "Hand", art=f.get("art", ""))
     return fail("Unbekannte Aktion")
+
+
+async def quittung_pruefen(ui: UI, request: Request):
+    from .. import erfassung
+    book = ui.book()
+    try:
+        meta = erfassung.draft(book, request.query_params.get("entwurf", ""))
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=404)
+    v = erfassung.form_values(meta)
+    pay = meta.get("zahlung") or {}
+    from .. import bank
+    open_tx = [t for t in bank.transactions(book) if t["Status"] == "offen" and t["Betrag"].startswith("-")]
+    liquid = [a for a in book.accounts.values() if a.aktiv_ and (a.klasse == "aktiv" and a.nr.startswith("10")
+                                                                    or a.klasse == "passiv")]
+    return ui.render(request, "quittung.html", book=book, entwurf=meta, ev=v, pay=pay, open_tx=open_tx,
+                     liquid=liquid, kind=file_kind(book.root / meta["datei"]), quellen_felder=meta.get("felder") or {},
+                     accounts=account_options(book), currencies=currencies(book), tab="pruefen",
+                     today=date.today().isoformat())
+
+
+async def quittung_buchen(ui: UI, request: Request):
+    f = await request.form()
+    draft_id = f.get("entwurf", "")
+    how = f.get("zahlung") or "konto"
+    if how.startswith("bank:"):
+        zahlung = {"art": "bank", "bank": how[5:]}
+    elif how.startswith("buchung:"):
+        zahlung = {"art": "buchung", "beleg": how[8:]}
+    else:
+        zahlung = {"art": "konto", "konto": acct(f.get("zahlkonto")) or ui.book().settings.konto("bank")}
+    codes = f.getlist("p_mwst") or [""] * len(f.getlist("p_konto"))
+    lines = [{"konto": acct(k), "betrag": b, "text": t, "mwst": m}
+             for k, b, t, m in zip(f.getlist("p_konto"), f.getlist("p_betrag"), f.getlist("p_text"), codes) if k or b]
+    cur = (f.get("waehrung") or "CHF").upper()
+    return await act(request, api.receipt_book, "/pruefen#eingang", ui.book(), draft_id, f.get("datum"),
+                     (f.get("text") or "").strip() or "Quittung", f.get("betrag"), acct(f.get("konto")),
+                     f.get("mwst") or "", lines or None, "" if cur == "CHF" else cur, f.get("kurs") or None, zahlung)
+
+
+async def debitor_extern(ui: UI, request: Request):
+    from .. import erfassung
+    book = ui.book()
+    meta, v = None, {}
+    if request.query_params.get("entwurf"):
+        try:
+            meta = erfassung.draft(book, request.query_params["entwurf"])
+        except BookError as exc:
+            return PlainTextResponse(str(exc), status_code=404)
+        v = erfassung.form_values(meta)
+    custs = invoices.customers(book)
+    return ui.render(request, "debitor_extern.html", book=book, entwurf=meta, ev=v, customers=custs,
+                     chosen=v.get("kunde") if v.get("kunde") in custs else "",
+                     kind=file_kind(book.root / meta["datei"]) if meta else None,
+                     quellen_felder=(meta or {}).get("felder") or {}, accounts=account_options(book),
+                     tab="rechnungen", today=date.today().isoformat())
+
+
+async def debitor_extern_erfassen(ui: UI, request: Request):
+    f = await request.form()
+    book = ui.book()
+    kunde = f.get("kunde") or ""
+    try:
+        if kunde == "neu":
+            res = await asyncio.to_thread(api.customer_add, book, name=(f.get("c_name") or "").strip(),
+                                          firma=(f.get("c_firma") or "").strip(), strasse=f.get("c_strasse", ""),
+                                          nr=f.get("c_nr", ""), plz=f.get("c_plz", ""), ort=f.get("c_ort", ""),
+                                          land=f.get("c_land") or "CH")
+            kunde = res["kunde"]["nummer"]
+            book = ui.book()
+    except (BookError, ValueError) as exc:
+        return fail(str(exc))
+    fields = {k: (f.get(k) or "").strip() for k in ("datum", "faellig", "rechnungsnr", "referenz", "mwst", "entwurf")}
+    fields = {k: v for k, v in fields.items() if v}
+    if f.get("konto"):
+        fields["konto"] = acct(f.get("konto"))
+    if f.get("datei") and not fields.get("entwurf"):
+        fields["datei"] = f.get("datei")
+    return await act(request, api.invoice_external, lambda r: f"/debitoren/rechnung/{r['rechnung']['nummer']}", book,
+                     kunde, f.get("betrag"), **fields)
 
 
 async def kreditoren_einstellung(ui: UI, request: Request):
@@ -1279,8 +1390,14 @@ def routes(ui: UI) -> list[Route]:
         Route("/bank/{id:str}/{aktion:str}", h(bank_aktion), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),
-        Route("/kreditoren/einlesen", h(kreditoren_einlesen), methods=["POST"]),
-        Route("/kreditoren/entwurf/{id:str}/{aktion:str}", h(kreditoren_entwurf), methods=["POST"]),
+        Route("/kreditoren/einlesen", h(eingang_einlesen), methods=["POST"]),
+        Route("/kreditoren/entwurf/{id:str}/{aktion:str}", h(eingang_entwurf), methods=["POST"]),
+        Route("/eingang/einlesen", h(eingang_einlesen), methods=["POST"]),
+        Route("/eingang/quittung", h(quittung_pruefen)),
+        Route("/eingang/quittung", h(quittung_buchen), methods=["POST"]),
+        Route("/eingang/{id:str}/{aktion:str}", h(eingang_entwurf), methods=["POST"]),
+        Route("/debitoren/extern", h(debitor_extern)),
+        Route("/debitoren/extern", h(debitor_extern_erfassen), methods=["POST"]),
         Route("/kreditoren/einstellung", h(kreditoren_einstellung), methods=["POST"]),
         Route("/kreditoren/neu", h(kreditor_erfassen), methods=["POST"]),
         Route("/kreditoren/rechnung/{nr:str}", h(kreditor_detail)),

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import errors, kreditoren_nav, accounts_datalist, mwst_select %}
-{% macro posrow(p={}) %}<div class="splitrow"><input class="input" name="p_konto" list="konten" aria-label="Konto" value="{{ p.konto or '' }}"><input class="input num" name="p_betrag" inputmode="decimal" aria-label="Betrag brutto" value="{{ p.betrag or '' }}"><input class="input" name="p_text" aria-label="Text" value="{{ p.text or '' }}">{% if vat.methode == 'effektiv' %}{{ mwst_select("p_mwst", vat, vat_codes, kinds=("vorsteuer","investition"), selected=p.mwst or "", label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Zeile entfernen">✕</button></div>{% endmacro %}
+{% macro posrow(p={}) %}<div class="splitrow"><input class="input" name="p_konto" list="konten" aria-label="Konto" value="{{ p.konto or '' }}"><input class="input num" name="p_betrag" inputmode="decimal" aria-label="Betrag brutto" value="{{ p.betrag or '' }}"><input class="input" name="p_text" aria-label="Text" value="{{ p.text or '' }}">{% if vat.methode != 'keine' %}{{ mwst_select("p_mwst", vat, vat_codes, kinds=("vorsteuer","investition","bezug"), selected=p.mwst or "", label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Zeile entfernen">✕</button></div>{% endmacro %}
 {% block title %}Kreditor erfassen{% endblock %}
 {% block main %}
 {% set sc = sc_override or scan or {} %}{% set k = sc.kreditor or {} %}{% set ev = ev or {} %}{% set qf = quellen_felder or {} %}
@@ -46,9 +46,9 @@
         <div class="field"><label for="k-d">Rechnungsdatum{{ src('datum') }}</label><input class="input" id="k-d" type="date" name="datum" value="{{ ev.datum or today }}"></div>
         <div class="field"><label for="k-f">Fällig am{{ src('faellig') }}</label><input class="input" id="k-f" type="date" name="faellig" value="{{ ev.faellig or '' }}"></div>
         <div class="field"><label for="k-k">Aufwandkonto (leer = Standard des Lieferanten){% if entwurf and (entwurf.konto or {}).quelle %} <span class="pill {{ 'info' if entwurf.konto.quelle.startswith('Agent') else 'muted' }}" title="{{ entwurf.konto.begruendung or '' }}">{{ entwurf.konto.quelle }}</span>{% endif %}</label><input class="input" id="k-k" name="konto" list="konten" placeholder="z.B. 6500 Büromaterial" value="{{ ev.konto or '' }}"></div>
-        {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition"), id="k-m", selected=ev.mwst or "") }}
+        {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition","bezug"), id="k-m", selected=ev.mwst or "") }}
         <details class="field wide" {{ 'open' if ev.positionen }}><summary class="small">Auf mehrere Konten aufteilen{% if entwurf and entwurf.positionen %} <span class="pill info" title="{{ entwurf.positionen.begruendung or '' }}">{{ entwurf.positionen.quelle }}</span>{% endif %}</summary>
-          <div class="splitrow poshead billhead {{ 'vat' if vat.methode == 'effektiv' }}"><span>Konto</span><span class="right">Betrag brutto</span><span>Text</span>{% if vat.methode == 'effektiv' %}<span>MWST</span>{% endif %}<span></span></div>
+          <div class="splitrow poshead billhead {{ 'vat' if vat.methode != 'keine' }}"><span>Konto</span><span class="right">Betrag brutto</span><span>Text</span>{% if vat.methode != 'keine' %}<span>MWST</span>{% endif %}<span></span></div>
           <div class="splitrows billrows" id="posrows">{% for p in ev.positionen or [{}, {}] %}{{ posrow(p) }}{% endfor %}</div>
           <template>{{ posrow() }}</template>
           <button class="btn small" type="button" data-addrow="#posrows" style="margin-top:6px">+ Position</button>

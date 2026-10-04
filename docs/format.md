@@ -108,6 +108,11 @@ mwst:
 | UA | von der Steuer ausgenommen | 230 |
 | V81 / V26 / V38 | Vorsteuer Material und Dienstleistungen | 400 |
 | I81 / I26 / I38 | Vorsteuer Investitionen und übriger Betriebsaufwand | 405 |
+| B81 / B26 | Bezugsteuer: Dienstleistungen aus dem Ausland (Art. 45) | 382 / 383 (effektiv: Vorsteuer 400 bei 4xxx-Konten, sonst 405) |
+
+Bezugsteuer: die Aufwandzeile trägt den Code (Bemessungsgrundlage), dazu die geschuldete Steuer auf
+`konten.bezugsteuer` (Standard: Umsatzsteuerkonto) und — effektive Methode — ihr Abzug als Vorsteuer; bei der
+Saldosteuersatzmethode ist die Steuer Aufwand auf demselben Konto.
 
 Gebucht wird brutto mit Code; bei der effektiven Methode spaltet batzen die Steuer ab (Netto- und Steuerzeile tragen beide den Code). Bei der Saldosteuersatzmethode bleibt der Umsatz brutto und die Saldosteuer wird mit der Abrechnung gebucht. Gebuchte Abrechnungen liegen unter `mwst/<Periode>.yaml` und gehören ihren Journalzeilen (`Quelle mwst:2026-Q1`).
 
@@ -132,6 +137,9 @@ Freie Notizen.
 ## rechnungen/JJJJ/R-JJJJ-NNNN.md
 
 Frontmatter mit `nummer, kunde, an` (Adress-Snapshot), `datum, faellig, waehrung, positionen[], total, referenz_typ, referenz, debitorenkonto, status, fingerprint`. Der Text nach dem Frontmatter erscheint als Einleitung auf der Rechnung. Nach der Ausstellung nur noch `status` (via `void`) änderbar.
+
+Rechnungen, die ausserhalb von batzen erstellt wurden, tragen `extern: {rechnungsnr: …}` und `datei` (das Original
+unter belege/); sie haben eine eigene batzen-Nummer und werden sonst wie alle Rechnungen behandelt.
 
 ## personal/M0001-name.md
 
@@ -176,9 +184,12 @@ jev: {aktiv: true, schwelle: 0.7, modell: jev-latest}   # plus TYPESAFE_API_KEY 
 
 Frontmatter: `nummer, name, adresse{…}, iban, konto` (Standard-Aufwandkonto), `mwst` (Standard-Code), `email`.
 
-## kreditoren/entwuerfe/ENT-NNNN.yaml
+## eingang/ENT-NNNN.yaml
 
-Eingelesene, noch nicht erfasste Lieferantenrechnungen. `datei` (meist inbox/…), `felder` mit je `wert` und
+Eingelesene, noch nicht gebuchte Belege (Entwürfe aus v0.6 unter `kreditoren/entwuerfe/` werden weiter gelesen).
+`art`: `kreditor` (Lieferantenrechnung), `quittung` (bereits bezahlt) oder `debitor` (eigene, extern erstellte
+Rechnung). Quittungen tragen `zahlung`: `{art: bank, bank: <ID>}` (offene Bankbewegung), `{art: buchung, beleg: …}`
+(schon gebucht, nur ablegen) oder `{art: konto, konto: …}`. `datei` (meist inbox/…), `felder` mit je `wert` und
 `quelle` (QR, Text, OCR, Lieferant L0001, Agent, Hand oder ein Plugin), `konto` und `mwst` mit Quelle (und
 `begruendung`, wenn der Agent kontiert hat), `hinweise`, `konflikt` (Name auf der Rechnung ≠ Inhaber der IBAN) und
 `status`: `bereit`, `unsicher` (Konto fehlt), `agent` (Agent arbeitet), `konflikt`, `unvollstaendig`.

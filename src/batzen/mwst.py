@@ -15,6 +15,13 @@ revenue account, the tax goes to the Vorsteuer or Umsatzsteuer account; both
 rows carry the code in the journal's `MWST` column. With the Saldosteuersatz
 method revenue stays gross and the tax is booked once per period.
 
+Bezugsteuer (Art. 45 MWSTG, Ziffern 382/383): services bought from companies
+abroad (codes B81, B26). The expense is booked as invoiced; the tax is owed on
+it (`konten.bezugsteuer`, default the Umsatzsteuer account) and — with the
+effective method — deducted again as Vorsteuer (Ziffer 400 for 4xxx accounts,
+else 405), so it usually nets to zero. With the Saldosteuersatz method it is
+owed without deduction and becomes a cost on the same account.
+
 The ESTV form numbers (Ziffern) follow the rates valid since 1.1.2024
 (8.1 / 2.6 / 3.8 %). Check them against the current form before filing.
 """
@@ -41,7 +48,7 @@ RATE_LABEL = {"81": "Normalsatz 8.1 %", "26": "reduzierter Satz 2.6 %", "38": "B
 @dataclass(frozen=True)
 class Code:
     code: str
-    kind: str            # umsatz | befreit | ausgenommen | vorsteuer | investition
+    kind: str            # umsatz | befreit | ausgenommen | vorsteuer | investition | bezug
     rate: Decimal
     label: str
 
@@ -52,6 +59,8 @@ def _codes() -> dict[str, Code]:
         out[f"U{key}"] = Code(f"U{key}", "umsatz", rate, f"Umsatz {RATE_LABEL[key]}")
         out[f"V{key}"] = Code(f"V{key}", "vorsteuer", rate, f"Vorsteuer Material/Dienstleistungen {rate} %")
         out[f"I{key}"] = Code(f"I{key}", "investition", rate, f"Vorsteuer Investitionen/übriger Aufwand {rate} %")
+    for key in ("81", "26"):
+        out[f"B{key}"] = Code(f"B{key}", "bezug", RATES[key], f"Bezugsteuer {RATES[key]} % (Dienstleistungen aus dem Ausland)")
     out["U0"] = Code("U0", "befreit", ZERO, "Umsatz steuerbefreit (z.B. Export, Ziff. 220)")
     out["UA"] = Code("UA", "ausgenommen", ZERO, "Umsatz von der Steuer ausgenommen (Ziff. 230)")
     return out
@@ -60,6 +69,7 @@ def _codes() -> dict[str, Code]:
 CODES = _codes()
 DEFAULT_KONTEN = {"vorsteuer": "1170", "vorsteuer_inv": "1171", "umsatzsteuer": "2200",
                   "abrechnung": "2201", "saldosteuer": "3809", "differenz": "3800"}
+BEZUG_ZIFFERN = {"81": "382", "26": "383"}
 
 
 def config(book: Book) -> dict:
@@ -70,7 +80,13 @@ def config(book: Book) -> dict:
             "saldosteuersatz": Decimal(str(raw.get("saldosteuersatz") or 0)),
             "taetigkeit": str(raw.get("taetigkeit") or ""),        # ESTV-Tätigkeits-ID (SSS ab 2025)
             "abrechnungsart": raw.get("abrechnungsart") or "vereinbart",
-            "konten": {**DEFAULT_KONTEN, **{k: str(v) for k, v in (raw.get("konten") or {}).items() if v}}}
+            "konten": _konten(raw)}
+
+
+def _konten(raw: dict) -> dict:
+    konten = {**DEFAULT_KONTEN, **{k: str(v) for k, v in (raw.get("konten") or {}).items() if v}}
+    konten.setdefault("bezugsteuer", konten["umsatzsteuer"])
+    return konten
 
 
 def code(value: str) -> Code:
@@ -112,6 +128,8 @@ def split(book: Book, row: Row, mwst: str) -> list[Row]:
         raise BookError("MWST-Codes gehen nur bei einfachen Buchungen (Soll und Haben); "
                         "bei Sammelbuchungen den Code je Zeile setzen.")
     row.mwst = c.code
+    if c.kind == "bezug":
+        return bezug_rows(cfg, row, c)
     account = tax_account(cfg, c)
     if cfg["methode"] == "saldo" or account is None:
         return [row]                                  # gross stays on the revenue account
@@ -125,6 +143,18 @@ def split(book: Book, row: Row, mwst: str) -> list[Row]:
     return [Row(row.datum, row.beleg, row.text, row.soll, "", net, row.quelle, mwst=c.code),
             Row(row.datum, row.beleg, row.text, account, "", tax, row.quelle, mwst=c.code),
             Row(row.datum, row.beleg, row.text, "", row.haben, row.betrag, row.quelle, mwst="")]
+
+
+def bezug_rows(cfg: dict, row: Row, c: Code) -> list[Row]:
+    """A service from abroad: the expense as invoiced (no Swiss VAT in it), plus the
+    Bezugsteuer owed on it and — effective method — its deduction as Vorsteuer."""
+    tax = tax_from_net(row.betrag, c.rate)
+    owed = Row(row.datum, row.beleg, row.text, "", cfg["konten"]["bezugsteuer"], tax, row.quelle, mwst=c.code)
+    if cfg["methode"] == "saldo":
+        cost = Row(row.datum, row.beleg, row.text, row.soll, "", tax, row.quelle)      # no deduction: a cost
+        return [row, cost, owed]
+    vst = cfg["konten"]["vorsteuer"] if row.soll.startswith("4") else cfg["konten"]["vorsteuer_inv"]
+    return [row, Row(row.datum, row.beleg, row.text, vst, "", tax, row.quelle, mwst=c.code), owed]
 
 
 # ---------- periods ----------
@@ -159,9 +189,11 @@ def report(book: Book, periode: str) -> dict:
     """The MWST-Abrechnung for a period, by ESTV Ziffer, plus the rows behind each code."""
     start, end, label = resolve(periode)
     cfg = config(book)
-    tax_accounts = {cfg["konten"]["umsatzsteuer"], cfg["konten"]["vorsteuer"], cfg["konten"]["vorsteuer_inv"]}
+    k = cfg["konten"]
+    tax_accounts = {k["umsatzsteuer"], k["vorsteuer"], k["vorsteuer_inv"], k["bezugsteuer"]}
     base: dict[str, Decimal] = defaultdict(lambda: ZERO)
     tax: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    bezug_vst = {"400": ZERO, "405": ZERO}
     belege: dict[str, set] = defaultdict(set)
     for r in book.rows:
         if not (start <= r.datum <= end) or not r.mwst:
@@ -170,6 +202,14 @@ def report(book: Book, periode: str) -> dict:
         if c is None:
             continue
         belege[c.code].add(r.beleg)
+        if c.kind == "bezug":
+            if r.soll and r.haben:                         # the expense: the base of the Bezugsteuer
+                base[c.code] += r.betrag
+            elif r.haben == k["bezugsteuer"]:
+                tax[c.code] += r.betrag                    # owed
+            elif r.soll in (k["vorsteuer"], k["vorsteuer_inv"]):
+                bezug_vst["400" if r.soll == k["vorsteuer"] else "405"] += r.betrag
+            continue
         revenue = c.kind in ("umsatz", "befreit", "ausgenommen")
         if r.soll and r.haben:
             # Two-sided row (Saldo method): the side on a P&L account is the revenue/cost side.
@@ -186,6 +226,7 @@ def report(book: Book, periode: str) -> dict:
             base[c.code] += sign * r.betrag
 
     ziffern: dict[str, Decimal] = {}
+    bezug_exact = {key: base[f"B{key}"] * RATES[key] / Decimal(100) for key in BEZUG_ZIFFERN}
     if cfg["methode"] == "saldo":
         rate = cfg["saldosteuersatz"]
         gross = sum((base[k] for k in ("U81", "U26", "U38")), ZERO)
@@ -193,7 +234,9 @@ def report(book: Book, periode: str) -> dict:
         ziffern = {"200": gross + exempt, "220": base["U0"], "230": base["UA"],
                    "289": exempt, "299": gross, "322": gross,
                    "322_steuer": tax_from_net(gross, rate) if rate else ZERO}
-        ziffern["399"] = ziffern["322_steuer"]
+        ziffern["399"] = ziffern["322_steuer"] + sum(bezug_exact.values(), ZERO).quantize(CENT, rounding=ROUND_HALF_UP)
+        if tax["B81"] or tax["B26"]:          # only then: booked Abrechnungen keep their fingerprint
+            ziffern["399_gebucht"] = ziffern["322_steuer"] + tax["B81"] + tax["B26"]
         ziffern["479"] = ZERO
     else:
         taxable = {k: base[f"U{k}"] for k in RATES}
@@ -207,17 +250,22 @@ def report(book: Book, periode: str) -> dict:
                    "303": taxable["81"], "303_steuer": exact["81"].quantize(CENT, rounding=ROUND_HALF_UP),
                    "313": taxable["26"], "313_steuer": exact["26"].quantize(CENT, rounding=ROUND_HALF_UP),
                    "343": taxable["38"], "343_steuer": exact["38"].quantize(CENT, rounding=ROUND_HALF_UP)}
-        ziffern["399"] = sum(exact.values(), ZERO).quantize(CENT, rounding=ROUND_HALF_UP)
-        ziffern["399_gebucht"] = tax["U81"] + tax["U26"] + tax["U38"]
-        ziffern["400"] = tax["V81"] + tax["V26"] + tax["V38"]
-        ziffern["405"] = tax["I81"] + tax["I26"] + tax["I38"]
+        ziffern["399"] = (sum(exact.values(), ZERO) + sum(bezug_exact.values(), ZERO)).quantize(CENT, rounding=ROUND_HALF_UP)
+        ziffern["399_gebucht"] = tax["U81"] + tax["U26"] + tax["U38"] + tax["B81"] + tax["B26"]
+        ziffern["400"] = tax["V81"] + tax["V26"] + tax["V38"] + bezug_vst["400"]
+        ziffern["405"] = tax["I81"] + tax["I26"] + tax["I38"] + bezug_vst["405"]
         ziffern["479"] = ziffern["400"] + ziffern["405"]
+    for key, nr in BEZUG_ZIFFERN.items():
+        if base[f"B{key}"]:
+            ziffern[nr] = base[f"B{key}"]
+            ziffern[f"{nr}_steuer"] = bezug_exact[key].quantize(CENT, rounding=ROUND_HALF_UP)
     ziffern["differenz"] = ziffern["399"] - ziffern.get("399_gebucht", ziffern["399"])
     saldo = ziffern["399"] - ziffern["479"]
     ziffern["500"] = saldo if saldo > 0 else ZERO
     ziffern["510"] = -saldo if saldo < 0 else ZERO
     saved = load(book, label)
     return {"periode": label, "von": start, "bis": end, "methode": cfg["methode"],
+            "bezug_gebucht": tax["B81"] + tax["B26"],
             "saldosteuersatz": cfg["saldosteuersatz"], "ziffern": ziffern,
             "codes": {k: {"code": k, "label": CODES[k].label, "entgelt": base[k], "steuer": tax[k],
                           "belege": sorted(belege[k])} for k in CODES if base[k] or tax[k]},
@@ -256,12 +304,19 @@ def booking_rows(book: Book, label: str, saved: dict) -> list[Row]:
             soll, haben, amount = haben, soll, -amount
         rows.append(Row(end, beleg, f"MWST-Abrechnung {label}: {text}", soll, haben, amount, quelle))
 
+    owed_bezug = Decimal(str(saved.get("bezug_gebucht") or 0))
     if saved.get("methode") == "saldo":
-        add(k["saldosteuer"], k["abrechnung"], z["399"], f"Saldosteuer {saved.get('saldosteuersatz')} %")
+        add(k["saldosteuer"], k["abrechnung"], z["322_steuer"] if "322_steuer" in z else z["399"],
+            f"Saldosteuer {saved.get('saldosteuersatz')} %")
+        add(k["bezugsteuer"], k["abrechnung"], owed_bezug, "Bezugsteuer")
+        if "399_gebucht" in z:
+            add(k.get("differenz", "3800"), k["abrechnung"], z["399"] - z["399_gebucht"], "Rundungsdifferenz Steuer")
     else:
-        booked = z.get("399_gebucht", z["399"])
+        booked = z.get("399_gebucht", z["399"]) - owed_bezug
         add(k["umsatzsteuer"], k["abrechnung"], booked, "Umsatzsteuer")
-        add(k.get("differenz", "3800"), k["abrechnung"], z["399"] - booked, "Rundungsdifferenz Steuer")
+        add(k["bezugsteuer"], k["abrechnung"], owed_bezug, "Bezugsteuer")
+        add(k.get("differenz", "3800"), k["abrechnung"], z["399"] - z.get("399_gebucht", z["399"]),
+            "Rundungsdifferenz Steuer")
         add(k["abrechnung"], k["vorsteuer"], z.get("400", ZERO), "Vorsteuer Material/DL")
         add(k["abrechnung"], k["vorsteuer_inv"], z.get("405", ZERO), "Vorsteuer Investitionen")
     return rows
@@ -287,6 +342,8 @@ def book_report(book: Book, periode: str) -> tuple[dict, list[Path]]:
              "methode": rep["methode"], "saldosteuersatz": rep["saldosteuersatz"],
              "ziffern": rep["ziffern"], "fingerprint": fingerprint(rep["ziffern"]),
              "gebucht_am": date.today().isoformat()}
+    if rep["bezug_gebucht"]:
+        saved["bezug_gebucht"] = rep["bezug_gebucht"]
     rows = booking_rows(book, label, saved)
     touched = post(book, rows) if rows else []
     write_yaml(path(book, label), saved)
@@ -339,6 +396,16 @@ def ech0217(book: Book, periode: str, korrektur: bool = False) -> bytes:
         turnover += e("suppliesExemptFromTax", a(z["230"]))
     turnover += "</eCH-0217:turnoverComputation>"
 
+    def acquisition():
+        out = ""
+        for key, nr in BEZUG_ZIFFERN.items():
+            if z.get(nr):
+                out += (f"<eCH-0217:acquisitionTax>{e('taxRate', f'{RATES[key]:.2f}')}"
+                        f"{e('turnover', a(z[nr]))}</eCH-0217:acquisitionTax>")
+        return out
+
+    bezug_tax = sum((RATES[key] * Decimal(str(z[nr])) / 100 for key, nr in BEZUG_ZIFFERN.items() if z.get(nr)), ZERO)
+
     def supply(rate, amount, tag="turnoverTaxRateType"):
         return (f"<eCH-0217:suppliesPerTaxRate>{e('taxRate', f'{Decimal(rate):.2f}')}"
                 f"{e('turnover', a(amount))}</eCH-0217:suppliesPerTaxRate>")
@@ -348,13 +415,14 @@ def ech0217(book: Book, periode: str, korrektur: bool = False) -> bytes:
         for nr, key in (("303", "81"), ("313", "26"), ("343", "38")):
             if z.get(nr):
                 method += supply(RATES[key], z[nr])
+        method += acquisition()
         if z.get("400"):
             method += e("inputTaxMaterialAndServices", a(z["400"]))
         if z.get("405"):
             method += e("inputTaxInvestments", a(z["405"]))
         method += "</eCH-0217:effectiveReportingMethod>"
         payable = sum((RATES[k] * Decimal(str(z[n])) / 100 for n, k in (("303", "81"), ("313", "26"), ("343", "38"))
-                       if z.get(n)), ZERO) - Decimal(str(z.get("400") or 0)) - Decimal(str(z.get("405") or 0))
+                       if z.get(n)), ZERO) - Decimal(str(z.get("400") or 0)) - Decimal(str(z.get("405") or 0)) + bezug_tax
     else:
         rate = cfg["saldosteuersatz"]
         if rep["von"].year >= 2025:
@@ -363,10 +431,11 @@ def ech0217(book: Book, periode: str, korrektur: bool = False) -> bytes:
                                 "in den Einstellungen erfassen (steht in der Bewilligung des Saldosteuersatzes)")
             method = ("<eCH-0217:simpleTaxRateMethod><eCH-0217:suppliesPerTaxRate>" + e("activityID", cfg["taetigkeit"])
                       + e("taxRate", f"{rate:.2f}") + e("turnover", a(z["322"]))
-                      + "</eCH-0217:suppliesPerTaxRate></eCH-0217:simpleTaxRateMethod>")
+                      + "</eCH-0217:suppliesPerTaxRate>" + acquisition() + "</eCH-0217:simpleTaxRateMethod>")
         else:
-            method = "<eCH-0217:netTaxRateMethod>" + supply(rate, z["322"]) + "</eCH-0217:netTaxRateMethod>"
-        payable = rate * Decimal(str(z["322"])) / 100
+            method = ("<eCH-0217:netTaxRateMethod>" + supply(rate, z["322"]) + acquisition()
+                      + "</eCH-0217:netTaxRateMethod>")
+        payable = rate * Decimal(str(z["322"])) / 100 + bezug_tax
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            f'<eCH-0217:VATDeclaration xmlns:eCH-0217="{ECH_NS}" xmlns:eCH-0058="{ECH0058_NS}">'
            + general + turnover + method + e("payableTax", a(payable)) + "</eCH-0217:VATDeclaration>")

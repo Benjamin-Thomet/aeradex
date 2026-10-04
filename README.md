@@ -101,6 +101,10 @@ batzen mwst abrechnung 2026-Q1      # Ziffern 200 … 500 wie im ESTV-Formular
 batzen mwst buchen 2026-Q1          # MWST-Konten auf das Abrechnungskonto 2201
 batzen mwst export 2026-Q1          # eMWST-Datei (eCH-0217 v2.0) für den Upload im ESTV-Portal
 ```
+Bezugsteuer (Art. 45 MWSTG) für Dienstleistungen aus dem Ausland: Code `B81` bzw. `B26` auf der
+Lieferantenrechnung. Die Steuer wird geschuldet (Ziffern 382/383) und — bei der effektiven Methode — als Vorsteuer
+wieder abgezogen (400/405); bei der Saldosteuersatzmethode ist sie Aufwand. Sie erscheint in der Abrechnung, in der
+Buchung und in der eMWST-Datei.
 
 ### Kreditoren und Zahlungen
 ```bash
@@ -127,11 +131,30 @@ Währung, falls unter `bankkonten` eines hinterlegt ist. Offene Fremdwährungs-K
 Fremdwährungskonten per Stichtag bewertet. Positionen (`--position`, im Formular «Auf mehrere Konten aufteilen»)
 tragen je ein Konto, einen Bruttobetrag und einen eigenen MWST-Code; der Agent schlägt Aufteilungen im Entwurf vor.
 
-**Rechnungen einlesen** (Oberfläche: Kreditoren → Rechnungen einlesen, mehrere Dateien auf einmal):
+### Belegeingang: Quittungen, Lieferantenrechnungen, eigene extern erstellte Rechnungen
+Oberfläche: Prüfen → Belege hochladen (alle Arten), Kreditoren → Rechnungen einlesen, Debitoren → Rechnungen einlesen.
 ```bash
-batzen kreditor einlesen inbox/*.pdf inbox/foto.jpg   # → Entwürfe, nichts wird gebucht
-batzen kreditor entwuerfe
+batzen eingang einlesen inbox/*.pdf inbox/foto.jpg   # → Entwürfe, nichts wird gebucht; die Art wird erkannt
+batzen eingang list
+batzen eingang buchen ENT-0004                      # eine Quittung so buchen, wie sie vorbereitet ist
 ```
+Jeder Beleg wird ein Entwurf einer von drei Arten — erkannt und von Hand änderbar:
+
+| Art | woran erkannt | wird zu |
+|---|---|---|
+| Lieferantenrechnung | Zahlungsangaben (QR-Zahlteil, IBAN) | Kreditor: offener Posten, Zahlungslauf (pain.001) |
+| Quittung | Kassenbon-Merkmale, bezahlt, keine IBAN | Buchung Aufwand an Kasse/Bank/Kreditkarte |
+| eigene Rechnung | die eigene IBAN oder UID auf dem Beleg | Debitor: offener Posten, Zahlungseingang wird zugeordnet |
+
+**Quittungen werden nie doppelt gebucht:** steht die Zahlung schon als offene Bankbewegung im Kontoauszug (gleicher
+Betrag, ±5 Tage), wird diese Bewegung mit der Quittung gebucht; ist sie schon im Journal gebucht, wird nur die
+Quittung dort abgelegt; sonst wird gegen Kasse (bar), Bank (Karte, TWINT) oder Kreditkarte gebucht — oder gegen das
+Konto der Person, die privat bezahlt hat. Quittungen mit mehreren MWST-Sätzen werden auf Positionen aufgeteilt.
+
+**Eigene Rechnungen, die nicht in batzen erstellt wurden** (Word, anderes Programm), werden als Debitor erfasst — mit
+eigener batzen-Nummer und der Nummer des Originals; bezahlt der Kunde mit dieser Nummer im Zahlungstext, ordnet der
+Bankimport die Zahlung zu.
+
 Ausgelesen wird in Stufen — QR-Zahlteil, Textebene des PDFs, Tesseract-OCR für Scans und Fotos — und kontiert
 ebenso: bekannter Lieferant → Jev (falls eingeschaltet und sicher) → Agent (Claude Code, Codex, opencode oder API,
 wie im Seitenpanel). Jedes Feld zeigt seine Quelle. Nennt die Rechnung einen anderen Namen als der Inhaber der IBAN,

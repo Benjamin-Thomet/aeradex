@@ -287,7 +287,7 @@ def run(book: Book) -> list[Issue]:
         if not (book.root / str(d.get("datei", ""))).is_file():
             add("warnung", book.rel(d["_pfad"]), f"Entwurf {d.get('id')}: Datei {d.get('datei')} fehlt")
     if bill_drafts:
-        add("hinweis", "kreditoren/entwuerfe", f"{len(bill_drafts)} Kreditoren-Entwurf/-Entwürfe zu prüfen")
+        add("hinweis", "eingang", f"{len(bill_drafts)} Beleg-Entwurf/-Entwürfe im Eingang zu prüfen")
     drafted = {str(d.get("datei", "")) for d in bill_drafts.values()}
 
     inbox = book.root / "inbox"
@@ -334,7 +334,8 @@ def check_mwst(book: Book, rows: list[Row], by_beleg: dict) -> list[Issue]:
     coded = [r for r in rows if r.mwst]
     if not coded and cfg["methode"] == "keine":
         return out
-    tax_accounts = {cfg["konten"]["umsatzsteuer"], cfg["konten"]["vorsteuer"], cfg["konten"]["vorsteuer_inv"]}
+    tax_accounts = {cfg["konten"]["umsatzsteuer"], cfg["konten"]["vorsteuer"], cfg["konten"]["vorsteuer_inv"],
+                    cfg["konten"]["bezugsteuer"]}
     for r in coded:
         if r.mwst not in mwst.CODES:
             out.append(Issue("fehler", r.where, f"Unbekannter MWST-Code {r.mwst}"))
@@ -350,8 +351,12 @@ def check_mwst(book: Book, rows: list[Row], by_beleg: dict) -> list[Issue]:
                 if r.mwst in mwst.CODES and mwst.CODES[r.mwst].rate:
                     per_code.setdefault(r.mwst, []).append(r)
             for c, crows in per_code.items():
-                tax = sum((x.betrag for x in crows if (x.soll or x.haben) in tax_accounts), ZERO)
-                net = sum((x.betrag for x in crows if (x.soll or x.haben) not in tax_accounts), ZERO)
+                if mwst.CODES[c].kind == "bezug":     # owed tax vs the expense; the Vorsteuer row mirrors it
+                    tax = sum((x.betrag for x in crows if x.haben in tax_accounts and not x.soll), ZERO)
+                    net = sum((x.betrag for x in crows if x.soll and x.haben), ZERO)
+                else:
+                    tax = sum((x.betrag for x in crows if (x.soll or x.haben) in tax_accounts), ZERO)
+                    net = sum((x.betrag for x in crows if (x.soll or x.haben) not in tax_accounts), ZERO)
                 expected = mwst.tax_from_net(net, mwst.CODES[c].rate)
                 if net and abs(tax - expected) > Decimal("0.02"):
                     out.append(Issue("warnung", crows[0].where,

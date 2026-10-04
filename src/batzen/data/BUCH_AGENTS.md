@@ -14,21 +14,22 @@ Du arbeitest damit über das CLI `batzen` (immer mit `--json`) oder den MCP-Serv
    mit kurzer Begründung. Der Mensch gibt mit `batzen approve V-001` frei.
 
 ## Typische Abläufe
-**Quittung in `inbox/` verbuchen**
-1. Datei lesen (Datum, Betrag, Lieferant, Zweck, MWST).
-2. `batzen accounts <stichwort> --json` → passendes Aufwandskonto.
-3. `batzen propose --datum … --soll 6500 --haben 1020 --betrag 45.80 --text "Büromaterial Muster AG" --begruendung "Quittung Papeterie" --datei inbox/quittung.pdf`
-4. Fertig. Gibt der Mensch mit `batzen approve V-001` frei, wird gebucht und die Quittung nach `belege/` verschoben.
-   **Nach der Freigabe nicht nochmals buchen.** Im agent_modus `direkt` stattdessen in einem Schritt:
-   `batzen book … --datei inbox/quittung.pdf`.
+**Belege in `inbox/` (Quittungen, Lieferantenrechnungen, eigene extern erstellte Rechnungen)**
+1. `batzen eingang einlesen inbox/beleg.pdf --ohne-agent --json` (MCP: create_bill_draft) liest den Beleg
+   (QR-Zahlteil, Text, OCR), erkennt die Art und gleicht Quittungen mit der Bank ab: Steht die Zahlung schon im
+   Kontoauszug, wird die Bankbewegung damit gebucht; ist sie schon gebucht, wird nur die Quittung abgelegt.
+2. Fehlt das Konto (Status `unsicher`): Beleg lesen, `batzen accounts <stichwort> --json`, dann kontieren
+   (MCP: complete_bill_draft mit konto, begruendung, ggf. mwst, aufteilung, zahlkonto oder art).
+3. Fertig. Ein Mensch prüft und bucht (Oberfläche: Prüfen → Eingang; Quittungen auch `batzen eingang buchen ENT-…`).
+   **Quittungen nicht zusätzlich mit `propose` buchen** — sonst steht der Aufwand doppelt im Journal.
 
 **Rechnung stellen**: `batzen invoice create --kunde K0001 --pos "Beratung;10 h;150" --text "…"`
 → PDF mit QR-Einzahlungsschein unter `rechnungen/<Jahr>/`.
 
-**Lieferantenrechnung (QR-Rechnung) in `inbox/`**: `batzen kreditor scan inbox/x.pdf` (MCP: scan_qr_bill) liest
-IBAN, Betrag und Referenz. Bekannter Lieferant → `add_supplier_bill` mit dessen hinterlegtem Konto. Neuer Lieferant →
-ohne Konto anlegen und dem Menschen das Aufwandkonto vorschlagen (im Vorschlagsmodus legt er es fest).
-Zahlen: `batzen zahlungslauf erstellen E-2026-0001 … --datum …` erzeugt die pain.001-Datei fürs E-Banking.
+**Lieferantenrechnungen** laufen ebenfalls über den Eingang (Art `kreditor`); bekannte Lieferanten bringen ihr Konto
+mit. Fremdwährung: Betrag in der Rechnungswährung, gebucht zum BAZG-Kurs. Dienstleistungen aus dem Ausland in
+MWST-pflichtigen Büchern: Code B81 (Bezugsteuer). Zahlen: `batzen zahlungslauf erstellen E-2026-0001 … --datum …`
+erzeugt die pain.001-Datei fürs E-Banking.
 
 **Kontoauszug (camt.053) in `inbox/`**: `batzen bank import inbox/x.xml`. Danach `batzen bank list --status offen`:
 passt eine Bewegung zu einer offenen Rechnung/einem Kreditor → `batzen bank zuordnen ID NUMMER`; sonst

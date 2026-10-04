@@ -40,9 +40,11 @@ Regeln:
   (Konto leer = hinterlegtes Konto). Neuer Lieferant: add_supplier ohne konto, dann dem Menschen das Aufwandkonto
   vorschlagen; er erfasst die Rechnung unter Kreditoren (vorausgefüllt). Nicht als freie Buchung (propose_booking)
   erfassen — sonst fehlen IBAN und Referenz für den Zahlungslauf.
-- Kreditoren-Entwürfe (bill_drafts): hochgeladene Lieferantenrechnungen, schon ausgelesen. Ist ein Entwurf
-  «unsicher» oder «agent», kontiere ihn: bill_draft(id) lesen, Konto wählen, complete_bill_draft mit Begründung.
-  Neue Rechnungen in der Inbox: create_bill_draft(datei). Erfasst/gebucht wird die Rechnung von einem Menschen.
+- Belegeingang (bill_drafts): hochgeladene Belege — Lieferantenrechnungen, Quittungen, extern erstellte eigene
+  Rechnungen —, schon ausgelesen. Ist ein Entwurf «unsicher» oder «agent», kontiere ihn: bill_draft(id) lesen,
+  Konto wählen, complete_bill_draft mit Begründung. Neue Belege in der Inbox: create_bill_draft(datei) — nicht
+  propose_booking: so werden Quittungen mit der Bank abgeglichen und nichts doppelt gebucht. Gebucht wird von
+  einem Menschen.
 - Fremdwährung: Beleg in EUR/USD … → waehrung mitgeben und den Betrag in der Fremdwährung; umgerechnet wird
   zum BAZG-Tageskurs (exchange_rate). Konten mit Fremdwährung (accounts() zeigt waehrung) gehen nur so.
   Die Bewertung per Stichtag (revaluation_preview) bucht ein Mensch im Abschluss.
@@ -405,8 +407,9 @@ def add_supplier(name: str, strasse: str = "", nr: str = "", plz: str = "", ort:
 
 
 def bill_drafts() -> list | dict:
-    """Kreditoren-Entwürfe: hochgeladene Lieferantenrechnungen, ausgelesen, noch nicht gebucht.
-    Status: bereit (Konto gesetzt), unsicher/agent (Konto fehlt), unvollstaendig (Betrag oder IBAN fehlt)."""
+    """Beleg-Entwürfe im Eingang: hochgeladene Belege, ausgelesen, noch nicht gebucht. Art: kreditor
+    (Lieferantenrechnung), quittung (bereits bezahlt), debitor (eigene, extern erstellte Rechnung).
+    Status: bereit, unsicher/agent (Konto fehlt), konflikt (Name ≠ Inhaber der IBAN), unvollstaendig."""
     return _call(api.bill_drafts)
 
 
@@ -427,21 +430,22 @@ def bill_draft(id: str) -> dict:
     return _call(get)
 
 
-def create_bill_draft(datei: str) -> dict:
-    """Eine Lieferantenrechnung aus der Inbox einlesen (QR-Zahlteil, Text, OCR) und als Kreditoren-Entwurf anlegen.
-    Bucht nichts. Bekannte Lieferanten bringen ihr Konto mit; sonst danach complete_bill_draft.
+def create_bill_draft(datei: str, art: str = "") -> dict:
+    """Einen Beleg aus der Inbox einlesen (QR-Zahlteil, Text, OCR) und als Entwurf anlegen. Bucht nichts.
+    Die Art wird erkannt; bekannte Lieferanten bringen ihr Konto mit, Quittungen werden mit der Bank abgeglichen.
 
     Args:
         datei: z.B. "inbox/rechnung.pdf".
+        art: leer = erkennen; sonst kreditor, quittung oder debitor.
     """
-    return _call(api.bill_draft_create, datei)
+    return _call(api.bill_draft_create, datei, art)
 
 
 def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", betrag: str = "", datum: str = "",
                         faellig: str = "", rechnungsnr: str = "", name: str = "", iban: str = "", waehrung: str = "",
-                        aufteilung: list[dict] | None = None) -> dict:
-    """Einen Kreditoren-Entwurf kontieren und fehlende/falsch erkannte Felder korrigieren. Bucht nichts —
-    ein Mensch prüft den Entwurf und erfasst die Rechnung. Auch im agent_modus 'vorschlag' erlaubt.
+                        aufteilung: list[dict] | None = None, art: str = "", zahlkonto: str = "") -> dict:
+    """Einen Beleg-Entwurf kontieren und fehlende/falsch erkannte Felder korrigieren. Bucht nichts —
+    ein Mensch prüft den Entwurf und bucht. Auch im agent_modus 'vorschlag' erlaubt.
 
     Args:
         id: Entwurf, z.B. "ENT-0001".
@@ -459,11 +463,16 @@ def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", b
         aufteilung: nur wenn Positionen auf verschiedene Konten gehören: [{"konto": "6500", "betrag": "80.00",
             "mwst": "I81", "text": "Papier"}, …]; Beträge brutto in der Rechnungswährung, Summe = Rechnungsbetrag.
             `konto` ist dann das Konto der ersten Position.
+        art: nur wenn die erkannte Art falsch ist: kreditor (offene Lieferantenrechnung), quittung (schon bezahlt),
+            debitor (eigene Rechnung an einen Kunden).
+        zahlkonto: nur bei Quittungen, wenn das erkannte Zahlkonto falsch ist (z.B. "1000" Kasse bei Barzahlung,
+            ein Kreditkartenkonto, oder das Konto gegenüber der Person, die privat bezahlt hat).
     """
     fields = {k: v for k, v in (("betrag", betrag), ("datum", datum), ("faellig", faellig),
                                 ("rechnungsnr", rechnungsnr), ("name", name), ("iban", iban),
                                 ("waehrung", (waehrung or "").upper())) if v}
-    return _call(api.bill_draft_update, id, "Agent", konto, mwst or None, begruendung, positionen=aufteilung, **fields)
+    return _call(api.bill_draft_update, id, "Agent", konto, mwst or None, begruendung, positionen=aufteilung,
+                 art=art, zahlkonto=zahlkonto, **fields)
 
 
 def scan_qr_bill(datei: str) -> dict:

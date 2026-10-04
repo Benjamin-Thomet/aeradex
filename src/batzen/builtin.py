@@ -48,6 +48,9 @@ def _read_qr(book, path, text):
 
 def _read_text(book, path, text):
     from . import erfassung
+    if path.suffix.lower() in (".txt", ".md"):
+        found = path.read_text(encoding="utf-8", errors="replace")
+        return {**erfassung.parse_text(found, book.settings.firma), "_text": found} if found.strip() else None
     found = erfassung.pdf_text(path)
     if len(found.strip()) < 40:
         return None

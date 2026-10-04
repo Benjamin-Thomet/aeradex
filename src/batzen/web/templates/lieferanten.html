@@ -12,7 +12,7 @@
     <div class="field"><label>PLZ</label><input class="input" name="plz" value="{{ a.plz or '' }}"></div>
     <div class="field"><label>Ort</label><input class="input" name="ort" value="{{ a.ort or '' }}"></div>
     <div class="field"><label>Standard-Aufwandkonto</label><input class="input" name="konto" list="konten" value="{{ s.konto or '' }}"></div>
-    {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition"), selected=s.mwst or "") }}
+    {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition","bezug"), selected=s.mwst or "") }}
     <div class="field" style="grid-column: span 2"><label>E-Mail</label><input class="input" name="email" value="{{ s.email or '' }}"></div>
     <div class="field wide"><label>Notizen</label><textarea class="input" name="notizen" style="min-height:50px">{{ s._notizen or '' }}</textarea></div>
   </div>

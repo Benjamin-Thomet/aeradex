@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, accounts_datalist, mwst_select %}
+{% block title %}Quittung {{ entwurf.id }}{% endblock %}
+{% set qf = quellen_felder or {} %}
+{% macro src(key) %}{% if qf.get(key) %} <span class="pill {{ 'info' if qf[key].quelle.startswith('Agent') else 'muted' }}" title="erkannt aus: {{ qf[key].quelle }}">{{ qf[key].quelle }}</span>{% endif %}{% endmacro %}
+{% macro posrow(p={}) %}<div class="splitrow"><input class="input" name="p_konto" list="konten" aria-label="Konto" value="{{ p.konto or '' }}"><input class="input num" name="p_betrag" inputmode="decimal" aria-label="Betrag brutto" value="{{ p.betrag or '' }}"><input class="input" name="p_text" aria-label="Text" value="{{ p.text or '' }}">{% if vat.methode != 'keine' %}{{ mwst_select("p_mwst", vat, vat_codes, kinds=("vorsteuer","investition","bezug"), selected=p.mwst or "", label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Zeile entfernen">✕</button></div>{% endmacro %}
+{% block main %}
+<div class="topbar">
+  <div><div class="crumbs"><a href="/pruefen#eingang">Prüfen</a> /</div><h1>Quittung buchen</h1>
+    <div class="sub">Etwas bereits Bezahltes: Aufwand an das Konto, über das bezahlt wurde. Die Quittung wird unter belege/ abgelegt.</div></div>
+</div>
+{{ accounts_datalist(accounts) }}
+<div class="alert {{ 'ok' if entwurf.status == 'bereit' else 'warn' }}">Entwurf {{ entwurf.id }}: bitte prüfen. Hinter jedem Feld steht, woher es kommt.{% if (entwurf.konto or {}).begruendung %} Begründung ({{ entwurf.konto.quelle }}): «{{ entwurf.konto.begruendung }}»{% endif %}{% for h in entwurf.hinweise or [] %}<br>· {{ h }}{% endfor %}</div>
+<div class="review">
+  <div class="panel">
+    <header><h2>{{ entwurf.datei }}</h2></header>
+    <div class="stage">{% if kind == 'pdf' %}<iframe src="/datei/{{ entwurf.datei|urlq }}" title="Quittung"></iframe>{% elif kind == 'image' %}<img src="/datei/{{ entwurf.datei|urlq }}" alt="Quittung">{% else %}<div class="empty"><a class="link" href="/datei/{{ entwurf.datei|urlq }}" target="_blank">Datei öffnen</a></div>{% endif %}</div>
+  </div>
+  <form class="panel" hx-post="/eingang/quittung" hx-target="find .errors">
+    <input type="hidden" name="entwurf" value="{{ entwurf.id }}">
+    <div class="body">
+      <div class="field"><span class="lbl">Bezahlt — so wird nichts doppelt gebucht</span>
+        {% if pay.art == 'bank' %}<label class="check"><input type="radio" name="zahlung" value="bank:{{ pay.bank }}" checked> Mit der Bankbewegung buchen: {{ pay.text }} <span class="pill ok">{{ pay.quelle }}</span></label>{% endif %}
+        {% if pay.art == 'buchung' %}<label class="check"><input type="radio" name="zahlung" value="buchung:{{ pay.beleg }}" checked> Ist schon gebucht — nur Quittung ablegen: {{ pay.text }} <span class="pill ok">{{ pay.quelle }}</span></label>{% endif %}
+        {% for t in open_tx if t.ID != pay.bank %}{% if loop.first %}<details class="small"><summary>andere offene Bankbewegung …</summary>{% endif %}<label class="check"><input type="radio" name="zahlung" value="bank:{{ t.ID }}"> {{ t.Datum|datum }} · {{ t.Betrag|chf }} · {{ t.Gegenpartei or t.Text }}</label>{% if loop.last %}</details>{% endif %}{% endfor %}
+        <label class="check"><input type="radio" name="zahlung" value="konto" {{ 'checked' if pay.art not in ('bank', 'buchung') }}> Bezahlt über Konto
+          <select class="input" name="zahlkonto" style="width:auto">{% for a in liquid %}<option value="{{ a.nr }}" {{ 'selected' if a.nr == (pay.konto or '') }}>{{ a.nr }} {{ a.name }}</option>{% endfor %}</select>
+          {% if pay.art == 'konto' and pay.quelle %}<span class="pill muted">{{ pay.quelle }}</span>{% endif %}</label>
+        <span class="small muted">Privat bezahlt? Das Konto gegenüber der Person wählen (z.B. Kontokorrent Gesellschafter).</span>
+      </div>
+      <div class="form">
+        <div class="field"><label for="q-d">Datum{{ src('datum') }}</label><input class="input" id="q-d" type="date" name="datum" value="{{ ev.datum or today }}" required></div>
+        <div class="field"><label for="q-b">Betrag brutto{{ src('betrag') }}</label><input class="input num" id="q-b" name="betrag" value="{{ ev.betrag }}" required></div>
+        <div class="field wide"><label for="q-t">Text</label><input class="input" id="q-t" name="text" value="{{ (ev.name ~ (' ' ~ ev.rechnungsnr if ev.rechnungsnr else ''))|trim or 'Quittung' }}"></div>
+        <div class="field"><label for="q-k">Aufwandkonto{% if (entwurf.konto or {}).quelle %} <span class="pill {{ 'info' if entwurf.konto.quelle.startswith('Agent') else 'muted' }}" title="{{ entwurf.konto.begruendung or '' }}">{{ entwurf.konto.quelle }}</span>{% endif %}</label><input class="input" id="q-k" name="konto" list="konten" value="{{ ev.konto }}"></div>
+        {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition","bezug"), id="q-m", selected=ev.mwst or "") }}
+        <div class="field"><label for="q-w">Währung{{ src('waehrung') }}</label><select class="input" id="q-w" name="waehrung" style="width:100%">{% set cur = (ev.waehrung or 'CHF')|upper %}{% for c in ['CHF'] + currencies %}<option {{ 'selected' if c == cur }}>{{ c }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="q-r">Kurs (leer = BAZG, mit Bankbewegung = belasteter CHF-Betrag)</label><input class="input num" id="q-r" name="kurs" placeholder="BAZG"></div>
+        <details class="field wide" {{ 'open' if ev.positionen }}><summary class="small">Auf mehrere Konten / MWST-Sätze aufteilen{% if entwurf.positionen %} <span class="pill info">{{ entwurf.positionen.quelle }}</span>{% endif %}</summary>
+          <div class="splitrow poshead billhead {{ 'vat' if vat.methode != 'keine' }}"><span>Konto</span><span class="right">Betrag brutto</span><span>Text</span>{% if vat.methode != 'keine' %}<span>MWST</span>{% endif %}<span></span></div>
+          <div class="splitrows billrows" id="qposrows">{% for p in ev.positionen or [{}, {}] %}{{ posrow(p) }}{% endfor %}</div>
+          <template>{{ posrow() }}</template>
+          <button class="btn small" type="button" data-addrow="#qposrows" style="margin-top:6px">+ Position</button>
+          <p class="small muted">Sind Positionen ausgefüllt, gelten sie statt Konto und MWST oben (z.B. Lebensmittel 2.6 % und Putzmittel 8.1 % auf einer Quittung).</p>
+        </details>
+      </div>
+      {{ errors() }}
+      <div class="formfoot"><span class="small muted">Wird geprüft, gebucht und in git festgehalten.</span><button class="btn primary" type="submit">Buchen</button></div>
+    </div>
+  </form>
+</div>
+{% endblock %}

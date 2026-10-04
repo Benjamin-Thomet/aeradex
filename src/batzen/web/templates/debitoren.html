@@ -1,12 +1,17 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, debitoren_nav, status_pill %}
+{% from "_macros.html" import errors, debitoren_nav, status_pill, eingang_upload, eingang_table %}
 {% block title %}Debitoren{% endblock %}
 {% block main %}
 <div class="topbar">
   <div><h1>Debitoren</h1><div class="sub">Rechnungen mit Swiss QR-Einzahlungsschein · offen {{ ar.total_offen|chf }}</div></div>
-  <div class="actions"><a class="btn primary" href="/debitoren/neu">Neue Rechnung</a></div>
+  <div class="actions"><a class="btn" href="/debitoren/extern">Externe Rechnung erfassen</a><a class="btn primary" href="/debitoren/neu">Neue Rechnung</a></div>
 </div>
 {{ debitoren_nav(tab) }}
+<details class="panel drawer" id="entwuerfe" {{ 'open' if drafts }}>
+  <summary><header style="border-bottom:0"><h2>Rechnungen einlesen, die nicht in batzen erstellt wurden</h2><span class="hint">{{ drafts|length }} Entwurf/Entwürfe</span></header></summary>
+  {{ eingang_upload("debitor", "Eigene Rechnungen einlesen", "Rechnungen aus Word, einem anderen Programm oder von Hand — als PDF oder Foto.", ocr, jev) }}
+  {% if drafts %}{{ eingang_table(drafts, book, dv) }}{% endif %}
+</details>
 <div class="grid2">
   <div class="panel">
     <header><h2>Rechnungen</h2>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, currency_fields, accounts_datalist, mwst_select %}
+{% from "_macros.html" import errors, currency_fields, accounts_datalist, mwst_select, eingang_table %}
 {% block title %}Prüfen{% endblock %}
 {% block main %}
 <div class="topbar">
@@ -27,15 +27,17 @@
         <span><strong>QR-Rechnung erkannt:</strong> {{ qrbill.kreditor.name }} · CHF {{ qrbill.betrag|chf if qrbill.betrag else 'Betrag offen' }}{% if qrbill.lieferant %} · Lieferant {{ qrbill.lieferant }}{% else %} · neuer Lieferant{% endif %}</span>
         <a class="btn small primary" href="/kreditoren/neu?datei=inbox/{{ current.name|urlq }}">Als Kreditor erfassen</a></div></div>{% endif %}
       <div class="filemeta"><span>inbox/{{ current.name }} · {{ (current.stat().st_size / 1024)|round(1) }} KB</span>
-        {% if kind in ("pdf", "image") %}<form hx-post="/kreditoren/einlesen" hx-target="find .errors" style="display:inline"><input type="hidden" name="datei" value="inbox/{{ current.name }}"><button class="btn small ghost" type="submit" title="Auslesen (QR, Text, OCR), kontieren (Lieferant, Jev, Agent) — als Entwurf unter Kreditoren">Lieferantenrechnung? Einlesen →</button>{{ errors() }}</form>{% endif %}
+        {% if kind in ("pdf", "image") or current.suffix == ".txt" %}<form hx-post="/eingang/einlesen" hx-target="find .errors" style="display:inline"><input type="hidden" name="datei" value="inbox/{{ current.name }}"><button class="btn small ghost" type="submit" title="Auslesen (QR, Text, OCR), Art erkennen, kontieren (Lieferant, Jev, Agent) — als Entwurf im Eingang">Einlesen →</button>{{ errors() }}</form>{% endif %}
         <span>wird beim Buchen nach belege/ verschoben</span></div>
     {% else %}
       <div class="body"><div class="dropzone">Die Inbox ist leer. Lade Quittungen hier hoch oder lege sie in den Ordner <code>inbox/</code>; dein Agent kann sie dann vorbereiten.</div></div>
     {% endif %}
-    <form class="body" hx-post="/pruefen/upload" hx-encoding="multipart/form-data" hx-target="find .errors" style="flex-direction:row;align-items:center;flex-wrap:wrap">
-      <label class="lbl" for="up">Datei in die Inbox</label>
-      <input id="up" name="datei" type="file" accept=".pdf,image/*,.txt,.csv,.xml" class="input" style="flex:1 1 200px">
-      <button class="btn small" type="submit">Hochladen</button>
+    <form class="body" hx-post="/eingang/einlesen" hx-encoding="multipart/form-data" hx-target="find .errors" hx-indicator="find .busy" style="flex-direction:row;align-items:center;flex-wrap:wrap">
+      <label class="lbl" for="up">Belege hochladen</label>
+      <input id="up" name="dateien" type="file" multiple accept=".pdf,image/*,.txt,.csv,.xml" class="input" style="flex:1 1 200px">
+      <button class="btn small primary" type="submit">Hochladen und einlesen</button>
+      <span class="busy small muted htmx-indicator">Lese …</span>
+      <span class="small muted" style="flex-basis:100%">Quittungen, Lieferantenrechnungen und eigene Rechnungen werden erkannt, ausgelesen und kontiert; Kontoauszüge und andere Dateien landen in der Inbox.</span>
       {{ errors() }}
     </form>
   </div>
@@ -94,6 +96,11 @@
 </div>
 {% endif %}
 
+<div class="panel" id="eingang">
+  <header><h2>Eingang</h2><span class="hint">eingelesene Belege — Quittungen werden mit der Bank abgeglichen, nichts doppelt gebucht</span></header>
+  {% if drafts %}{{ eingang_table(drafts, book, dv, true) }}{% else %}<div class="empty">Keine eingelesenen Belege. Oben hochladen — oder dein Agent liest die Inbox ein.</div>{% endif %}
+</div>
+
 <div class="panel" id="vorschlaege">
   <header><h2>Vorschläge</h2><span class="hint">Freigeben bucht und committet; die Begründung kommt vom Agenten</span></header>
   {% for p in proposals %}
@@ -112,13 +119,13 @@
   {% else %}<div class="empty">Keine offenen Vorschläge.</div>{% endfor %}
 </div>
 
-{% if drafts %}
+{% if payslip_drafts %}
 <div class="panel">
   <header><h2>Lohnentwürfe</h2><span class="hint">Abschliessen friert ein, bucht und erzeugt die PDF</span></header>
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th>Monat</th><th>Mitarbeiter</th><th></th><th class="right">Brutto</th><th class="right">Abzüge</th><th class="right">Netto</th><th></th></tr></thead>
     <tbody>
-    {% for d in drafts %}{% set s = d.slip %}{% set mon = "%d-%02d"|format(s.jahr, s.monat) %}
+    {% for d in payslip_drafts %}{% set s = d.slip %}{% set mon = "%d-%02d"|format(s.jahr, s.monat) %}
       <tr class="row">
         <td class="num">{{ "%02d"|format(s.monat) }}/{{ s.jahr }}</td>
         <td><a class="link" href="/lohn/abrechnung/{{ mon }}/{{ s.mitarbeiter }}">{{ s.name }}</a> <span class="small muted">{{ s.mitarbeiter }}</span></td>

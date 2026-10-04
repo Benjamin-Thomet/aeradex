@@ -1132,32 +1132,35 @@ def bill_drafts(book: Book) -> list[dict]:
     return jsonable([{k: v for k, v in d.items() if not k.startswith("_")} for d in erfassung.drafts(book).values()])
 
 
-def bill_draft_create(book: Book, datei: str) -> dict:
-    """Read a supplier bill (QR, text, OCR, plugin readers), assign an account where it is sure
-    (known supplier, Jev) and keep the result as a draft. Nothing is booked."""
+def bill_draft_create(book: Book, datei: str, art: str = "") -> dict:
+    """Read a document (QR, text, OCR, plugin readers), recognise its kind (supplier bill, receipt,
+    own invoice — or take `art`), assign accounts where it is sure and keep it as a draft.
+    Nothing is booked."""
     from . import erfassung
     path = Path(datei) if Path(datei).is_absolute() else book.root / datei
     if not path.is_file():
         raise BookError(f"Datei {datei} nicht gefunden")
     fields, text, notes = erfassung.analyse(book, path)      # slow (OCR): outside the write lock
-    return _bill_draft_store(book, datei, fields, text, notes)
+    return _bill_draft_store(book, datei, fields, text, notes, art)
 
 
-def _bill_draft_store(book: Book, datei: str, fields: dict, text: str, notes: list[str]) -> dict:
+def _bill_draft_store(book: Book, datei: str, fields: dict, text: str, notes: list[str], art: str = "") -> dict:
     from . import erfassung
     _guard(book)
-    meta, touched = erfassung.create(book, datei, fields, text, notes)
+    meta, touched = erfassung.create(book, datei, fields, text, notes, art)
     name = erfassung.value(meta, "name") or Path(datei).name
-    return _done(book, f"Kreditoren-Entwurf {meta['id']}: {name} ({meta['status']})", touched,
+    return _done(book, f"Beleg-Entwurf {meta['id']} ({erfassung.ARTEN[meta['art']]}): {name} ({meta['status']})", touched,
                  entwurf={k: v for k, v in meta.items() if not k.startswith("_")})
 
 
 def bill_draft_update(book: Book, entwurf: str, quelle: str = "Hand", konto: str = "", mwst: str | None = None,
-                      begruendung: str = "", positionen: list[dict] | None = None, **fields) -> dict:
+                      begruendung: str = "", positionen: list[dict] | None = None, art: str = "",
+                      zahlkonto: str = "", **fields) -> dict:
     from . import erfassung
     _guard(book)
-    meta, touched = erfassung.update(book, entwurf, quelle, konto, mwst, begruendung, positionen, **fields)
-    return _done(book, f"Kreditoren-Entwurf {entwurf} ergänzt ({quelle}" + (f": Konto {konto}" if konto else "") + ")",
+    meta, touched = erfassung.update(book, entwurf, quelle, konto, mwst, begruendung, positionen, art, zahlkonto,
+                                     **fields)
+    return _done(book, f"Beleg-Entwurf {entwurf} ergänzt ({quelle}" + (f": Konto {konto}" if konto else "") + ")",
                  touched, entwurf=meta)
 
 
@@ -1165,14 +1168,14 @@ def bill_draft_mark(book: Book, entwurf: str, status: str, hinweis: str = "") ->
     from . import erfassung
     _guard(book)
     meta, touched = erfassung.mark(book, entwurf, status, hinweis)
-    return _done(book, f"Kreditoren-Entwurf {entwurf}: {status}", touched, entwurf=meta)
+    return _done(book, f"Beleg-Entwurf {entwurf}: {status}", touched, entwurf=meta)
 
 
 def bill_draft_discard(book: Book, entwurf: str) -> dict:
     from . import erfassung
     _guard(book)
     touched = erfassung.discard(book, entwurf)
-    return _done(book, f"Kreditoren-Entwurf {entwurf} verworfen (Datei bleibt in der Inbox)", touched)
+    return _done(book, f"Beleg-Entwurf {entwurf} verworfen (Datei bleibt in der Inbox)", touched)
 
 
 def bill_draft_agent(book: Book, entwurf: str) -> dict:
@@ -1188,3 +1191,35 @@ _bill_draft_store = _locked(_bill_draft_store)
 bill_draft_update = _locked(bill_draft_update)
 bill_draft_mark = _locked(bill_draft_mark)
 bill_draft_discard = _locked(bill_draft_discard)
+
+
+def receipt_book(book: Book, entwurf: str, datum, text: str, betrag, konto: str = "", mwst: str = "",
+                 positionen: list[dict] | None = None, waehrung: str = "", kurs=None,
+                 zahlung: dict | None = None) -> dict:
+    """Book a receipt draft — with its open bank movement, onto an existing booking (file only)
+    or against a cash/bank/card account. The receipt is filed under belege/."""
+    from . import erfassung
+    _guard(book)
+    rows, touched = erfassung.book_receipt(book, entwurf, datum, text, betrag, konto, mwst, positionen,
+                                           waehrung, kurs, zahlung)
+    pay = (zahlung or {}).get("art")
+    msg = (f"Quittung {entwurf} an Beleg {rows[0].beleg} abgelegt" if pay == "buchung"
+           else f"Quittung {entwurf} gebucht: Beleg {rows[0].beleg} {text}")
+    return _done(book, msg, touched, buchungen=rows)
+
+
+def invoice_external(book: Book, kunde: str, betrag, entwurf: str = "", **fields) -> dict:
+    """Record an invoice issued outside batzen as an open item (Debitoren an Ertrag)."""
+    from . import erfassung
+    _guard(book)
+    if entwurf:
+        fields.setdefault("datei", erfassung.draft(book, entwurf).get("datei", ""))
+    meta, touched = invoices.record_external(book, kunde, betrag, **fields)
+    if entwurf:
+        touched += erfassung.discard(book, entwurf)
+    return _done(book, f"Externe Rechnung {meta['nummer']} an {meta['an']['name']} über {meta['total']:.2f} erfasst",
+                 touched, rechnung=meta)
+
+
+receipt_book = _locked(receipt_book)
+invoice_external = _locked(invoice_external)
