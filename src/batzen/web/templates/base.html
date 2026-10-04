@@ -23,6 +23,7 @@
       <span class="group">Bücher</span>
       <a href="/konten" class="{{ 'active' if p.startswith('/konten') }}">Konten</a>
       <a href="/debitoren" class="{{ 'active' if p.startswith('/debitoren') }}">Debitoren</a>
+      <a href="/kreditoren" class="{{ 'active' if p.startswith('/kreditoren') }}">Kreditoren</a>
       <a href="/lohn" class="{{ 'active' if p.startswith('/lohn') }}">Lohn {% if nav.entwuerfe %}<span class="badge">{{ nav.entwuerfe }}</span>{% endif %}</a>
       {% if vat.methode != 'keine' %}<a href="/mwst" class="{{ 'active' if p.startswith('/mwst') }}">MWST</a>{% endif %}
       <a href="/abschluss" class="{{ 'active' if p.startswith('/abschluss') }}">Abschluss</a>

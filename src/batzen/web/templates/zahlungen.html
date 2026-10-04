@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, kreditoren_nav %}
+{% block title %}Zahlungsläufe{% endblock %}
+{% block main %}
+<div class="topbar"><div><h1>Kreditoren</h1><div class="sub">Zahlungsdateien (ISO 20022 pain.001.001.09, Swiss Payment Standards) · belastet wird {{ debtor or '—' }}</div></div></div>
+{{ kreditoren_nav(tab) }}
+{% if debtor_error %}<div class="alert warn">{{ debtor_error }} <a class="link" href="/einstellungen">Einstellungen</a></div>{% endif %}
+<div class="panel">
+  {% if runs %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Ausführung</th><th>Datei</th><th class="right">Zahlungen</th><th class="right">Total</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr class="row"><td class="num">{{ r.ausfuehrung|datum }}</td>
+        <td><a class="link" href="/datei/zahlungen/{{ r.datei|urlq }}" download="{{ r.datei }}">{{ r.datei }} ↓</a></td>
+        <td class="right num">{{ r.anzahl }}</td><td class="right num">{{ r.total|chf }}</td>
+        <td>{% if r.bezahlt %}<span class="pill ok">verbucht</span>{% else %}<span class="pill warn">{{ r.offen|length }} angewiesen</span>{% endif %}</td>
+        <td class="right">{% if r.offen %}
+          <form class="actions" hx-post="/kreditoren/zahlungslauf/bezahlt" hx-target="find .errors" style="justify-content:flex-end">
+            <input type="hidden" name="datei" value="{{ r.datei }}"><input class="input" type="date" name="datum" value="{{ r.ausfuehrung }}" style="width:auto" aria-label="Valuta">
+            <button class="btn small primary" type="submit">Ausgeführt – buchen</button>{{ errors() }}</form>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty">Noch keine Zahlungsläufe. Unter <a class="link" href="/kreditoren?status=offen">Rechnungen</a> offene Posten markieren und einen Lauf erstellen.</div>{% endif %}
+  <div class="body"><span class="small muted">Datei herunterladen und im E-Banking unter «Zahlungsdatei hochladen» einlesen. Vor dem ersten produktiven Einsatz mit der Testplattform deiner Bank prüfen.</span></div>
+</div>
+{% endblock %}

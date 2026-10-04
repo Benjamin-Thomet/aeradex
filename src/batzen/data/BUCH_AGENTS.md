@@ -25,6 +25,11 @@ Du arbeitest damit über das CLI `batzen` (immer mit `--json`) oder den MCP-Serv
 **Rechnung stellen**: `batzen invoice create --kunde K0001 --pos "Beratung;10 h;150" --text "…"`
 → PDF mit QR-Einzahlungsschein unter `rechnungen/<Jahr>/`.
 
+**Lieferantenrechnung (QR-Rechnung) in `inbox/`**: `batzen kreditor scan inbox/x.pdf` (MCP: scan_qr_bill) liest
+IBAN, Betrag und Referenz. Bekannter Lieferant → `add_supplier_bill` mit dessen hinterlegtem Konto. Neuer Lieferant →
+ohne Konto anlegen und dem Menschen das Aufwandkonto vorschlagen (im Vorschlagsmodus legt er es fest).
+Zahlen: `batzen zahlungslauf erstellen E-2026-0001 … --datum …` erzeugt die pain.001-Datei fürs E-Banking.
+
 **Zahlungseingang**: `batzen invoice match --betrag 1500 --text "<Bankzeile>"` → `batzen invoice pay R-2026-0001 --datum …`
 
 **Lohnlauf**: `batzen payroll run 2026-01` → prüfen (`payroll show`) → `batzen payroll close 2026-01 M0001`.

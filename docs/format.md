@@ -142,6 +142,22 @@ aktiv: true
 
 Frontmatter: `mitarbeiter, name, jahr, monat, status (entwurf|abgeschlossen), eingaben{stunden, bvg, kinderzulagen, korrektur, korrektur_text, qst_satzbestimmend, qst_gesamtpensum}, werte{…}`, nach Abschluss zusätzlich `ag{…}` und `fingerprint`. Der Text darunter wird erzeugt. Eingaben ändert man im Entwurf und rechnet mit `batzen payroll run` neu.
 
+## lieferanten/L0001-name.md
+
+Frontmatter: `nummer, name, adresse{…}, iban, konto` (Standard-Aufwandkonto), `mwst` (Standard-Code), `email`.
+
+## kreditoren/JJJJ/E-JJJJ-NNNN.md
+
+Frontmatter: `nummer, lieferant, name, rechnungsnr, datum, faellig, betrag` (brutto), `waehrung, iban, referenz_typ`
+(QRR, SCOR, NON), `referenz, mitteilung, konto, mwst, kreditorenkonto, status, fingerprint`, nach dem Erfassen
+`datei` (Beleg unter belege/), nach einem Zahlungslauf `zahlungslauf`. Gebucht als `Quelle kreditor:E-…`,
+die Zahlung als `Quelle kzahlung:E-…` (Kreditoren an Bank).
+
+## zahlungen/
+
+Zahlungsdateien `JJJJ-MM-TT-xxxxxx.xml` (ISO 20022 pain.001.001.09, Swiss Payment Standards) zum Hochladen im E-Banking.
+Eine QR-IBAN kann nicht belastet werden; dann `zahlungs_iban` in `batzen.yaml` setzen.
+
 ## .batzen/locks.yaml
 
 `bis`, Hash pro gesperrtem Monat, `verlauf` aller Sperren und Entsperrungen (mit Grund).

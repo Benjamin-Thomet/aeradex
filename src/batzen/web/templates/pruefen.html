@@ -23,6 +23,9 @@
         {% elif kind == "text" %}<pre>{{ text }}</pre>
         {% else %}<div class="empty"><a class="link" href="/datei/inbox/{{ current.name|urlq }}" target="_blank">{{ current.name }} öffnen</a></div>{% endif %}
       </div>
+      {% if qrbill %}<div class="body" style="border-bottom:1px solid var(--rule)"><div class="alert info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+        <span><strong>QR-Rechnung erkannt:</strong> {{ qrbill.kreditor.name }} · CHF {{ qrbill.betrag|chf if qrbill.betrag else 'Betrag offen' }}{% if qrbill.lieferant %} · Lieferant {{ qrbill.lieferant }}{% else %} · neuer Lieferant{% endif %}</span>
+        <a class="btn small primary" href="/kreditoren/neu?datei=inbox/{{ current.name|urlq }}">Als Kreditor erfassen</a></div></div>{% endif %}
       <div class="filemeta"><span>inbox/{{ current.name }} · {{ (current.stat().st_size / 1024)|round(1) }} KB</span><span>wird beim Buchen nach belege/ verschoben</span></div>
     {% else %}
       <div class="body"><div class="dropzone">Die Inbox ist leer. Lade Quittungen hier hoch oder lege sie in den Ordner <code>inbox/</code>; dein Agent kann sie dann vorbereiten.</div></div>

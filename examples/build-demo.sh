@@ -34,6 +34,13 @@ for m in 01 02; do
   b payroll close 2026-$m M0001
   b payroll close 2026-$m M0002
 done
+b lieferant add --name "Swisscom (Schweiz) AG" --strasse "Alte Tiefenaustrasse" --nr 6 --plz 3048 --ort Worblaufen \
+  --iban "CH56 0483 5012 3456 7800 9" --konto 6510
+b lieferant add --name "Immobilien Muster AG" --strasse Bundesgasse --nr 20 --plz 3011 --ort Bern \
+  --iban "CH93 0076 2011 6238 5295 7" --konto 6000
+b kreditor add --lieferant L0002 --betrag 1800 --datum 2026-02-25 --faellig 2026-03-01 --rechnungsnr "Miete März"
+b kreditor add --lieferant L0001 --betrag 89.90 --datum 2026-03-15 --referenz RF18539007547034
+b kreditor pay E-2026-0001 --datum 2026-03-01
 b payroll run 2026-03
 b propose --datum 2026-03-10 --soll 6510 --haben 1020 --betrag 59.00 --text "Swisscom März" \
   --begruendung "Telefon/Internet-Rechnung, Lastschrift"

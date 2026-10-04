@@ -65,6 +65,7 @@ konten:
 - {nr: "3600", name: Übrige Erlöse aus Lieferungen und Leistungen, klasse: ertrag}
 - {nr: "3800", name: Erlösminderungen, klasse: ertrag}
 - {nr: "3805", name: Verluste aus Forderungen, klasse: ertrag}
+- {nr: "3809", name: MWST Saldosteuer, klasse: ertrag}
 # --- 4 Aufwand für Material, Handelswaren, Dienstleistungen ---
 - {nr: "4000", name: Materialaufwand, klasse: aufwand}
 - {nr: "4200", name: Handelswarenaufwand, klasse: aufwand}

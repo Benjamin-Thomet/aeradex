@@ -334,6 +334,109 @@ def receivables(stichtag: str = "") -> dict:
     return _call(api.receivables, stichtag or None)
 
 
+# ---------- kreditoren ----------
+
+def suppliers() -> list | dict:
+    """Lieferanten mit IBAN, Standard-Aufwandkonto und MWST-Code."""
+    return _call(api.supplier_list)
+
+
+def add_supplier(name: str, strasse: str = "", nr: str = "", plz: str = "", ort: str = "", land: str = "CH",
+                 iban: str = "", konto: str = "", mwst: str = "") -> dict:
+    """Lieferant anlegen (z.B. mit den Daten aus scan_qr_bill).
+
+    Args:
+        name: Name des Lieferanten.
+        strasse: Strasse.
+        nr: Hausnummer.
+        plz: Postleitzahl.
+        ort: Ort.
+        land: Ländercode.
+        iban: IBAN oder QR-IBAN.
+        konto: Standard-Aufwandkonto, z.B. "6510" (nur agent_modus direkt; sonst legt es der Mensch fest).
+        mwst: Standard-MWST-Code, z.B. "V81".
+    """
+    if konto:
+        try:
+            mode = book().settings.get("agent_modus") or "vorschlag"
+        except BookError as exc:
+            return {"ok": False, "fehler": str(exc)}
+        if mode != "direkt":
+            return {"ok": False, "fehler": "agent_modus 'vorschlag': das Aufwandkonto eines Lieferanten legt ein Mensch "
+                    "fest. Lieferant ohne konto anlegen und dem Menschen das passende Konto vorschlagen."}
+    return _call(api.supplier_add, name=name, strasse=strasse, nr=nr, plz=plz, ort=ort, land=land, iban=iban,
+                 konto=konto, mwst=mwst)
+
+
+def scan_qr_bill(datei: str) -> dict:
+    """Liest den Swiss-QR-Zahlteil einer Rechnung (PDF oder Foto, z.B. "inbox/rechnung.pdf"): IBAN, Betrag,
+    Referenz, Lieferant. 'lieferant' ist die Nummer eines bekannten Lieferanten mit derselben IBAN, sonst leer.
+
+    Args:
+        datei: Pfad relativ zum Buch.
+    """
+    return _call(api.qr_scan, datei)
+
+
+def add_supplier_bill(lieferant: str, betrag: str, datum: str = "", faellig: str = "", rechnungsnr: str = "",
+                      referenz: str = "", referenz_typ: str = "", mitteilung: str = "", datei: str = "",
+                      konto: str = "", mwst: str = "") -> dict:
+    """Lieferantenrechnung erfassen und verbuchen (Aufwand an Kreditoren). Im agent_modus 'vorschlag' nur mit
+    dem beim Lieferanten hinterlegten Aufwandkonto (konto leer lassen); sonst propose_booking verwenden.
+
+    Args:
+        lieferant: Lieferantennummer, z.B. "L0001".
+        betrag: Bruttobetrag laut Rechnung.
+        datum: Rechnungsdatum JJJJ-MM-TT.
+        faellig: Fälligkeit JJJJ-MM-TT (leer = +30 Tage).
+        rechnungsnr: Rechnungsnummer des Lieferanten.
+        referenz: QR- oder SCOR-Referenz von der QR-Rechnung.
+        referenz_typ: QRR, SCOR oder NON.
+        mitteilung: Zahlungsmitteilung, falls keine Referenz.
+        datei: die Rechnung, z.B. "inbox/rechnung.pdf" (wird nach belege/ verschoben).
+        konto: abweichendes Aufwandkonto (nur agent_modus direkt).
+        mwst: abweichender MWST-Code (sonst der des Lieferanten).
+    """
+    try:
+        b = book()
+    except BookError as exc:
+        return {"ok": False, "fehler": str(exc)}
+    if konto and (b.settings.get("agent_modus") or "vorschlag") != "direkt":
+        from . import kreditoren as kred
+        try:
+            stored = kred.supplier(b, lieferant).get("konto")
+        except BookError as exc:
+            return {"ok": False, "fehler": str(exc)}
+        if str(konto) != str(stored or ""):
+            return {"ok": False, "fehler": "agent_modus 'vorschlag': nur das beim Lieferanten hinterlegte Konto. "
+                    "Konto leer lassen oder den Menschen das Konto beim Lieferanten hinterlegen lassen."}
+    fields = {k: v for k, v in {"datum": datum, "faellig": faellig, "rechnungsnr": rechnungsnr, "referenz": referenz,
+                                "referenz_typ": referenz_typ, "mitteilung": mitteilung, "datei": datei,
+                                "konto": konto}.items() if v}
+    if mwst:
+        fields["mwst"] = mwst
+    return _call(api.bill_add, lieferant, betrag, **fields)
+
+
+def supplier_bills(status: str = "") -> list | dict:
+    """Lieferantenrechnungen mit offenem Betrag.
+
+    Args:
+        status: offen, angewiesen, bezahlt, storniert; leer = alle.
+    """
+    return _call(api.bill_list, status)
+
+
+def create_payment_run(nummern: list[str], ausfuehrung: str) -> dict:
+    """Zahlungsdatei (pain.001) für das E-Banking erstellen. Bewegt kein Geld: der Mensch lädt sie hoch.
+
+    Args:
+        nummern: z.B. ["E-2026-0001"].
+        ausfuehrung: gewünschtes Ausführungsdatum JJJJ-MM-TT.
+    """
+    return _call(api.payment_run, nummern, ausfuehrung)
+
+
 # ---------- lohn ----------
 
 def employees() -> list | dict:
@@ -417,5 +520,6 @@ def read_inbox_file(datei: str) -> list[dict] | str:
 SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
-          void_invoice, receivables, employees, payroll_run, payslip, close_payslip, lohnausweis]
+          void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
+          create_payment_run, employees, payroll_run, payslip, close_payslip, lohnausweis]
 CHAT_ONLY = [read_inbox_file]

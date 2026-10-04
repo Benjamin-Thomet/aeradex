@@ -239,3 +239,34 @@ def test_mwst_screens_and_booking(client, root):
     ok(post(client, "/mwst/buchen", {"periode": "2026-Q2"}))
     assert "gebucht" in client.get("/mwst?jahr=2026&periode=2026-Q2").text
     assert errors(root) == []
+
+
+def test_kreditoren_from_inbox_qr_to_payment(client, root, tmp_path):
+    from batzen import api as core
+    sup = tmp_path / "lieferant"
+    core.init_book(sup, "Papeterie Muster AG", 2026, strasse="Marktgasse", nr="14", plz="3011", ort="Bern",
+                   iban="CH44 3199 9123 0008 8901 2", git=False)
+    core.customer_add(Book(sup), name="X", firma="Muster GmbH", strasse="Bahnhofstrasse", nr="1", plz="3000", ort="Bern")
+    pdf = sup / core.invoice_create(Book(sup), "K0001", [{"text": "Papier", "menge": 1, "preis": "86.40"}],
+                                    "2026-03-02")["pdf"]
+    shutil.copy(pdf, root / "inbox" / "papeterie.pdf")
+    assert "QR-Rechnung erkannt" in client.get("/pruefen?datei=papeterie.pdf").text
+    page = client.get("/kreditoren/neu?datei=inbox/papeterie.pdf").text
+    assert "Papeterie Muster AG" in page and "86.40" in page
+    to = ok(post(client, "/kreditoren/neu", {"lieferant": "neu", "s_name": "Papeterie Muster AG", "s_strasse": "Marktgasse",
+                                             "s_nr": "14", "s_plz": "3011", "s_ort": "Bern", "s_land": "CH",
+                                             "betrag": "86.40", "datum": "2026-03-03", "konto": "6500  Büromaterial",
+                                             "iban": "CH4431999123000889012", "referenz_typ": "QRR",
+                                             "referenz": client.get("/kreditoren/neu?datei=inbox/papeterie.pdf").text.split('name="referenz" value="')[1].split('"')[0],
+                                             "datei": "inbox/papeterie.pdf"}))
+    nr = to.rsplit("/", 1)[-1]
+    assert not (root / "inbox" / "papeterie.pdf").exists()
+    assert client.get(to).status_code == 200 and client.get("/kreditoren/lieferanten").status_code == 200
+    ok(post(client, "/kreditoren/zahlungslauf", {"nr": [nr], "datum": "2026-03-20"}))
+    zl = client.get("/kreditoren/zahlungen").text
+    assert "angewiesen" in zl
+    datei = zl.split('href="/datei/zahlungen/')[1].split('"')[0]
+    assert b"pain.001.001.09" in client.get(f"/datei/zahlungen/{datei}").content
+    ok(post(client, "/kreditoren/zahlungslauf/bezahlt", {"datei": datei, "datum": "2026-03-20"}))
+    assert "bezahlt" in client.get(f"/kreditoren/rechnung/{nr}").text
+    assert errors(root) == []

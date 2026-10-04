@@ -212,6 +212,45 @@ def build_parser() -> argparse.ArgumentParser:
     c = als.add_parser("book")
     c.add_argument("jahr", type=int)
     c.add_argument("--datum")
+    s = sub.add_parser("lieferant", help="Lieferanten")
+    ls = s.add_subparsers(dest="sub", required=True)
+    ls.add_parser("list")
+    c = ls.add_parser("add")
+    c.add_argument("--name", required=True)
+    for f in ("strasse", "nr", "plz", "ort", "iban", "konto", "mwst", "email"):
+        c.add_argument(f"--{f}", default="")
+    c.add_argument("--land", default="CH")
+
+    s = sub.add_parser("kreditor", help="Lieferantenrechnungen")
+    ks = s.add_subparsers(dest="sub", required=True)
+    c = ks.add_parser("scan", help="QR-Rechnung (PDF/Foto) lesen")
+    c.add_argument("datei")
+    c = ks.add_parser("list")
+    c.add_argument("--status", default="", choices=["", "offen", "angewiesen", "bezahlt", "storniert"])
+    c = ks.add_parser("add", help="Rechnung erfassen und buchen")
+    c.add_argument("--lieferant", required=True)
+    c.add_argument("--betrag", required=True, help="brutto")
+    for f in ("datum", "faellig", "konto", "mwst", "rechnungsnr", "referenz", "referenz-typ", "mitteilung", "iban", "datei"):
+        c.add_argument(f"--{f}", dest=f.replace("-", "_"), default=None)
+    c = ks.add_parser("pay", help="Zahlung buchen")
+    c.add_argument("nr")
+    c.add_argument("--datum")
+    c.add_argument("--betrag")
+    c = ks.add_parser("void")
+    c.add_argument("nr")
+    c.add_argument("--grund", default="")
+    ks.add_parser("offen", help="offene Kreditoren")
+
+    s = sub.add_parser("zahlungslauf", help="Zahlungsdatei (pain.001) für das E-Banking")
+    zs = s.add_subparsers(dest="sub", required=True)
+    c = zs.add_parser("erstellen")
+    c.add_argument("nummern", nargs="+", help="E-2026-0001 …")
+    c.add_argument("--datum", required=True, help="Ausführungsdatum")
+    zs.add_parser("list")
+    c = zs.add_parser("bezahlt", help="ausgeführten Zahlungslauf verbuchen")
+    c.add_argument("datei")
+    c.add_argument("--datum")
+
     s = sub.add_parser("mwst", help="MWST-Abrechnung")
     ms = s.add_subparsers(dest="sub", required=True)
     c = ms.add_parser("abrechnung", help="Ziffern für die ESTV-Abrechnung")
@@ -335,6 +374,35 @@ def dispatch(a, book_path: Path | None):
         if a.sub == "set":
             return api.allocation_set(book(), a.jahr, a.dividende, a.reserve)
         return api.allocation_book(book(), a.jahr, a.datum)
+    if c == "lieferant":
+        if a.sub == "list":
+            return api.supplier_list(book())
+        return api.supplier_add(book(), name=a.name, strasse=a.strasse, nr=a.nr, plz=a.plz, ort=a.ort, land=a.land,
+                                iban=a.iban, konto=a.konto, mwst=a.mwst, email=a.email)
+    if c == "kreditor":
+        b = book()
+        if a.sub == "scan":
+            return api.qr_scan(b, a.datei)
+        if a.sub == "list":
+            return api.bill_list(b, a.status)
+        if a.sub == "add":
+            fields = {k: getattr(a, k) for k in ("datum", "faellig", "konto", "mwst", "rechnungsnr", "referenz",
+                                                 "referenz_typ", "mitteilung", "iban", "datei") if getattr(a, k) is not None}
+            return api.bill_add(b, a.lieferant, a.betrag, **fields)
+        if a.sub == "pay":
+            return api.bill_pay(b, a.nr, a.datum, a.betrag)
+        if a.sub == "void":
+            return api.bill_void(b, a.nr, a.grund)
+        if a.sub == "offen":
+            return api.payables(b)
+    if c == "zahlungslauf":
+        b = book()
+        if a.sub == "erstellen":
+            return api.payment_run(b, a.nummern, a.datum)
+        if a.sub == "list":
+            from . import kreditoren as kred
+            return api.jsonable(kred.runs(b))
+        return api.payment_run_book(b, a.datei, a.datum)
     if c == "mwst":
         if a.sub == "abrechnung":
             return api.mwst_report(book(), a.periode)
@@ -403,7 +471,11 @@ def render(cmd: str, sub: str | None, result) -> str:
     if cmd == "invoice" and sub == "list":
         return _table(result, [("nummer", "Rechnung"), ("datum", "Datum"), ("name", "Kunde"), ("total", "Total"),
                                ("offen", "Offen"), ("status", "Status")], right=("total", "offen"))
-    if cmd in ("customer", "employee") and sub == "list":
+    if cmd == "kreditor" and sub == "list":
+        return _table(result, [("nummer", "Kreditor"), ("datum", "Datum"), ("name", "Lieferant"), ("rechnungsnr", "Rg.-Nr."),
+                               ("faellig", "Fällig"), ("total", "Betrag"), ("offen", "Offen"), ("status", "Status")],
+                      right=("total", "offen"))
+    if cmd in ("customer", "employee", "lieferant") and sub == "list":
         return _table(result, [(k, k.capitalize()) for k in result[0]] if result else [])
     if cmd == "report" and "aktiven" in result:
         out = [f"{result['firma']} — Jahresrechnung {result['jahr']}"]

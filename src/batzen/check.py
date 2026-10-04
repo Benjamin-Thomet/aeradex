@@ -174,11 +174,37 @@ def run(book: Book) -> list[Issue]:
     for quelle, group in owned.items():
         if quelle.startswith("lohn:") and quelle not in known:
             add("fehler", group[0].where, f"Quelle {quelle}: Lohnabrechnung existiert nicht")
-        if quelle.partition(":")[0] not in ("rechnung", "zahlung", "gutschrift", "lohn", "abschluss", "mwst"):
+        if quelle.partition(":")[0] not in ("rechnung", "zahlung", "gutschrift", "lohn", "abschluss", "mwst",
+                                             "kreditor", "kzahlung"):
             add("warnung", group[0].where, f"unbekannte Quelle '{quelle}'")
 
+    # ---- kreditoren ----
+    from . import kreditoren as kred
+    try:
+        all_bills = kred.bills(book)
+    except FormatError as exc:
+        all_bills = {}
+        add("fehler", "kreditoren", str(exc))
+    for nr, meta in all_bills.items():
+        where = book.rel(meta["_pfad"])
+        if not kred.bill_fingerprint_ok(meta):
+            add("fehler", where, "Kreditor wurde nach der Erfassung verändert (Fingerprint) — stornieren und neu erfassen")
+        expected = kred.booking_rows(book, meta) if meta.get("status") != "storniert" else []
+        if Counter(map(_key, expected)) != Counter(map(_key, owned.get(f"kreditor:{nr}", []))):
+            add("fehler", where, "Journalbuchung passt nicht zum Kreditor")
+        paid_rows = owned.get(f"kzahlung:{nr}", [])
+        paid = sum((r.betrag for r in paid_rows), ZERO)
+        if meta.get("status") == "storniert" and paid_rows:
+            add("fehler", where, "stornierter Kreditor hat Zahlungen")
+        elif paid > Decimal(str(meta.get("betrag") or 0)):
+            add("fehler", where, f"Zahlungen {paid} übersteigen den Rechnungsbetrag")
+    for quelle, group in owned.items():
+        kind, _, ref = quelle.partition(":")
+        if kind in ("kreditor", "kzahlung") and ref not in all_bills:
+            add("fehler", group[0].where, f"Quelle {quelle}: Kreditor {ref} existiert nicht")
+
     # ---- receipts (GeBüV: every booking needs a Beleg) ----
-    manual = {r.beleg: r for r in rows if not r.quelle}
+    manual = {r.beleg: r for r in rows if not r.quelle or r.quelle.startswith("kreditor:")}
     receipts_dir = book.root / "belege"
     names = {p.name for p in receipts_dir.rglob("*") if p.is_file()} if receipts_dir.exists() else set()
     missing = [b for b in manual if not any(n == b or n.startswith(b + " ") for n in names)]

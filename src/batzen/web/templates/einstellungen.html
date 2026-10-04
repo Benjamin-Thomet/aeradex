@@ -20,6 +20,7 @@
       <div class="field"><label>Telefon</label><input class="input" name="telefon" value="{{ settings.get('telefon') or '' }}"></div>
       <div class="field"><label>E-Mail</label><input class="input" name="email" value="{{ settings.get('email') or '' }}"></div>
       <div class="field" style="grid-column: span 2"><label>IBAN oder QR-IBAN</label><input class="input num" name="iban" value="{{ settings.get('iban') or '' }}" style="text-align:left"></div>
+      <div class="field" style="grid-column: span 2"><label>IBAN für Zahlungen (falls oben eine QR-IBAN steht)</label><input class="input num" name="zahlungs_iban" value="{{ settings.get('zahlungs_iban') or '' }}" style="text-align:left" placeholder="leer = obige IBAN"></div>
       <div class="field"><label>c/o-Zeile</label><input class="input" name="co" value="{{ settings.get('co') or '' }}"></div>
       <div class="field"><label>Zahlungsfrist (Tage)</label><input class="input num" name="zahlungsfrist_tage" value="{{ settings.get('zahlungsfrist_tage') or 30 }}"></div>
       <div class="field"><label>QR-Referenz-Präfix</label><input class="input num" name="qr_referenz_praefix" value="{{ settings.get('qr_referenz_praefix') or '' }}" placeholder="nur wenn die Bank es verlangt"></div>

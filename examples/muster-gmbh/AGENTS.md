@@ -25,12 +25,22 @@ Du arbeitest damit über das CLI `batzen` (immer mit `--json`) oder den MCP-Serv
 **Rechnung stellen**: `batzen invoice create --kunde K0001 --pos "Beratung;10 h;150" --text "…"`
 → PDF mit QR-Einzahlungsschein unter `rechnungen/<Jahr>/`.
 
+**Lieferantenrechnung (QR-Rechnung) in `inbox/`**: `batzen kreditor scan inbox/x.pdf` (MCP: scan_qr_bill) liest
+IBAN, Betrag und Referenz. Bekannter Lieferant → `add_supplier_bill` mit dessen hinterlegtem Konto. Neuer Lieferant →
+ohne Konto anlegen und dem Menschen das Aufwandkonto vorschlagen (im Vorschlagsmodus legt er es fest).
+Zahlen: `batzen zahlungslauf erstellen E-2026-0001 … --datum …` erzeugt die pain.001-Datei fürs E-Banking.
+
 **Zahlungseingang**: `batzen invoice match --betrag 1500 --text "<Bankzeile>"` → `batzen invoice pay R-2026-0001 --datum …`
 
 **Lohnlauf**: `batzen payroll run 2026-01` → prüfen (`payroll show`) → `batzen payroll close 2026-01 M0001`.
 
 **Abschluss**: `batzen report --jahr 2026 --pdf`, Gewinnverwendung `batzen allocation set 2026 --dividende … --reserve …`,
 nach der GV `batzen allocation book 2026 --datum …`, Periode sperren `batzen lock 2026-12-31`.
+
+## MWST
+`batzen status --json` zeigt `mwst_methode`. Bei `effektiv`: weist der Beleg MWST aus, mit `--mwst` buchen
+(V81 Vorsteuer Material/Dienstleistungen, I81 Investitionen/übriger Aufwand, U81 Umsatz; 2.6 % = V26/I26/U26)
+und den **Bruttobetrag** angeben. Bei `saldo` oder `keine`: ohne Vorsteuer-Code buchen.
 
 ## Kontierungs-Hinweise (KMU-Kontenrahmen)
 - Bank 1020 · Kasse 1000 · Debitoren 1100 · Kreditoren 2000 · Vorsteuer 1170/1171 · Umsatzsteuer 2200

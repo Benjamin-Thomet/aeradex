@@ -49,6 +49,7 @@ DEFAULT_SYSTEM_ACCOUNTS = {
     "reserve": "2950",
     "gutschrift": "3400",
     "bank": "1020",
+    "kreditoren": "2000",
 }
 
 

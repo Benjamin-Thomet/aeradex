@@ -25,7 +25,7 @@ batzen dreht das um:
 ## Schnellstart
 
 ```bash
-pip install -e ".[ui,mcp]"       # Python ≥ 3.11
+pip install -e ".[ui,mcp,scan]"  # Python ≥ 3.11
 
 batzen init ~/buchhaltung/muster --firma "Muster GmbH" --jahr 2026 \
   --strasse Bahnhofstrasse --nr 1 --plz 3000 --ort Bern \
@@ -54,6 +54,7 @@ Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird g
 | **Journal** | Monate, Suche und Filter, einfache und Sammelbuchungen mit Beleg-Datei, Storno, Belege nachreichen |
 | **Konten** | Kontenplan bearbeiten, Saldenliste nach Periode, Kontoblatt |
 | **Debitoren** | Kunden, Rechnungen mit Live-Total und QR-PDF, Zahlung zuordnen, Gutschrift, Storno, offene Posten |
+| **Kreditoren** | QR-Rechnungen aus der Inbox erkennen und erfassen, Lieferanten, offene Posten, Zahlungslauf als pain.001-Datei, Ausführung verbuchen |
 | **Lohn** | Lohnlauf pro Monat, Eingaben (Stunden, QST, Korrekturen), Abschluss, Lohnkonto, Lohnausweis |
 | **MWST** | Abrechnung je Quartal/Semester nach ESTV-Ziffern, Belege je Code, Buchen, PDF-Hilfsblatt |
 | **Abschluss** | Bilanz und Erfolgsrechnung mit Vorjahr und Drill-down, Gewinnverwendung, Anhang, Periode sperren |
@@ -81,6 +82,17 @@ batzen book --datum 2026-01-12 --soll 6500 --haben 1020 --betrag 108.10 --mwst V
 batzen mwst abrechnung 2026-Q1      # Ziffern 200 … 500 wie im ESTV-Formular
 batzen mwst buchen 2026-Q1          # MWST-Konten auf das Abrechnungskonto 2201
 ```
+
+### Kreditoren und Zahlungen
+```bash
+batzen kreditor scan inbox/rechnung.pdf          # liest den QR-Zahlteil: IBAN, Betrag, Referenz, Lieferant
+batzen lieferant add --name "Papeterie Muster AG" --iban CH44… --konto 6500 --mwst V81
+batzen kreditor add --lieferant L0001 --betrag 86.40 --referenz 0000… --datei inbox/rechnung.pdf
+batzen zahlungslauf erstellen E-2026-0001 E-2026-0002 --datum 2026-03-20   # pain.001 fürs E-Banking
+batzen zahlungslauf bezahlt 2026-03-20-ab12cd.xml                         # nach der Ausführung verbuchen
+```
+Die Zahlungsdatei folgt den Swiss Payment Standards (pain.001.001.09) und validiert gegen die offiziellen
+SIX-Schemas SPS 2025 und 2026. QR-Codes lesen: `pip install -e ".[scan]"`.
 
 ### Lohn
 ```bash
@@ -154,12 +166,11 @@ Die Fachlogik (Saldenmotor mit Jahresverkettung, OR-Gliederung, Lohnberechnung i
 
 ## Stand und Roadmap
 
-v0.2: Finanzbuchhaltung, Debitoren mit QR-Rechnung, Lohn, Agenten-Schnittstelle (CLI + MCP), lokale Web-Oberfläche mit eingebautem Agenten.
+v0.3: Finanzbuchhaltung, MWST, Debitoren mit QR-Rechnung, Kreditoren mit QR-Scan und pain.001, Lohn, Agenten-Schnittstelle (CLI + MCP), lokale Web-Oberfläche mit eingebautem Agenten.
 
 Als Nächstes:
 - eMWST-Export (XML) für das ESTV-ePortal
 - Bankimport camt.053 mit automatischem Zahlungsabgleich
-- Kreditoren und pain.001-Zahlungsaufträge
 - Weitere Quellensteuer-Kantone, ALV-Höchstgrenze, Swissdec/ELM
 - Login für den Betrieb auf einem Server (mehrere Benutzer, Mandanten)
 

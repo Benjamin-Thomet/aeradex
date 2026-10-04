@@ -541,7 +541,7 @@ def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | N
 
 
 SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_referenz_praefix",
-                 "zahlungsfrist_tage", "agent_modus", "sprache", "co")
+                 "zahlungsfrist_tage", "agent_modus", "sprache", "co", "zahlungs_iban")
 
 
 def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None,
@@ -721,6 +721,97 @@ for _name in ("inbox_add", "attach_receipt"):
     globals()[_name] = _locked(globals()[_name])
 
 
+# ---------- Kreditoren ----------
+
+def supplier_list(book: Book) -> list[dict]:
+    from . import kreditoren as kred
+    return jsonable([{"nummer": k, "name": v.get("name"), "iban": v.get("iban"), "konto": v.get("konto"),
+                      "mwst": v.get("mwst"), "ort": (v.get("adresse") or {}).get("ort")}
+                     for k, v in kred.suppliers(book).items()])
+
+
+def supplier_add(book: Book, **fields) -> dict:
+    _guard(book)
+    from . import kreditoren as kred
+    meta, path = kred.add_supplier(book, **fields)
+    return _done(book, f"Lieferant {meta['nummer']} {meta['name']} angelegt", [path], lieferant=meta)
+
+
+def supplier_update(book: Book, nummer: str, notizen: str | None = None, **fields) -> dict:
+    _guard(book)
+    from . import kreditoren as kred
+    sup = kred.supplier(book, nummer)
+    allowed = {"name", "iban", "konto", "mwst", "email", *_ADDRESS_KEYS}
+    unknown = set(fields) - allowed
+    if unknown:
+        raise BookError(f"Unbekannte Felder: {', '.join(sorted(unknown))}")
+    if fields.get("iban"):
+        fields["iban"] = invoices.qr.normalize_iban(fields["iban"])
+        if not invoices.qr.iban_is_valid(fields["iban"]):
+            raise BookError("IBAN: Prüfsumme stimmt nicht")
+    if fields.get("konto"):
+        book.account(fields["konto"])
+    if fields.get("mwst"):
+        from . import mwst as vat
+        fields["mwst"] = vat.code(fields["mwst"]).code
+    meta = _update_record(sup["_pfad"], fields, notes=notizen)
+    return _done(book, f"Lieferant {nummer} geändert", [sup["_pfad"]], lieferant=meta)
+
+
+def qr_scan(book: Book, datei: str) -> dict:
+    from . import kreditoren as kred
+    return jsonable(kred.scan(book, datei))
+
+
+def bill_add(book: Book, lieferant: str, betrag, **fields) -> dict:
+    _guard(book)
+    from . import kreditoren as kred
+    meta, touched = kred.add_bill(book, lieferant, betrag, **fields)
+    return _done(book, f"Kreditor {meta['nummer']} {meta['name']} über {meta['betrag']:.2f} erfasst", touched,
+                 kreditor=meta)
+
+
+def bill_list(book: Book, status: str = "") -> list[dict]:
+    from . import kreditoren as kred
+    paid = kred.payments(book)
+    out = [kred.state(book, m, paid.get(k, [])) for k, m in kred.bills(book).items()]
+    return jsonable([s for s in out if not status or s["status"] == status])
+
+
+def bill_pay(book: Book, nummer: str, datum=None, betrag=None, konto: str | None = None) -> dict:
+    _guard(book)
+    from . import kreditoren as kred
+    row, touched = kred.pay(book, nummer, datum, betrag, konto)
+    return _done(book, f"Zahlung {row.betrag:.2f} an Kreditor {nummer} verbucht (Beleg {row.beleg})", touched, buchung=row)
+
+
+def bill_void(book: Book, nummer: str, grund: str = "") -> dict:
+    _guard(book)
+    from . import kreditoren as kred
+    meta, touched = kred.void(book, nummer, grund)
+    return _done(book, f"Kreditor {nummer} storniert" + (f": {grund}" if grund else ""), touched)
+
+
+def payment_run(book: Book, nummern: list[str], ausfuehrung) -> dict:
+    _guard(book)
+    from . import kreditoren as kred
+    info, touched = kred.create_run(book, nummern, ausfuehrung)
+    return _done(book, f"Zahlungslauf {info['ausfuehrung']}: {info['anzahl']} Zahlung(en), {info['total']:.2f} — "
+                 f"Datei {info['datei']} im E-Banking hochladen", touched, zahlungslauf=info)
+
+
+def payment_run_book(book: Book, datei: str, datum=None) -> dict:
+    _guard(book)
+    from . import kreditoren as kred
+    rows, touched = kred.book_run(book, datei, datum)
+    return _done(book, f"Zahlungslauf {Path(datei).name}: {len(rows)} Zahlung(en) verbucht", touched, buchungen=rows)
+
+
+def payables(book: Book) -> dict:
+    from . import kreditoren as kred
+    return jsonable(kred.open_payables(book))
+
+
 # ---------- MWST ----------
 
 def mwst_report(book: Book, periode: str) -> dict:
@@ -764,3 +855,7 @@ def payslip_inputs(book: Book, monat: str, mitarbeiter: str, eingaben: dict) -> 
 
 
 payslip_inputs = _locked(payslip_inputs)
+
+
+for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_void", "payment_run", "payment_run_book"):
+    globals()[_name] = _locked(globals()[_name])

@@ -127,6 +127,14 @@ def todo_items(book: Book) -> list[dict]:
         items.append({"level": "warn", "title": f"Löhne {month[5:]}/{month[:4]} abschliessen",
                       "detail": " · ".join(f"{s.get('name')} {Decimal(str(s['werte']['nettolohn'])):,.2f} netto".replace(",", "'") for s in slips),
                       "tag": f"{len(slips)} Entwurf" + ("e" if len(slips) > 1 else ""), "href": f"/lohn?monat={month}"})
+    from .. import kreditoren as kred
+    from datetime import timedelta
+    soon = (date.today() + timedelta(days=7)).isoformat()
+    due = [r for r in kred.open_payables(book)["posten"] if r["status"] == "offen" and r["faellig"] <= soon]
+    if due:
+        items.append({"level": "warn", "title": f"{len(due)} Lieferantenrechnung{'en' if len(due) > 1 else ''} bald fällig",
+                      "detail": " · ".join(f"{r['name']} {Decimal(str(r['offen'])):,.2f}".replace(",", "'") for r in due[:3]),
+                      "tag": "Zahlen", "href": "/kreditoren?status=offen"})
     for i in issues:
         if i.level in ("warnung",) or (i.level == "hinweis" and i.where == "belege"):
             items.append({"level": "red" if i.level == "warnung" else "muted", "title": i.message, "detail": i.where,
@@ -178,7 +186,8 @@ async def pruefen(ui: UI, request: Request):
         text = current.read_text(encoding="utf-8", errors="replace")[:5000]
     issues = [i for i in checks.run(book) if not (i.level == "hinweis" and i.where.startswith("lohn/"))
               and i.where != "inbox"]
-    return ui.render(request, "pruefen.html", book=book, files=files, current=current,
+    qrbill = _qr_hint(book, f"inbox/{current.name}") if current and file_kind(current) in ("pdf", "image") else None
+    return ui.render(request, "pruefen.html", book=book, files=files, current=current, qrbill=qrbill,
                      kind=file_kind(current) if current else None, text=text, proposals=proposals, linked=linked,
                      drafts=draft_rows(book), issues=issues, accounts=account_options(book),
                      next_beleg=journal.next_beleg(book, date.today().year))
@@ -677,6 +686,157 @@ async def abschluss_aktion(ui: UI, request: Request):
     return fail("Unbekannte Aktion")
 
 
+# ---------- Kreditoren ----------
+
+def _qr_hint(book: Book, rel: str) -> dict | None:
+    """Scan an inbox file for a Swiss QR-bill (quietly: no QR, no hint)."""
+    from .. import kreditoren as kred
+    try:
+        return kred.scan(book, rel)
+    except Exception:
+        return None
+
+
+async def kreditoren_page(ui: UI, request: Request):
+    from .. import kreditoren as kred
+    book = ui.book()
+    status = request.query_params.get("status", "")
+    paid = kred.payments(book)
+    rows = [kred.state(book, m, paid.get(k, [])) for k, m in kred.bills(book).items()]
+    rows = [r for r in rows if not status or r["status"] == status]
+    rows.sort(key=lambda r: (r["status"] not in ("offen", "angewiesen"), r["faellig"], r["nummer"]))
+    return ui.render(request, "kreditoren.html", book=book, rows=rows, status=status, op=kred.open_payables(book),
+                     tab="rechnungen", default_date=_next_workday().isoformat())
+
+
+def _next_workday() -> date:
+    from datetime import timedelta
+    d = date.today() + timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d
+
+
+async def kreditor_neu(ui: UI, request: Request):
+    from .. import kreditoren as kred
+    book = ui.book()
+    datei = request.query_params.get("datei", "")
+    scan, scan_error = None, None
+    if datei:
+        try:
+            scan = kred.scan(book, datei)
+        except Exception as exc:
+            scan_error = str(exc)
+    sups = kred.suppliers(book)
+    chosen = (scan or {}).get("lieferant") or request.query_params.get("lieferant") or ""
+    kind = file_kind(book.root / datei) if datei else None
+    return ui.render(request, "kreditor_neu.html", book=book, datei=datei, kind=kind, scan=scan, scan_error=scan_error,
+                     suppliers=sups, chosen=chosen, accounts=account_options(book), tab="rechnungen",
+                     today=date.today().isoformat())
+
+
+async def kreditor_erfassen(ui: UI, request: Request):
+    from .. import kreditoren as kred
+    f = await request.form()
+    book = ui.book()
+    lieferant = f.get("lieferant") or ""
+    try:
+        if lieferant == "neu":
+            res = await asyncio.to_thread(api.supplier_add, book, name=(f.get("s_name") or "").strip(),
+                                          strasse=f.get("s_strasse", ""), nr=f.get("s_nr", ""), plz=f.get("s_plz", ""),
+                                          ort=f.get("s_ort", ""), land=f.get("s_land") or "CH", iban=f.get("iban", ""),
+                                          konto=acct(f.get("konto")), mwst=f.get("mwst", ""))
+            lieferant = res["lieferant"]["nummer"]
+            book = ui.book()
+    except (BookError, ValueError) as exc:
+        return fail(str(exc))
+    fields = {k: (f.get(k) or "").strip() for k in ("datum", "faellig", "rechnungsnr", "referenz", "referenz_typ",
+                                                     "mitteilung", "iban", "datei")}
+    fields = {k: v for k, v in fields.items() if v}
+    if f.get("konto"):
+        fields["konto"] = acct(f.get("konto"))
+    if f.get("mwst") is not None:
+        fields["mwst"] = f.get("mwst") or ""
+    return await act(request, api.bill_add, lambda r: f"/kreditoren/rechnung/{r['kreditor']['nummer']}", book,
+                     lieferant, f.get("betrag"), **fields)
+
+
+async def kreditor_detail(ui: UI, request: Request):
+    from .. import kreditoren as kred
+    book = ui.book()
+    nr = request.path_params["nr"]
+    try:
+        meta = kred.bill(book, nr)
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=404)
+    st = kred.state(book, meta)
+    return ui.render(request, "kreditor.html", book=book, meta=meta, st=st, paid=kred.payments(book).get(nr, []),
+                     kind=file_kind(book.root / meta["datei"]) if meta.get("datei") else None,
+                     tab="rechnungen", today=date.today().isoformat())
+
+
+async def kreditor_aktion(ui: UI, request: Request):
+    f = await request.form()
+    nr, aktion = request.path_params["nr"], request.path_params["aktion"]
+    to = f"/kreditoren/rechnung/{nr}"
+    if aktion == "zahlung":
+        return await act(request, api.bill_pay, to, ui.book(), nr, f.get("datum") or None, f.get("betrag") or None)
+    if aktion == "storno":
+        return await act(request, api.bill_void, to, ui.book(), nr, f.get("grund", ""))
+    return fail("Unbekannte Aktion")
+
+
+async def zahlungslauf_erstellen(ui: UI, request: Request):
+    f = await request.form()
+    nummern = f.getlist("nr")
+    if not nummern:
+        return fail("Keine Rechnung ausgewählt.")
+    return await act(request, api.payment_run, "/kreditoren/zahlungen", ui.book(), nummern, f.get("datum"))
+
+
+async def zahlungen_page(ui: UI, request: Request):
+    from .. import kreditoren as kred
+    book = ui.book()
+    try:
+        debtor, debtor_error = kred.debtor_account(book), None
+    except BookError as exc:
+        debtor, debtor_error = None, str(exc)
+    return ui.render(request, "zahlungen.html", book=book, runs=kred.runs(book), tab="zahlungen",
+                     debtor=debtor, debtor_error=debtor_error)
+
+
+async def zahlungslauf_bezahlt(ui: UI, request: Request):
+    f = await request.form()
+    return await act(request, api.payment_run_book, "/kreditoren/zahlungen", ui.book(), f.get("datei"),
+                     f.get("datum") or None)
+
+
+async def lieferanten_page(ui: UI, request: Request):
+    from .. import kreditoren as kred
+    book = ui.book()
+    paid = kred.payments(book)
+    open_by = defaultdict(lambda: ZERO)
+    for m in kred.bills(book).values():
+        st = kred.state(book, m, paid.get(m["nummer"], []))
+        open_by[m.get("lieferant")] += st["offen"]
+    return ui.render(request, "lieferanten.html", book=book, suppliers=kred.suppliers(book), open_by=open_by,
+                     accounts=account_options(book), edit=request.query_params.get("edit"), tab="lieferanten")
+
+
+async def lieferant_speichern(ui: UI, request: Request):
+    f = await request.form()
+    fields = {k: (f.get(k) or "").strip() for k in ("name", "strasse", "nr", "plz", "ort", "land", "iban", "email", "mwst")}
+    fields["konto"] = acct(f.get("konto"))
+    nr = request.path_params.get("nr")
+    if not fields["name"]:
+        return fail("Name ist nötig.")
+    if nr:
+        return await act(request, api.supplier_update, "/kreditoren/lieferanten", ui.book(), nr,
+                         notizen=f.get("notizen"), **fields)
+    return await act(request, api.supplier_add, "/kreditoren/lieferanten", ui.book(), notizen=f.get("notizen", ""),
+                     **fields)
+
+
 # ---------- MWST ----------
 
 ZIFFERN = [
@@ -765,7 +925,8 @@ async def einstellungen(ui: UI, request: Request):
 async def einstellungen_speichern(ui: UI, request: Request):
     f = await request.form()
     fields = {k: (f.get(k) or "").strip() for k in ("firma", "rechtsform", "uid", "telefon", "email", "iban",
-                                                     "qr_referenz_praefix", "zahlungsfrist_tage", "agent_modus", "co")}
+                                                     "qr_referenz_praefix", "zahlungsfrist_tage", "agent_modus", "co",
+                                                     "zahlungs_iban")}
     vat = {"methode": f.get("mwst_methode") or "keine", "periode": f.get("mwst_periode") or "",
            "saldosteuersatz": (f.get("mwst_saldosteuersatz") or "").strip()}
     adresse = {k: (f.get(f"a_{k}") or "").strip() for k in ("strasse", "nr", "plz", "ort", "land")}
@@ -847,6 +1008,17 @@ def routes(ui: UI) -> list[Route]:
         Route("/debitoren/kunden/{nr:str}", h(kunde_speichern), methods=["POST"]),
         Route("/debitoren/rechnung/{nr:str}", h(rechnung)),
         Route("/debitoren/rechnung/{nr:str}/{aktion:str}", h(rechnung_aktion), methods=["POST"]),
+        Route("/kreditoren", h(kreditoren_page)),
+        Route("/kreditoren/neu", h(kreditor_neu)),
+        Route("/kreditoren/neu", h(kreditor_erfassen), methods=["POST"]),
+        Route("/kreditoren/rechnung/{nr:str}", h(kreditor_detail)),
+        Route("/kreditoren/rechnung/{nr:str}/{aktion:str}", h(kreditor_aktion), methods=["POST"]),
+        Route("/kreditoren/zahlungslauf", h(zahlungslauf_erstellen), methods=["POST"]),
+        Route("/kreditoren/zahlungslauf/bezahlt", h(zahlungslauf_bezahlt), methods=["POST"]),
+        Route("/kreditoren/zahlungen", h(zahlungen_page)),
+        Route("/kreditoren/lieferanten", h(lieferanten_page)),
+        Route("/kreditoren/lieferanten/neu", h(lieferant_speichern), methods=["POST"]),
+        Route("/kreditoren/lieferanten/{nr:str}", h(lieferant_speichern), methods=["POST"]),
         Route("/lohn", h(lohn)),
         Route("/lohn/lauf", h(lohnlauf), methods=["POST"]),
         Route("/lohn/abrechnung/{monat:str}/{nr:str}", h(abrechnung)),

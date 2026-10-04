@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, status_pill %}
+{% block title %}{{ meta.nummer }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><div class="crumbs"><a href="/kreditoren">Kreditoren</a> /</div><h1>{{ meta.nummer }} {{ status_pill(st.status) }}</h1>
+    <div class="sub">{{ meta.name }}{% if meta.rechnungsnr %} · Rechnung {{ meta.rechnungsnr }}{% endif %} · {{ meta.datum|datum }} · fällig {{ meta.faellig|datum }}</div></div>
+  <div class="actions">{% if meta.datei %}<a class="btn" href="/datei/{{ meta.datei|urlq }}" target="_blank">Beleg öffnen</a>{% endif %}</div>
+</div>
+<div class="review">
+  <div class="panel">
+    <header><h2>Rechnung</h2><span class="hint">eingefroren · Fingerprint {{ meta.fingerprint }}</span></header>
+    {% if meta.datei and kind in ('pdf', 'image') %}<div class="stage">{% if kind == 'pdf' %}<iframe src="/datei/{{ meta.datei|urlq }}" title="Beleg"></iframe>{% else %}<img src="/datei/{{ meta.datei|urlq }}" alt="Beleg">{% endif %}</div>{% endif %}
+    <div class="tablewrap"><table class="ledger"><tbody>
+      <tr><td class="muted">IBAN</td><td class="num">{{ meta.iban }}</td></tr>
+      <tr><td class="muted">Referenz</td><td class="num">{{ meta.referenz_typ }} {{ meta.referenz }}</td></tr>
+      {% if meta.mitteilung %}<tr><td class="muted">Mitteilung</td><td>{{ meta.mitteilung }}</td></tr>{% endif %}
+      <tr><td class="muted">Konto</td><td class="acc">{{ meta.konto }} {{ book.accounts[meta.konto].name if meta.konto in book.accounts }}{% if meta.mwst %} <span class="pill muted">{{ meta.mwst }}</span>{% endif %}</td></tr>
+      {% if meta.zahlungslauf %}<tr><td class="muted">Zahlungslauf</td><td><a class="link" href="/kreditoren/zahlungen">{{ meta.zahlungslauf }}</a></td></tr>{% endif %}
+      <tr class="total"><td>Betrag CHF</td><td class="right num">{{ meta.betrag|chf }}</td></tr>
+    </tbody></table></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div class="panel"><header><h2>Stand</h2></header>
+      <div class="tablewrap"><table class="ledger"><tbody>
+        <tr><td>Betrag</td><td class="right num">{{ st.total|chf }}</td></tr><tr><td>Bezahlt</td><td class="right num">{{ st.bezahlt|chf }}</td></tr>
+        <tr class="total"><td>Offen</td><td class="right num">{{ st.offen|chf }}</td></tr></tbody></table></div>
+      {% if paid %}<div class="body">{% for r in paid %}<span class="small"><span class="beleg">{{ r.beleg }}</span> {{ r.datum|datum }} · {{ r.betrag|chf }}</span>{% endfor %}</div>{% endif %}
+    </div>
+    {% if st.status in ('offen', 'angewiesen') %}
+    <div class="panel"><header><h2>Zahlung buchen</h2><span class="hint">wenn die Bank ausgeführt hat</span></header>
+      <form class="body" hx-post="/kreditoren/rechnung/{{ meta.nummer }}/zahlung" hx-target="find .errors">
+        <div class="form"><div class="field"><label>Betrag</label><input class="input num" name="betrag" value="{{ st.offen }}"></div><div class="field"><label>Valuta</label><input class="input" type="date" name="datum" value="{{ today }}"></div></div>
+        {{ errors() }}<div class="formfoot"><span class="small muted">{{ meta.kreditorenkonto }} an {{ settings.konto('bank') }}</span><button class="btn primary" type="submit">Zahlung buchen</button></div>
+      </form>
+      {% if not paid %}
+      <details class="inline"><summary>Stornieren</summary>
+        <form class="body" hx-post="/kreditoren/rechnung/{{ meta.nummer }}/storno" hx-target="find .errors" hx-confirm="Kreditor {{ meta.nummer }} stornieren? Die Buchung wird entfernt.">
+          <div class="field"><label>Grund</label><input class="input" name="grund" required placeholder="z.B. doppelt erfasst"></div>
+          {{ errors() }}<div class="formfoot"><span></span><button class="btn danger" type="submit">Stornieren</button></div>
+        </form>
+      </details>{% endif %}
+    </div>{% endif %}
+  </div>
+</div>
+{% endblock %}

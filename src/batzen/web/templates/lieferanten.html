@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, kreditoren_nav, accounts_datalist, mwst_select %}
+{% block title %}Lieferanten{% endblock %}
+{% macro form(s, action) %}{% set a = s.adresse or {} %}
+<form class="body" hx-post="{{ action }}" hx-target="find .errors">
+  <div class="form four">
+    <div class="field" style="grid-column: span 2"><label>Name</label><input class="input" name="name" value="{{ s.name or '' }}" required></div>
+    <div class="field" style="grid-column: span 2"><label>IBAN / QR-IBAN</label><input class="input num" name="iban" value="{{ s.iban or '' }}" style="text-align:left"></div>
+    <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ a.strasse or '' }}"></div>
+    <div class="field"><label>Nr.</label><input class="input" name="nr" value="{{ a.nr or '' }}"></div>
+    <div class="field"><label>Land</label><input class="input" name="land" value="{{ a.land or 'CH' }}" maxlength="2"></div>
+    <div class="field"><label>PLZ</label><input class="input" name="plz" value="{{ a.plz or '' }}"></div>
+    <div class="field"><label>Ort</label><input class="input" name="ort" value="{{ a.ort or '' }}"></div>
+    <div class="field"><label>Standard-Aufwandkonto</label><input class="input" name="konto" list="konten" value="{{ s.konto or '' }}"></div>
+    {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition"), selected=s.mwst or "") }}
+    <div class="field" style="grid-column: span 2"><label>E-Mail</label><input class="input" name="email" value="{{ s.email or '' }}"></div>
+    <div class="field wide"><label>Notizen</label><textarea class="input" name="notizen" style="min-height:50px">{{ s._notizen or '' }}</textarea></div>
+  </div>
+  {{ errors() }}<div class="formfoot"><span class="small muted">Konto und MWST-Code gelten als Vorschlag für neue Rechnungen dieses Lieferanten; der Agent darf nur dieses Konto verwenden.</span><button class="btn primary" type="submit">Speichern</button></div>
+</form>{% endmacro %}
+{% block main %}
+<div class="topbar"><div><h1>Kreditoren</h1><div class="sub">{{ suppliers|length }} Lieferanten</div></div></div>
+{{ kreditoren_nav(tab) }}
+{{ accounts_datalist(accounts) }}
+<div class="panel">
+  {% if suppliers %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Nr.</th><th>Lieferant</th><th>IBAN</th><th>Konto</th><th class="right">Offen</th><th></th></tr></thead>
+    <tbody>{% for nr, s in suppliers.items() %}
+      <tr class="row"><td class="acc">{{ nr }}</td><td><strong>{{ s.name }}</strong><br><span class="small muted">{{ (s.adresse or {}).ort }}</span></td><td class="num small">{{ s.iban }}</td>
+        <td class="acc">{{ s.konto }}{% if s.mwst %} <span class="pill muted">{{ s.mwst }}</span>{% endif %}</td><td class="right num">{{ open_by[nr]|chf(true) }}</td>
+        <td class="right"><span class="rowactions"><a class="btn small" href="/kreditoren/neu?lieferant={{ nr }}">Rechnung</a><a class="btn small ghost" href="/kreditoren/lieferanten?edit={{ nr }}#edit">Bearbeiten</a></span></td></tr>
+      {% if edit == nr %}<tr><td colspan="6" id="edit" style="padding:0">{{ form(s, "/kreditoren/lieferanten/" ~ nr) }}</td></tr>{% endif %}
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty">Noch keine Lieferanten. Am schnellsten: eine QR-Rechnung in die Inbox legen und unter Prüfen «Als Kreditor erfassen».</div>{% endif %}
+</div>
+<div class="panel"><header><h2>Lieferant anlegen</h2></header>{{ form({}, "/kreditoren/lieferanten/neu") }}</div>
+{% endblock %}
