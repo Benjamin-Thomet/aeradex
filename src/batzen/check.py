@@ -373,6 +373,22 @@ def run(book: Book) -> list[Issue]:
     if missing:
         add("hinweis", "belege", f"{len(missing)} Buchung(en) ohne Beleg-Datei, z.B. {', '.join(sorted(missing)[:5])}")
 
+    # ---- Beleg numbers: never reused; a gap is explained in the Belegordner ----
+    from . import dossier
+    try:
+        for path in dossier.orphan_receipts(book):
+            add("warnung", path, "Belegdatei ohne Buchung oder Dokument mit dieser Nummer — Buchung entfernt "
+                "oder Datei falsch benannt? (Der Dateiname muss mit der Belegnummer beginnen.)")
+        for year in book.years():
+            gaps = [g["beleg"] for g in dossier.belegluecken(book, year, trace=False)
+                    if g["art"] == "unbekannt"]
+            if gaps:
+                add("hinweis", "journal", f"{year}: {len(gaps)} Belegnummer(n) ohne Buchung "
+                    f"({', '.join(gaps[:6])}{' …' if len(gaps) > 6 else ''}) — Nummern werden nie neu vergeben; "
+                    "der Grund steht im Lückenverzeichnis des Belegordners (batzen dossier)")
+    except (FormatError, BookError) as exc:
+        add("fehler", "belege", str(exc))
+
     from . import mahnungen
     try:
         late = mahnungen.overdue(book)

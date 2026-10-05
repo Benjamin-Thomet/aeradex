@@ -27,7 +27,7 @@ jobs:
       - name: batzen und die Plugins installieren
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[ui,mcp,dev,scan]"
+          pip install -e ".[ui,mcp,dev,scan,crypt,excel]"
           for p in plugins/batzen-*; do pip install -e "$p"; done
           pip install -e plugins/vorlage
       - name: git-Identität für die Testbücher

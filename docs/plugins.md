@@ -70,6 +70,7 @@ Die Hooks sind [pluggy](https://pluggy.readthedocs.io/)-Hooks (dasselbe System w
 | `batzen_instructions()` | `str` | kurzer Hinweis an den Agenten, wann er die Werkzeuge nutzt | eingeschaltet |
 | `batzen_commands()` | `[Command]` | Befehle `batzen <name> …` | eingeschaltet |
 | `batzen_pages()` | `[Page]` | eigene Seiten in der Oberfläche (Seitenleiste «Plugins») | eingeschaltet |
+| `batzen_dossier_teile()` | `[DossierTeil]` | weitere Teile der Abschlussunterlagen (`batzen dossier`), z.B. ein Anlagenspiegel: `build(book, jahr, format)` → `[(Dateiname, bytes)]` | eingeschaltet |
 
 ### Kontenplan-Vorlagen (Daten)
 

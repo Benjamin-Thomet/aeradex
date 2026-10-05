@@ -121,6 +121,22 @@ class Page:
 
 
 @dataclass
+class DossierTeil:
+    """A part of the Abschlussunterlagen (`batzen dossier`), e.g. an Anlagenspiegel.
+
+    ``build(book, year, fmt)`` returns ``[(file name, bytes)]`` for one of ``formate``
+    ("pdf", "csv" …); a name may contain a folder ("Anlagen 2026/Spiegel.pdf").
+    ``relevant(book, year)`` decides whether the part applies to a book; None = always.
+    """
+    key: str
+    label: str
+    formate: tuple[str, ...]
+    build: Callable[[Book, int, str], list[tuple[str, bytes]]]
+    relevant: Callable[[Book, int], bool] | None = None
+    beschreibung: str = ""
+
+
+@dataclass
 class Finding:
     """A `check` result from a plugin rule. level: fehler | warnung | hinweis."""
     level: str
@@ -170,6 +186,10 @@ class Spec:
     @hookspec
     def batzen_pages(self) -> list[Page]:
         """Pages in the web UI (templates in the plugin package's templates/ folder)."""
+
+    @hookspec
+    def batzen_dossier_teile(self) -> list[DossierTeil]:
+        """Parts for the Abschlussunterlagen of a year."""
 
 
 # ---------- discovery ----------
@@ -328,6 +348,10 @@ def beleg_leser(book: Book | None) -> list[BelegLeser]:
 
 def sources(book: Book | None) -> dict[str, Source]:
     return {s.prefix: s for s in _flat(manager(book).hook.batzen_sources())}
+
+
+def dossier_teile(book: Book | None) -> list[DossierTeil]:
+    return list(_flat(manager(book).hook.batzen_dossier_teile()))
 
 
 def check_findings(book: Book, rows: list[Row]) -> list[Finding]:

@@ -215,6 +215,25 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("report", help="Jahresrechnung (Bilanz, Erfolgsrechnung, Anhang)")
     s.add_argument("--jahr", type=int)
     s.add_argument("--pdf", nargs="?", const="", default=None)
+    s = sub.add_parser("dossier", help="Abschlussunterlagen eines Jahres: alles als ZIP oder einzelne Teile")
+    s.add_argument("--jahr", type=int)
+    s.add_argument("--teil", default="", help="nur diesen Teil als Datei (statt ZIP): jahresrechnung, saldenliste, "
+                                             "journal, kontoblaetter, belege, mwst, offene_posten, lohn, kontenplan")
+    s.add_argument("--nur", default="", help="ZIP nur mit diesen Teilen (kommagetrennt)")
+    s.add_argument("--format", default="", help="pdf, csv, dateien (Originalbelege); ZIP: kommagetrennt, Standard alle")
+    s.add_argument("--liste", action="store_true", help="Teile und Belegnummern-Lücken anzeigen, nichts erzeugen")
+    s.add_argument("--out", help="Zieldatei (Standard: berichte/)")
+    s = sub.add_parser("export-buch", help="ganzes Buch als .batzen-Datei für einen anderen batzen-Nutzer")
+    s.add_argument("datei", help="Zieldatei, z.B. 'Muster GmbH.batzen'")
+    s.add_argument("--passwort", action="store_true", help="mit Passwort verschlüsseln (Abfrage)")
+    s.add_argument("--passwort-stdin", action="store_true", help="Passwort von stdin lesen (für Skripte)")
+    s.add_argument("--ohne-inbox", action="store_true", help="unverarbeitete Dateien in inbox/ weglassen")
+    s.add_argument("--ohne-historie", action="store_true", help="ohne Änderungsverlauf (git)")
+    s = sub.add_parser("import-buch", help=".batzen-Datei in einen neuen Ordner importieren")
+    s.add_argument("datei")
+    s.add_argument("ziel", nargs="?", help="neuer, leerer Ordner (ohne: nur Inhalt anzeigen)")
+    s.add_argument("--passwort", action="store_true", help="Datei ist verschlüsselt (Abfrage)")
+    s.add_argument("--passwort-stdin", action="store_true")
     s = sub.add_parser("allocation", help="Gewinnverwendung")
     als = s.add_subparsers(dest="sub", required=True)
     c = als.add_parser("set")
@@ -515,6 +534,28 @@ def dispatch(a, book_path: Path | None):
         if name not in plugins.enabled_names(b):
             raise BookError(f"Plugin '{name}' ist für dieses Buch nicht eingeschaltet (batzen plugins ein {name})")
         return cmd.run(b, a)
+    if c in ("export-buch", "import-buch"):
+        password = None
+        if a.passwort_stdin:
+            password = sys.stdin.readline().rstrip("\n")
+        elif a.passwort:
+            import getpass
+            password = getpass.getpass("Passwort: ")
+            if c == "export-buch" and getpass.getpass("Wiederholen: ") != password:
+                raise BookError("Passwörter stimmen nicht überein")
+        if c == "export-buch":
+            return api.book_export(book(), a.datei, password, a.ohne_inbox, a.ohne_historie)
+        if not a.ziel:
+            return api.book_inspect(a.datei, password)
+        return api.book_import(a.datei, a.ziel, password)
+    if c == "dossier":
+        b = book()
+        if a.liste:
+            return api.dossier_overview(b, a.jahr)
+        if a.teil:
+            return api.dossier_part(b, a.teil, a.jahr, a.format or "pdf", a.out)
+        split = lambda v: [x.strip() for x in v.split(",") if x.strip()]  # noqa: E731
+        return api.dossier(b, a.jahr, split(a.nur), split(a.format), a.out)
     if c == "init":
         fields = {f: getattr(a, f) for f in ("uid", "strasse", "nr", "plz", "ort", "iban", "telefon", "email")}
         return api.init_book(Path(a.ordner), a.firma, a.jahr, a.kontenplan, a.rechtsform,
@@ -944,6 +985,15 @@ def render(cmd: str, sub: str | None, result) -> str:
             elif r["hooks"]:
                 out.append(f"    {', '.join(r['hooks'])}")
         out.append("\n● eingeschaltet  ○ installiert, für dieses Buch aus  ◆ nur Daten (immer verfügbar)  ✗ Problem")
+        return "\n".join(out)
+    if cmd == "dossier" and isinstance(result, dict) and "teile" in result:
+        out = [f"Abschlussunterlagen {result['jahr']}" + (" — ENTWURF (Jahr nicht gesperrt)" if result["entwurf"] else "")]
+        for t in result["teile"]:
+            mark = "✓" if t["vorhanden"] else "·"
+            out.append(f"  {mark} {t['nr']} {t['teil']:<15} {t['label']:<22} {'/'.join(t['formate']):<16} {t['beschreibung']}")
+        out.append("\nBelegnummern-Lücken:" if result["luecken"] else "\nBelegnummern lückenlos.")
+        for g in result["luecken"]:
+            out.append(f"  {g['beleg']:<14} {g['art']:<11} {g['grund']}")
         return "\n".join(out)
     if isinstance(result, dict) and set(result) == {"pdf"}:
         return f"PDF {result['pdf']}"

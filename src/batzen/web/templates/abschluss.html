@@ -31,6 +31,43 @@
   <div class="figure"><span class="label">{{ "Bilanzverlust" if g.bilanzgewinn|neg else "Bilanzgewinn" }}</span><span class="value">{{ g.bilanzgewinn|chf }}</span><span class="meta">Vortrag {{ g.gewinnvortrag|chf }} + Ergebnis</span></div>
   <div class="figure"><span class="label">Gesperrt bis</span><span class="value" style="font-size:18px">{{ settings.sperre_bis|datum or '—' }}</span></div>
 </div>
+<div class="panel" id="unterlagen">
+  <header><h2>Unterlagen {{ year }}</h2><span class="hint">für Treuhand, Revision und Archiv (10 Jahre) · {% if st.abgeschlossen %}gesperrtes Jahr{% else %}ohne Sperre mit Vermerk «ENTWURF»{% endif %}</span></header>
+  <form method="get" action="/abschluss/unterlagen.zip">
+    <input type="hidden" name="jahr" value="{{ year }}">
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th style="width:2em"></th><th>Nr</th><th>Dokument</th><th>Einzeln herunterladen</th></tr></thead>
+      <tbody>
+      {% for t in unterlagen %}
+        <tr class="{{ '' if t.vorhanden else 'muted' }}">
+          <td><input type="checkbox" name="teil" value="{{ t.teil }}" {{ 'checked' if t.vorhanden else 'disabled' }} aria-label="{{ t.label }} ins ZIP"></td>
+          <td class="num">{{ t.nr }}</td>
+          <td>{{ t.label }}{% if t.beschreibung %} <span class="small muted">· {{ t.beschreibung }}</span>{% endif %}{% if not t.vorhanden %} <span class="small muted">(trifft nicht zu)</span>{% endif %}</td>
+          <td>{% if t.vorhanden %}{% for f in t.formate %}<a class="link" href="/abschluss/unterlagen/{{ t.teil }}?jahr={{ year }}&format={{ f }}"{% if f == 'pdf' %} target="_blank"{% endif %}>{{ {'pdf': 'PDF', 'csv': 'CSV', 'dateien': 'Originale (ZIP)'}.get(f, f) }}</a>{{ ' · ' if not loop.last }}{% endfor %}{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="formfoot">
+      <span class="small">Im ZIP:
+        <label><input type="checkbox" name="format" value="pdf" checked> PDF</label>
+        <label><input type="checkbox" name="format" value="csv" checked> CSV</label>
+        <label><input type="checkbox" name="format" value="dateien" checked> Originalbelege</label>
+        <span class="muted">· mit Inhaltsverzeichnis, Prüfprotokoll und SHA-256-Prüfsummen</span></span>
+      <button class="btn primary" type="submit">Als ZIP herunterladen</button>
+    </div>
+  </form>
+  <div class="body">
+    {% set gaps = luecken|rejectattr('art', 'equalto', 'reserviert')|list %}
+    {% if gaps %}
+      <span class="lbl">Lücken in den Belegnummern</span>
+      {% for g in gaps %}<span class="small"><strong>{{ g.beleg }}</strong> · {{ g.art }} · {{ g.grund }}</span>{% endfor %}
+      <span class="small muted">Belegnummern werden nie neu vergeben. Jede Seite im Belegordner trägt die Nummer der Buchung im Journal; Lücken stehen mit Grund im Lückenverzeichnis.</span>
+    {% else %}
+      <span class="small muted">Belegnummern lückenlos. Jede Seite im Belegordner trägt die Nummer der Buchung im Journal.</span>
+    {% endif %}
+  </div>
+</div>
 {% if fx %}
 <div class="panel">
   <header><h2>Fremdwährungen per {{ fx.stichtag|datum }}</h2>

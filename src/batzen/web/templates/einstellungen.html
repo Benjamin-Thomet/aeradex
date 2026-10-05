@@ -131,6 +131,24 @@
   <div class="body"><p class="small muted">Installiert heisst nicht eingeschaltet: ein Plugin wirkt erst in einem Buch, das es einschaltet, und schreibt nur über die Prüfung von batzen. Plugins sind Programmcode — nur aus vertrauenswürdigen Quellen installieren.</p></div>
 </div>
 
+<div class="panel" id="weitergeben">
+  <header><h2>Buch weitergeben</h2><span class="hint">.batzen-Datei für einen anderen batzen-Nutzer · Import: <code>batzen import-buch DATEI ORDNER</code></span></header>
+  <form class="body" method="post" action="/einstellungen/buch-export" data-download>
+    <p class="small muted">Die Datei enthält das ganze Buch — Journal, Belege, Rechnungen, Lohn- und Personaldaten — und auf Wunsch den vollständigen Änderungsverlauf. Für den Versand per E-Mail oder Cloud mit Passwort verschlüsseln und das Passwort auf einem anderen Weg mitteilen.</p>
+    <div class="form">
+      <div class="field"><label>Passwort (optional)</label><input class="input" type="password" name="passwort" autocomplete="new-password"></div>
+      <div class="field"><label>Passwort wiederholen</label><input class="input" type="password" name="passwort2" autocomplete="new-password"></div>
+    </div>
+    <div class="formfoot">
+      <span class="small">
+        <label><input type="checkbox" name="historie" value="1" checked> mit Änderungsverlauf</label>
+        <label><input type="checkbox" name="inbox" value="1" checked> mit unverarbeiteten Dateien (inbox/)</label>
+      </span>
+      <button class="btn primary" type="submit">Buch exportieren</button>
+    </div>
+  </form>
+</div>
+
 <div class="panel" id="pruefung">
   <header><h2>Prüfung des Buchs</h2><span class="hint">batzen check</span></header>
   {% if issues %}<ul class="todo">{% for i in issues %}<li><a href="#pruefung"><span class="stripe {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}"></span><div><div class="t">{{ i.message }}</div><div class="d">{{ i.where }}</div></div><span class="pill {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}">{{ i.level }}</span></a></li>{% endfor %}</ul>

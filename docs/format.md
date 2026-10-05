@@ -277,6 +277,55 @@ wie auf der Abrechnung: Belastungen positiv, Zahlungen negativ). Importiert wird
 
 `bis`, Hash pro gesperrtem Monat, `verlauf` aller Sperren und Entsperrungen (mit Grund).
 
+## .batzen/belegnummern.yaml
+
+```yaml
+hinweis: Höchste je vergebene Belegnummer pro Jahr. …
+letzte:
+  '2026': 42
+```
+
+Die laufende Belegnummer `JJ-NNN` ist eins höher als die höchste Nummer im Journal, in offenen Vorschlägen und in
+dieser Datei. batzen führt die Datei beim Buchen und beim Verwerfen eines Vorschlags nach; so wird eine Nummer nie
+zweimal vergeben, auch wenn ihre Buchung wieder entfernt wurde. Belegdateien heissen `belege/JJJJ/<Belegnummer> <Name>`;
+der Belegordner (`batzen dossier`) stempelt jede Seite mit dieser Nummer und listet fehlende Nummern der Serien
+`JJ-NNN`, `R-JJJJ-NNNN` und `E-JJJJ-NNNN` mit Grund im Lückenverzeichnis.
+
+## Abschlussunterlagen (`batzen dossier`)
+
+ZIP `<Firma> Abschluss <JJJJ>.zip` mit einem Ordner gleichen Namens; Dateien beginnen mit der Nummer ihres Teils
+(`00 Inhalt.pdf`, `01 Jahresrechnung 2026.pdf`, `03 Journal 2026.csv`, `05 Belege/26-001 quittung.pdf` …).
+CSV: Semikolon, UTF-8 mit BOM, Datum ISO, Beträge mit Punkt ohne Tausendertrenner. `manifest.json`:
+
+```json
+{"format": "batzen-abschluss", "version": 1, "batzen": "0.8.0", "firma": "…", "jahr": 2026,
+ "erstellt": "…", "gesperrt_bis": "2026-12-31", "entwurf": false, "commit": "<git HEAD>",
+ "uncommittete_aenderungen": false, "pruefung": {"fehler": 0, "warnungen": 0},
+ "luecken": [{"beleg": "26-007", "art": "verworfen", "grund": "…"}],
+ "dateien": {"00 Inhalt.pdf": "<sha256>", "…": "…"}}
+```
+
+Plugins steuern weitere Teile über den Hook `batzen_dossier_teile` bei (siehe docs/plugins.md).
+
+## .batzen-Datei (Buch weitergeben)
+
+Ein ZIP-Container:
+
+| Eintrag           | Inhalt |
+| ----------------- | ------ |
+| `mimetype`        | `application/vnd.batzen+zip`, erster Eintrag, unkomprimiert |
+| `manifest.json`   | `format: batzen-buch`, `version: 1`, batzen-Version, Firma, UID, Rechtsform, Jahre, Sperre, Plugins, Zeitpunkt, git-Commit, `uncommittete_aenderungen`, `mit_inbox`, `historie` (SHA-256 des Bundles), `dateien` (Pfad → SHA-256) |
+| `buch/…`          | alle Dateien des Buchs wie auf der Festplatte, ohne `.git/`, `berichte/` und `.batzen/write.lock` |
+| `historie.bundle` | `git bundle --all`: der vollständige Änderungsverlauf (optional) |
+
+Verschlüsselt (`--passwort`) enthält die Datei nur `mimetype`, ein `manifest.json` mit `verschluesselt: true` und den
+Parametern (`AES-256-GCM`, Schlüssel per `scrypt` n=2^15, r=8, p=1, Salt, Nonce) und `payload.enc`: der obige
+Inhalt (ohne `mimetype`) als ZIP, verschlüsselt. Firma und Dateinamen sind dann nicht lesbar.
+
+Import: Zielordner muss neu oder leer sein. Geprüft werden Formatversion, jeder Pfad (nur relativ, kein `..`, nichts
+in `.git/`, keine Links), jede Prüfsumme und die Vollständigkeit gegenüber dem Manifest. Mit Verlauf wird das Bundle
+geklont; was der Absender nicht committet hatte, wird als eigener Commit festgehalten. Danach `batzen check`.
+
 ## mahnungen/R-JJJJ-NNNN.yaml
 
 Die Mahnungen einer Rechnung: `mahnungen: [{stufe, bezeichnung, datum, frist, offen, pdf}]`, die PDFs daneben

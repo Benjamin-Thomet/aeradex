@@ -883,7 +883,11 @@ async def abschluss(ui: UI, request: Request):
         except BookError as exc:          # no rates yet (future date, offline)
             fx_view = {"stichtag": stichtag, "konten": [], "bewertet": fx.path(book, stichtag).exists(), "fehler": str(exc),
                        "erledigt": done}
+    from .. import dossier
+    unterlagen = dossier.overview(book, year)
+    luecken = dossier.belegluecken(book, year)
     return ui.render(request, "abschluss.html", book=book, year=year, st=st, years=book.years(),
+                     unterlagen=unterlagen, luecken=luecken,
                      anhang=statements.anhang(book, year), verlauf=list(reversed(verlauf))[:5],
                      gv_date=date(year + 1, 6, 30).isoformat(), fx=fx_view,
                      div=(read_yaml(statements.dividend_path(book, year)) if statements.dividend_path(book, year).exists()
@@ -1713,6 +1717,63 @@ async def pdf_report(ui: UI, request: Request):
     return Response(data, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
 
 
+# ---------- Abschlussunterlagen and the .batzen file ----------
+
+MIME = {".pdf": "application/pdf", ".csv": "text/csv; charset=utf-8", ".zip": "application/zip",
+        ".batzen": "application/vnd.batzen+zip"}
+
+
+def download(data: bytes, name: str, inline: bool = False) -> Response:
+    from urllib.parse import quote
+    ascii_name = name.encode("ascii", "replace").decode().replace("?", "_").replace('"', "")
+    disposition = f'{"inline" if inline else "attachment"}; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(name)}'
+    return Response(data, media_type=MIME.get(Path(name).suffix.lower(), "application/octet-stream"),
+                    headers={"Content-Disposition": disposition})
+
+
+async def unterlagen_teil(ui: UI, request: Request):
+    from .. import dossier
+    book = ui.book()
+    year = year_param(request, book)
+    fmt = request.query_params.get("format", "pdf")
+    try:
+        name, data = await asyncio.to_thread(dossier.build_part, book, year, request.path_params["teil"], fmt)
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return download(data, name, inline=name.endswith(".pdf"))
+
+
+async def unterlagen_zip(ui: UI, request: Request):
+    from .. import dossier
+    book = ui.book()
+    year = year_param(request, book)
+    teile = request.query_params.getlist("teil") or None
+    formate = request.query_params.getlist("format") or None
+    try:
+        name, data, _ = await asyncio.to_thread(dossier.build_zip, book, year, teile, formate)
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return download(data, name)
+
+
+async def buch_export(ui: UI, request: Request):
+    from .. import austausch
+    f = await request.form()
+    book = ui.book()
+    password = f.get("passwort") or None
+    if password and password != f.get("passwort2"):
+        return PlainTextResponse("Passwörter stimmen nicht überein.", status_code=400)
+    name = f"{book.settings.firma} {date.today().isoformat()}.batzen"
+    with tempfile.TemporaryDirectory(prefix="batzen-export-") as tmp:
+        target = Path(tmp) / name
+        try:
+            await asyncio.to_thread(austausch.export_book, book, target, password, f.get("inbox") == "1",
+                                    f.get("historie") == "1")
+        except BookError as exc:
+            return PlainTextResponse(str(exc), status_code=400)
+        return download(target.read_bytes(), name)
+
+
 # ---------- routing ----------
 
 def routes(ui: UI) -> list[Route]:
@@ -1795,6 +1856,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/lohn/lohnkonto/{jahr:int}/{nr:str}", h(lohnkonto)),
         Route("/lohn/lohnausweis/{jahr:int}/{nr:str}", h(lohnausweis_erstellen), methods=["POST"]),
         Route("/abschluss", h(abschluss)),
+        Route("/abschluss/unterlagen.zip", h(unterlagen_zip)),
+        Route("/abschluss/unterlagen/{teil:str}", h(unterlagen_teil)),
         Route("/abschluss/{aktion:str}", h(abschluss_aktion), methods=["POST"]),
         Route("/mwst", h(mwst_page)),
         Route("/mwst/buchen", h(mwst_buchen), methods=["POST"]),
@@ -1808,6 +1871,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/einstellungen", h(einstellungen)),
         Route("/einstellungen", h(einstellungen_speichern), methods=["POST"]),
         Route("/einstellungen/lohn", h(lohn_einstellungen), methods=["POST"]),
+        Route("/einstellungen/buch-export", h(buch_export), methods=["POST"]),
         Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),
         Route("/einstellungen/jev", h(jev_einstellung), methods=["POST"]),
         Route("/einstellungen/plugins/installieren", h(plugin_installieren), methods=["POST"]),

@@ -15,12 +15,14 @@ Layout of a book folder:
     lohn/<JJJJ>/<MM>/M0001.md payslips
     abschluss/<JJJJ>/         Anhang, Gewinnverwendung
     .batzen/locks.yaml        hashes of the locked period
+    .batzen/belegnummern.yaml highest Beleg number ever issued per year (never reused)
 
 Nothing here does arithmetic beyond parsing; balances live in `ledger.py`.
 """
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -35,6 +37,7 @@ JOURNAL_COLUMNS = ["Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "FW", "K
 PROPOSAL_COLUMNS = ["ID", "Datum", "Beleg", "Text", "Soll", "Haben", "Betrag", "MWST", "Begründung", "Datei", "Bank", "FW", "Kurs"]
 
 KLASSEN = ("aktiv", "passiv", "aufwand", "ertrag")
+BELEG_SERIE = re.compile(r"^(\d{2})-(\d+)$")       # the running number batzen issues: JJ-NNN
 
 MONTHS_DE = ["", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
              "August", "September", "Oktober", "November", "Dezember"]
@@ -261,7 +264,39 @@ class Book:
         for path, table in touched.items():
             write_table(path, table)
         self._rows = None
-        return list(touched)
+        counter = self.remember_numbers([(r.datum.year, r.beleg) for r in rows])
+        return list(touched) + ([counter] if counter else [])
+
+    # ---- Beleg numbers ----
+    def numbers_path(self) -> Path:
+        return self.root / ".batzen" / "belegnummern.yaml"
+
+    def issued_numbers(self) -> dict[int, int]:
+        """Highest running number 'JJ-NNN' ever issued per year — also for bookings and
+        proposals that were removed again, so their number is never handed out twice."""
+        path = self.numbers_path()
+        if not path.exists():
+            return {}
+        data = read_yaml(path) or {}
+        return {int(y): int(n) for y, n in (data.get("letzte") or {}).items()}
+
+    def remember_numbers(self, refs: list[tuple[int, str]]) -> Path | None:
+        """Raise the high-water mark for (year, Beleg) pairs; the path if it changed."""
+        issued = self.issued_numbers()
+        changed = False
+        for year, ref in refs:
+            m = BELEG_SERIE.match(ref or "")
+            if m and m.group(1) == f"{year % 100:02d}" and int(m.group(2)) > issued.get(year, 0):
+                issued[year] = int(m.group(2))
+                changed = True
+        if not changed:
+            return None
+        path = self.numbers_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_yaml(path, {"hinweis": "Höchste je vergebene Belegnummer pro Jahr. Nummern werden nie "
+                                     "wieder vergeben, auch wenn die Buchung entfernt wurde.",
+                          "letzte": {str(y): n for y, n in sorted(issued.items())}})
+        return path
 
     def remove_rows(self, predicate) -> list[Path]:
         """Drop every journal row for which predicate(row) is true."""

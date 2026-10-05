@@ -28,11 +28,12 @@ def ensure_open(book: Book, d: date) -> None:
 
 
 def next_beleg(book: Book, year: int, extra: set[str] | None = None) -> str:
-    """Next running Beleg number 'JJ-NNN' for a year. Max-based, so a deleted
-    middle number leaves a gap and is never reused (what auditors expect)."""
+    """Next running Beleg number 'JJ-NNN' for a year: one above the highest number in the
+    journal, in open proposals, and ever issued (`.batzen/belegnummern.yaml`). A number
+    whose booking or proposal was removed again leaves a gap and is never reused."""
     prefix = f"{year % 100:02d}-"
     pattern = re.compile(r"^" + re.escape(prefix) + r"(\d+)$")
-    highest = 0
+    highest = book.issued_numbers().get(year, 0)
     for ref in [r.beleg for r in book.rows] + sorted(extra or ()) + _proposal_belege(book):
         m = pattern.match(ref or "")
         if m:
@@ -307,4 +308,6 @@ def approve(book: Book, ids: list[str]) -> tuple[list[Row], list[Path]]:
 def reject(book: Book, ids: list[str]) -> tuple[list[dict], list[Path]]:
     found, table = _take_proposals(book, ids)
     write_table(proposals_path(book), table)
-    return found, [proposals_path(book)]
+    # The rejected numbers were shown to someone: they stay used.
+    counter = book.remember_numbers([(parse_date(p["Datum"]).year, p.get("Beleg", "")) for p in found])
+    return found, [proposals_path(book)] + ([counter] if counter else [])

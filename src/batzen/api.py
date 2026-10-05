@@ -477,6 +477,59 @@ def journal_pdf(book: Book, jahr: int | None = None, pdf_out: str | None = None)
     return {"pdf": _write_report(book, pdf_out, pdf.journal_pdf(book, rows, f"Journal {year}"), f"Journal {year}.pdf")}
 
 
+# ---------- Abschlussunterlagen (dossier) and the .batzen exchange file ----------
+
+def dossier_overview(book: Book, jahr: int | None = None) -> dict:
+    from . import dossier
+    year = jahr or max(book.years())
+    k = dossier.Kontext(book, year)
+    return jsonable({"jahr": year, "entwurf": k.entwurf, "teile": dossier.overview(book, year),
+                     "luecken": dossier.belegluecken(book, year)})
+
+
+def dossier(book: Book, jahr: int | None = None, teile: list[str] | None = None,
+            formate: list[str] | None = None, out: str | None = None) -> dict:
+    """All Abschlussunterlagen of a year as one ZIP (default: berichte/)."""
+    from . import dossier as dos
+    year = jahr or max(book.years())
+    name, data, manifest = dos.build_zip(book, year, teile or None, formate or None)
+    path = _write_report(book, out, data, name)
+    gaps = [g for g in manifest["luecken"] if g["art"] != "reserviert"]
+    return jsonable({"ok": True, "datei": path, "jahr": year, "entwurf": manifest["entwurf"],
+                     "dateien": list(manifest["dateien"]), "luecken": manifest["luecken"],
+                     "meldung": f"Abschlussunterlagen {year}: {len(manifest['dateien'])} Dateien"
+                                + (" (ENTWURF, Jahr nicht gesperrt)" if manifest["entwurf"] else "")
+                                + (f", {len(gaps)} Lücke(n) in den Belegnummern" if gaps else "")})
+
+
+def dossier_part(book: Book, teil: str, jahr: int | None = None, format: str = "pdf", out: str | None = None) -> dict:
+    """One part of the Abschlussunterlagen (several files come as a ZIP)."""
+    from . import dossier as dos
+    year = jahr or max(book.years())
+    name, data = dos.build_part(book, year, teil, format)
+    path = _write_report(book, out, data, name)
+    return {"ok": True, "datei": path, "meldung": f"{Path(path).name} erstellt"}
+
+
+def book_export(book: Book, datei: str, passwort: str | None = None, ohne_inbox: bool = False,
+                ohne_historie: bool = False) -> dict:
+    from . import austausch
+    target = Path(datei)
+    if not target.is_absolute():
+        target = Path.cwd() / target
+    return austausch.export_book(book, target, passwort or None, not ohne_inbox, not ohne_historie)
+
+
+def book_import(datei: str, ziel: str, passwort: str | None = None) -> dict:
+    from . import austausch
+    return jsonable(austausch.import_book(Path(datei), Path(ziel), passwort or None))
+
+
+def book_inspect(datei: str, passwort: str | None = None) -> dict:
+    from . import austausch
+    return jsonable(austausch.inspect(Path(datei), passwort or None))
+
+
 def allocation_set(book: Book, jahr: int, dividende=0, reserve=0) -> dict:
     _guard(book)
     alloc, touched = statements.set_allocation(book, jahr, dividende, reserve)

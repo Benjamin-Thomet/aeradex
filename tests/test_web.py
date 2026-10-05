@@ -379,3 +379,32 @@ def test_foreign_currency_screens(client, root, monkeypatch):
     assert "Saldo EUR" in blatt and "95.00" in blatt
     assert "Fremdwährungen per" in client.get("/abschluss?jahr=2026").text
     assert errors(root) == []
+
+
+def test_unterlagen_downloads(client, root):
+    page = client.get("/abschluss").text
+    assert 'id="unterlagen"' in page and "/abschluss/unterlagen/journal?jahr=2026&format=csv" in page
+    r = client.get("/abschluss/unterlagen/journal?jahr=2026&format=csv")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    assert "filename*=UTF-8''Journal%202026.csv" in r.headers["content-disposition"]
+    r = client.get("/abschluss/unterlagen/kontoblaetter?jahr=2026&format=pdf")
+    assert r.status_code == 200 and r.content.startswith(b"%PDF") and "inline" in r.headers["content-disposition"]
+    r = client.get("/abschluss/unterlagen.zip?jahr=2026&teil=journal&teil=belege&format=pdf")
+    import io
+    import zipfile
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert r.status_code == 200 and any(n.endswith("05 Belegordner 2026.pdf") for n in names)
+    assert not any(n.endswith(".csv") for n in names)
+    assert client.get("/abschluss/unterlagen/journal?format=xlsx").status_code == 400
+
+
+def test_buch_export(client, root, tmp_path):
+    r = client.post("/einstellungen/buch-export", data={"historie": "1", "inbox": "1"}, headers={"X-CSRF": client.csrf})
+    assert r.status_code == 200 and r.headers["content-type"] == "application/vnd.batzen+zip"
+    (tmp_path / "x.batzen").write_bytes(r.content)
+    from batzen import austausch
+    assert austausch.inspect(tmp_path / "x.batzen")["firma"] == "Muster GmbH"
+    r = client.post("/einstellungen/buch-export", data={"passwort": "a", "passwort2": "b"},
+                    headers={"X-CSRF": client.csrf})
+    assert r.status_code == 400
+    assert client.post("/einstellungen/buch-export", data={}).status_code == 403     # no CSRF token

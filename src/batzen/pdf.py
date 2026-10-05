@@ -6,6 +6,7 @@ no mark of its own on anything that leaves the house.
 """
 from __future__ import annotations
 
+import contextvars
 import io
 from datetime import date
 from decimal import Decimal
@@ -68,7 +69,27 @@ def P(text, style="base"):
     return Paragraph(escape(str(text)) if not str(text).startswith("<") else str(text), ST[style])
 
 
+# Set while batzen builds the reports of a year that is not locked yet: every page
+# drawn through _doc then carries this word across it (see dossier.Kontext.draft).
+WATERMARK: contextvars.ContextVar[str] = contextvars.ContextVar("batzen_watermark", default="")
+
+
+def _watermark(canvas, doc) -> None:
+    text = WATERMARK.get()
+    if not text:
+        return
+    w, h = doc.pagesize
+    canvas.saveState()
+    canvas.setFillColor(colors.Color(0.6, 0.6, 0.6, alpha=0.22))
+    canvas.setFont("Helvetica-Bold", 72)
+    canvas.translate(w / 2, h / 2)
+    canvas.rotate(35)
+    canvas.drawCentredString(0, -24, text)
+    canvas.restoreState()
+
+
 def _footer(canvas, doc, label: str, y: float = 10 * mm, rule: bool = True):
+    _watermark(canvas, doc)
     canvas.saveState()
     if rule:
         canvas.setStrokeColor(RULE)
@@ -548,5 +569,125 @@ def mwst_pdf(book: Book, rep: dict) -> bytes:
              Spacer(1, 6 * mm),
              P("Hilfsblatt aus batzen. Die Ziffern entsprechen dem ESTV-Formular mit den Sätzen ab 1.1.2024; "
                "vor dem Einreichen im ePortal mit dem aktuellen Formular abgleichen.", "small")]
+    doc.build(story)
+    return buf.getvalue()
+
+
+# ---------- Abschlussdossier: tables, Belegordner pages, stamps ----------
+
+def _cellify(value, wrap: bool):
+    if isinstance(value, (Paragraph, Table)):
+        return value
+    text = "" if value is None else str(value)
+    if wrap and (len(text) > 18 or "\n" in text):
+        return Paragraph(escape(text).replace("\n", "<br/>"), ST["cell"])
+    return text
+
+
+def report_pdf(book: Book, title: str, blocks: list, subtitle: str = "", wide: bool = False) -> bytes:
+    """A plain report from blocks: ("h2", text), ("text", text), ("small", text), ("page",) or
+    ("table", header, rows, widths, opts) — widths as fractions of the line, opts with
+    `right` (column indexes), `totals` (row indexes into rows), `wrap` (columns that wrap)."""
+    s = book.settings
+    pagesize = landscape(A4) if wide else A4
+    width = pagesize[0] - 2 * SIDE
+    buf = io.BytesIO()
+    doc = _doc(buf, title, s.firma, pagesize=pagesize, label=f"{s.firma} · {title}")
+    story = [P(title, "title")]
+    if subtitle:
+        story.append(P(subtitle, "small"))
+    story.append(Spacer(1, 4 * mm))
+    for block in blocks:
+        kind = block[0]
+        if kind == "page":
+            story.append(PageBreak())
+        elif kind in ("h2", "text", "small", "bold"):
+            story.append(P(block[1], {"text": "base"}.get(kind, kind)))
+        elif kind == "table":
+            header, rows, widths = block[1], block[2], block[3]
+            opts = block[4] if len(block) > 4 else {}
+            wrap = set(opts.get("wrap", ()))
+            data = [list(header)] + [[_cellify(v, i in wrap) for i, v in enumerate(r)] for r in rows]
+            if len(data) == 1:
+                story.append(P("(keine)", "small"))
+                continue
+            story.append(_grid(data, [w * width for w in widths], zebra=opts.get("zebra", False),
+                               total_rows=[t + 1 for t in opts.get("totals", ())],
+                               right_cols=tuple(opts.get("right", ()))))
+            story.append(Spacer(1, 3 * mm))
+    doc.build(story)
+    return buf.getvalue()
+
+
+def _single_page(size, draw) -> "object":
+    """A one-page PDF drawn on a reportlab canvas, returned as a pypdf page."""
+    from pypdf import PdfReader
+    from reportlab.pdfgen import canvas as rl_canvas
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=size)
+    draw(c, size)
+    c.showPage()
+    c.save()
+    return PdfReader(io.BytesIO(buf.getvalue())).pages[0]
+
+
+def stamp(page, text: str) -> None:
+    """Put the Beleg stamp top right on a pypdf page (in place). Rotation is moved into
+    the content first, so the stamp sits on the page as it is read."""
+    if page.rotation % 360:
+        try:
+            page.transfer_rotation_to_content()
+        except Exception:
+            pass
+    box = page.mediabox
+    w, h = float(box.width), float(box.height)
+    x0, y0 = float(box.left), float(box.bottom)
+
+    def draw(c, size):
+        c.setFont("Helvetica-Bold", 8)
+        tw = c.stringWidth(text, "Helvetica-Bold", 8)
+        x, y = x0 + w - tw - 10 * mm, y0 + h - 8 * mm
+        c.setFillColor(colors.white)
+        c.setStrokeColor(INK)
+        c.setLineWidth(0.6)
+        c.rect(x - 2 * mm, y - 1.8 * mm, tw + 4 * mm, 5.6 * mm, fill=1, stroke=1)
+        c.setFillColor(INK)
+        c.drawString(x, y, text)
+
+    page.merge_page(_single_page((x0 + w, y0 + h), draw))
+
+
+def image_page_pdf(path) -> bytes:
+    """A photo or scan (JPG, PNG …) fitted onto an A4 page."""
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas as rl_canvas
+    img = ImageReader(str(path))
+    iw, ih = img.getSize()
+    size = landscape(A4) if iw > ih * 1.15 else A4
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=size)
+    margin = 12 * mm
+    top = 16 * mm            # room for the stamp
+    scale = min((size[0] - 2 * margin) / iw, (size[1] - margin - top) / ih)
+    c.drawImage(img, (size[0] - iw * scale) / 2, margin + (size[1] - margin - top - ih * scale) / 2,
+                iw * scale, ih * scale, preserveAspectRatio=True)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def beleg_sheet_pdf(book: Book, beleg: str, title: str, rows: list, notes: list[str], missing: bool) -> bytes:
+    """A page for a Beleg without its own document: the booking itself, and why there is no file."""
+    s = book.settings
+    width = A4[0] - 2 * SIDE
+    buf = io.BytesIO()
+    doc = _doc(buf, f"Beleg {beleg}", s.firma, label=f"{s.firma} · Beleg {beleg}")
+    story = [P(f"Beleg {beleg}", "title"), P(title, "h2")]
+    for note in notes:
+        story.append(P(note, "bold" if missing else "base"))
+    data = [["Datum", "Text", "Soll", "Haben", "Betrag"]]
+    for r in rows:
+        data.append([d(r.datum), P(r.text, "cell"), r.soll, r.haben, chf(r.betrag)])
+    story += [Spacer(1, 4 * mm), _grid(data, [w * width for w in (0.13, 0.5, 0.1, 0.1, 0.17)], right_cols=(4,))]
     doc.build(story)
     return buf.getvalue()

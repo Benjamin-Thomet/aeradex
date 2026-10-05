@@ -49,6 +49,9 @@ Die Kreditkarte ist ein Passivkonto; Einkäufe danach wie Bankbewegungen kontier
 
 **Abschluss**: `batzen report --jahr 2026 --pdf`, Gewinnverwendung `batzen allocation set 2026 --dividende … --reserve …`,
 nach der GV `batzen allocation book 2026 --datum …`, Periode sperren `batzen lock 2026-12-31`.
+Unterlagen für Treuhand/Revision: `batzen dossier --jahr 2026` (ZIP in berichte/, einzeln mit `--teil journal --format csv`).
+Belegnummern nie selbst wählen oder wiederverwenden — batzen vergibt sie; eine Lücke ist kein Fehler, sie steht mit
+Grund im Lückenverzeichnis. Belegdateien heissen `belege/JJJJ/<Belegnummer> <Name>`.
 Einzelfirma und Verein haben keine Gewinnverwendung: Das Ergebnis (und bei der Einzelfirma die Privatkonten)
 geht bei der Eröffnung des Folgejahres von selbst ins Eigenkapital — nichts buchen.
 

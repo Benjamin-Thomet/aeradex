@@ -268,6 +268,35 @@ batzen allocation dividende 2026 --datum 2027-06-10  # 65 % auszahlen, 35 % Verr
 batzen lock 2026-12-31                         # Periode sperren (gehasht)
 ```
 
+**Abschlussunterlagen** für Treuhand, Revision und Archiv — alles als ein ZIP oder jeder Teil einzeln
+(Oberfläche: Abschluss → Unterlagen):
+```bash
+batzen dossier --jahr 2026                     # ZIP in berichte/: alle Teile als PDF und CSV + Originalbelege
+batzen dossier --liste                         # welche Teile es gibt, Lücken in den Belegnummern
+batzen dossier --teil belege                   # nur der Belegordner (PDF)
+batzen dossier --teil journal --format csv     # nur das Journal als CSV
+batzen dossier --nur jahresrechnung,journal --format pdf
+```
+Im ZIP: Inhaltsverzeichnis mit Prüfprotokoll und SHA-256-Prüfsummen, Jahresrechnung (Bilanz, Erfolgsrechnung,
+Anhang), Saldenliste, Journal, Kontoblätter, Belegordner, MWST-Abrechnungen und Umsatzabstimmung, offene Debitoren
+und Kreditoren per 31.12., Lohnjournal und Lohnausweise, Kontenplan, `manifest.json`. Solange das Jahr nicht
+gesperrt ist, tragen die Berichte den Vermerk «ENTWURF».
+
+Der **Belegordner** stempelt jede Seite mit der Belegnummer der Buchung im Journal (`Beleg 26-001 · Datum · CHF ·
+Seite 1/2`) — es gibt keine zweite Laufnummer, die sich verschieben könnte. Belegnummern werden nie wieder vergeben,
+auch wenn eine Buchung storniert, ein Dokument annulliert oder ein Vorschlag verworfen wird
+(`.batzen/belegnummern.yaml`). Fehlende Nummern stehen mit Grund im Lückenverzeichnis (storniert, verworfen, aus dem
+Journal entfernt in Commit …).
+
+**Buch weitergeben**: das ganze Buch als eine `.batzen`-Datei — für die Treuhänderin, eine Nachfolge oder einen
+zweiten Computer:
+```bash
+batzen export-buch "Muster GmbH.batzen" --passwort   # mit Änderungsverlauf; Passwort optional (AES-256)
+batzen import-buch "Muster GmbH.batzen"              # nur anzeigen, was drin ist
+batzen import-buch "Muster GmbH.batzen" ~/buchhaltung/muster --passwort
+```
+Beim Import prüft batzen jede Datei gegen ihre Prüfsumme, übernimmt den git-Verlauf und führt `batzen check` aus.
+
 ## Mit einem Agenten arbeiten
 
 Jedes Buch enthält ein `AGENTS.md` (und `CLAUDE.md`) mit den Regeln für Agenten. Zwei Wege:
@@ -301,7 +330,8 @@ muster/
 ├── lohn/2026/01/M0001.md    Lohnabrechnung (+ .pdf nach Abschluss)
 ├── lohnausweise/2026/       Formular 11
 ├── abschluss/2026/          anhang.md, gewinnverwendung.yaml
-└── .batzen/locks.yaml       Hashes der gesperrten Periode
+├── .batzen/locks.yaml       Hashes der gesperrten Periode
+└── .batzen/belegnummern.yaml höchste je vergebene Belegnummer pro Jahr
 ```
 
 Das genaue Dateiformat steht in [docs/format.md](docs/format.md).
@@ -316,7 +346,9 @@ Das genaue Dateiformat steht in [docs/format.md](docs/format.md).
 - Ausgestellte Rechnungen und abgeschlossene Lohnabrechnungen sind unverändert (Fingerprint).
 - Die gesperrte Periode ist unverändert (Hash pro Monat). Entsperren geht nur mit Grund und wird protokolliert.
 - Die Kasse ist an keinem Tag negativ; abgelieferte Verrechnungssteuer wird nach Ablauf der 30 Tage angemahnt.
-- Hinweise: Buchungen ohne Beleg-Datei, unverarbeitete Inbox, Belege im Eingang, überfällige Rechnungen, Lohn-Entwürfe.
+- Belegdateien in `belege/` gehören zu einer Buchung oder einem Dokument mit dieser Nummer (sonst Warnung).
+- Hinweise: Buchungen ohne Beleg-Datei, Belegnummern ohne Buchung, unverarbeitete Inbox, Belege im Eingang,
+  überfällige Rechnungen, Lohn-Entwürfe.
 
 ## Herkunft
 

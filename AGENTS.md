@@ -40,6 +40,12 @@ This file is for developing batzen itself. Agents *operating a book* read the
   confirmed by a person), batzen reads the numbers. Credit card PDFs: the agent transcribes the transactions
   (`bank/karten/<sha>.yaml`); imported only if the balance adds up and every amount is in the PDF text. Both are
   served to the import as a `BankFormat` (fallback in `plugins.bank_format_for`), so reconciliation re-reads them.
+- `dossier.py`: Abschlussunterlagen (`batzen dossier`): a registry of parts (`TEILE`, plus plugin parts via
+  `batzen_dossier_teile`) that build PDF/CSV for both the ZIP and single downloads; Belegordner with stamped pages,
+  Lückenverzeichnis (`belegluecken`), manifest with SHA-256. The Beleg number in the journal is the only running
+  number; `Book.remember_numbers` keeps the high-water mark in `.batzen/belegnummern.yaml` so it is never reused.
+- `austausch.py`: the `.batzen` file (whole book + git bundle, optional AES-256-GCM/scrypt), import with hash,
+  path and version checks.
 - Writes are serialised by a lock file (`.batzen/write.lock`) so UI, CLI, MCP and chat never interleave.
 
 ## Rules

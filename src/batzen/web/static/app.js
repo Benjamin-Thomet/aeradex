@@ -196,6 +196,33 @@
   document.addEventListener("htmx:beforeRequest", e => { const b = e.detail.elt.querySelector && e.detail.elt.querySelector("button[type=submit]"); if (b) b.disabled = true; });
   document.addEventListener("htmx:afterRequest", e => { const b = e.detail.elt.querySelector && e.detail.elt.querySelector("button[type=submit]"); if (b) b.disabled = false; });
 
+  // forms that answer with a file (POST needs the CSRF header, so no plain form post)
+  document.addEventListener("submit", async (e) => {
+    const form = e.target;
+    if (!form.matches || !form.matches("form[data-download]")) return;
+    e.preventDefault();
+    const button = form.querySelector("button[type=submit]");
+    if (button) button.disabled = true;
+    try {
+      const csrf = JSON.parse(document.body.getAttribute("hx-headers") || "{}")["X-CSRF"];
+      const r = await fetch(form.action, { method: "POST", body: new FormData(form), headers: { "X-CSRF": csrf } });
+      if (!r.ok) { toast(await r.text(), true); return; }
+      const cd = r.headers.get("Content-Disposition") || "";
+      const m = cd.match(/filename\*=UTF-8''([^;]+)/) || cd.match(/filename="([^"]+)"/);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(await r.blob());
+      a.download = m ? decodeURIComponent(m[1]) : "download";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      form.reset();
+      toast("Datei erstellt");
+    } catch (err) {
+      toast("batzen ist nicht erreichbar. Läuft `batzen ui` noch?", true);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+
   bindTheme(); bindPage(document); bindChat(); bindLive(); bindGrid(document);
   if ($("#toast")) toast();
   if (new URLSearchParams(location.search).get("neu")) { const d = $("#neueBuchung"); if (d) { d.open = true; const i = $("input[data-col]", d) || $("input", d); if (i) i.focus(); } }

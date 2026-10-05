@@ -149,6 +149,20 @@ def report(jahr: int | None = None) -> dict:
     return _call(api.statement, jahr)
 
 
+def closing_documents(jahr: int | None = None, teile: list[str] | None = None,
+                      formate: list[str] | None = None) -> dict:
+    """Abschlussunterlagen eines Jahres als ZIP in berichte/: Jahresrechnung, Saldenliste, Journal,
+    Kontoblätter, Belegordner (Belege mit ihrer Belegnummer gestempelt, Lückenverzeichnis), MWST,
+    offene Posten, Lohn, Kontenplan — PDF und CSV, mit Prüfsummen (manifest.json).
+
+    Args:
+        jahr: Geschäftsjahr; leer = aktuelles.
+        teile: Auswahl, z.B. ["journal", "belege"]; leer = alle, die für das Buch zutreffen.
+        formate: z.B. ["pdf"]; leer = alle (pdf, csv, Originalbelege).
+    """
+    return _call(api.dossier, jahr, teile, formate)
+
+
 def history(limit: int = 20) -> list | dict:
     """Änderungsverlauf (git log) des Buchs.
 
@@ -839,7 +853,8 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
           book_bank_transaction, employees, payroll_run, payslip, close_payslip, lohnausweis,
-          bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement]
+          bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
+          closing_documents]
 CHAT_ONLY = [read_inbox_file]
 
 # Public names for plugin tools: wrap an api function so errors come back as {"ok": False, …}.
