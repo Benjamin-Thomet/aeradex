@@ -504,21 +504,8 @@ def _mwst(k: Kontext, fmt: str) -> list[tuple[str, bytes]]:
 
 
 def open_payables_at(book: Book, stichtag: date) -> dict:
-    """Kreditoren open on `stichtag`: bills dated until then, minus payments booked until then."""
-    paid = kred.payments(book)
-    rows = []
-    for meta in kred.bills(book).values():
-        if parse_date(meta["datum"]) > stichtag or meta.get("status") == "storniert":
-            continue
-        st = kred.state(book, meta, [r for r in paid.get(meta["nummer"], []) if r.datum <= stichtag])
-        if st["offen"] > 0:
-            rows.append(st)
-    rows.sort(key=lambda r: (r["datum"], r["nummer"]))
-    konto = kred.kreditoren_konto(book)
-    saldo = -BalanceEngine(book).balance_at(konto, stichtag)
-    total = sum((r["offen_chf"] for r in rows), ZERO)
-    return {"stichtag": stichtag, "posten": rows, "total_offen": total, "kreditorenkonto": konto,
-            "saldo_kreditoren": saldo, "differenz": saldo - total}
+    """Kreditoren open on `stichtag` (see `kreditoren.open_payables`)."""
+    return kred.open_payables(book, stichtag)
 
 
 def _offene_posten(k: Kontext, fmt: str) -> list[tuple[str, bytes]]:

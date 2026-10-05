@@ -675,3 +675,29 @@ def open_payables(book: Book) -> dict:
     total = sum((r["offen_chf"] for r in rows), ZERO)
     return {"posten": rows, "total_offen": total, "kreditorenkonto": konto, "saldo_kreditoren": saldo,
             "differenz": saldo - total}
+
+
+def open_payables(book: Book, stichtag: date | None = None) -> dict:
+    """Kreditoren open on `stichtag` (default today): bills dated until then minus payments booked until then,
+    aged by bill date like the Debitoren, reconciled with the Kreditoren account."""
+    from .invoices import AGE_BUCKETS
+    from .ledger import BalanceEngine
+    stichtag = stichtag or date.today()
+    paid = payments(book)
+    rows, buckets = [], {b[0]: Decimal("0") for b in AGE_BUCKETS}
+    for meta in bills(book).values():
+        if parse_date(meta["datum"]) > stichtag or meta.get("status") == "storniert":
+            continue
+        st = state(book, meta, [r for r in paid.get(meta["nummer"], []) if r.datum <= stichtag])
+        if st["offen"] <= 0:
+            continue
+        age = (stichtag - parse_date(meta["datum"])).days
+        label = next(b[0] for b in AGE_BUCKETS if b[1] <= age <= b[2])
+        buckets[label] += st["offen_chf"]
+        rows.append({**st, "alter_tage": age, "kategorie": label})
+    rows.sort(key=lambda r: (r["datum"], r["nummer"]))
+    konto = kreditoren_konto(book)
+    saldo = -BalanceEngine(book).balance_at(konto, stichtag)
+    total = sum((r["offen_chf"] for r in rows), Decimal("0"))
+    return {"stichtag": stichtag, "posten": rows, "kategorien": buckets, "total_offen": total,
+            "kreditorenkonto": konto, "saldo_kreditoren": saldo, "differenz": saldo - total}

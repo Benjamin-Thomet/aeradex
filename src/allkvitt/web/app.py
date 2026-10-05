@@ -195,6 +195,7 @@ SECTIONS = [
         ("mahnungen", "Mahnungen", "/debitoren/mahnungen", ())]),
     ("kreditoren", "Kreditoren", "/kreditoren", "", "k", [
         ("rechnungen", "Rechnungen", "/kreditoren", ()),
+        ("offene", "Offene Posten", "/kreditoren/offene-posten", ()),
         ("zahlungen", "Zahlungsläufe", "/kreditoren/zahlungen", ("/kreditoren/zahlungslauf",)),
         ("lieferanten", "Lieferanten", "/kreditoren/lieferanten", ())]),
     ("lohn", "Lohn", "/lohn", "entwuerfe", "l", [

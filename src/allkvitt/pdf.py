@@ -459,6 +459,28 @@ def receivables_pdf(book: Book, ar: dict) -> bytes:
     return buf.getvalue()
 
 
+def payables_pdf(book: Book, ap: dict) -> bytes:
+    """Offene Kreditoren per Stichtag (`kreditoren.open_payables`), foreign amounts next to the CHF value."""
+    s = book.settings
+    width = A4[0] - 2 * SIDE
+    buf = io.BytesIO()
+    doc = _doc(buf, "Offene Kreditoren", s.firma, label=f"{s.firma} · Offene Kreditoren per {d(ap['stichtag'])}")
+    data = [["Kreditor", "Lieferant", "Rechnungsnr.", "Datum", "Alter", "Offen FW", "Offen CHF"]]
+    for p in ap["posten"]:
+        fw = f"{p['waehrung']} {chf(p['offen'])}" if p.get("waehrung", "CHF") != "CHF" else ""
+        data.append([p["nummer"], P(p.get("name") or p.get("lieferant") or "", "cell"), p.get("rechnungsnr") or "",
+                     d(p["datum"]), f"{p['alter_tage']} T", fw, chf(p["offen_chf"])])
+    data.append(["Total", "", "", "", "", "", chf(ap["total_offen"])])
+    story = [P(f"Offene Kreditoren per {d(ap['stichtag'])}", "title"), Spacer(1, 4 * mm),
+             _grid(data, [w * width for w in (0.14, 0.27, 0.13, 0.11, 0.08, 0.13, 0.14)],
+                   total_rows=[len(data) - 1], right_cols=(4, 5, 6)),
+             Spacer(1, 5 * mm),
+             P(f"Saldo Konto {ap['kreditorenkonto']}: {chf(ap['saldo_kreditoren'])} · "
+               f"Differenz zur Offen-Posten-Liste: {chf(ap['differenz'])}", "small")]
+    doc.build(story)
+    return buf.getvalue()
+
+
 
 def mwst_abstimmung_pdf(book: Book, rep: dict) -> bytes:
     """Year-end reconciliation, including cash-basis bridge and unresolved findings."""

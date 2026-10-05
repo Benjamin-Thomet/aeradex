@@ -555,10 +555,10 @@ def alter(book: Book, stichtag: date, seite: str = "debitoren") -> dict:
                    "alter": p["alter_tage"], "offen": p["offen_chf"]} for p in ar["posten"]]
         konto, saldo, titel = ar["debitorenkonto"], ar["saldo_debitoren"], "Debitoren nach Alter"
     else:
-        from .dossier import open_payables_at
-        ap = open_payables_at(book, stichtag)
+        from .kreditoren import open_payables
+        ap = open_payables(book, stichtag)
         posten = [{"nummer": p["nummer"], "name": p.get("name"), "datum": p["datum"],
-                   "alter": (stichtag - _d(p["datum"])).days, "offen": p["offen_chf"]} for p in ap["posten"]]
+                   "alter": p["alter_tage"], "offen": p["offen_chf"]} for p in ap["posten"]]
         konto, saldo, titel = ap["kreditorenkonto"], ap["saldo_kreditoren"], "Kreditoren nach Alter"
     buckets = [label for label, _, _ in inv.AGE_BUCKETS]
     cols = [Column(f"b{i}", label + " Tage", "ist") for i, label in enumerate(buckets)] + [Column("total", "Total")]

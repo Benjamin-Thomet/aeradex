@@ -693,8 +693,22 @@ async def zuordnen(ui: UI, request: Request):
 async def offene_posten(ui: UI, request: Request):
     book = ui.book()
     stichtag = request.query_params.get("stichtag")
-    ar = invoices.aged_receivables(book, parse_date(stichtag) if stichtag else None)
+    try:
+        ar = invoices.aged_receivables(book, parse_date(stichtag, "stichtag") if stichtag else None)
+    except FormatError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
     return ui.render(request, "offene_posten.html", book=book, ar=ar)
+
+
+async def kreditoren_offene_posten(ui: UI, request: Request):
+    from .. import kreditoren as kred
+    book = ui.book()
+    stichtag = request.query_params.get("stichtag")
+    try:
+        ap = kred.open_payables(book, parse_date(stichtag, "stichtag") if stichtag else None)
+    except FormatError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return ui.render(request, "kreditoren_offene_posten.html", book=book, ap=ap)
 
 
 async def kunden(ui: UI, request: Request):
@@ -1715,9 +1729,20 @@ async def pdf_report(ui: UI, request: Request):
         nr = request.query_params.get("konto", "")
         data = pdfmod.ledger_pdf(book, account_ledger(book, nr, year))
         name = f"Konto {nr} {year}.pdf"
-    elif kind == "debitoren":
-        data = pdfmod.receivables_pdf(book, invoices.aged_receivables(book))
-        name = "Offene Debitoren.pdf"
+    elif kind in ("debitoren", "kreditoren"):
+        try:
+            raw = request.query_params.get("stichtag")
+            stichtag = parse_date(raw, "stichtag") if raw else None
+        except FormatError as exc:
+            return PlainTextResponse(str(exc), status_code=400)
+        if kind == "debitoren":
+            ar = invoices.aged_receivables(book, stichtag)
+            data = pdfmod.receivables_pdf(book, ar)
+        else:
+            from .. import kreditoren as kred
+            ar = kred.open_payables(book, stichtag)
+            data = pdfmod.payables_pdf(book, ar)
+        name = f"Offene {kind.capitalize()} {ar['stichtag']:%Y-%m-%d}.pdf"
     else:
         return PlainTextResponse("Unbekannter Bericht", status_code=404)
     return Response(data, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
@@ -1811,6 +1836,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/debitoren/vorschau", h(rechnung_vorschau), methods=["POST"]),
         Route("/debitoren/zuordnen", h(zuordnen), methods=["POST"]),
         Route("/debitoren/offene-posten", h(offene_posten)),
+        Route("/kreditoren/offene-posten", h(kreditoren_offene_posten)),
         Route("/debitoren/mahnungen", h(mahnungen_page)),
         Route("/debitoren/mahnungen", h(mahnungen_erstellen), methods=["POST"]),
         Route("/debitoren/kunden", h(kunden)),
