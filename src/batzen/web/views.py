@@ -18,7 +18,7 @@ from starlette.routing import Route
 
 from .. import api, check as checks, invoices, journal, payroll, statements
 from ..book import Book, BookError
-from ..files import parse_amount, parse_date
+from ..files import FormatError, parse_amount, parse_date
 from ..ledger import BalanceEngine, account_ledger, movements, resolve_period, trial_balance
 from .app import UI, acct, act, done, fail
 
@@ -936,7 +936,9 @@ async def bank_page(ui: UI, request: Request):
     sugg = bank.suggestions(book) if status in ("offen", "") else {}
     return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts, jev=jev.config(book),
                      sugg=sugg, sicher=sum(1 for o in sugg.values() if o[0]["sicher"]),
-                     bank_accept=",".join(sorted({x for f in formats for x in f.suffixes} | {".camt", ".053"})),
+                     bank_accept=",".join(sorted({x for f in formats for x in f.suffixes}
+                                                 | {".camt", ".053", ".csv", ".txt", ".xlsx", ".pdf"})),
+                     pending=_bank_pending(book),
                      bank_labels=", ".join(f.label for f in formats),
                      rec=bank.reconciliation(book), open_inv=open_inv, open_bills=open_bills, rules=bank.rules(book),
                      accounts=account_options(book))
@@ -947,14 +949,81 @@ async def bank_upload(ui: UI, request: Request):
     upload = f.get("datei")
     if not upload or not getattr(upload, "filename", ""):
         return fail("Keine Datei gewählt.")
+    from .. import bankformat
+    data = await upload.read()
+    name = Path(upload.filename).name
     tmpdir = Path(tempfile.mkdtemp(prefix="batzen-"))
-    tmp = tmpdir / Path(upload.filename).name
-    tmp.write_bytes(await upload.read())
+    tmp = tmpdir / name
+    tmp.write_bytes(data)
     try:
-        return await act(request, api.bank_import, "/bank", ui.book(), str(tmp))
+        try:
+            result = await asyncio.to_thread(api.bank_import, ui.book(), str(tmp))
+        except (BookError, FormatError) as exc:
+            suffix = Path(name).suffix.lower()
+            if "Unbekanntes Kontoauszugsformat" not in str(exc) or suffix not in bankformat.TEXT + bankformat.EXCEL + (".pdf",):
+                return fail(str(exc))
+            return await _bank_learn(ui, request, name, data, acct(f.get("konto")), suffix)
+        return done(result.get("meldung", "Importiert"), "/bank")
     finally:
         if tmp.exists():
             tmp.unlink()
+
+
+async def _bank_learn(ui: UI, request: Request, name: str, data: bytes, konto: str, suffix: str):
+    """An unknown statement: keep it in the inbox and let the agent read it — the format of a CSV/Excel
+    file (a person confirms it below), or the transactions of a credit card statement."""
+    if suffix == ".pdf" and not konto:
+        return fail("Für eine Kreditkartenabrechnung das Kreditkartenkonto angeben (Passivkonto, z.B. 2040).")
+    try:
+        datei = (await asyncio.to_thread(api.inbox_add, ui.book(), name, data))["datei"]
+        if suffix == ".pdf":
+            res = await asyncio.to_thread(api.card_statement_read, ui.book(), datei, konto)
+            if res.get("import"):
+                return done(res["import"]["meldung"], "/bank")
+            return done("Kreditkartenabrechnung gelesen, aber nicht geprüft — siehe unten", "/bank#neu")
+        await asyncio.to_thread(api.bank_format_learn, ui.book(), datei, konto)
+    except (BookError, FormatError, RuntimeError) as exc:
+        return fail(str(exc))
+    return done("Format erkannt — bitte unten prüfen und bestätigen", "/bank#neu")
+
+
+def _bank_pending(book) -> dict:
+    """Files in the inbox the agent has read but nobody confirmed yet: CSV/Excel with an unconfirmed
+    format, card statements whose checks failed."""
+    from .. import bankformat
+    formats, cards = [], []
+    for path in sorted((book.root / "inbox").glob("*")):
+        suffix = path.suffix.lower()
+        try:
+            if suffix in bankformat.TEXT + bankformat.EXCEL:
+                found = bankformat.match(book, path.name, path.read_bytes(), nur_bestaetigt=False)
+                if found and not found[1].get("bestaetigt"):
+                    formats.append({"datei": book.rel(path), "format": found[0], "name": found[1].get("name") or found[0],
+                                    **api.bank_format_check(book, book.rel(path))})
+            elif suffix == ".pdf":
+                card = bankformat.load_card(book, path.read_bytes())
+                if card:
+                    cards.append({"datei": book.rel(path), "karte": card,
+                                  "yaml": book.rel(bankformat.card_path(book, path.read_bytes())),
+                                  "pruefung": bankformat.card_checks(card, bankformat.pdf_text(path))})
+        except (BookError, FormatError) as exc:
+            formats.append({"datei": book.rel(path), "fehler": str(exc)})
+    return {"formate": formats, "karten": cards}
+
+
+async def bank_format_ok(ui: UI, request: Request):
+    f = await request.form()
+    book, name, datei = ui.book(), request.path_params["name"], f.get("datei") or ""
+
+    def confirm_and_import():
+        api.bank_format_confirm(book, name)
+        return api.bank_import(Book(book.root), datei)
+    return await act(request, confirm_and_import, "/bank")
+
+
+async def bank_karte_import(ui: UI, request: Request):
+    f = await request.form()
+    return await act(request, api.bank_import, "/bank", ui.book(), f.get("datei") or "")
 
 
 async def bank_jev(ui: UI, request: Request):
@@ -1687,6 +1756,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/bank/jev", h(bank_jev), methods=["POST"]),
         Route("/bank/alle-abgleichen", h(bank_alle), methods=["POST"]),
         Route("/bank/regel", h(bank_regel), methods=["POST"]),
+        Route("/bank/format/{name:str}/bestaetigen", h(bank_format_ok), methods=["POST"]),
+        Route("/bank/karte/importieren", h(bank_karte_import), methods=["POST"]),
         Route("/bank/regel/{id:str}/entfernen", h(bank_regel), methods=["POST"]),
         Route("/bank/{id:str}/{aktion:str}", h(bank_aktion), methods=["POST"]),
         Route("/p/{plugin:str}/{slug:str}", h(plugin_seite)),

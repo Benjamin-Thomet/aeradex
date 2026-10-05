@@ -37,6 +37,12 @@ oder Konto aus früheren Buchungen. Passt eine Bewegung zu einer offenen Rechnun
 `batzen bank zuordnen ID NUMMER`; sonst Buchung vorschlagen (MCP: propose_bank_booking) mit dem Gegenkonto.
 Sichere Vorschläge übernimmt der Mensch mit einem Klick («Alle sicheren abgleichen»).
 
+**Kontoauszug als CSV/Excel** (nicht camt.053): `batzen bank format lernen inbox/x.csv` — oder selbst:
+bank_file_preview, dann propose_bank_format (nur das Format beschreiben; ein Mensch bestätigt, dann `bank import`).
+**Kreditkartenabrechnung (PDF)**: `batzen bank karte inbox/x.pdf --konto 2040` — oder selbst: card_statement_text,
+dann propose_card_statement mit jeder Transaktion. Beträge nur abschreiben, nie umrechnen, keine Zeilen erfinden.
+Die Kreditkarte ist ein Passivkonto; Einkäufe danach wie Bankbewegungen kontieren (Aufwand an Kreditkarte).
+
 **Zahlungseingang**: `batzen invoice match --betrag 1500 --text "<Bankzeile>"` → `batzen invoice pay R-2026-0001 --datum …`
 
 **Lohnlauf**: `batzen payroll run 2026-01` → prüfen (`payroll show`) → `batzen payroll close 2026-01 M0001`.

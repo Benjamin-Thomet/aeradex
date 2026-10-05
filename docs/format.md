@@ -238,11 +238,40 @@ Eine QR-IBAN kann nicht belastet werden; dann `zahlungs_iban` in `batzen.yaml` s
 
 ## bank/
 
-`bank/auszuege/<JJJJ>/<Auszug-ID>.xml`: die Kontoauszüge wie von der Bank geliefert (camt.053, sie sind der Beleg).
+`bank/auszuege/<JJJJ>/<Auszug-ID>.<xml|csv|xlsx|pdf>`: die Kontoauszüge wie von der Bank geliefert (sie sind der Beleg).
 `bank/<JJJJ>.md`: eine Zeile pro Bankbewegung: `ID | Datum | Konto | Betrag | Gegenpartei | Referenz | Text | Status | Beleg | Auszug | Hinweis`
 (`Hinweis`: z.B. unsicherer Jev-Vorschlag),
 Status `gebucht`, `abgeglichen`, `offen`, `ignoriert`. `Beleg` verweist auf die Journalbuchung. Zuordnung IBAN → Konto in
 `batzen.yaml` unter `bankkonten: {CH…: "1020"}` (Standard: die eigene IBAN → Bankkonto).
+
+## bank/formate/<name>.yaml
+
+Ein gelerntes CSV/Excel-Format (vom Agenten beschrieben, von einem Menschen bestätigt). Erkannt wird eine Datei an
+ihrer Kopfzeile; gelesen wird ohne Agent.
+
+```yaml
+name: UBS Kontoauszug
+bestaetigt: true
+kopfzeile: [Abschlussdatum, Buchungstext, Beschreibung 2, Belastung, Gutschrift, Saldo]
+datum: Abschlussdatum
+datumsformat: "%d.%m.%Y"
+belastung: Belastung        # oder betrag: <Spalte mit Vorzeichen> (vorzeichen: -1, wenn Belastungen positiv sind)
+gutschrift: Gutschrift
+text: [Buchungstext, Beschreibung 2]
+saldo: Saldo                # optional: Saldo-Prüfung Zeile für Zeile und Schlusssaldo für die Abstimmung
+konto: "1020"               # optional, wenn die Datei keine zugeordnete IBAN enthält; je Währung {CHF: "1020", EUR: "1021"}
+```
+
+Weitere Felder: `gegenpartei`, `referenz`, `id` (Transaktions-ID), `waehrung` (Spalte), `dezimal: ","`,
+`trennzeichen`, `iban`. Ohne `id` erkennt batzen doppelt importierte Bewegungen an Datum, Betrag und Text.
+
+## bank/karten/<hash>.yaml
+
+Eine gelesene Kreditkartenabrechnung, benannt nach dem SHA-256 der PDF: `konto`, `herausgeber`, `karte`
+(letzte 4 Ziffern), `von`, `bis`, `saldo_alt`, `saldo_neu`, `buchungen: [{datum, text, betrag, original}]` (betrag
+wie auf der Abrechnung: Belastungen positiv, Zahlungen negativ). Importiert wird nur, wenn `saldo_alt` + Buchungen =
+`saldo_neu` und jeder Betrag im Text der PDF steht; bei einer gescannten PDF ohne Text nach Kontrolle
+`bestaetigt: true` setzen.
 
 ## .batzen/locks.yaml
 

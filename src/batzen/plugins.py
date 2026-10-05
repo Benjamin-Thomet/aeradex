@@ -305,9 +305,21 @@ def bank_format_for(book: Book | None, filename: str, data: bytes) -> BankFormat
                 return fmt
         except Exception:
             continue
+    from . import bankformat
+    learned = bankformat.bank_format(book, filename, data)
+    if learned is not None:
+        return learned
     names = ", ".join(f.label for f in formats)
-    raise BookError(f"Unbekanntes Kontoauszugsformat ({Path(filename).name}). Unterstützt: {names}. "
-                    "Weitere Formate gibt es als Plugins (batzen plugins).")
+    suffix = Path(filename).suffix.lower()
+    if suffix in bankformat.TEXT + bankformat.EXCEL:
+        hint = (f"Das Format kann der Agent lernen: batzen bank format lernen {Path(filename).name} "
+                "(danach bestätigen und importieren).")
+    elif suffix == ".pdf":
+        hint = (f"Eine Kreditkartenabrechnung liest der Agent ein: batzen bank karte {Path(filename).name} "
+                "--konto <Kreditkartenkonto>.")
+    else:
+        hint = "Weitere Formate gibt es als Plugins (batzen plugins)."
+    raise BookError(f"Unbekanntes Kontoauszugsformat ({Path(filename).name}). Unterstützt: {names}. {hint}")
 
 
 def beleg_leser(book: Book | None) -> list[BelegLeser]:

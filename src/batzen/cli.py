@@ -328,7 +328,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("datei")
     c.add_argument("--datum")
 
-    s = sub.add_parser("bank", help="Kontoauszüge (camt.053)")
+    s = sub.add_parser("bank", help="Kontoauszüge (camt.053, CSV/Excel, Kreditkarte)")
     bs = s.add_subparsers(dest="sub", required=True)
     c = bs.add_parser("regel", help="Bankregeln: wiederkehrende Bewegungen beim Import buchen")
     c.add_argument("aktion", choices=["list", "add", "von", "remove"])
@@ -341,8 +341,16 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--mwst", default="")
     c.add_argument("--buchungstext", default="")
     c.add_argument("--mit-betrag", action="store_true", help="von: nur bei genau diesem Betrag")
-    c = bs.add_parser("import", help="camt.053-Datei importieren und abgleichen")
+    c = bs.add_parser("import", help="Kontoauszug importieren und abgleichen (camt.053, gelernte CSV/Excel, "
+                                     "gelesene Kreditkartenabrechnung)")
     c.add_argument("datei")
+    c = bs.add_parser("format", help="CSV/Excel-Format einer Bank: vom Agenten lernen lassen, prüfen, bestätigen")
+    c.add_argument("aktion", choices=["lernen", "pruefen", "bestaetigen", "list"])
+    c.add_argument("ref", nargs="?", help="lernen/pruefen: Datei · bestaetigen: Formatname")
+    c.add_argument("--konto", default="", help="lernen: Buchhaltungskonto (z.B. 1020), wenn die Datei keine IBAN nennt")
+    c = bs.add_parser("karte", help="Kreditkartenabrechnung (PDF) vom Agenten lesen lassen und importieren")
+    c.add_argument("datei")
+    c.add_argument("--konto", required=True, help="Kreditkartenkonto (Passivkonto, z.B. 2040)")
     c = bs.add_parser("list")
     c.add_argument("--status", default="", choices=["", "offen", "gebucht", "abgeglichen", "ignoriert"])
     c = bs.add_parser("book", help="offene Bewegung gegen ein Konto buchen")
@@ -724,6 +732,18 @@ def dispatch(a, book_path: Path | None):
         b = book()
         if a.sub == "import":
             return api.bank_import(b, a.datei)
+        if a.sub == "format":
+            if a.aktion == "list":
+                return api.bank_format_list(b)
+            if not a.ref:
+                raise BookError("Datei bzw. Formatname fehlt")
+            if a.aktion == "lernen":
+                return api.bank_format_learn(b, a.ref, a.konto)
+            if a.aktion == "pruefen":
+                return api.bank_format_check(b, a.ref)
+            return api.bank_format_confirm(b, a.ref)
+        if a.sub == "karte":
+            return api.card_statement_read(b, a.datei, a.konto)
         if a.sub == "list":
             return api.bank_list(b, a.status)
         if a.sub == "book":

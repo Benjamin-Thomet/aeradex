@@ -962,6 +962,101 @@ def bank_import(book: Book, datei: str) -> dict:
     return _done(book, msg, touched, import_=summary)
 
 
+def bank_file_preview(book: Book, datei: str) -> dict:
+    """The first lines of a statement file, for describing its format."""
+    from . import bankformat
+    path = bankformat._source(book, datei)
+    data = path.read_bytes()
+    known = bankformat.match(book, path.name, data, nur_bestaetigt=False)
+    return jsonable({"datei": datei, "zeilen": bankformat.preview_text(path.name, data),
+                     "format": known[0] if known else None,
+                     "formate": sorted(bankformat.formats(book))})
+
+
+def bank_format_propose(book: Book, datei: str, name: str, **spec) -> dict:
+    """Store a described CSV/Excel format (unconfirmed) after reading the file with it."""
+    from . import bankformat
+    _guard(book)
+    result, touched = bankformat.propose(book, datei, name, spec)
+    return _done(book, f"Bankformat {result['format']} beschrieben (noch nicht bestätigt)", touched, **result)
+
+
+def bank_format_check(book: Book, datei: str) -> dict:
+    """Read a file with the (confirmed or not) format whose header it has: preview and checks, writes nothing."""
+    from . import bankformat
+    path = bankformat._source(book, datei)
+    data = path.read_bytes()
+    found = bankformat.match(book, path.name, data, nur_bestaetigt=False)
+    if not found:
+        raise BookError(f"Für {datei} ist kein Format beschrieben — batzen bank format lernen {datei}")
+    name, spec = found
+    statements, report = bankformat.read_with(book, name, spec, path.name, data)
+    return jsonable({"format": name, "bestaetigt": bool(spec.get("bestaetigt")),
+                     **bankformat.summary(statements, report)})
+
+
+def bank_format_learn(book: Book, datei: str, konto: str = "") -> dict:
+    """Let the book's agent describe the format of an unknown CSV/Excel statement."""
+    from . import bankformat
+    bankformat._source(book, datei)
+    said = bankformat.run_agent(book.root, bankformat.format_prompt(datei, konto))
+    try:
+        result = bank_format_check(Book(book.root), datei)
+    except BookError:
+        raise BookError("Der Agent hat kein passendes Format beschrieben" + (f": {said[:300]}" if said else "")) from None
+    return {**result, "agent": said}
+
+
+def bank_format_confirm(book: Book, name: str) -> dict:
+    from . import bankformat
+    _guard(book)
+    touched = bankformat.confirm(book, name)
+    return _done(book, f"Bankformat {name} bestätigt", touched, format=name)
+
+
+def bank_format_list(book: Book) -> list[dict]:
+    from . import bankformat
+    return jsonable([{"format": k, "name": v.get("name") or k, "bestaetigt": bool(v.get("bestaetigt")),
+                      "konto": v.get("konto") or "", "datei": book.rel(v["_pfad"])}
+                     for k, v in bankformat.formats(book).items()])
+
+
+def card_statement_text(book: Book, datei: str) -> dict:
+    from . import bankformat
+    path = bankformat._source(book, datei)
+    text = bankformat.pdf_text(path) if path.suffix.lower() == ".pdf" else path.read_text(errors="replace")
+    return {"datei": datei, "text": text[:40000], "gekuerzt": len(text) > 40000}
+
+
+def card_statement_propose(book: Book, datei: str, konto: str, saldo_alt, saldo_neu, buchungen: list[dict],
+                           herausgeber: str = "", karte: str = "", von: str = "", bis: str = "") -> dict:
+    """Store the transactions read from a credit card statement, with the balance and text checks."""
+    from . import bankformat
+    _guard(book)
+    result, touched = bankformat.card_propose(book, datei, konto, saldo_alt, saldo_neu, buchungen,
+                                              herausgeber, karte, von, bis)
+    state = "geprüft" if result["pruefung"]["ok"] else "nicht geprüft"
+    return _done(book, f"Kreditkartenabrechnung gelesen: {result['buchungen']} Buchungen ({state})", touched, **result)
+
+
+def card_statement_read(book: Book, datei: str, konto: str) -> dict:
+    """Let the agent read a credit card statement (PDF); import it when the checks pass."""
+    from . import bankformat
+    path = bankformat._source(book, datei)
+    book.account(konto)
+    said = bankformat.run_agent(book.root, bankformat.card_prompt(datei, konto))
+    book = Book(book.root)
+    data = path.read_bytes()
+    card = bankformat.load_card(book, data)
+    if card is None:
+        raise BookError("Der Agent hat die Abrechnung nicht eingelesen" + (f": {said[:300]}" if said else ""))
+    checks = bankformat.card_checks(card, bankformat.pdf_text(path))
+    out = {"datei": book.rel(bankformat.card_path(book, data)), "pruefung": checks, "agent": said}
+    if checks["ok"]:
+        out["import"] = bank_import(book, datei)
+    return jsonable(out)
+
+
 def bank_list(book: Book, status: str = "") -> list[dict]:
     from . import bank
     return [{k: v for k, v in t.items() if not k.startswith("_")} for t in bank.transactions(book)
@@ -1142,7 +1237,7 @@ payslip_inputs = _locked(payslip_inputs)
 
 for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_void", "payment_run", "payment_run_book",
               "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore", "bank_suggest", "bank_accept",
-              "bank_accept_all"):
+              "bank_accept_all", "bank_format_propose", "bank_format_confirm", "card_statement_propose"):
     globals()[_name] = _locked(globals()[_name])
 
 fx_revalue = _locked(fx_revalue)

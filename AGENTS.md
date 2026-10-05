@@ -36,6 +36,10 @@ This file is for developing batzen itself. Agents *operating a book* read the
 - `marktplatz.py`: plugin catalog (bundled JSON or `BATZEN_PLUGIN_KATALOG` https URL), maintainer review with a
   SHA-256 over the plugin's source files, install via pip (local UI only, then `web.app.restart_later`).
 - `bank.py` (camt.053 import, matching, reconciliation), `kreditoren.py` (QR scan, pain.001), `mwst.py` (incl. eCH-0217).
+- `bankformat.py`: statements in other formats. CSV/Excel: the agent describes the *format* once (`bank/formate/`,
+  confirmed by a person), batzen reads the numbers. Credit card PDFs: the agent transcribes the transactions
+  (`bank/karten/<sha>.yaml`); imported only if the balance adds up and every amount is in the PDF text. Both are
+  served to the import as a `BankFormat` (fallback in `plugins.bank_format_for`), so reconciliation re-reads them.
 - Writes are serialised by a lock file (`.batzen/write.lock`) so UI, CLI, MCP and chat never interleave.
 
 ## Rules

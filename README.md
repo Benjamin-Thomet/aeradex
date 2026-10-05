@@ -184,7 +184,7 @@ ordnet batzen nicht zu und warnt; eine IBAN aus dem QR-Zahlteil kann auch der Ag
 erst, wenn ein Mensch den Entwurf prüft. OCR braucht Tesseract mit Sprachdaten (Arch:
 `pacman -S tesseract tesseract-data-deu tesseract-data-fra tesseract-data-ita`, Debian: `apt install tesseract-ocr-deu …`).
 
-### Bank (camt.053)
+### Bank (camt.053, CSV, Excel, Kreditkarte)
 ```bash
 batzen bank import inbox/auszug-maerz.xml   # Kontoauszug aus dem E-Banking (ISO 20022 camt.053)
 batzen bank list --status offen
@@ -198,6 +198,23 @@ eigenen Zahlungsläufen (EndToEndId) und gleicht bereits Gebuchtes (z.B. Löhne)
 `batzen bank regel add --gegenpartei SWISSCOM --konto 6510`. Der Rest landet unter *Prüfen*; der Agent kann zuordnen
 oder Buchungen vorschlagen. Auszüge von Fremdwährungskonten (z.B. EUR) werden in der Kontowährung importiert und
 zum BAZG-Kurs gebucht; die Saldoabstimmung vergleicht den Saldo in der Währung.
+
+**Andere Formate (CSV, Excel) und Kreditkarten (PDF)** liest der Agent — aber er liefert nie ungeprüfte Beträge:
+```bash
+batzen bank format lernen inbox/ubs-export.csv   # Agent beschreibt das Format → bank/formate/ubs-….yaml
+batzen bank format pruefen inbox/ubs-export.csv  # Vorschau und Saldo-Prüfung Zeile für Zeile
+batzen bank format bestaetigen ubs-kontoauszug   # einmal pro Bank; danach liest batzen jede Datei selbst
+batzen bank import inbox/ubs-export.csv
+
+batzen account-add 2040 "Kreditkarte Visa" --klasse passiv
+batzen bank karte inbox/visa-2026-09.pdf --konto 2040   # Agent liest die Transaktionen, batzen prüft und importiert
+```
+Bei CSV/Excel beschreibt der Agent nur, welche Spalte was ist; die Zahlen liest batzen selbst, und ein Mensch
+bestätigt das Format einmal. Bei Kreditkartenabrechnungen schreibt der Agent die Transaktionen nach
+`bank/karten/`; importiert wird nur, wenn alter Saldo + Buchungen = neuer Saldo auf den Rappen aufgeht und jeder
+Betrag im Text der PDF steht. Die Karte ist ein Passivkonto: Einkäufe Aufwand an Kreditkarte, die monatliche
+Belastung Kreditkarte an Bank — sie wird beim Import der Abrechnung mit der Bankbuchung abgeglichen. In der
+Oberfläche genügt es, die Datei auf der Bank-Seite hochzuladen (bei Kreditkarten mit Konto).
 
 ### Fremdwährungen
 ```bash

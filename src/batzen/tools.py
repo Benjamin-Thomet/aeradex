@@ -45,6 +45,9 @@ Regeln:
   Konto wählen, complete_bill_draft mit Begründung. Neue Belege in der Inbox: create_bill_draft(datei) — nicht
   propose_booking: so werden Quittungen mit der Bank abgeglichen und nichts doppelt gebucht. Gebucht wird von
   einem Menschen.
+- Kontoauszüge, die nicht camt.053 sind: CSV/Excel → bank_file_preview, dann propose_bank_format (nur das
+  Format beschreiben, ein Mensch bestätigt). Kreditkartenabrechnung (PDF) → card_statement_text, dann
+  propose_card_statement mit allen Transaktionen; Beträge nur abschreiben, nie umrechnen oder ergänzen.
 - Fremdwährung: Beleg in EUR/USD … → waehrung mitgeben und den Betrag in der Fremdwährung; umgerechnet wird
   zum BAZG-Tageskurs (exchange_rate). Konten mit Fremdwährung (accounts() zeigt waehrung) gehen nur so.
   Die Bewertung per Stichtag (revaluation_preview) bucht ein Mensch im Abschluss.
@@ -670,6 +673,85 @@ def book_bank_transaction(id: str, konto: str, text: str = "", mwst: str = "") -
 
 # ---------- lohn ----------
 
+def bank_file_preview(datei: str) -> dict:
+    """Die ersten Zeilen eines Kontoauszugs (CSV/Excel), um sein Format zu beschreiben, und die schon
+    beschriebenen Formate.
+
+    Args:
+        datei: z.B. "inbox/ubs-export.csv".
+    """
+    return _call(api.bank_file_preview, datei)
+
+
+def propose_bank_format(datei: str, name: str, kopfzeile: list[str], datum: str, datumsformat: str,
+                        betrag: str = "", belastung: str = "", gutschrift: str = "", vorzeichen: int = 1,
+                        dezimal: str = ".", text: list[str] | None = None, gegenpartei: str = "",
+                        referenz: str = "", saldo: str = "", id: str = "", waehrung: str = "",
+                        trennzeichen: str = "", konto: str = "") -> dict:
+    """Das Format eines CSV/Excel-Kontoauszugs beschreiben. batzen liest die Datei damit und meldet, was es
+    gelesen hat (pruefung.ok, Beispiele, Saldo-Prüfung Zeile für Zeile). Bucht und importiert nichts; ein
+    Mensch bestätigt das Format, danach liest batzen jede Datei dieser Bank selbst. Erneut aufrufen
+    (gleicher name) überschreibt die Beschreibung.
+
+    Args:
+        datei: die Datei, z.B. "inbox/ubs-export.csv".
+        name: Bank und Export, z.B. "UBS Kontoauszug CSV".
+        kopfzeile: alle Spaltennamen der Kopfzeile, genau wie in der Datei, in dieser Reihenfolge.
+        datum: Spalte mit dem Buchungsdatum.
+        datumsformat: strftime-Format, z.B. "%d.%m.%Y" oder "%Y-%m-%d".
+        betrag: Spalte mit dem Betrag mit Vorzeichen — oder leer und dafür belastung/gutschrift.
+        belastung: Spalte mit Belastungen (Geld hinaus), wenn getrennt.
+        gutschrift: Spalte mit Gutschriften (Geld herein), wenn getrennt.
+        vorzeichen: -1, wenn in der Datei Belastungen positiv sind (bei `betrag`), sonst 1.
+        dezimal: "." oder ",".
+        text: Spalten für den Buchungstext (werden verbunden).
+        gegenpartei: Spalte mit Auftraggeber/Empfänger, wenn vorhanden.
+        referenz: Spalte mit Zahlungsreferenz, wenn vorhanden.
+        saldo: Spalte mit dem Saldo nach der Bewegung, wenn vorhanden (wichtig für die Prüfung).
+        id: Spalte mit einer eindeutigen Transaktions-ID, wenn vorhanden.
+        waehrung: Spalte mit der Währung, wenn vorhanden.
+        trennzeichen: nur wenn die Erkennung falsch liegt (";", ",", Tab).
+        konto: Buchhaltungskonto (z.B. "1020"); leer, wenn die Datei eine zugeordnete IBAN enthält.
+    """
+    spec = {"kopfzeile": kopfzeile, "datum": datum, "datumsformat": datumsformat, "betrag": betrag,
+            "belastung": belastung, "gutschrift": gutschrift, "vorzeichen": vorzeichen if vorzeichen == -1 else None,
+            "dezimal": dezimal if dezimal == "," else None, "text": text or [], "gegenpartei": gegenpartei,
+            "referenz": referenz, "saldo": saldo, "id": id, "waehrung": waehrung, "trennzeichen": trennzeichen,
+            "konto": konto}
+    return _call(api.bank_format_propose, datei, name, **spec)
+
+
+def card_statement_text(datei: str) -> dict:
+    """Der Text einer Kreditkartenabrechnung (PDF-Textebene, sonst OCR).
+
+    Args:
+        datei: z.B. "inbox/visa-2026-09.pdf".
+    """
+    return _call(api.card_statement_text, datei)
+
+
+def propose_card_statement(datei: str, konto: str, saldo_alt: str, saldo_neu: str, buchungen: list[dict],
+                           herausgeber: str = "", karte: str = "", von: str = "", bis: str = "") -> dict:
+    """Die Transaktionen einer Kreditkartenabrechnung erfassen. batzen prüft: saldo_alt + Buchungen = saldo_neu
+    auf den Rappen, und jeder Betrag steht im Text der Abrechnung. Bucht nichts. Erneut aufrufen überschreibt.
+
+    Args:
+        datei: die Abrechnung, z.B. "inbox/visa-2026-09.pdf".
+        konto: das Kreditkartenkonto (Passivkonto), z.B. "2040".
+        saldo_alt: Saldo der Vorperiode, wie auf der Abrechnung ("1234.50"; Guthaben negativ).
+        saldo_neu: neuer Saldo / zu bezahlender Betrag ("987.65").
+        buchungen: [{"datum": "2026-08-22", "text": "Migros Bern", "betrag": "45.60", "original": "EUR 48.00"}, …];
+            betrag in CHF wie auf der Abrechnung: Belastungen positiv, Zahlungen/Gutschriften negativ;
+            Gebühren und Zinsen als eigene Zeilen; original nur bei Fremdwährung.
+        herausgeber: z.B. "Viseca", "Swisscard", "Cornèrcard".
+        karte: nur die letzten 4 Ziffern, z.B. "1234".
+        von: Beginn der Abrechnungsperiode JJJJ-MM-TT.
+        bis: Abrechnungsdatum JJJJ-MM-TT.
+    """
+    return _call(api.card_statement_propose, datei, konto, saldo_alt, saldo_neu, buchungen, herausgeber, karte,
+                 von, bis)
+
+
 def employees() -> list | dict:
     """Mitarbeitende."""
     return _call(api.employee_list)
@@ -756,7 +838,8 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
-          book_bank_transaction, employees, payroll_run, payslip, close_payslip, lohnausweis]
+          book_bank_transaction, employees, payroll_run, payslip, close_payslip, lohnausweis,
+          bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement]
 CHAT_ONLY = [read_inbox_file]
 
 # Public names for plugin tools: wrap an api function so errors come back as {"ok": False, …}.
