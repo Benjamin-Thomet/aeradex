@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Offerten{% endblock %}
+{% macro state_pill(s) %}{% set m = {"entwurf": "warn", "versendet": "info", "angenommen": "ok", "abgelehnt": "muted"} %}<span class="pill {{ m.get(s, 'muted') }}">{{ s }}</span>{% endmacro %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Offerten</h1><div class="sub">Angebote an Kunden · angenommen = Projekt, pauschal in Rechnung oder nach Aufwand</div></div>
+  <div class="actions"><a class="btn" href="/p/leistungen/leistungen">Leistungen</a><a class="btn primary" href="#neu">Neue Offerte</a></div>
+</div>
+
+{% if sel %}
+<div class="panel">
+  <header><h2>{{ sel.nummer }}{% if sel.titel %} · {{ sel.titel }}{% endif %} {{ state_pill(sel.status) }}</h2>
+    <div class="actions"><a class="btn small" href="/datei/{{ sel.pdf|urlq }}" target="_blank" rel="noopener">PDF</a></div></header>
+  <div class="body">
+    <p class="small">{{ kunden.get(sel.kunde, sel.kunde) }} · vom {{ sel.datum|datum }} · gültig bis {{ sel.gueltig_bis|datum }} · {{ 'pauschal' if sel.abrechnung == 'pauschal' else 'nach Aufwand' }}{% if sel.projekt %} · Projekt <a class="link" href="/p/leistungen/leistungen?tab=projekte&status=alle">{{ sel.projekt }}</a>{% endif %}</p>
+  </div>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Position</th><th class="right">Menge</th><th class="right">Preis</th><th class="right">Betrag</th></tr></thead>
+    <tbody>{% for p in sel.positionen %}<tr class="row"><td>{{ p.text }}</td><td class="right num">{{ p.menge|qty }} {{ p.einheit }}</td><td class="right num">{{ p.preis|chf }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
+    <tfoot>{% if sel.mwst %}<tr><td colspan="3">Total exkl. MWST</td><td class="right num">{{ sel.netto|chf }}</td></tr>{% for b in sel.mwst %}<tr><td colspan="3">MWST {{ b.code }}</td><td class="right num">{{ b.steuer|chf }}</td></tr>{% endfor %}{% endif %}
+      <tr><td colspan="3">Total</td><td class="right num total">{{ sel.total|chf }}</td></tr></tfoot>
+  </table></div>
+  {% if sel.status in ("entwurf", "versendet") %}
+  <form class="body" hx-post="/p/leistungen/offerten/status" hx-target="find .errors">
+    <input type="hidden" name="nummer" value="{{ sel.nummer }}">
+    <div class="form four">
+      <div class="field"><label>Neuer Status</label><select class="input" name="status" style="width:100%">{% for s in ("versendet", "angenommen", "abgelehnt", "entwurf") if s != sel.status %}<option>{{ s }}</option>{% endfor %}</select></div>
+      <div class="field" style="grid-column: span 2"><label>Projektname bei Annahme (leer = Titel)</label><input class="input" name="projektname"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Annehmen legt ein Projekt mit der Offerte als Budget an.</span><button class="btn primary" type="submit">Status setzen</button></div>
+  </form>
+  {% elif sel.status == "angenommen" and sel.abrechnung == "pauschal" %}
+  <div class="body">
+    {% if sel.verrechnet %}<p class="small">Verrechnet: {% for r in sel.verrechnet %}<a class="beleg" href="/debitoren/rechnung/{{ r.nummer }}">{{ r.nummer }}</a> ({{ r.art }}, netto {{ r.netto|chf }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+    <p class="small">Noch offen (netto): <strong>{{ sel.offen|chf }}</strong></p>
+  </div>
+  {% if sel.offen > 0 %}
+  <form class="body" hx-post="/p/leistungen/offerten/rechnung" hx-target="find .errors" hx-confirm="Rechnung ausstellen und verbuchen?">
+    <input type="hidden" name="nummer" value="{{ sel.nummer }}">
+    <div class="form four">
+      <div class="field"><label>Rechnung</label><select class="input" name="art" style="width:100%">
+        {% if sel.verrechnet %}<option value="schluss">Schlussrechnung (Rest)</option>{% else %}<option value="voll">ganze Offerte</option>{% endif %}
+        <option value="teil">Teilrechnung in %</option><option value="betrag">Teilrechnung Betrag (netto)</option></select></div>
+      <div class="field"><label>Prozent</label><input class="input num" name="anteil" placeholder="30"></div>
+      <div class="field"><label>Betrag netto</label><input class="input num" name="betrag"></div>
+      <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Die Schlussrechnung zieht die Teilrechnungen als Positionen ab (gleiche Konten und MWST).</span><button class="btn primary" type="submit">Rechnung ausstellen</button></div>
+  </form>{% endif %}
+  {% elif sel.status == "angenommen" %}
+  <div class="body small muted">Nach Aufwand: Zeit und Material auf Projekt {{ sel.projekt }} erfassen und unter <a class="link" href="/p/leistungen/leistungen?tab=abrechnen">Abrechnen</a> verrechnen.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <header><h2>Alle Offerten</h2>
+    <form class="actions" method="get"><select class="input" name="status" onchange="this.form.submit()" aria-label="Status"><option value="">alle</option>{% for s in ("entwurf", "versendet", "angenommen", "abgelehnt") %}<option {{ 'selected' if s == status }}>{{ s }}</option>{% endfor %}</select></form></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Nr.</th><th>Datum</th><th>Kunde</th><th>Titel</th><th>Art</th><th class="right">Total</th><th>Status</th></tr></thead>
+    <tbody>{% for q in offerten %}
+      <tr class="row"><td><a class="beleg" href="?nr={{ q.nummer }}">{{ q.nummer }}</a></td><td class="num">{{ q.datum|datum }}</td><td>{{ kunden.get(q.kunde, q.kunde) }}</td><td>{{ q.titel }}</td><td>{{ q.abrechnung }}</td>
+        <td class="right num">{{ q.total|chf }}</td><td>{{ state_pill(q.status) }}{% if q.nummer in abgelaufen %} <span class="pill red">abgelaufen</span>{% endif %}{% if q.offen is not none and q.offen > 0 and q.abrechnung == 'pauschal' %} <span class="small muted">offen {{ q.offen|chf }}</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="7" class="empty">Noch keine Offerten.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="panel" id="neu">
+  <header><h2>Neue Offerte</h2><span class="hint">Positionen aus Produkten, Stunden oder frei; leere Zeilen werden ignoriert</span></header>
+  <form class="body" hx-post="/p/leistungen/offerten/neu" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label>Kunde</label><select class="input" name="kunde" style="width:100%" required><option value="">— Kunde —</option>{% for nr, n in kunden.items() %}<option value="{{ nr }}" {{ 'selected' if nr == neu_kunde }}>{{ nr }} {{ n }}</option>{% endfor %}</select></div>
+      <div class="field" style="grid-column: span 2"><label>Titel</label><input class="input" name="titel" placeholder="z.B. Wohnzimmer streichen"></div>
+      <div class="field"><label>Abrechnung</label><select class="input" name="abrechnung" style="width:100%"><option value="pauschal">pauschal (Festpreis)</option><option value="aufwand">nach Aufwand (Schätzung)</option></select></div>
+      <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></div>
+      <div class="field"><label>Gültig (Tage)</label><input class="input num" name="gueltig" value="{{ cfg.gueltig_tage }}"></div>
+      <div class="field" style="grid-column: span 2"><label>Stundensatz von (für Stunden ohne Preis)</label><select class="input" name="wer" style="width:100%"><option value="">— Kunde/Preis —</option>{% for nr, p in personen.items() if p.aktiv and p.satz is not none %}<option value="{{ nr }}">{{ p.name }} · {{ p.satz|chf }}/h</option>{% endfor %}</select></div>
+      <div class="field wide"><label>Einleitung</label><textarea class="input" name="text" style="min-height:60px" placeholder="Gerne offerieren wir Ihnen …"></textarea></div>
+    </div>
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Art</th><th>Produkt</th><th>Text</th><th class="right">Menge / Std.</th><th class="right">Preis (leer = auto)</th><th>Einheit</th></tr></thead>
+      <tbody>{% for i in range(8) %}<tr>
+        <td><select class="input" name="pos_art" aria-label="Art"><option value="produkt">Produkt</option><option value="stunden" {{ 'selected' if i == 0 }}>Stunden</option><option value="frei">frei</option></select></td>
+        <td><select class="input" name="pos_produkt" aria-label="Produkt"><option value="">—</option>{% for nr, p in produkte.items() if p.aktiv is not false %}<option value="{{ nr }}">{{ nr }} {{ p.text }}</option>{% endfor %}</select></td>
+        <td><input class="input" name="pos_text" aria-label="Text"></td>
+        <td><input class="input num" name="pos_menge" aria-label="Menge" style="width:90px"></td>
+        <td><input class="input num" name="pos_preis" aria-label="Preis" style="width:110px"></td>
+        <td><input class="input" name="pos_einheit" aria-label="Einheit" style="width:70px"></td></tr>{% endfor %}</tbody>
+    </table></div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Erstellt einen Entwurf mit PDF; Versenden, Annehmen und Verrechnen danach in der Offerte.</span><button class="btn primary" type="submit">Offerte erstellen</button></div>
+  </form>
+</div>
+{% endblock %}

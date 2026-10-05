@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Leistungen{% endblock %}
+{% macro kunde_select(name="kunde", selected="", required=false, leer="— Kunde —") %}<select class="input" name="{{ name }}" style="width:100%" {{ 'required' if required }}><option value="">{{ leer }}</option>{% for nr, n in kunden.items() %}<option value="{{ nr }}" {{ 'selected' if nr == selected }}>{{ nr }} {{ n }}</option>{% endfor %}</select>{% endmacro %}
+{% macro projekt_select(name="projekt", selected="") %}<select class="input" name="{{ name }}" style="width:100%"><option value="">— kein Projekt —</option>{% for nr, p in projekte.items() if p.status == 'offen' %}<option value="{{ nr }}" {{ 'selected' if nr == selected }}>{{ nr }} {{ p.name }} ({{ kunden.get(p.kunde, p.kunde) }}{{ ', pauschal' if p.abrechnung == 'pauschal' }})</option>{% endfor %}</select>{% endmacro %}
+{% macro person_select(name="wer", required=true) %}<select class="input" name="{{ name }}" style="width:100%" {{ 'required' if required }}>{% if not required %}<option value="">—</option>{% endif %}{% for nr, p in personen.items() if p.aktiv %}<option value="{{ nr }}">{{ p.name }}{% if p.satz is not none %} · {{ p.satz|chf }}/h{% endif %}</option>{% endfor %}</select>{% endmacro %}
+{% macro state_pill(s) %}{% set m = {"offen": "info", "abgerechnet": "ok", "pauschal": "muted", "intern": "muted"} %}<span class="pill {{ m.get(s, 'muted') }}">{{ s }}</span>{% endmacro %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Leistungen</h1><div class="sub">Zeiterfassung, Produkte, Projekte und Abrechnung an Kunden</div></div>
+  <div class="actions"><a class="btn" href="/p/leistungen/offerten">Offerten</a></div>
+</div>
+<nav class="subnav">{% for key, label in tabs %}<a href="/p/leistungen/leistungen?tab={{ key }}" class="{{ 'on' if key == tab }}">{{ label }}</a>{% endfor %}</nav>
+
+{% if tab == "erfassen" %}
+<div class="panel">
+  <header><h2>Arbeitszeit</h2><span class="hint">Satz: Projekt › Kunde › Person — wird beim Erfassen festgehalten</span></header>
+  <form class="body" hx-post="/p/leistungen/leistungen/zeit" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}" required></div>
+      <div class="field"><label>Wer</label>{{ person_select() }}</div>
+      <div class="field"><label>Stunden</label><input class="input num" name="stunden" inputmode="decimal" placeholder="2.5" required></div>
+      <div class="field"><label>Abrechenbar</label><select class="input" name="abrechenbar" style="width:100%"><option value="ja">ja, an Kunde</option><option value="nein">nein (intern, Ferien …)</option></select></div>
+      <div class="field"><label>Kunde</label>{{ kunde_select() }}</div>
+      <div class="field"><label>Projekt</label>{{ projekt_select() }}</div>
+      <div class="field"><label>Kategorie (nicht abrechenbar)</label><select class="input" name="kategorie" style="width:100%">{% for k in cfg.kategorien %}<option>{{ k }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Satz (leer = automatisch)</label><input class="input num" name="satz" placeholder="auto"></div>
+      <div class="field wide"><label>Tätigkeit (erscheint auf der Rechnung)</label><input class="input" name="text" placeholder="z.B. Wände gespachtelt und grundiert"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Kunde fehlt noch? <a class="link" href="?tab=stammdaten#kunde">Kunde anlegen</a></span><button class="btn primary" type="submit">Zeit erfassen</button></div>
+  </form>
+</div>
+<div class="panel">
+  <header><h2>Produkte / Material</h2><span class="hint">Preis: Kundenpreis › Produktpreis</span></header>
+  <form class="body" hx-post="/p/leistungen/leistungen/material" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}" required></div>
+      <div class="field"><label>Produkt</label><select class="input" name="produkt" style="width:100%" required>{% for nr, p in produkte.items() if p.aktiv is not false %}<option value="{{ nr }}">{{ nr }} {{ p.text }} · {{ p.preis|chf }}/{{ p.einheit }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Menge</label><input class="input num" name="menge" inputmode="decimal" required></div>
+      <div class="field"><label>Preis (leer = automatisch)</label><input class="input num" name="preis" placeholder="auto"></div>
+      <div class="field"><label>Kunde</label>{{ kunde_select() }}</div>
+      <div class="field"><label>Projekt</label>{{ projekt_select() }}</div>
+      <div class="field" style="grid-column: span 2"><label>Text (leer = Produktname)</label><input class="input" name="text"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">{% if not produkte %}Noch keine Produkte — unter <a class="link" href="?tab=stammdaten">Stammdaten</a> erfassen.{% endif %}</span><button class="btn primary" type="submit">Produkt erfassen</button></div>
+  </form>
+</div>
+<div class="panel">
+  <header><h2>Einträge {{ monat }}</h2>
+    <form class="actions" method="get"><input type="hidden" name="tab" value="erfassen">
+      <input class="input" type="month" name="monat" value="{{ monat }}" onchange="this.form.submit()" aria-label="Monat">
+      <select class="input" name="kunde" onchange="this.form.submit()" aria-label="Kunde"><option value="">alle Kunden</option>{% for nr, n in kunden.items() %}<option value="{{ nr }}" {{ 'selected' if nr == filter_kunde }}>{{ n }}</option>{% endfor %}</select>
+      <select class="input" name="status" onchange="this.form.submit()" aria-label="Status"><option value="">alle</option>{% for s in ("offen", "abgerechnet", "pauschal", "intern") %}<option {{ 'selected' if s == filter_status }}>{{ s }}</option>{% endfor %}</select>
+    </form></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Datum</th><th>Wer</th><th>Kunde / Projekt</th><th>Leistung</th><th class="right">Menge</th><th class="right">Preis</th><th class="right">Betrag</th><th>Status</th><th></th></tr></thead>
+    <tbody>{% for e in eintraege %}
+      <tr class="row"><td class="num">{{ e.datum|datum }}</td><td>{{ personen[e.wer].name if e.wer in personen else e.wer }}</td>
+        <td>{{ kunden.get(e.kunde, e.kunde) }}{% if e.projekt %}<br><span class="small muted">{{ e.projekt }} {{ projekte[e.projekt].name if e.projekt in projekte }}</span>{% endif %}</td>
+        <td>{{ e.text }}{% if e.kategorie %} <span class="small muted">({{ e.kategorie }})</span>{% endif %}</td>
+        <td class="right num">{{ e.menge|qty }}{{ ' h' if e.art == 'Zeit' else ' ' ~ (produkte[e.produkt].einheit if e.produkt in produkte else '') }}</td>
+        <td class="right num">{{ e.preis|chf(true) if e.preis is not none }}</td><td class="right num">{{ e.betrag|chf(true) }}</td>
+        <td>{{ state_pill(e.status) }}{% if e.rechnung and e.status == 'abgerechnet' %} <a class="beleg" href="/debitoren/rechnung/{{ e.rechnung }}">{{ e.rechnung }}</a>{% endif %}</td>
+        <td class="right">{% if e.status != 'abgerechnet' %}<form hx-post="/p/leistungen/leistungen/loeschen" hx-target="find .errors" hx-confirm="{{ e.id }} löschen?" style="display:inline"><input type="hidden" name="id" value="{{ e.id }}"><button class="btn small ghost" type="submit" title="Löschen">✕</button>{{ errors() }}</form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="9" class="empty">Keine Einträge in diesem Monat.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+{% elif tab == "abrechnen" %}
+<div class="panel">
+  <header><h2>Nicht verrechnet</h2><span class="hint">abrechenbare Stunden und Produkte, ohne Pauschalprojekte</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Kunde</th><th>Projekt</th><th>Zeitraum</th><th class="right">Stunden</th><th class="right">Produkte CHF</th><th class="right">Total CHF</th><th></th></tr></thead>
+    <tbody>{% for s in uebersicht %}
+      <tr class="row"><td>{{ s.kunde_name }}</td><td>{{ s.projekt }} {{ s.projekt_name }}</td><td class="num">{{ s.von|datum }} – {{ s.bis|datum }}</td>
+        <td class="right num">{{ s.stunden|qty }}</td><td class="right num">{{ s.produkte|chf(true) }}</td><td class="right num">{{ s.betrag|chf }}</td>
+        <td class="right"><a class="btn small" href="?tab=abrechnen&kunde={{ s.kunde }}&projekt={{ s.projekt }}">Abrechnen</a></td></tr>
+    {% else %}<tr><td colspan="7" class="empty">Alles verrechnet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% if kunde %}
+<div class="panel">
+  <header><h2>Rechnung an {{ kunden.get(kunde, kunde) }}</h2>
+    <form class="actions" method="get"><input type="hidden" name="tab" value="abrechnen"><input type="hidden" name="kunde" value="{{ kunde }}">
+      {{ projekt_select("projekt", projekt) }}
+      <input class="input" type="date" name="von" value="{{ von }}" aria-label="von"><input class="input" type="date" name="bis" value="{{ bis }}" aria-label="bis">
+      <label class="check"><input type="checkbox" name="detail" value="1" {{ 'checked' if detail }}> eine Position pro Eintrag</label>
+      <button class="btn small" type="submit">Filtern</button></form></header>
+  <form class="body" hx-post="/p/leistungen/leistungen/rechnung" hx-target="find .errors" hx-confirm="Rechnung ausstellen und als Debitor verbuchen?">
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th></th><th>Datum</th><th>Wer</th><th>Leistung</th><th class="right">Menge</th><th class="right">Preis</th><th class="right">Betrag</th></tr></thead>
+      <tbody>{% for e in auswahl %}
+        <tr class="row"><td><input type="checkbox" name="ids" value="{{ e.id }}" checked aria-label="{{ e.id }}"></td><td class="num">{{ e.datum|datum }}</td>
+          <td>{{ personen[e.wer].name if e.wer in personen else e.wer }}</td><td>{{ e.text }}{% if e.projekt %} <span class="small muted">{{ e.projekt }}</span>{% endif %}</td>
+          <td class="right num">{{ e.menge|qty }}{{ ' h' if e.art == 'Zeit' }}</td><td class="right num">{{ e.preis|chf }}</td><td class="right num">{{ e.betrag|chf }}</td></tr>
+      {% else %}<tr><td colspan="7" class="empty">Keine offenen Leistungen für diesen Filter.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% if vorschau %}
+    <h3 class="small muted" style="margin-top:12px">Vorschau (alle angezeigten Einträge)</h3>
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Position</th><th class="right">Menge</th><th class="right">Preis</th><th>Konto</th><th>MWST</th><th class="right">Betrag</th></tr></thead>
+      <tbody>{% for p in vorschau.positionen %}<tr class="row"><td>{{ p.text }}</td><td class="right num">{{ p.menge|qty }} {{ p.einheit }}</td><td class="right num">{{ p.preis|chf }}</td><td class="acc">{{ p.konto }}</td><td>{{ p.mwst or '' }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
+      <tfoot>{% for b in vorschau.mwst %}<tr><td colspan="5">MWST {{ b.code }} auf {{ b.netto|chf }}</td><td class="right num">{{ b.steuer|chf }}</td></tr>{% endfor %}
+        <tr><td colspan="5">Total</td><td class="right num total">{{ vorschau.total|chf }}</td></tr></tfoot>
+    </table></div>{% endif %}
+    {% if vorschau_fehler %}<p class="small" style="color:var(--red)">{{ vorschau_fehler }}</p>{% endif %}
+    {% if auswahl %}
+    <input type="hidden" name="detail" value="{{ '1' if detail else '0' }}">
+    <div class="form four" style="margin-top:12px">
+      <div class="field"><label>Rechnungsdatum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></div>
+      <div class="field" style="grid-column: span 2"><label>Einleitung (leer = «Unsere Leistungen vom …»)</label><input class="input" name="text"></div>
+      <div class="field"><label>Leistungsrapport</label><label class="check"><input type="checkbox" name="rapport" value="1" checked> als PDF beilegen</label></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">QR-Rechnung, verbucht 1100 an Ertrag; die Einträge tragen danach die Rechnungsnummer. Storno macht sie wieder offen.</span><button class="btn primary" type="submit">Rechnung ausstellen</button></div>
+    {% endif %}
+  </form>
+</div>
+{% endif %}
+
+{% elif tab == "projekte" %}
+<div class="panel">
+  <header><h2>Projekte</h2>
+    <form class="actions" method="get"><input type="hidden" name="tab" value="projekte"><select class="input" name="status" onchange="this.form.submit()" aria-label="Status">{% for s in ("offen", "abgeschlossen", "alle") %}<option {{ 'selected' if s == status }}>{{ s }}</option>{% endfor %}</select></form></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Projekt</th><th>Kunde</th><th>Art</th><th class="right">Stunden / Budget</th><th class="right">Wert</th><th class="right">Kosten</th><th class="right">Verrechnet</th><th class="right">Offen</th><th class="right">DB</th><th></th></tr></thead>
+    <tbody>{% for p in liste %}
+      <tr class="row"><td><span class="beleg">{{ p.nummer }}</span> {{ p.name }}{% if p.offerte %}<br><a class="small link" href="/p/leistungen/offerten?nr={{ p.offerte }}">{{ p.offerte }}</a>{% endif %}</td>
+        <td>{{ kunden.get(p.kunde, p.kunde) }}</td><td>{{ p.abrechnung }}</td>
+        <td class="right num">{{ p.stunden|qty }}{% if p.budget_stunden is not none %} / {{ p.budget_stunden|qty }}{% if p.auslastung is not none %} <span class="pill {{ 'red' if p.auslastung > 100 else ('warn' if p.auslastung > 80 else 'ok') }}">{{ p.auslastung }} %</span>{% endif %}{% endif %}</td>
+        <td class="right num">{{ p.wert|chf(true) }}{% if p.budget_chf is not none %}<br><span class="small muted">Budget {{ p.budget_chf|chf }}</span>{% endif %}</td>
+        <td class="right num">{{ p.kosten|chf(true) }}</td><td class="right num">{{ p.abgerechnet|chf(true) }}</td><td class="right num">{{ p.offen|chf(true) }}</td><td class="right num">{{ p.deckungsbeitrag|chf }}</td>
+        <td class="right"><form hx-post="/p/leistungen/leistungen/projekt_status" hx-target="find .errors" style="display:inline"><input type="hidden" name="nummer" value="{{ p.nummer }}"><input type="hidden" name="status" value="{{ 'abgeschlossen' if p.status == 'offen' else 'offen' }}"><button class="btn small ghost" type="submit">{{ 'Abschliessen' if p.status == 'offen' else 'Wieder öffnen' }}</button>{{ errors() }}</form></td></tr>
+    {% else %}<tr><td colspan="10" class="empty">Keine Projekte.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="body small muted">Wert = erfasste Leistungen zu Verrechnungssätzen · Kosten = Stunden × Kostensatz · DB = Deckungsbeitrag (pauschal: verrechnet − Kosten).</div>
+</div>
+<div class="panel">
+  <header><h2>Projekt anlegen</h2><span class="hint">aus einer angenommenen Offerte entsteht das Projekt automatisch</span></header>
+  <form class="body" hx-post="/p/leistungen/leistungen/projekt_neu" hx-target="find .errors">
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label>Name</label><input class="input" name="name" required></div>
+      <div class="field"><label>Kunde</label>{{ kunde_select(required=true) }}</div>
+      <div class="field"><label>Abrechnung</label><select class="input" name="abrechnung" style="width:100%"><option value="aufwand">nach Aufwand</option><option value="pauschal">pauschal</option></select></div>
+      <div class="field"><label>Budget Stunden</label><input class="input num" name="budget_stunden"></div>
+      <div class="field"><label>Budget CHF</label><input class="input num" name="budget_chf"></div>
+      <div class="field"><label>Stundensatz (leer = Kunde/Person)</label><input class="input num" name="satz"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span></span><button class="btn primary" type="submit">Anlegen</button></div>
+  </form>
+</div>
+
+{% elif tab == "kontrolle" %}
+<div class="panel">
+  <header><h2>Stundenkontrolle {{ monat }}</h2>
+    <form class="actions" method="get"><input type="hidden" name="tab" value="kontrolle"><input class="input" type="month" name="monat" value="{{ monat }}" onchange="this.form.submit()" aria-label="Monat"></form></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Person</th><th class="right">Soll</th><th class="right">Ist</th><th class="right">davon abrechenbar</th><th>nicht abrechenbar</th><th class="right">Saldo Monat</th><th class="right">Saldo Jahr</th><th></th></tr></thead>
+    <tbody>{% for r in zeilen %}
+      <tr class="row"><td><a class="link" href="?tab=kontrolle&monat={{ monat }}&wer={{ r.nummer }}">{{ r.name }}</a>{% if r.stundenlohn %} <span class="pill muted">Stundenlohn</span>{% endif %}</td>
+        <td class="right num">{{ r.soll|qty if r.soll is not none else '–' }}</td><td class="right num">{{ r.ist|qty }}</td>
+        <td class="right num">{{ r.abrechenbar|qty }}{% if r.quote is not none %} <span class="small muted">{{ r.quote }} %</span>{% endif %}</td>
+        <td class="small">{% for k, v in r.kategorien.items() %}{{ k }} {{ v|qty }}{{ ', ' if not loop.last }}{% endfor %}</td>
+        <td class="right num">{% if r.saldo is not none %}<span style="color:{{ 'var(--red)' if r.saldo < 0 else 'inherit' }}">{{ r.saldo|qty }}</span>{% else %}–{% endif %}</td>
+        <td class="right num">{{ r.saldo_jahr|qty if r.saldo_jahr is not none else '–' }}</td>
+        <td class="right">{% if r.stundenlohn and r.lohn and r.ist %}<form hx-post="/p/leistungen/leistungen/lohn" hx-target="find .errors" hx-confirm="{{ r.ist|qty }} h in den Lohnlauf {{ monat }} übernehmen?" style="display:inline"><input type="hidden" name="monat" value="{{ monat }}"><input type="hidden" name="wer" value="{{ r.nummer }}"><button class="btn small" type="submit">In Lohnlauf</button>{{ errors() }}</form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="8" class="empty">Keine Personen.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="body small muted">Soll = Wochenstunden × Pensum ÷ 5 je Arbeitstag (Mo–Fr ohne Feiertage, ab Eintritt). Ist = alle erfassten Stunden inkl. Ferien, Krankheit, intern.</div>
+</div>
+{% if jahr %}
+<div class="panel">
+  <header><h2>{{ personen[wer].name }} · Jahr {{ monat[:4] }}</h2></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Monat</th><th class="right">Soll</th><th class="right">Ist</th><th class="right">abrechenbar</th><th class="right">Saldo</th><th class="right">kumuliert</th></tr></thead>
+    <tbody>{% for r in jahr if r.nummer %}<tr class="row"><td>{{ MONTHS[r.monat] }}</td><td class="right num">{{ r.soll|qty if r.soll is not none else '–' }}</td><td class="right num">{{ r.ist|qty }}</td><td class="right num">{{ r.abrechenbar|qty }}</td><td class="right num">{{ r.saldo|qty if r.saldo is not none else '–' }}</td><td class="right num">{{ r.saldo_jahr|qty if r.saldo_jahr is not none else '–' }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% elif tab == "stammdaten" %}
+<div class="panel">
+  <header><h2>Personen und Sätze</h2><span class="hint">Verrechnungssatz = was der Kunde pro Stunde zahlt · Kostensatz = interne Kosten (Deckungsbeitrag)</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Person</th><th class="right">Soll/Woche</th><th>Verrechnungssatz</th><th>Kostensatz</th><th></th></tr></thead>
+    <tbody>{% for nr, p in personen.items() %}
+      <tr class="row"><td><span class="acc">{{ nr }}</span> {{ p.name }}{% if not p.lohn %} <span class="pill muted">ohne Lohn</span>{% endif %}{% if p.stundenlohn %} <span class="pill muted">Stundenlohn</span>{% endif %}</td>
+        <td class="right num">{{ p.woche|qty if p.woche else '–' }}</td>
+        <td colspan="3"><form class="actions" hx-post="/p/leistungen/leistungen/person" hx-target="find .errors"><input type="hidden" name="nummer" value="{{ nr }}">
+          <input class="input num" name="satz" value="{{ p.satz if p.satz is not none else '' }}" placeholder="CHF/h" aria-label="Verrechnungssatz" style="width:110px">
+          <input class="input num" name="kostensatz" value="{{ p.kostensatz if p.kostensatz is not none else '' }}" placeholder="CHF/h" aria-label="Kostensatz" style="width:110px">
+          <button class="btn small" type="submit">Speichern</button>{{ errors() }}</form></td></tr>
+    {% else %}<tr><td colspan="5" class="empty">Noch keine Personen — Mitarbeitende unter Lohn erfassen oder unten eine Person ohne Lohn anlegen.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <form class="body" hx-post="/p/leistungen/leistungen/person" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label>Person ohne Lohn (z.B. Inhaber/in)</label><input class="input" name="name" required></div>
+      <div class="field"><label>Verrechnungssatz</label><input class="input num" name="satz"></div>
+      <div class="field"><label>Kostensatz</label><input class="input num" name="kostensatz"></div>
+      <div class="field"><label>Soll Stunden/Woche (leer = keine Kontrolle)</label><input class="input num" name="soll_woche"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Mitarbeitende mit Lohn erscheinen automatisch (Lohn → Mitarbeitende).</span><button class="btn" type="submit">Person anlegen</button></div>
+  </form>
+</div>
+<div class="panel">
+  <header><h2>Produkte</h2><span class="hint">ein geänderter Preis gilt für neue Einträge</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Nr.</th><th>Produkt</th><th class="right">Preis</th><th>Konto</th><th>MWST</th><th>Kundenpreise</th><th></th></tr></thead>
+    <tbody>{% for nr, p in produkte.items() %}
+      <tr class="row"><td class="acc">{{ nr }}</td><td>{{ p.text }}{% if p.aktiv is false %} <span class="pill muted">inaktiv</span>{% endif %}</td><td class="right num">{{ p.preis|chf }} / {{ p.einheit }}</td><td class="acc">{{ p.konto }}</td><td>{{ p.mwst or '' }}</td>
+        <td class="small">{% for k, v in (p.kundenpreise or {}).items() %}{{ kunden.get(k, k) }} {{ v|chf }}{{ ', ' if not loop.last }}{% endfor %}</td>
+        <td class="right"><details class="drawer"><summary class="btn small ghost">⋯</summary>
+          <form class="panel" hx-post="/p/leistungen/leistungen/produkt" hx-target="find .errors" style="position:absolute;right:40px;z-index:3;padding:12px;width:300px;text-align:left;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px">
+            <input type="hidden" name="nummer" value="{{ nr }}">
+            <div class="field"><label>Preis</label><input class="input num" name="preis" value="{{ p.preis }}"></div>
+            <div class="field"><label>Kundenpreis für</label>{{ kunde_select("kunde", leer="— keinen —") }}</div>
+            <div class="field"><label>Kundenpreis (leer = entfernen)</label><input class="input num" name="kundenpreis"></div>
+            <div class="field"><label>Aktiv</label><select class="input" name="aktiv"><option value="">unverändert</option><option value="ja">ja</option><option value="nein">nein</option></select></div>
+            {{ errors() }}<button class="btn small primary" type="submit">Speichern</button></form></details></td></tr>
+    {% else %}<tr><td colspan="7" class="empty">Noch keine Produkte.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <form class="body" hx-post="/p/leistungen/leistungen/produkt_neu" hx-target="find .errors">
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label>Produkt</label><input class="input" name="text" required placeholder="z.B. Dispersionsfarbe weiss"></div>
+      <div class="field"><label>Preis</label><input class="input num" name="preis" required></div>
+      <div class="field"><label>Einheit</label><input class="input" name="einheit" value="Stk"></div>
+      <div class="field"><label>Ertragskonto (leer = {{ cfg.konto_produkte }})</label><input class="input" name="konto"></div>
+      <div class="field"><label>MWST-Code (leer = Standard)</label><input class="input" name="mwst" placeholder="U81"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span></span><button class="btn" type="submit">Produkt erfassen</button></div>
+  </form>
+</div>
+<div class="panel" id="kunde">
+  <header><h2>Kunde anlegen</h2><span class="hint">derselbe Kundenstamm wie unter Debitoren</span></header>
+  <form class="body" hx-post="/p/leistungen/leistungen/kunde" hx-target="find .errors">
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label>Firma</label><input class="input" name="firma" placeholder="leer bei Privatpersonen"></div>
+      <div class="field" style="grid-column: span 2"><label>Name</label><input class="input" name="name" required></div>
+      <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse"></div>
+      <div class="field"><label>Nr.</label><input class="input" name="nr"></div>
+      <div class="field"><label>PLZ</label><input class="input" name="plz"></div>
+      <div class="field"><label>Ort</label><input class="input" name="ort"></div>
+      <div class="field"><label>E-Mail</label><input class="input" type="email" name="email"></div>
+      <div class="field"><label>Stundensatz (leer = Satz der Person)</label><input class="input num" name="stundensatz"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Ohne Adresse trägt der QR-Einzahlungsschein keine Schuldneradresse.</span><button class="btn" type="submit">Kunde anlegen</button></div>
+  </form>
+</div>
+<div class="panel">
+  <header><h2>Stundenkontrolle</h2><span class="hint">Feiertage reduzieren die Sollzeit; ein Datum pro Zeile</span></header>
+  <form class="body" hx-post="/p/leistungen/leistungen/feiertage" hx-target="find .errors">
+    <div class="form four"><div class="field"><label>Kontrolle ab (leer = ab Eintritt bzw. 1. Januar)</label><input class="input" type="date" name="kontrolle_ab" value="{{ cfg.kontrolle_ab }}"></div></div>
+    <label class="small muted" for="feiertage">Feiertage</label>
+    <textarea id="feiertage" class="input" name="feiertage" style="min-height:90px;width:100%" placeholder="2026-12-25">{{ cfg.feiertage|join('\n') }}</textarea>
+    {{ errors() }}<div class="formfoot"><span></span><button class="btn" type="submit">Speichern</button></div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

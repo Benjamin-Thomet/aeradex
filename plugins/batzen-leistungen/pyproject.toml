@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "batzen-leistungen"
+version = "0.1.0"
+description = "Offerten, Zeiterfassung, Produkte, Projekte und Abrechnung an Kunden — Plugin für batzen"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+dependencies = ["batzen>=0.8"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.entry-points."batzen.plugins"]
+leistungen = "batzen_leistungen"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+batzen_leistungen = ["templates/*.html"]
