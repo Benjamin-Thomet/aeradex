@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "batzen"
+name = "allkvitt"
 version = "0.8.0"
 description = "Swiss bookkeeping your agent can run — agent-first open-source accounting and payroll for Switzerland."
 readme = "README.md"
@@ -34,13 +34,13 @@ excel = ["openpyxl>=3.1"]
 dev = ["pytest>=8", "lxml>=5"]
 
 [project.scripts]
-batzen = "batzen.cli:main"
+allkvitt = "allkvitt.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-batzen = ["data/**/*", "web/templates/*", "web/static/*", "web/static/fonts/*"]
+allkvitt = ["data/**/*", "web/templates/*", "web/static/*", "web/static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "plugins"]

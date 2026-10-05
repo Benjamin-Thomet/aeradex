@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, status_pill, accounts_datalist %}
+{% block title %}{{ meta.nummer }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><div class="crumbs"><a href="/debitoren">Debitoren</a> /</div><h1>{{ meta.nummer }} {{ status_pill(state.status) }}</h1>
+    <div class="sub">{{ meta.an.name }} · {{ meta.datum|datum }} · fällig {{ meta.faellig|datum }}{% if meta.referenz %} · Referenz {{ meta.referenz }}{% endif %}{% if meta.extern %} · <span class="pill info" title="ausserhalb von allkvitt erstellt und hier erfasst">extern{{ ': ' ~ meta.extern.rechnungsnr if meta.extern.rechnungsnr }}</span>{% endif %}</div></div>
+  <div class="actions">{% if pdf %}<a class="btn" href="/datei/{{ pdf|urlq }}" target="_blank">{{ 'Original öffnen' if meta.extern else 'PDF öffnen' }}</a>{% endif %}<a class="btn" href="/debitoren/neu?kunde={{ meta.kunde }}">Neue Rechnung an {{ meta.kunde }}</a></div>
+</div>
+<div class="review" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)">
+  <div class="panel">
+    <header><h2>Rechnung</h2><span class="hint">eingefroren seit Ausstellung · Fingerprint {{ meta.fingerprint }}</span></header>
+    {% if pdf %}<div class="stage"><iframe src="/datei/{{ pdf|urlq }}" title="Rechnung {{ meta.nummer }}"></iframe></div>{% endif %}
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Position</th><th class="right">Menge</th><th class="right">Preis</th><th>Konto</th><th class="right">Betrag</th></tr></thead>
+      <tbody>{% for p in meta.positionen %}<tr><td>{{ p.text }}</td><td class="right num">{{ p.menge }} {{ p.einheit }}</td><td class="right num">{{ p.preis|chf }}</td><td class="acc">{{ p.konto }}{% if p.mwst %} <span class="pill muted">{{ p.mwst }}</span>{% endif %}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
+      <tfoot>
+        {% if meta.mwst %}<tr><td colspan="4">Total exkl. MWST</td><td class="right num">{{ meta.netto|chf }}</td></tr>
+        {% for b in meta.mwst %}<tr><td colspan="4">{{ b.code }} · MWST {{ b.satz }} % auf {{ b.netto|chf }}</td><td class="right num">{{ b.steuer|chf }}</td></tr>{% endfor %}{% endif %}
+        <tr><td colspan="4">Total {{ meta.waehrung }}{{ ' inkl. MWST' if meta.mwst }}</td><td class="right num total">{{ meta.total|chf }}</td></tr></tfoot>
+    </table></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div class="panel">
+      <header><h2>Stand</h2></header>
+      <div class="tablewrap"><table class="ledger"><tbody>
+        <tr><td>Total</td><td class="right num">{{ state.total|chf }}</td></tr>
+        <tr><td>Bezahlt</td><td class="right num">{{ state.bezahlt|chf }}</td></tr>
+        <tr><td>Gutgeschrieben</td><td class="right num">{{ state.gutgeschrieben|chf }}</td></tr>
+        <tr class="total"><td>Offen{{ ' ' ~ state.waehrung if state.waehrung != 'CHF' }}</td><td class="right num">{{ state.offen|chf }}</td></tr>
+        {% if state.waehrung != 'CHF' %}<tr><td class="muted">Kurs {{ meta.kurs }} · Buchwert offen CHF</td><td class="right num">{{ state.offen_chf|chf }}</td></tr>{% endif %}
+      </tbody></table></div>
+      {% if paid %}<div class="body"><span class="lbl">Buchungen</span>{% for r in paid %}<span class="small"><span class="beleg">{{ r.beleg }}</span> {{ r.datum|datum }} · {{ r.text }} · {{ r.betrag|chf }}</span>{% endfor %}</div>{% endif %}
+      {% if reminders %}<div class="body"><span class="lbl">Mahnungen</span>{% for m in reminders %}<span class="small"><a class="link" href="/datei/{{ m.pdf|urlq }}" target="_blank">{{ m.bezeichnung }}</a> vom {{ m.datum|datum }} · Frist {{ m.frist|datum }} · offen {{ m.offen|chf }}</span>{% endfor %}</div>
+      {% elif state.status in ('offen', 'teilbezahlt') and state.faellig < today %}<div class="body"><a class="btn small" href="/debitoren/mahnungen">Überfällig — mahnen</a></div>{% endif %}
+    </div>
+    {% if state.status in ('offen', 'teilbezahlt') %}
+    {{ accounts_datalist([]) }}
+    <div class="panel">
+      <header><h2>Zahlungseingang</h2></header>
+      <form class="body" hx-post="/debitoren/rechnung/{{ meta.nummer }}/zahlung" hx-target="find .errors">
+        {% if state.waehrung == 'CHF' %}
+        <div class="form three">
+          <div class="field"><label for="p-b">Betrag</label><input class="input num" id="p-b" name="betrag" value="{{ state.offen }}"></div>
+          <div class="field"><label for="p-d">Valuta</label><input class="input" id="p-d" type="date" name="datum" value="{{ today }}"></div>
+          <div class="field"><label for="p-k">Konto</label><input class="input" id="p-k" name="konto" value="{{ bank }}"></div>
+        </div>
+        {{ errors() }}<div class="formfoot"><span class="small muted">Bucht {{ bank }} an {{ meta.debitorenkonto }}</span><button class="btn primary" type="submit">Zahlung buchen</button></div>
+        {% else %}
+        <div class="form">
+          <div class="field"><label for="p-d">Valuta</label><input class="input" id="p-d" type="date" name="datum" value="{{ today }}"></div>
+          <div class="field"><label for="p-k">Eingegangen auf Konto</label><input class="input" id="p-k" name="konto" value="{{ bank }}"></div>
+          <div class="field"><label for="p-fw">{{ state.waehrung }} beglichen</label><input class="input num" id="p-fw" name="fw" value="{{ state.offen }}"></div>
+          <div class="field"><label for="p-b">Gutgeschrieben (in Kontowährung, leer = BAZG-Kurs)</label><input class="input num" id="p-b" name="betrag" placeholder="z.B. CHF laut Kontoauszug"></div>
+        </div>
+        {{ errors() }}<div class="formfoot"><span class="small muted">Buchwert offen CHF {{ state.offen_chf|chf }}; die Differenz geht auf Kursgewinn/-verlust.</span><button class="btn primary" type="submit">Zahlung buchen</button></div>
+        {% endif %}
+      </form>
+      <details class="inline"><summary>Gutschrift / Skonto</summary>
+        <form class="body" hx-post="/debitoren/rechnung/{{ meta.nummer }}/gutschrift" hx-target="find .errors">
+          <div class="form three">
+            <div class="field"><label>Betrag</label><input class="input num" name="betrag" value="{{ state.offen }}"></div>
+            <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ today }}"></div>
+            <div class="field"><label>Grund</label><input class="input" name="grund" placeholder="z.B. Skonto 2 %"></div>
+          </div>
+          {{ errors() }}<div class="formfoot"><span class="small muted">Erlösminderung an {{ meta.debitorenkonto }}</span><button class="btn" type="submit">Gutschrift buchen</button></div>
+        </form>
+      </details>
+      {% if not paid %}
+      <details class="inline"><summary>Stornieren</summary>
+        <form class="body" hx-post="/debitoren/rechnung/{{ meta.nummer }}/storno" hx-target="find .errors" hx-confirm="Rechnung {{ meta.nummer }} stornieren? Die Buchung wird entfernt, die Rechnung bleibt als storniert erhalten.">
+          <div class="field"><label>Grund</label><input class="input" name="grund" required placeholder="z.B. falscher Kunde"></div>
+          {{ errors() }}<div class="formfoot"><span class="small muted">Nur möglich, solange nichts bezahlt ist und die Periode offen ist.</span><button class="btn danger" type="submit">Stornieren</button></div>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

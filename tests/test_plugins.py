@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 import plugin_sample
-from batzen import api, bank, cli, plugins, tools
-from batzen.book import Book, BookError
-from batzen.testing import assert_clean, make_book, plugin, problems
+from allkvitt import api, bank, cli, plugins, tools
+from allkvitt.book import Book, BookError
+from allkvitt.testing import assert_clean, make_book, plugin, problems
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ def test_enable_and_owned_rows_are_checked(tmp_path, sample):
 def test_check_rule_and_refused_disable(tmp_path, sample):
     book = make_book(tmp_path, plugins=["spenden"])
     api.write(book, "Spende", plugin_sample.record, "Gross AG", "20000.00", "2026-03-05")
-    assert any("Grossspende" in str(i) for i in __import__("batzen.check").check.run(Book(book.root)))
+    assert any("Grossspende" in str(i) for i in __import__("allkvitt.check").check.run(Book(book.root)))
     with pytest.raises(BookError, match="besitzt noch Journalzeilen"):
         api.plugin_disable(Book(book.root), "spenden")
 
@@ -63,7 +63,7 @@ def test_missing_plugin_makes_book_invalid(tmp_path, sample):
 
 def test_api_version_mismatch_is_refused(tmp_path):
     old = types.ModuleType("old_plugin")
-    old.BATZEN_PLUGIN_API = 99
+    old.ALLKVITT_PLUGIN_API = 99
     with plugin("alt", old):
         assert "Plugin-API 99" in plugins.installed()["alt"].fehler
         with pytest.raises(BookError, match="kann nicht laufen"):
@@ -97,7 +97,7 @@ def test_agent_tools_and_instructions(tmp_path, sample, monkeypatch):
     assert "Spenden" in tools.instructions_for(book.root)
     other = make_book(tmp_path / "zwei")
     assert "spende_erfassen" not in [fn.__name__ for fn in tools.shared_for(other.root)]
-    monkeypatch.setenv("BATZEN_BUCH", str(book.root))
+    monkeypatch.setenv("ALLKVITT_BUCH", str(book.root))
     result = plugin_sample.spende_erfassen("Anna", "50.00", "2026-04-01")
     assert result["ok"]
     assert_clean(Book(book.root))
@@ -120,7 +120,7 @@ def test_cli_plugins_and_plugin_command(tmp_path, sample, capsys):
 def test_settings_panel_switches_plugins(tmp_path, sample):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from batzen.web.app import create_app
+    from allkvitt.web.app import create_app
     book = make_book(tmp_path)          # no git: the pre-commit hook runs in a process without test plugins
     app = create_app(book.root, token="tok")
     with TestClient(app) as c:

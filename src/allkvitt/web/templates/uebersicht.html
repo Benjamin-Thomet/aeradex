@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Übersicht{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Übersicht</h1><div class="sub">Geschäftsjahr {{ d.year }} · Stand {{ today()|datum }}</div></div>
+  <div class="actions">
+    <a class="btn" href="/journal?neu=1">Neue Buchung <kbd>N</kbd></a>
+    {% if nav.pruefen %}<a class="btn primary" href="/pruefen">{{ nav.pruefen }} Punkt{{ 'e' if nav.pruefen != 1 }} prüfen</a>{% endif %}
+  </div>
+</div>
+
+<div class="figures">
+  <a class="figure" href="/konten/saldenliste?jahr={{ d.year }}">
+    <span class="label">Flüssige Mittel</span>
+    <span class="value">{{ d.liquid_total|chf }}</span>
+    {% if d.spark %}<svg viewBox="0 0 200 34" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="{{ d.spark }}" fill="none" stroke="var(--ink)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+    </svg>{% endif %}
+    <span class="meta">
+      {% for a, b in d.liquid if b %}{{ a.name }} {{ b|chf }}{{ " · " if not loop.last }}{% endfor %}
+      {% for a, b in d.liquid if b|neg %}<span class="pill warn">{{ a.name }} negativ</span>{% endfor %}
+    </span>
+  </a>
+  <a class="figure" href="/abschluss?jahr={{ d.year }}">
+    <span class="label">Ergebnis {{ d.year }} bis heute</span>
+    <span class="value">{{ d.result|chf }}</span>
+    <span class="meta">Ertrag {{ d.ertrag|chf }} · Aufwand {{ d.aufwand|chf }}</span>
+    {% if d.aufwand %}<span class="meta">Personal {{ d.personal_share }} % des Aufwands</span>{% endif %}
+  </a>
+  <a class="figure" href="/debitoren/offene-posten">
+    <span class="label">Offene Debitoren</span>
+    <span class="value">{{ d.ar.total_offen|chf }}</span>
+    <span class="meta">{{ d.ar.posten|length }} Rechnung{{ 'en' if d.ar.posten|length != 1 }}
+      {% if d.overdue %}<span class="pill red">{{ d.overdue|length }} überfällig</span>{% elif d.ar.posten %}<span class="pill ok">nicht fällig</span>{% endif %}</span>
+    {% for p in d.ar.posten[:1] %}<span class="meta">{{ p.nummer }} {{ p.name }}, fällig {{ p.faellig|datum("%d.%m.") }}</span>{% endfor %}
+  </a>
+  <a class="figure" href="/pruefen">
+    <span class="label">Zu prüfen</span>
+    <span class="value">{{ nav.pruefen }}</span>
+    <span class="meta">{{ nav.inbox }} Inbox · {{ nav.vorschlaege }} Vorschläge · {{ nav.entwuerfe }} Lohnentwürfe</span>
+    {% if nav.fehler %}<span class="meta"><span class="pill red">{{ nav.fehler }} Fehler im Buch</span></span>{% endif %}
+  </a>
+</div>
+
+<div class="grid2">
+  <div class="panel">
+    <header><h2>Ertrag und Aufwand je Monat</h2><span class="hint">CHF, {{ d.year }}</span></header>
+    {% set top = d.chart_top|float %}{% set n = d.months|length %}{% set w = 450 / (n if n else 1) %}
+    <svg class="chart" viewBox="0 0 520 200" role="img" aria-label="Ertrag und Aufwand je Monat {{ d.year }}">
+      {% set ticks = (top / d.chart_step|float)|int %}
+      {% for i in range(ticks + 1) %}{% set y = 165 - 140 * i / ticks %}
+        <line x1="60" x2="510" y1="{{ y }}" y2="{{ y }}" stroke="var(--rule)"/>
+        <text x="52" y="{{ y + 3 }}" text-anchor="end">{{ (d.chart_step * i)|chf|replace(".00", "") }}</text>
+      {% endfor %}
+      {% for mo in d.months %}{% set x = 60 + w * loop.index0 + w / 2 %}
+        {% set he = 140 * mo.ertrag|float / top %}{% set ha = 140 * mo.aufwand|float / top %}
+        <rect x="{{ x - 17 }}" y="{{ 165 - (he if he > 0 else 0) }}" width="15" height="{{ he if he > 0 else 0 }}" fill="var(--ok)"><title>Ertrag {{ MONTHS[mo.m] }}: {{ mo.ertrag|chf }}</title></rect>
+        <rect x="{{ x + 2 }}" y="{{ 165 - (ha if ha > 0 else 0) }}" width="15" height="{{ ha if ha > 0 else 0 }}" fill="var(--rule-strong)"><title>Aufwand {{ MONTHS[mo.m] }}: {{ mo.aufwand|chf }}</title></rect>
+        <text x="{{ x }}" y="186" text-anchor="middle">{{ MONTHS[mo.m][:3] }}</text>
+      {% endfor %}
+    </svg>
+    <div class="legend"><span><i style="background:var(--ok)"></i>Ertrag</span><span><i style="background:var(--rule-strong)"></i>Aufwand</span>{% if nav.entwuerfe %}<span>Lohnentwürfe sind noch nicht enthalten</span>{% endif %}</div>
+  </div>
+
+  <div class="panel">
+    <header><h2>Was ansteht</h2><a class="hint link" href="/pruefen">Alles prüfen →</a></header>
+    {% if todos %}
+    <ul class="todo">
+      {% for t in todos[:7] %}
+      <li><a href="{{ t.href }}"><span class="stripe {{ t.level }}"></span><div><div class="t">{{ t.title }}</div><div class="d">{{ t.detail }}</div></div><span class="pill {{ {'red': 'red', 'warn': 'warn', 'info': 'info'}.get(t.level, 'muted') }}">{{ t.tag }}</span></a></li>
+      {% endfor %}
+    </ul>
+    {% else %}<div class="empty">Nichts offen. Neue Quittungen legst du in <strong>Prüfen</strong> ab oder in den Ordner <code>inbox/</code>.</div>{% endif %}
+  </div>
+</div>
+
+<div class="panel">
+  <header><h2>Letzte Änderungen</h2><a class="hint link" href="/verlauf">Ganzer Verlauf →</a></header>
+  {% if d.history %}
+  <ul class="activity">
+    {% for c in d.history %}
+    <li><a class="h" href="/verlauf/{{ c.commit }}">{{ c.commit }}</a><div>{{ c.nachricht|replace("allkvitt: ", "") }} <span class="who">· {{ c.autor }}, {{ c.datum[:16] }}</span></div></li>
+    {% endfor %}
+  </ul>
+  {% else %}<div class="empty">Dieses Buch ist kein git-Repository; Änderungen werden nicht protokolliert.</div>{% endif %}
+</div>
+{% endblock %}

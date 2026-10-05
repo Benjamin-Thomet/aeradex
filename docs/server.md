@@ -1,15 +1,15 @@
-# batzen auf einem Server betreiben
+# allkvitt auf einem Server betreiben
 
-`batzen ui` ist für den eigenen Rechner gedacht (ein Benutzer, Zugangsschlüssel im Link).
-`batzen serve` ist der Mehrbenutzer-Betrieb mit Login: für einen eigenen Server, erreichbar über HTTPS.
+`allkvitt ui` ist für den eigenen Rechner gedacht (ein Benutzer, Zugangsschlüssel im Link).
+`allkvitt serve` ist der Mehrbenutzer-Betrieb mit Login: für einen eigenen Server, erreichbar über HTTPS.
 
 ## Grundsätze
 
 - **Ein Buch pro Instanz.** Für mehrere Mandanten mehrere Instanzen auf verschiedenen Ports bzw. Subdomains
   (z.B. `muster.buchhaltung.example.ch`), je mit eigenem Buch und eigener Benutzerliste.
-- **HTTPS macht der Reverse Proxy** (Caddy oder nginx); batzen selbst hört nur auf `127.0.0.1`.
+- **HTTPS macht der Reverse Proxy** (Caddy oder nginx); allkvitt selbst hört nur auf `127.0.0.1`.
 - **Benutzer liegen nicht im Buch.** `users.yaml` und `secret` stehen im Konfigurationsverzeichnis
-  (Standard `~/.config/batzen`, sonst `--config DIR` bzw. `$BATZEN_CONFIG`), Dateirechte 600.
+  (Standard `~/.config/allkvitt`, sonst `--config DIR` bzw. `$ALLKVITT_CONFIG`), Dateirechte 600.
 - **Jede Änderung trägt den Namen der angemeldeten Person** im git-Verlauf; Änderungen des Agenten sind als Agent markiert.
 
 ## Rollen
@@ -23,35 +23,35 @@
 ## Einrichten
 
 ```bash
-# als eigener Systembenutzer, z.B. "batzen"
-python3 -m venv ~/venv && ~/venv/bin/pip install "batzen[ui,scan] @ git+https://github.com/…/batzen"
-git clone <repo-des-buchs> ~/buecher/muster       # oder: batzen init ~/buecher/muster --firma …
-~/venv/bin/batzen user add anna --rolle admin --anzeige "Anna Muster"
-~/venv/bin/batzen user add treuhand --rolle lesen --anzeige "Treuhand Muster"
-~/venv/bin/batzen --buch ~/buecher/muster serve --port 8080 --https
+# als eigener Systembenutzer, z.B. "allkvitt"
+python3 -m venv ~/venv && ~/venv/bin/pip install "allkvitt[ui,scan] @ git+https://github.com/…/allkvitt"
+git clone <repo-des-buchs> ~/buecher/muster       # oder: allkvitt init ~/buecher/muster --firma …
+~/venv/bin/allkvitt user add anna --rolle admin --anzeige "Anna Muster"
+~/venv/bin/allkvitt user add treuhand --rolle lesen --anzeige "Treuhand Muster"
+~/venv/bin/allkvitt --buch ~/buecher/muster serve --port 8080 --https
 ```
 
-Weitere Befehle: `batzen user list`, `batzen user passwort NAME` (beendet bestehende Anmeldungen),
-`batzen user remove NAME`. Nach 5 Fehlversuchen ist ein Benutzer bzw. eine Adresse 5 Minuten gesperrt.
+Weitere Befehle: `allkvitt user list`, `allkvitt user passwort NAME` (beendet bestehende Anmeldungen),
+`allkvitt user remove NAME`. Nach 5 Fehlversuchen ist ein Benutzer bzw. eine Adresse 5 Minuten gesperrt.
 
 ### systemd
 
-`/etc/systemd/system/batzen-muster.service`:
+`/etc/systemd/system/allkvitt-muster.service`:
 
 ```ini
 [Unit]
-Description=batzen Buchhaltung Muster GmbH
+Description=allkvitt Buchhaltung Muster GmbH
 After=network.target
 
 [Service]
-User=batzen
-WorkingDirectory=/home/batzen/buecher/muster
-Environment=BATZEN_CONFIG=/home/batzen/.config/batzen-muster
-ExecStart=/home/batzen/venv/bin/batzen --buch /home/batzen/buecher/muster serve --port 8080 --https
+User=allkvitt
+WorkingDirectory=/home/allkvitt/buecher/muster
+Environment=ALLKVITT_CONFIG=/home/allkvitt/.config/allkvitt-muster
+ExecStart=/home/allkvitt/venv/bin/allkvitt --buch /home/allkvitt/buecher/muster serve --port 8080 --https
 Restart=on-failure
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/home/batzen/buecher/muster /home/batzen/.config/batzen-muster
+ReadWritePaths=/home/allkvitt/buecher/muster /home/allkvitt/.config/allkvitt-muster
 
 [Install]
 WantedBy=multi-user.target

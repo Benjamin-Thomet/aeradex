@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Commit {{ c.commit }}{% endblock %}
+{% block main %}
+<div class="topbar"><div><div class="crumbs"><a href="/verlauf">Verlauf</a> /</div><h1>{{ c.nachricht|replace("allkvitt: ", "") }}</h1><div class="sub">{{ c.commit }} · {{ c.autor }} · {{ c.datum }}</div></div></div>
+{% for f in c.dateien %}
+<div class="panel">
+  <header><h2 class="num">{{ f.pfad }}</h2>{% if f.pfad.startswith(('journal/', 'rechnungen/', 'lohn/', 'kunden/', 'personal/', 'belege/')) and not f.pfad.endswith('.pdf') %}<a class="hint link" href="/datei/{{ f.pfad|urlq }}" target="_blank">Datei ansehen</a>{% endif %}</header>
+  <div class="diff">{% for z in f.zeilen[:400] %}<div class="{{ z.art }}">{{ {'add': '+ ', 'del': '− ', 'ctx': '  ', 'hunk': ''}[z.art] }}{{ z.text }}</div>{% endfor %}{% if f.zeilen|length > 400 %}<div class="hunk">… {{ f.zeilen|length - 400 }} weitere Zeilen</div>{% endif %}{% if not f.zeilen %}<div class="hunk">Binärdatei oder ohne Textänderung</div>{% endif %}</div>
+</div>
+{% endfor %}
+{% endblock %}

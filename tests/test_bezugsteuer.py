@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from batzen import api, mwst
-from batzen.book import Book
-from batzen.testing import assert_clean, make_book
+from allkvitt import api, mwst
+from allkvitt.book import Book
+from allkvitt.testing import assert_clean, make_book
 
 DE_IBAN = "DE89370400440532013000"
 
@@ -27,7 +27,7 @@ def saldo(book, konto):
 
 
 def validate(xml: bytes):
-    xsd = os.environ.get("BATZEN_ECH0217_XSD")
+    xsd = os.environ.get("ALLKVITT_ECH0217_XSD")
     if xsd and Path(xsd).exists():
         from lxml import etree
         etree.XMLSchema(etree.parse(xsd)).assertValid(etree.fromstring(xml))
@@ -79,7 +79,7 @@ def test_saldo_method_owes_without_deduction(tmp_path):
 
 
 def test_foreign_currency_bill_with_bezugsteuer(tmp_path, monkeypatch):
-    from batzen import fx
+    from allkvitt import fx
     monkeypatch.setattr(fx, "_get", lambda url: b'<wechselkurse><datum>x</datum><devise code="eur"><waehrung>1 EUR</waehrung><kurs>0.95</kurs></devise></wechselkurse>')
     book = book_with(tmp_path, methode="effektiv")
     api.bill_add(book, "L0001", "1000.00", datum="2026-02-10", waehrung="EUR",

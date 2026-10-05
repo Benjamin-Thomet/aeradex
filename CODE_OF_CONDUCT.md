@@ -1,6 +1,6 @@
 # Verhaltenskodex
 
-batzen übernimmt den [Contributor Covenant, Version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)
+allkvitt übernimmt den [Contributor Covenant, Version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)
 ([deutsch](https://www.contributor-covenant.org/de/version/2/1/code_of_conduct/)).
 
 Kurz: Wir begegnen allen respektvoll und freundlich, unabhängig von Herkunft, Geschlecht, Identität, Alter,

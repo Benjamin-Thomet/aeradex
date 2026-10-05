@@ -1,4 +1,4 @@
-"""The .batzen file: a book goes out and comes back identical — files, history,
+"""The .allkvitt file: a book goes out and comes back identical — files, history,
 balances — and a tampered, foreign or hostile file is refused."""
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from batzen import api, austausch, check, gitlog
-from batzen.book import Book, BookError
-from batzen.ledger import trial_balance
+from allkvitt import api, austausch, check, gitlog
+from allkvitt.book import Book, BookError
+from allkvitt.ledger import trial_balance
 
 
 @pytest.fixture
@@ -37,10 +37,10 @@ def files_of(root: Path) -> dict[str, bytes]:
 
 
 def test_roundtrip_keeps_files_history_and_balances(book, tmp_path):
-    (book.root / "batzen.yaml").write_text((book.root / "batzen.yaml").read_text() + "\n")   # uncommitted change
+    (book.root / "allkvitt.yaml").write_text((book.root / "allkvitt.yaml").read_text() + "\n")   # uncommitted change
     res = austausch.export_book(book, tmp_path / "out" / "Test GmbH")
     path = Path(res["datei"])
-    assert path.name == "Test GmbH.batzen" and res["historie"] and res["uncommittete_aenderungen"]
+    assert path.name == "Test GmbH.allkvitt" and res["historie"] and res["uncommittete_aenderungen"]
     z = zipfile.ZipFile(path)
     assert z.namelist()[0] == "mimetype" and z.getinfo("mimetype").compress_type == zipfile.ZIP_STORED
     assert z.read("mimetype") == austausch.MIMETYPE.encode()
@@ -50,27 +50,27 @@ def test_roundtrip_keeps_files_history_and_balances(book, tmp_path):
     assert out["ok"] and out["historie"] and out["fehlende_plugins"] == []
     assert files_of(target) == files_of(book.root)
     log = [e["nachricht"] for e in gitlog.log(target, 20)]
-    assert log[0].startswith("batzen: Import aus") and any("Papeterie" in m for m in log)
+    assert log[0].startswith("allkvitt: Import aus") and any("Papeterie" in m for m in log)
     assert gitlog._git(target, "remote").stdout.strip() == ""
     assert (target / ".git" / "hooks" / "pre-commit").exists()
     copy = Book(target)
     assert trial_balance(copy, 2026) == trial_balance(Book(book.root), 2026)
     assert not [i for i in check.run(copy) if i.level == "fehler"]
-    assert (target / ".batzen" / "belegnummern.yaml").exists()
+    assert (target / ".allkvitt" / "belegnummern.yaml").exists()
 
 
 def test_without_history_and_inbox(book, tmp_path):
     (book.root / "inbox" / "offen.pdf").write_bytes(b"%PDF-1.4 offen")
-    path = Path(austausch.export_book(book, tmp_path / "x.batzen", with_inbox=False, with_history=False)["datei"])
+    path = Path(austausch.export_book(book, tmp_path / "x.allkvitt", with_inbox=False, with_history=False)["datei"])
     names = zipfile.ZipFile(path).namelist()
     assert "historie.bundle" not in names and "buch/inbox/offen.pdf" not in names
     out = austausch.import_book(path, tmp_path / "neu")
     assert out["ok"] and not out["historie"]
-    assert [e["nachricht"] for e in gitlog.log(tmp_path / "neu", 5)] == ["batzen: Buch importiert aus x.batzen"]
+    assert [e["nachricht"] for e in gitlog.log(tmp_path / "neu", 5)] == ["allkvitt: Buch importiert aus x.allkvitt"]
 
 
 def test_password(book, tmp_path):
-    path = Path(austausch.export_book(book, tmp_path / "geheim.batzen", password="s3cret")["datei"])
+    path = Path(austausch.export_book(book, tmp_path / "geheim.allkvitt", password="s3cret")["datei"])
     z = zipfile.ZipFile(path)
     assert sorted(z.namelist()) == ["manifest.json", "mimetype", "payload.enc"]
     header = json.loads(z.read("manifest.json"))
@@ -89,7 +89,7 @@ def _rewrite(path: Path, change) -> Path:
     src = zipfile.ZipFile(path)
     entries = [(n, src.read(n)) for n in src.namelist()]
     entries = [(n, d) for n, d in ((n, change(n, d)) for n, d in entries) if d is not None]
-    out = path.with_name("verändert.batzen")
+    out = path.with_name("verändert.allkvitt")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         for n, d in entries:
@@ -99,7 +99,7 @@ def _rewrite(path: Path, change) -> Path:
 
 
 def test_tampered_and_hostile_files_are_refused(book, tmp_path):
-    path = Path(austausch.export_book(book, tmp_path / "x.batzen")["datei"])
+    path = Path(austausch.export_book(book, tmp_path / "x.allkvitt")["datei"])
     tampered = _rewrite(path, lambda n, d: d.replace(b"1800.00", b"18.00") if n.startswith("buch/journal/") else d)
     with pytest.raises(BookError, match="Prüfsumme"):
         austausch.import_book(tampered, tmp_path / "t1")
@@ -122,7 +122,7 @@ def test_tampered_and_hostile_files_are_refused(book, tmp_path):
     with pytest.raises(BookError, match="Formatversion 99"):
         austausch.import_book(newer, tmp_path / "t3")
 
-    plain_zip = tmp_path / "kein.batzen"
+    plain_zip = tmp_path / "kein.allkvitt"
     with zipfile.ZipFile(plain_zip, "w") as z:
         z.writestr("hallo.txt", "x")
     with pytest.raises(BookError, match="mimetype"):
@@ -138,17 +138,17 @@ def test_export_refuses_broken_book(book, tmp_path):
     month = book.root / "journal" / "2026" / "2026-02.md"
     month.write_text(month.read_text().replace("| 6000 ", "| 9999 "))
     with pytest.raises(BookError, match="Fehler"):
-        austausch.export_book(Book(book.root), tmp_path / "x.batzen")
+        austausch.export_book(Book(book.root), tmp_path / "x.allkvitt")
 
 
 def test_cli(book, tmp_path, capsys, monkeypatch):
-    from batzen.cli import main
-    target = tmp_path / "cli.batzen"
+    from allkvitt.cli import main
+    target = tmp_path / "cli.allkvitt"
     assert main(["--buch", str(book.root), "export-buch", str(target)]) == 0
     assert main(["import-buch", str(target)]) == 0
     assert '"firma": "Test GmbH"' in capsys.readouterr().out
     monkeypatch.setattr("sys.stdin", io.StringIO("pw\n"))
-    assert main(["--buch", str(book.root), "export-buch", str(tmp_path / "enc.batzen"), "--passwort-stdin"]) == 0
+    assert main(["--buch", str(book.root), "export-buch", str(tmp_path / "enc.allkvitt"), "--passwort-stdin"]) == 0
     monkeypatch.setattr("sys.stdin", io.StringIO("pw\n"))
-    assert main(["import-buch", str(tmp_path / "enc.batzen"), str(tmp_path / "neu"), "--passwort-stdin"]) == 0
-    assert (tmp_path / "neu" / "batzen.yaml").exists()
+    assert main(["import-buch", str(tmp_path / "enc.allkvitt"), str(tmp_path / "neu"), "--passwort-stdin"]) == 0
+    assert (tmp_path / "neu" / "allkvitt.yaml").exists()

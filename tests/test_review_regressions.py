@@ -3,10 +3,10 @@ from decimal import Decimal
 
 import pytest
 
-from batzen import api
-from batzen.book import Book
-from batzen.files import FormatError, parse_amount
-from batzen.testing import make_book
+from allkvitt import api
+from allkvitt.book import Book
+from allkvitt.files import FormatError, parse_amount
+from allkvitt.testing import make_book
 
 
 @pytest.mark.parametrize("raw", ["NaN", "sNaN", "Infinity", "-Infinity", Decimal("NaN"), Decimal("Infinity")])
@@ -25,7 +25,7 @@ def test_batch_rejects_nonfinite_amount_without_writing(tmp_path):
 
 
 def test_session_rejects_non_ascii_signature(tmp_path):
-    from batzen.web.auth import Sessions
+    from allkvitt.web.auth import Sessions
     sessions = Sessions(tmp_path)
     cookie = sessions.issue("anna", 0)
     assert sessions.read(cookie)["u"] == "anna"
@@ -35,17 +35,17 @@ def test_session_rejects_non_ascii_signature(tmp_path):
 def test_local_auth_rejects_non_ascii_token(tmp_path):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from batzen.web.app import create_app
+    from allkvitt.web.app import create_app
     book = make_book(tmp_path)
     with TestClient(create_app(book.root, token="tok")) as client:
         assert client.get("/?t=é").status_code == 403
-        client.cookies.set("batzen_session", '"\\351"')
+        client.cookies.set("allkvitt_session", '"\\351"')
         assert client.get("/").status_code == 401
 
 
 @pytest.mark.parametrize("split", [False, True])
 def test_reverse_foreign_booking_preserves_currency_and_balances(tmp_path, split):
-    from batzen.testing import assert_clean
+    from allkvitt.testing import assert_clean
     book = make_book(tmp_path)
     api.add_account(book, "1021", "Bank EUR", "aktiv", waehrung="EUR")
     if split:

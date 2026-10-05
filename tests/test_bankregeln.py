@@ -5,9 +5,9 @@ from decimal import Decimal
 
 import pytest
 
-from batzen import api, bank
-from batzen.book import Book, BookError
-from batzen.testing import assert_clean, make_book
+from allkvitt import api, bank
+from allkvitt.book import Book, BookError
+from allkvitt.testing import assert_clean, make_book
 from camt_sample import entry, statement
 
 IBAN = "CH9300762011623852957"

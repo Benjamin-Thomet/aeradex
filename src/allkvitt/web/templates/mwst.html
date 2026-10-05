@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}MWST {{ rep.periode if rep }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>MWST-Abrechnung{% if rep %} {{ rep.periode }}{% endif %}</h1>
+    <div class="sub">{{ {"effektiv": "Effektive Methode", "saldo": "Saldosteuersatz " ~ vat.saldosteuersatz ~ " %"}.get(vat.methode, "nicht MWST-pflichtig") }}{% if rep %} · {{ vat.abrechnungsart }}e Entgelte{% endif %}{% if rep %} · {{ rep.von|datum }} – {{ rep.bis|datum }}{% endif %} · eMWST-Datei nach eCH-0217 v2.0 für den Upload im ESTV-Portal</div></div>
+  <div class="actions">
+    <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in book.years()|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
+    {% if rep %}<a class="btn" href="/mwst/abstimmung?jahr={{ year }}" title="Umsatz- und Steuerabstimmung des Jahres">Abstimmung {{ year }}</a>
+    <a class="btn" href="/mwst/pdf?periode={{ rep.periode }}" target="_blank">PDF</a>
+    <a class="btn primary" href="/mwst/xml?periode={{ rep.periode }}{{ '&korrektur=1' if rep.veraendert }}" title="eCH-0217 für das ESTV-Portal">eMWST-Datei{{ ' (Korrektur)' if rep.veraendert }}</a>{% endif %}
+  </div>
+</div>
+{% if not rep %}
+<div class="alert info">Dieses Buch ist nicht MWST-pflichtig. Unter <a class="link" href="/einstellungen">Einstellungen</a> die Methode wählen.</div>
+{% else %}
+<nav class="tabs" style="padding:0">
+  {% for r in overview %}<a href="/mwst?jahr={{ year }}&periode={{ r.periode }}" class="{{ 'on' if r.periode == rep.periode }}">{{ r.periode[5:] or r.periode }} <span class="count">{{ 'gebucht' if r.gebucht else (r.zahllast|chf if r.zahllast|float else '') }}</span></a>{% endfor %}
+</nav>
+{% if rep.ziffern.differenz|float %}<div class="alert info">Die Steuer auf den Belegen ({{ rep.ziffern['399_gebucht']|chf }}) weicht um {{ rep.ziffern.differenz|chf }} von der Berechnung der ESTV (Umsatz × Satz) ab. Beim Buchen der Abrechnung geht die Differenz auf Konto {{ vat.konten.differenz }}.</div>{% endif %}
+{% if rep.veraendert %}<div class="alert warn">Seit dem Buchen dieser Abrechnung wurden Buchungen mit MWST-Code im Zeitraum geändert. Bei der ESTV eine Korrekturabrechnung einreichen.</div>{% endif %}
+<div class="grid2 even">
+  <div class="panel">
+    <header><h2>Ziffern</h2><span class="hint">CHF</span></header>
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Ziffer</th><th>Bezeichnung</th><th class="right">Entgelt</th><th class="right">Steuer</th></tr></thead>
+      <tbody>
+      {% for nr, label, kind in lines %}
+        <tr class="{{ 'zw' if kind == 'zw' else 'row' }}"><td class="num">{{ nr }}</td><td>{{ label }}</td>
+          {% if kind == 'steuer' %}<td class="right num">{{ rep.ziffern[nr]|chf(true) }}</td><td class="right num">{{ rep.ziffern[nr ~ '_steuer']|chf(true) }}</td>
+          {% elif nr in ('399', '400', '405', '479') %}<td></td><td class="right num">{{ rep.ziffern.get(nr, 0)|chf(true) }}</td>
+          {% else %}<td class="right num">{{ rep.ziffern.get(nr, 0)|chf(true) }}</td><td></td>{% endif %}</tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr><td class="num">{{ '500' if rep.zahllast|float >= 0 else '510' }}</td><td>{{ 'Zu bezahlender Betrag' if rep.zahllast|float >= 0 else 'Guthaben der steuerpflichtigen Person' }}</td><td></td><td class="right num total">{{ (rep.ziffern['500'] if rep.zahllast|float >= 0 else rep.ziffern['510'])|chf }}</td></tr></tfoot>
+    </table></div>
+    <div class="body">
+      {% if rep.gebucht %}<span class="pill ok">gebucht</span> <span class="small muted">MWST-Konten sind auf {{ vat.konten.abrechnung }} übertragen. Die Zahlung an die ESTV bucht man {{ vat.konten.abrechnung }} an Bank.</span>
+      {% else %}
+      <form hx-post="/mwst/buchen" hx-target="find .errors" hx-confirm="MWST-Abrechnung {{ rep.periode }} buchen? Danach sind spätere Änderungen im Zeitraum eine Korrektur.">
+        <input type="hidden" name="periode" value="{{ rep.periode }}">
+        {{ errors() }}
+        <div class="formfoot"><span class="small muted">Überträgt Umsatzsteuer{{ ' und Vorsteuer' if vat.methode == 'effektiv' else ' (Saldosteuer)' }} per {{ rep.bis|datum }} auf das Abrechnungskonto {{ vat.konten.abrechnung }}.</span><button class="btn primary" type="submit">Abrechnung buchen</button></div>
+      </form>{% endif %}
+    </div>
+  </div>
+  <div class="panel">
+    <header><h2>Nach Code</h2><span class="hint">Belege im Zeitraum</span></header>
+    {% if rep.codes %}
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Code</th><th class="right">Entgelt</th><th class="right">Steuer</th><th>Belege</th></tr></thead>
+      <tbody>{% for k, c in rep.codes.items() %}
+        <tr class="row"><td><strong>{{ k }}</strong><br><span class="small muted">{{ c.label }}</span></td><td class="right num">{{ c.entgelt|chf(true) }}</td><td class="right num">{{ c.steuer|chf(true) }}</td>
+          <td class="small">{% for b in c.belege[:8] %}<a class="beleg" href="/journal?jahr={{ year }}&monat=alle&q={{ b|urlq }}">{{ b }}</a> {% endfor %}{% if c.belege|length > 8 %}… +{{ c.belege|length - 8 }}{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="empty">Keine Buchungen mit MWST-Code in diesem Zeitraum.</div>{% endif %}
+  </div>
+</div>
+{% if herkunft and herkunft.gruppen %}
+<div class="panel" id="herkunft">
+  <header><h2>Herkunft der Zahlen</h2><span class="hint">{{ herkunft.zeilen }} Buchungszeilen · jede Ziffer mit ihren Buchungen{% if herkunft.abrechnungsart == 'vereinnahmt' %} · Rechnungen zählen anteilig am Zahlungsdatum{% endif %}</span></header>
+  {% for g in herkunft.gruppen %}
+  <details class="inline" {{ 'open' if g.differenz_entgelt|float }}>
+    <summary><strong>Ziffer {{ g.ziffer }}</strong> · {{ g.label }} · Entgelt {{ g.entgelt|chf(true) or '—' }} · Steuer {{ g.steuer|chf(true) or '—' }} · {{ g.zeilen|length }} Zeilen
+      {% if g.differenz_entgelt|float %}<span class="pill red">weicht ab</span>{% elif g.differenz_steuer|float %}<span class="pill info">Rundung {{ g.differenz_steuer|chf }}</span>{% else %}<span class="pill ok">stimmt</span>{% endif %}</summary>
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Datum</th><th>Beleg</th><th>Text</th><th>Konto</th><th>Code</th><th class="right">Entgelt</th><th class="right">Steuer</th></tr></thead>
+      <tbody>{% for z in g.zeilen %}
+        <tr class="row"><td>{{ z.datum|datum }}</td><td><a class="beleg" href="/journal?jahr={{ year }}&monat=alle&q={{ z.beleg|urlq }}">{{ z.beleg }}</a></td>
+          <td>{{ z.text }}{% if z.hinweis %} <span class="small muted">({{ z.hinweis }})</span>{% endif %}</td>
+          <td class="num"><a class="link" href="/konten/{{ z.konto }}?jahr={{ year }}">{{ z.konto }}</a></td><td>{{ z.code }}</td>
+          <td class="right num">{{ z.entgelt|chf(true) }}</td><td class="right num">{{ z.steuer|chf(true) }}</td></tr>
+      {% endfor %}</tbody>
+      <tfoot>
+        <tr class="zw"><td colspan="5">Summe der Buchungen</td><td class="right num">{{ g.entgelt|chf(true) }}</td><td class="right num">{{ g.steuer|chf(true) }}</td></tr>
+        <tr class="zw"><td colspan="5">Ziffer {{ g.ziffer }} in der Abrechnung</td><td class="right num">{{ g.ziffer_entgelt|chf(true) if g.ziffer_entgelt is not none }}</td><td class="right num">{{ g.ziffer_steuer|chf(true) if g.ziffer_steuer is not none }}</td></tr>
+      </tfoot>
+    </table></div>
+    {% if g.differenz_steuer|float %}<div class="body"><span class="small muted">Die ESTV rechnet die Steuer als Entgelt × Satz; die Steuer auf den Belegen weicht um {{ g.differenz_steuer|chf }} ab (Rundung je Beleg). Die Differenz wird beim Buchen der Abrechnung ausgeglichen.</span></div>{% endif %}
+    {% if g.hinweis %}<div class="body"><span class="small muted">{{ g.hinweis }}</span></div>{% endif %}
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

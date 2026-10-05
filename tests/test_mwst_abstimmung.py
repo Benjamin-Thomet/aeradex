@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from batzen import api, check, mwst
-from batzen.book import Book, BookError
-from batzen.ledger import BalanceEngine
+from allkvitt import api, check, mwst
+from allkvitt.book import Book, BookError
+from allkvitt.ledger import BalanceEngine
 
 D = Decimal
 

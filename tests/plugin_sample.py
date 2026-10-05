@@ -7,12 +7,12 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
-from batzen import api, journal
-from batzen.book import Row
-from batzen.files import parse_date, read_yaml, write_yaml
-from batzen.plugins import BankFormat, Command, Finding, Source, hookimpl
+from allkvitt import api, journal
+from allkvitt.book import Row
+from allkvitt.files import parse_date, read_yaml, write_yaml
+from allkvitt.plugins import BankFormat, Command, Finding, Source, hookimpl
 
-BATZEN_PLUGIN_API = 1
+ALLKVITT_PLUGIN_API = 1
 HERE = Path(__file__).parent
 
 
@@ -37,12 +37,12 @@ def record(book, von: str, betrag: str, datum: str):
 
 
 @hookimpl
-def batzen_sources():
+def allkvitt_sources():
     return [Source("spende", "Spende", _rows, link=lambda ref: f"/spenden/{ref}")]
 
 
 @hookimpl
-def batzen_check(book, rows):
+def allkvitt_check(book, rows):
     big = [r for r in rows if r.quelle.startswith("spende:") and r.betrag > 10000]
     return [Finding("hinweis", r.where, "Grossspende: Spendenbestätigung prüfen") for r in big]
 
@@ -63,12 +63,12 @@ def _parse(data, book):
 
 
 @hookimpl
-def batzen_bank_formats():
+def allkvitt_bank_formats():
     return [BankFormat("testcsv", "Test-CSV", (".csv",), _detect, _parse)]
 
 
 @hookimpl
-def batzen_kontenplaene():
+def allkvitt_kontenplaene():
     return {"testplan": HERE / "testplan.yaml"}
 
 
@@ -80,17 +80,17 @@ def spende_erfassen(von: str, betrag: str, datum: str) -> dict:
         betrag: Betrag in CHF.
         datum: JJJJ-MM-TT.
     """
-    from batzen.tools import call
+    from allkvitt.tools import call
     return call(api.write, f"Spende von {von}", record, von, betrag, datum)
 
 
 @hookimpl
-def batzen_tools():
+def allkvitt_tools():
     return [spende_erfassen]
 
 
 @hookimpl
-def batzen_instructions():
+def allkvitt_instructions():
     return "- Spenden: spende_erfassen (nie als freie Buchung)."
 
 
@@ -101,6 +101,6 @@ def _setup(parser):
 
 
 @hookimpl
-def batzen_commands():
+def allkvitt_commands():
     return [Command("spende", "Spende erfassen", lambda book, a: api.write(book, f"Spende von {a.von}", record,
                                                                           a.von, a.betrag, a.datum), _setup)]

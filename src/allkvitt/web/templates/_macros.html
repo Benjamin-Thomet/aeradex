@@ -1,0 +1,50 @@
+{% macro money(v, blank=false, cls="") %}<td class="right num {{ cls }}">{{ v|chf(blank) }}</td>{% endmacro %}
+{% macro acc(nr, names) %}<td class="acc">{{ nr }}{% if names and names.get(nr) %}<small>{{ names[nr] }}</small>{% endif %}</td>{% endmacro %}
+{% macro errors() %}<div class="errors"></div>{% endmacro %}
+{% macro accounts_datalist(accounts, id="konten") %}<datalist id="{{ id }}">{% for a in accounts %}<option value="{{ a.nr }}  {{ a.name }}">{% endfor %}</datalist>{% endmacro %}
+{% macro status_pill(s) %}{% set m = {"offen": "info", "teilbezahlt": "warn", "bezahlt": "ok", "storniert": "muted", "entwurf": "warn", "abgeschlossen": "ok", "angewiesen": "warn"} %}<span class="pill {{ m.get(s, 'muted') }}">{{ s }}</span>{% endmacro %}
+{% macro mwst_select(name, vat, vat_codes, kinds=("umsatz","befreit","ausgenommen","vorsteuer","investition","bezug"), selected="", id="", label=true) %}{% if vat.methode != 'keine' %}{% if label %}<div class="field"><label for="{{ id or name }}">MWST-Code</label>{% endif %}<select class="input" name="{{ name }}" id="{{ id or name }}" style="width:100%" aria-label="MWST-Code"><option value="" {{ 'selected' if not selected }}>keine MWST</option>{% for c in vat_codes.values() if c.kind in kinds and not (vat.methode == 'saldo' and c.kind in ('vorsteuer','investition')) %}<option value="{{ c.code }}" {{ 'selected' if c.code == selected }}>{{ c.code }} · {{ c.label }}</option>{% endfor %}</select>{% if label %}</div>{% endif %}{% endif %}{% endmacro %}
+{% macro currency_fields(currencies, id) %}<div class="field"><label for="{{ id }}-w">Währung</label><select class="input" name="waehrung" id="{{ id }}-w" style="width:100%" hx-get="/kurs" hx-include="closest form" hx-target="#{{ id }}-hint" hx-trigger="change"><option value="">CHF</option>{% for c in currencies %}<option>{{ c }}</option>{% endfor %}</select></div>
+<div class="field"><label for="{{ id }}-k">Kurs (leer = BAZG-Tageskurs)</label><input class="input num" id="{{ id }}-k" name="kurs" inputmode="decimal" placeholder="BAZG"><span class="small" id="{{ id }}-hint"></span></div>{% endmacro %}
+{% macro eingang_upload(art, title, hint, ocr, jev, auto_agent=none, agent_backend="") %}
+  <header><h2>{{ title }}</h2><span class="hint">QR-Zahlteil · Text · {{ 'OCR' if ocr else 'OCR (Tesseract fehlt)' }}{% if art != 'debitor' %} → Konto: {{ 'Lieferant · ' if art == 'kreditor' }}{{ 'Jev' if jev.bereit else 'Jev (aus)' }} · Agent{% endif %}</span></header>
+  <form class="body" hx-post="/eingang/einlesen" hx-encoding="multipart/form-data" hx-target="find .errors" hx-indicator="find .busy">
+    <input type="hidden" name="art" value="{{ art }}">
+    <div class="dropzone">
+      <input class="input" type="file" name="dateien" multiple accept=".pdf,image/*" aria-label="{{ title }}">
+      <span class="small muted">{{ hint }} Gebucht wird nichts: jede Datei wird ein Entwurf, den du prüfst.</span>
+    </div>
+    {{ errors() }}
+    <div class="formfoot"><span class="busy small muted htmx-indicator">Lese Belege … (OCR kann einige Sekunden dauern)</span><button class="btn primary" type="submit">Einlesen</button></div>
+  </form>
+  {% if auto_agent is not none %}
+  <form class="body" hx-post="/kreditoren/einstellung" hx-target="find .errors" hx-trigger="change" style="padding-top:0">
+    <label class="check"><input type="checkbox" name="agent_automatisch" value="1" {{ 'checked' if auto_agent }}> Weiss niemand das Konto (kein bekannter Lieferant, Jev unsicher), übernimmt automatisch der Agent ({{ agent_backend or 'automatisch gewählt' }})</label>
+    {{ errors() }}
+  </form>
+  {% endif %}
+{% endmacro %}
+{% macro eingang_table(drafts, book, dv, show_art=false) %}
+  {% set review = {"kreditor": "/kreditoren/neu?entwurf=", "quittung": "/eingang/quittung?entwurf=", "debitor": "/debitoren/extern?entwurf="} %}
+  {% set artlabel = {"kreditor": "Lieferantenrechnung", "quittung": "Quittung", "debitor": "eigene Rechnung"} %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Entwurf</th>{% if show_art %}<th>Art</th>{% endif %}<th>{{ 'Kunde / Lieferant' if show_art else ('Kunde' if drafts and drafts[0].art == 'debitor' else 'Lieferant') }}</th><th>Rg.-Nr.</th><th class="right">Betrag</th><th>Konto</th><th>Status</th><th class="right"></th></tr></thead>
+    <tbody>{% for d in drafts %}{% set k = d.konto or {} %}{% set z = d.zahlung or {} %}
+      <tr class="row">
+        <td><span class="beleg">{{ d.id }}</span><br><a class="small link" href="/datei/{{ d.datei|urlq }}" target="_blank">{{ d.datei.split('/')[-1] }}</a></td>
+        {% if show_art %}<td><form hx-post="/eingang/{{ d.id }}/art" hx-target="find .errors" hx-trigger="change"><select class="input small" name="art" aria-label="Belegart">{% for a, l in artlabel.items() %}<option value="{{ a }}" {{ 'selected' if a == d.art }}>{{ l }}</option>{% endfor %}</select>{{ errors() }}</form></td>{% endif %}
+        <td>{{ dv(d, 'name') or '—' }}</td><td class="small">{{ dv(d, 'rechnungsnr') }}</td>
+        <td class="right num">{% if dv(d, 'waehrung') and dv(d, 'waehrung') != 'CHF' %}<span class="small muted">{{ dv(d, 'waehrung') }}</span> {% endif %}{{ dv(d, 'betrag')|chf if dv(d, 'betrag') else '—' }}</td>
+        <td>{% if k.wert %}<span class="acc">{{ k.wert }}</span> <span class="small muted">{{ book.accounts[k.wert].name if k.wert in book.accounts }}</span><br><span class="pill {{ 'info' if k.quelle.startswith('Agent') else 'muted' }}" title="{{ k.begruendung or '' }}">{{ k.quelle }}</span>{% else %}—{% endif %}
+          {% if d.art == 'quittung' and z %}<div class="small muted" title="{{ z.text or '' }}">{{ {'bank': '↔ Bankbewegung', 'buchung': '↔ an Beleg ' ~ (z.beleg or ''), 'konto': 'bezahlt über ' ~ (z.konto or '')}[z.art] }}</div>{% endif %}</td>
+        <td>{% if d.status == 'bereit' %}<span class="pill ok">bereit</span>{% elif d.status == 'agent' %}<span class="pill info">Agent arbeitet …</span>{% elif d.status == 'konflikt' %}<span class="pill red">Name ≠ IBAN</span>{% elif d.status == 'unvollstaendig' %}<span class="pill warn">unvollständig</span>{% else %}<span class="pill warn">Konto offen</span>{% endif %}
+          {% set last = (d.hinweise or [])|reject("equalto", d.konflikt)|list %}{% if d.konflikt %}<div class="small muted" title="{{ d.konflikt }}">Rechnung nennt einen anderen Namen als der Inhaber der IBAN</div>{% elif last %}<div class="small muted" title="{{ last|join(' · ') }}">{{ last[-1]|truncate(70) }}</div>{% endif %}</td>
+        <td class="right"><span class="actions">
+          <a class="btn small {{ 'primary' if d.status == 'bereit' }}" href="{{ review[d.art] }}{{ d.id }}">Prüfen</a>
+          {% if d.status != 'agent' and d.art != 'debitor' %}<form hx-post="/eingang/{{ d.id }}/agent" hx-target="find .errors"><button class="btn small ghost" type="submit" title="Agent liest den Beleg und kontiert">Agent fragen</button>{{ errors() }}</form>{% endif %}
+          <form hx-post="/eingang/{{ d.id }}/verwerfen" hx-target="find .errors" hx-confirm="Entwurf {{ d.id }} verwerfen? Die Datei bleibt in der Inbox."><button class="btn small ghost" type="submit" aria-label="Verwerfen">✕</button>{{ errors() }}</form>
+        </span></td>
+      </tr>
+    {% endfor %}</tbody>
+  </table></div>
+{% endmacro %}

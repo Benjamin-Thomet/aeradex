@@ -3,10 +3,10 @@ from decimal import Decimal
 
 import pytest
 
-from batzen import api, plugins, statements
-from batzen.book import Book, BookError
-from batzen.ledger import BalanceEngine
-from batzen.testing import assert_clean, make_book, problems
+from allkvitt import api, plugins, statements
+from allkvitt.book import Book, BookError
+from allkvitt.ledger import BalanceEngine
+from allkvitt.testing import assert_clean, make_book, problems
 
 
 def test_templates_are_built_in():
@@ -86,7 +86,7 @@ def test_einzelfirma_closing_page_and_pdf(tmp_path):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
 
-    from batzen.web.app import create_app
+    from allkvitt.web.app import create_app
     book = make_book(tmp_path, firma="Maler Muster", rechtsform="Einzelfirma",
                      eroeffnung={"1020": 10000, "2800": -10000})
     api.post_entry(book, "2026-05-01", "2851", "1020", "700", "AHV Akonto Inhaber")

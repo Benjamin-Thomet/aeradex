@@ -2,8 +2,8 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from batzen import api, fx
-from batzen.book import Book
+from allkvitt import api, fx
+from allkvitt.book import Book
 
 SAMPLE = b'''<?xml version="1.0"?><wechselkurse xmlns="https://www.backend-rates.bazg.admin.ch/xmldaily">
 <datum>02.10.2026</datum><devise code="eur"><waehrung>1 EUR</waehrung><kurs>0.94445</kurs></devise>
@@ -28,8 +28,8 @@ def test_rates_parse_cache_and_weekend_fallback(tmp_path: Path):
 
 import pytest
 
-from batzen import check
-from batzen.book import BookError
+from allkvitt import check
+from allkvitt.book import BookError
 
 DAILY = {"20260302": "0.95", "20260415": "0.96", "20260630": "0.92", "20251231": "0.93"}
 
@@ -45,7 +45,7 @@ def bazg(url):
 @pytest.fixture
 def fwbook(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(fx, "_get", bazg)
-    import batzen.fx as fxmod
+    import allkvitt.fx as fxmod
     real_rates = fxmod.rates
     monkeypatch.setattr(fxmod, "rates", lambda book, day, fetch=None: real_rates(book, day, fetch or bazg))
     root = tmp_path / "b"

@@ -10,9 +10,9 @@ import pytest
 pytest.importorskip("starlette")
 from starlette.testclient import TestClient  # noqa: E402
 
-from batzen import check, gitlog  # noqa: E402
-from batzen.book import Book  # noqa: E402
-from batzen.web.app import create_app  # noqa: E402
+from allkvitt import check, gitlog  # noqa: E402
+from allkvitt.book import Book  # noqa: E402
+from allkvitt.web.app import create_app  # noqa: E402
 
 DEMO = Path(__file__).resolve().parent.parent / "examples" / "muster-gmbh"
 
@@ -70,7 +70,7 @@ def test_every_page_renders(client):
 def test_balance_chart_preserves_opening_on_january_first():
     from datetime import date
     from decimal import Decimal
-    from batzen.web.views import _balance_chart
+    from allkvitt.web.views import _balance_chart
 
     chart = _balance_chart({"eroeffnung": Decimal("1000"), "zeilen": [
         {"datum": date(2025, 1, 1), "saldo": Decimal("750")},
@@ -229,7 +229,7 @@ def test_inbox_upload(client, root):
 
 def test_ui_and_cli_writes_are_one_history(client, root):
     """A write from another process (CLI/agent) lands in the same history and the UI sees it."""
-    from batzen import api
+    from allkvitt import api
     api.post_entry(Book(root), "2026-03-25", "6500", "1020", "5", "von der Kommandozeile")
     assert "von der Kommandozeile" in client.get("/journal?monat=3").text
 
@@ -262,7 +262,7 @@ def test_mwst_screens_and_booking(client, root):
 
 
 def test_kreditoren_from_inbox_qr_to_payment(client, root, tmp_path):
-    from batzen import api as core
+    from allkvitt import api as core
     sup = tmp_path / "lieferant"
     core.init_book(sup, "Papeterie Muster AG", 2026, strasse="Marktgasse", nr="14", plz="3011", ort="Bern",
                    iban="CH44 3199 9123 0008 8901 2", git=False)
@@ -310,7 +310,7 @@ def test_bank_screen_import_and_book(client, root):
 
 @pytest.fixture
 def server(root, tmp_path):
-    from batzen.web.auth import UserStore
+    from allkvitt.web.auth import UserStore
     cfg = tmp_path / "cfg"
     store = UserStore(cfg)
     store.add("anna", "geheim-genug-1", "admin", "Anna Admin")
@@ -366,7 +366,7 @@ def test_login_throttle_and_password_change_ends_sessions(server):
 
 
 def test_foreign_currency_screens(client, root, monkeypatch):
-    from batzen import fx
+    from allkvitt import fx
     page = (b'<wechselkurse><datum>x</datum><devise code="eur"><waehrung>1 EUR</waehrung>'
             b'<kurs>0.95</kurs></devise></wechselkurse>')
     monkeypatch.setattr(fx, "_get", lambda url: page)
@@ -400,11 +400,46 @@ def test_unterlagen_downloads(client, root):
 
 def test_buch_export(client, root, tmp_path):
     r = client.post("/einstellungen/buch-export", data={"historie": "1", "inbox": "1"}, headers={"X-CSRF": client.csrf})
-    assert r.status_code == 200 and r.headers["content-type"] == "application/vnd.batzen+zip"
-    (tmp_path / "x.batzen").write_bytes(r.content)
-    from batzen import austausch
-    assert austausch.inspect(tmp_path / "x.batzen")["firma"] == "Muster GmbH"
+    assert r.status_code == 200 and r.headers["content-type"] == "application/vnd.allkvitt+zip"
+    (tmp_path / "x.allkvitt").write_bytes(r.content)
+    from allkvitt import austausch
+    assert austausch.inspect(tmp_path / "x.allkvitt")["firma"] == "Muster GmbH"
     r = client.post("/einstellungen/buch-export", data={"passwort": "a", "passwort2": "b"},
                     headers={"X-CSRF": client.csrf})
     assert r.status_code == 400
     assert client.post("/einstellungen/buch-export", data={}).status_code == 403     # no CSRF token
+
+
+def test_top_navigation():
+    from allkvitt.web.app import navigation
+    counts = {"pruefen": 3, "bank": 7, "entwuerfe": 0}
+    pages = [{"url": "/p/leistungen/leistungen", "label": "Leistungen", "bereich": "debitoren"},
+             {"url": "/p/x/seite", "label": "Fremd", "bereich": ""}]
+
+    def at(path, methode="effektiv"):
+        nv = navigation(path, counts, pages, methode)
+        return nv, {s["key"]: s for s in nv["bereiche"] if s}
+
+    nv, s = at("/debitoren/kunden")
+    assert nv["aktiv"]["key"] == "debitoren" and [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Kunden"]
+    assert "Leistungen" in [t["label"] for t in nv["aktiv"]["tabs"]]                 # plugin page as a tab
+    nv, _ = at("/debitoren/rechnung/R-2026-0001")
+    assert [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Rechnungen"]
+    nv, _ = at("/p/leistungen/leistungen")
+    assert nv["aktiv"]["key"] == "debitoren" and [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Leistungen"]
+    nv, _ = at("/lohn/lohnkonto/2026/M0001")
+    assert [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Mitarbeitende"]
+    nv, s = at("/p/x/seite")
+    assert nv["aktiv"] is None and nv["mehr_on"] and [m["label"] for m in nv["mehr"]] == ["Fremd"]
+    assert s["bank"]["badge"] == 7 and s["pruefen"]["badge"] == 3
+    nv, s = at("/", "keine")
+    assert "mwst" not in s and s["uebersicht"]["on"] and not s["journal"]["on"]
+    assert at("/journal")[1]["journal"]["tabs"] == []                                  # no tab row
+
+
+def test_top_navigation_renders(client):
+    page = client.get("/debitoren/kunden").text
+    assert 'class="top"' in page and 'aria-label="Hauptnavigation"' in page
+    assert 'class="tabsrow"' in page and 'href="/debitoren/offene-posten"' in page
+    assert 'class="navlist"' not in page
+    assert 'class="tabsrow"' not in client.get("/journal").text

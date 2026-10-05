@@ -1,6 +1,6 @@
 # Buchungsvorschläge
 
-Vom Agenten vorgeschlagen, noch nicht gebucht. Freigeben mit `batzen approve <ID>`, verwerfen mit `batzen reject <ID>`.
+Vom Agenten vorgeschlagen, noch nicht gebucht. Freigeben mit `allkvitt approve <ID>`, verwerfen mit `allkvitt reject <ID>`.
 
 | ID    | Datum      | Beleg  | Text          | Soll | Haben | Betrag | MWST | Begründung                             | Datei |
 | ----- | ---------- | ------ | ------------- | ---- | ----- | -----: | ---- | -------------------------------------- | ----- |

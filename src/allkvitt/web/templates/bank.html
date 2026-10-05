@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, accounts_datalist, mwst_select %}
+{% block title %}Bank{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Bank</h1><div class="sub">Kontoauszüge aus dem E-Banking (camt.053, CSV oder Excel) und Kreditkartenabrechnungen (PDF). Klare Zahlungen bucht allkvitt selbst, bereits Gebuchtes wird nur abgeglichen.</div></div>
+  <span class="actions">
+  {% if sicher %}<form hx-post="/bank/alle-abgleichen" hx-target="find .errors" hx-confirm="{{ sicher }} sichere Vorschläge übernehmen (Rechnungen, Kreditoren, Quittungen begleichen)?"><button class="btn primary" type="submit" title="Übernimmt bei jeder Bewegung den sicheren Vorschlag — Betrag und Name stimmen">Alle sicheren abgleichen <span class="count">{{ sicher }}</span></button>{{ errors() }}</form>{% endif %}
+  {% if jev.bereit and counts['offen'] %}<form hx-post="/bank/jev" hx-target="find .errors"><button class="btn" type="submit" title="Schnelle Kontierung mit TypeSafe Jev; sichere Fälle werden Vorschläge">Konten vorschlagen (Jev)</button>{{ errors() }}</form>{% endif %}
+  <form class="actions" hx-post="/bank/import" hx-encoding="multipart/form-data" hx-target="find .errors">
+    <input class="input" type="file" name="datei" accept="{{ bank_accept }}" aria-label="Kontoauszug" title="{{ bank_labels }}; andere CSV/Excel-Formate und Kreditkarten-PDFs liest der Agent" style="width:260px">
+    <input class="input" name="konto" list="konten" placeholder="Konto (Kreditkarte)" aria-label="Konto" title="Nur für Kreditkartenabrechnungen und Dateien ohne IBAN, z.B. 2040" style="width:150px">
+    <button class="btn primary" type="submit">Auszug importieren</button>{{ errors() }}
+  </form></span>
+</div>
+{{ accounts_datalist(accounts) }}
+{% if pending.formate or pending.karten %}
+<div class="panel" id="neu">
+  <header><h2>Neu gelesen — bitte prüfen</h2><span class="hint">vom Agenten gelesen; importiert wird erst nach deiner Bestätigung bzw. wenn die Prüfung aufgeht</span></header>
+  {% for p in pending.formate %}
+  <div class="body" style="border-bottom:1px solid var(--rule)">
+    {% if p.fehler %}<div class="alert error">{{ p.datei }}: {{ p.fehler }}</div>{% else %}
+    <div><strong>{{ p.name }}</strong> <span class="small muted">· {{ p.datei }} · Beschreibung in bank/formate/{{ p.format }}.yaml</span>
+      {% if p.pruefung.ok %}<span class="pill ok">Saldo Zeile für Zeile geprüft</span>{% elif p.pruefung.saldo_fehler %}<span class="pill red">Saldo stimmt nicht</span>{% elif not p.pruefung.saldo_geprueft %}<span class="pill muted">ohne Saldo — Beispiele prüfen</span>{% endif %}</div>
+    {% for a in p.auszuege %}
+    <div class="small">Konto {{ a.konto }}{% if a.iban %} ({{ a.iban }}){% endif %} · {{ a.von|datum }} – {{ a.bis|datum }} · {{ a.bewegungen }} Bewegungen · Eingänge {{ a.eingaenge|chf }} · Ausgänge {{ a.ausgaenge|chf }}{% if a.schluss is not none %} · Schlusssaldo {{ a.schluss|chf }}{% endif %}</div>
+    <div class="tablewrap"><table class="ledger"><thead><tr><th>Datum</th><th>Text</th><th>Gegenpartei</th><th class="right">Betrag</th></tr></thead>
+      <tbody>{% for b in a.beispiele %}<tr class="row"><td class="num">{{ b.datum|datum }}</td><td>{{ b.text }}</td><td class="small">{{ b.gegenpartei }}</td><td class="right num">{{ b.betrag|chf(false, true) }}</td></tr>{% endfor %}</tbody>
+    </table></div>{% endfor %}
+    {% for m in (p.pruefung.saldo_fehler + p.pruefung.uebersprungen)[:5] %}<div class="small" style="color:var(--red)">{{ m }}</div>{% endfor %}
+    <form hx-post="/bank/format/{{ p.format }}/bestaetigen" hx-target="find .errors" hx-confirm="Format {{ p.name }} bestätigen? Künftige Dateien dieser Bank liest allkvitt damit ohne Agent.">
+      <input type="hidden" name="datei" value="{{ p.datei }}">
+      {{ errors() }}<div class="formfoot"><span class="small muted">Stimmen Datum, Text und Vorzeichen (Eingänge +, Belastungen −)? Sonst den Agenten bitten, das Format zu korrigieren, oder die YAML-Datei anpassen.</span><button class="btn primary" type="submit">Bestätigen und importieren</button></div>
+    </form>{% endif %}
+  </div>{% endfor %}
+  {% for c in pending.karten %}
+  <div class="body" style="border-bottom:1px solid var(--rule)">
+    <div><strong>Kreditkarte {{ c.karte.herausgeber }}{% if c.karte.karte %} ···{{ c.karte.karte }}{% endif %}</strong> <span class="small muted">· {{ c.datei }} · gelesen in {{ c.yaml }}</span>
+      {% if c.pruefung.ok %}<span class="pill ok">geprüft</span>{% else %}<span class="pill red">nicht geprüft</span>{% endif %}</div>
+    <div class="small">Konto {{ c.karte.konto }} · {{ c.karte.buchungen|length }} Buchungen · Saldo alt {{ c.karte.saldo_alt|chf }} · neu {{ c.karte.saldo_neu|chf }}</div>
+    {% for m in c.pruefung.probleme %}<div class="small" style="color:var(--red)">{{ m }}</div>{% endfor %}
+    <form hx-post="/bank/karte/importieren" hx-target="find .errors">
+      <input type="hidden" name="datei" value="{{ c.datei }}">
+      {{ errors() }}<div class="formfoot"><span class="small muted">{% if c.pruefung.ok %}Die Prüfung geht auf.{% else %}{{ c.yaml }} korrigieren (oder bei einem Scan nach Kontrolle «bestaetigt: true» setzen), dann importieren.{% endif %}</span><button class="btn {{ 'primary' if c.pruefung.ok }}" type="submit">Importieren</button></div>
+    </form>
+  </div>{% endfor %}
+</div>
+{% endif %}
+{% if rec %}
+<div class="panel">
+  <header><h2>Abstimmung</h2><span class="hint">Schlusssaldo laut Bank gegen die Buchhaltung</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Auszug</th><th>Konto</th><th>Per</th><th class="right">Bank</th><th class="right">Buchhaltung</th><th class="right">noch offen</th><th class="right">Differenz</th></tr></thead>
+    <tbody>{% for r in rec|reverse %}<tr class="row"><td class="small">{{ r.id }}</td><td class="acc">{{ r.konto }}</td><td class="num">{{ r.datum|datum }}</td>
+      <td class="right num">{{ r.bank|chf }}</td><td class="right num">{{ r.buch|chf }}</td><td class="right num">{{ r.offen|chf(true) }}</td>
+      <td class="right">{% if r.differenz|float %}<span class="pill red">{{ r.differenz|chf }}</span>{% else %}<span class="pill ok">stimmt</span>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+<div class="panel">
+  <header><h2>Bewegungen</h2>
+    <span class="actions">{% for k, l in [("offen", "Offen"), ("gebucht", "Gebucht"), ("abgeglichen", "Abgeglichen"), ("ignoriert", "Ignoriert"), ("", "Alle")] %}<a class="btn small {{ '' if k == status else 'ghost' }}" href="/bank?status={{ k }}">{{ l }}{% if k and counts[k] %} <span class="count">{{ counts[k] }}</span>{% endif %}</a>{% endfor %}</span></header>
+  {% if rows %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Datum</th><th>Gegenpartei / Text</th><th class="right">Betrag</th><th>{{ 'Status / Vorschlag' if sugg else 'Status' }}</th><th></th></tr></thead>
+    <tbody>
+    {% for t in rows %}{% set credit = t.Betrag|float > 0 %}
+      <tr class="row" id="{{ t.ID }}">
+        <td class="num">{{ t.Datum|datum }}</td>
+        <td><strong>{{ t.Gegenpartei or '—' }}</strong><br><span class="small muted">{{ t.Text }}{% if t.Referenz %} · Ref. {{ t.Referenz }}{% endif %}</span>{% if t.Hinweis and t.Status == 'offen' %}<br><span class="pill info" title="{{ t.Hinweis }}">{{ t.Hinweis|truncate(70) }}</span>{% endif %}</td>
+        <td class="right num">{{ t.Betrag|chf(sign=true) }}</td>
+        <td>{% if t.Status == 'offen' %}{% set opts = sugg.get(t.ID) or [] %}{% if opts %}{% set o = opts[0] %}
+          <form class="suggest" hx-post="/bank/{{ t.ID }}/uebernehmen" hx-target="find .errors">
+            <input type="hidden" name="art" value="{{ o.art }}"><input type="hidden" name="ziel" value="{{ o.ziel }}">
+            <div><span class="pill {{ 'ok' if o.sicher else 'info' }}">{{ 'sicher' if o.sicher else 'prüfen' }}</span> {{ o.label }}<br><span class="small muted">{{ o.grund }}</span></div>
+            <button class="btn small {{ 'primary' if o.sicher }}" type="submit">Abgleichen</button>{{ errors() }}
+          </form>
+          {% if opts|length > 1 %}<details class="small"><summary class="muted">{{ opts|length - 1 }} weitere</summary>{% for o in opts[1:] %}
+          <form class="suggest" hx-post="/bank/{{ t.ID }}/uebernehmen" hx-target="find .errors">
+            <input type="hidden" name="art" value="{{ o.art }}"><input type="hidden" name="ziel" value="{{ o.ziel }}">
+            <div>{{ o.label }}<br><span class="small muted">{{ o.grund }}</span></div>
+            <button class="btn small" type="submit">Abgleichen</button>{{ errors() }}
+          </form>{% endfor %}</details>{% endif %}
+          {% else %}<span class="pill warn">offen</span>{% endif %}{% elif t.Status == 'ignoriert' %}<span class="pill muted">ignoriert</span>{% else %}<a class="pill ok" href="/journal?jahr={{ t.Datum[:4] }}&monat=alle&q={{ t.Beleg|urlq }}">{{ t.Status }} · {{ t.Beleg }}</a>{% if t.Hinweis and t.Hinweis.startswith('Regel ') %} <span class="pill muted">{{ t.Hinweis }}</span>{% endif %}{% endif %}</td>
+        <td class="right">{% if t.Status == 'offen' %}
+          <details class="drawer"><summary class="btn small">Bearbeiten</summary>
+            <div class="panel" style="position:absolute;right:40px;z-index:3;padding:14px;display:flex;flex-direction:column;gap:12px;width:360px;text-align:left;box-shadow:var(--shadow)">
+              <form hx-post="/bank/{{ t.ID }}/buchen" hx-target="find .errors" style="display:flex;flex-direction:column;gap:8px">
+                <span class="lbl">Buchen gegen Konto ({{ t.Konto }} {{ 'an' if credit else 'von' }} …)</span>
+                <input class="input" name="konto" list="konten" placeholder="{{ 'z.B. 3400 Ertrag' if credit else 'z.B. 6940 Bankspesen' }}" required>
+                <input class="input" name="text" value="{{ (t.Gegenpartei ~ ' ' ~ t.Text)|trim|truncate(100, true, '') }}">
+                {{ mwst_select("mwst", vat, vat_codes, label=false) }}
+                {{ errors() }}<button class="btn small primary" type="submit">Buchen</button>
+              </form>
+              {% set candidates = open_inv if credit else open_bills %}
+              {% if candidates %}
+              <form hx-post="/bank/{{ t.ID }}/zuordnen" hx-target="find .errors" style="display:flex;flex-direction:column;gap:8px">
+                <span class="lbl">{{ 'Kundenrechnung' if credit else 'Lieferantenrechnung' }} begleichen</span>
+                <select class="input" name="nummer" style="width:100%">{% for c in candidates %}<option value="{{ c.nummer }}" {{ 'selected' if c.offen|float == (t.Betrag|float)|abs }}>{{ c.nummer }} · {{ c.name }} · offen {{ c.offen|chf }}</option>{% endfor %}</select>
+                {{ errors() }}<button class="btn small" type="submit">Zuordnen</button>
+              </form>{% endif %}
+              <form hx-post="/bank/{{ t.ID }}/abgleichen" hx-target="find .errors" style="display:flex;gap:6px;align-items:center">
+                <input class="input" name="beleg" placeholder="schon gebucht? Beleg-Nr." style="flex:1"><button class="btn small" type="submit">Verknüpfen</button>{{ errors() }}
+              </form>
+              <form hx-post="/bank/{{ t.ID }}/ignorieren" hx-target="find .errors" style="display:flex;gap:6px;align-items:center">
+                <input class="input" name="grund" placeholder="Grund zum Ignorieren" required style="flex:1"><button class="btn small ghost" type="submit">Ignorieren</button>{{ errors() }}
+              </form>
+            </div>
+          </details>{% elif t.Status == 'gebucht' and t.Gegenpartei and not (t.Hinweis or '').startswith('Regel ') %}
+          <form hx-post="/bank/{{ t.ID }}/regel" hx-target="find .errors" title="Künftige Bewegungen von {{ t.Gegenpartei }} beim Import gleich buchen"><button class="btn small ghost" type="submit">Immer so buchen</button>{{ errors() }}</form>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty">{% if status == 'offen' %}Keine offenen Bankbewegungen. Neuen Auszug oben importieren (E-Banking → Kontoauszug als camt.053 / ISO 20022 exportieren).{% else %}Keine Bewegungen mit diesem Status.{% endif %}</div>{% endif %}
+</div>
+<details class="panel drawer" id="regeln" {{ 'open' if rules }}>
+  <summary><header style="border-bottom:0"><h2>Bankregeln</h2><span class="hint">{{ rules|length }} · wiederkehrende Bewegungen (Miete, Abos, Spesen) bucht der Import selbst</span></header></summary>
+  {% if rules %}<div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Regel</th><th>erkennt</th><th>Konto</th><th>Text</th><th></th></tr></thead>
+    <tbody>{% for r in rules %}<tr class="row">
+      <td><span class="beleg">{{ r.id }}</span></td>
+      <td>{% if r.gegenpartei %}Gegenpartei «{{ r.gegenpartei }}»{% endif %}{% if r.text %} Text «{{ r.text }}»{% endif %}{% if r.betrag %} · genau {{ r.betrag|chf }}{% endif %}{% if r.richtung %} · nur {{ r.richtung }}{% endif %}</td>
+      <td class="acc">{{ r.konto }} <span class="small muted">{{ book.accounts[r.konto].name if r.konto in book.accounts }}</span>{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}</td>
+      <td class="small">{{ r.buchungstext }}</td>
+      <td class="right"><form hx-post="/bank/regel/{{ r.id }}/entfernen" hx-target="find .errors" hx-confirm="Regel {{ r.id }} entfernen?"><button class="btn small ghost" type="submit" aria-label="Entfernen">✕</button>{{ errors() }}</form></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>{% endif %}
+  <form class="body" hx-post="/bank/regel" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label>Gegenpartei enthält</label><input class="input" name="gegenpartei" placeholder="z.B. SWISSCOM"></div>
+      <div class="field"><label>oder Text enthält</label><input class="input" name="text" placeholder="z.B. Kontoführung"></div>
+      <div class="field"><label>Konto</label><input class="input" name="konto" list="konten" required placeholder="z.B. 6510"></div>
+      <div class="field"><label>Buchungstext</label><input class="input" name="buchungstext"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Greift nur, wenn keine Rechnung, kein Kreditor und keine bestehende Buchung passt; offene Bewegungen werden gleich gebucht.</span><button class="btn small primary" type="submit">Regel anlegen</button></div>
+  </form>
+</details>
+<p class="small muted">Tipp: Den Agenten fragen «Verbuche die offenen Bankbewegungen» — er ordnet zu oder schlägt Buchungen vor, du gibst unter Prüfen frei.</p>
+{% endblock %}

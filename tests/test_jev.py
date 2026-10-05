@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from batzen import api, jev
-from batzen.book import Book, BookError
+from allkvitt import api, jev
+from allkvitt.book import Book, BookError
 
 from camt_sample import entry, statement
 

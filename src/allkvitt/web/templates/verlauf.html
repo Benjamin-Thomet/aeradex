@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Verlauf{% endblock %}
+{% block main %}
+<div class="topbar"><div><h1>Verlauf</h1><div class="sub">Jede Änderung am Buch ist ein git-Commit: wer, wann, was. Das ist das Audit-Trail.</div></div></div>
+<div class="panel">
+  {% if log %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Commit</th><th>Zeit</th><th>Von</th><th>Änderung</th></tr></thead>
+    <tbody>{% for c in log %}{% set agent = 'agent@allkvitt' in c.autor or 'Agent' in c.autor %}
+      <tr class="row"><td><a class="beleg" href="/verlauf/{{ c.commit }}">{{ c.commit }}</a></td><td class="num">{{ c.datum[:16] }}</td>
+        <td>{% if agent %}<span class="pill info">Agent</span>{% else %}{{ c.autor }}{% endif %}</td><td>{{ c.nachricht|replace("allkvitt: ", "") }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty">Dieses Buch ist kein git-Repository. <code>allkvitt init</code> legt eines an.</div>{% endif %}
+</div>
+{% endblock %}

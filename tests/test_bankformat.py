@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from batzen import api, bank, bankformat, tools
-from batzen.book import Book, BookError
-from batzen.testing import assert_clean, make_book
+from allkvitt import api, bank, bankformat, tools
+from allkvitt.book import Book, BookError
+from allkvitt.testing import assert_clean, make_book
 
 # A UBS-like export: preamble with the IBAN, ';', Swiss apostrophes, debit/credit columns, newest first.
 UBS = """Kontonummer:;0235-12345678.01
@@ -197,7 +197,7 @@ def test_bank_page_learn_confirm_import(book, monkeypatch):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
 
-    from batzen.web.app import create_app
+    from allkvitt.web.app import create_app
 
     def agent(root, prompt):
         datei = prompt.split("Die Datei ", 1)[1].split(" ", 1)[0]

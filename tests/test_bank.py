@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from batzen import api, bank, check
-from batzen.book import Book, BookError
+from allkvitt import api, bank, check
+from allkvitt.book import Book, BookError
 
 from camt_sample import entry, statement
 
@@ -55,7 +55,7 @@ def march_statement(b: Book) -> tuple[bytes, Decimal]:
 
 def test_import_matches_books_and_reconciles(book):
     data, net = march_statement(book)
-    xsd = os.environ.get("BATZEN_CAMT053_XSD")
+    xsd = os.environ.get("ALLKVITT_CAMT053_XSD")
     if xsd and Path(xsd).exists():
         from lxml import etree
         schema = etree.XMLSchema(etree.parse(xsd))

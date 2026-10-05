@@ -11,7 +11,7 @@ on:
         description: "Welches Paket veröffentlichen"
         required: true
         type: choice
-        options: [batzen, batzen-anlagen, batzen-revolut, batzen-kontenplan-verein]
+        options: [allkvitt, allkvitt-anlagen, allkvitt-revolut, allkvitt-kontenplan-verein]
 
 permissions:
   contents: read
@@ -27,7 +27,7 @@ jobs:
       - name: Ordner des Pakets
         id: pfad
         run: |
-          if [ "${{ inputs.paket }}" = "batzen" ]; then echo "dir=." >> "$GITHUB_OUTPUT"; else echo "dir=plugins/${{ inputs.paket }}" >> "$GITHUB_OUTPUT"; fi
+          if [ "${{ inputs.paket }}" = "allkvitt" ]; then echo "dir=." >> "$GITHUB_OUTPUT"; else echo "dir=plugins/${{ inputs.paket }}" >> "$GITHUB_OUTPUT"; fi
       - run: pip install build
       - run: python -m build --outdir dist "${{ steps.pfad.outputs.dir }}"
       - uses: actions/upload-artifact@v4
