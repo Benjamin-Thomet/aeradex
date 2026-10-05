@@ -3,7 +3,7 @@
 {% block main %}
 <div class="topbar">
   <div><h1>Kreditoren</h1><div class="sub">Offene Posten per {{ ap.stichtag|datum }}</div></div>
-  <form class="actions" method="get"><input class="input" type="date" name="stichtag" value="{{ ap.stichtag }}" aria-label="Stichtag"><button class="btn" type="submit">Anzeigen</button><a class="btn" href="/pdf/kreditoren?stichtag={{ ap.stichtag }}" target="_blank">PDF</a><a class="btn" href="/berichte?typ=kreditoren&stichtag={{ ap.stichtag }}&jahr={{ ap.stichtag.year }}" title="Gleiche Zahlen als Bericht: Excel, CSV, Vorlage, Kommentar">Nach Alter (Berichte)</a></form>
+  <form class="actions" method="get"><input class="input" type="date" name="stichtag" value="{{ ap.stichtag }}" aria-label="Stichtag" style="width:auto"><button class="btn" type="submit">Anzeigen</button><a class="btn" href="/pdf/kreditoren?stichtag={{ ap.stichtag }}" target="_blank">PDF</a><a class="btn" href="/berichte?typ=kreditoren&stichtag={{ ap.stichtag }}&jahr={{ ap.stichtag.year }}" title="Gleiche Zahlen als Bericht: Excel, CSV, Vorlage, Kommentar">Nach Alter (Berichte)</a></form>
 </div>
 <div class="figures">
   {% for label in ap.kategorien %}<div class="figure"><span class="label">{{ label }} Tage</span><span class="value">{{ ap.kategorien[label]|chf }}</span></div>{% endfor %}
