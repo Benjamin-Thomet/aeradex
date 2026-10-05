@@ -291,6 +291,34 @@ zweimal vergeben, auch wenn ihre Buchung wieder entfernt wurde. Belegdateien hei
 der Belegordner (`allkvitt dossier`) stempelt jede Seite mit dieser Nummer und listet fehlende Nummern der Serien
 `JJ-NNN`, `R-JJJJ-NNNN` und `E-JJJJ-NNNN` mit Grund im Lückenverzeichnis.
 
+## budget/JJJJ.yaml
+
+Budget pro Erfolgskonto; Beträge natürlich (Ertrag und Aufwand positiv). Ein Jahresbetrag wird gleichmässig auf die
+Monate verteilt (Rappenrest im Dezember), sonst zwölf Monatswerte. `allkvitt check` meldet unbekannte Konten,
+Bilanzkonten und eine Summe der Monate, die nicht zu `jahr` passt.
+
+```yaml
+notiz: aus Ist 2026 +5 %
+konten:
+  "3400": {jahr: 240000}
+  "6000": {monate: [2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000]}
+```
+
+## auswertungen/
+
+`auswertungen/vorlagen.yaml` — gespeicherte Berichte (ohne Jahr, damit sie jedes Jahr gelten):
+
+```yaml
+Monatsreport Treuhand: {typ: erfolgsrechnung, parameter: {spalten: monat, vergleich: vorjahr}}
+```
+
+`auswertungen/kommentare/<bericht-und-parameter>.md` — ein Kommentar zu einem Bericht. Frontmatter `bericht`,
+`titel`, `parameter`, `fingerprint` (SHA-256 über die Zahlen des Berichts beim Schreiben), `autor`, `datum`;
+der Text ist der Body. Passt der Fingerabdruck nicht mehr zu den aktuellen Zahlen, gilt der Kommentar als veraltet.
+
+Erzeugte Berichte (Monatsbericht, Exporte) landen wie die Abschlussunterlagen in `berichte/` — nicht in git, jederzeit
+neu erzeugbar; jeder trägt den git-Commit seines Stands.
+
 ## Abschlussunterlagen (`allkvitt dossier`)
 
 ZIP `<Firma> Abschluss <JJJJ>.zip` mit einem Ordner gleichen Namens; Dateien beginnen mit der Nummer ihres Teils

@@ -183,8 +183,10 @@ def trial_balance(book: Book, year: int, start: date | None = None, end: date | 
     return out
 
 
-def account_ledger(book: Book, nr: str, year: int, engine: BalanceEngine | None = None) -> dict:
-    """Kontoblatt: opening, every row with counter-account and running balance, closing."""
+def account_ledger(book: Book, nr: str, year: int, engine: BalanceEngine | None = None,
+                   start: date | None = None, end: date | None = None) -> dict:
+    """Kontoblatt: opening, every row with counter-account and running balance, closing.
+    With `start`/`end` (inside `year`) only that window: earlier rows go into the opening."""
     engine = engine or BalanceEngine(book)
     acct = book.account(nr)
     running = opening = engine.opening(nr, year)
@@ -196,8 +198,17 @@ def account_ledger(book: Book, nr: str, year: int, engine: BalanceEngine | None 
     by_beleg: dict[str, list[Row]] = defaultdict(list)
     for r in rows:
         by_beleg[r.beleg].append(r)
+    if start:                                  # rows before the window go into the opening
+        for r in rows:
+            if r.datum < start and nr in (r.soll, r.haben):
+                opening += (r.betrag if r.soll == nr else ZERO) - (r.betrag if r.haben == nr else ZERO)
+                if acct.is_foreign and r.waehrung == acct.waehrung:
+                    opening_fw += fw_signed(r, nr)
+        running, running_fw = opening, opening_fw
     for r in rows:
         if nr not in (r.soll, r.haben):
+            continue
+        if (start and r.datum < start) or (end and r.datum > end):
             continue
         soll = r.betrag if r.soll == nr else ZERO
         haben = r.betrag if r.haben == nr else ZERO

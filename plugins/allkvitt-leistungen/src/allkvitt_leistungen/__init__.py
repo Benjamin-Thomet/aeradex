@@ -392,3 +392,9 @@ from .seiten import PAGES  # noqa: E402  (pages need the functions above)
 @hookimpl
 def allkvitt_pages():
     return PAGES
+
+
+@hookimpl
+def allkvitt_reports():
+    from .berichte import REPORTS
+    return REPORTS

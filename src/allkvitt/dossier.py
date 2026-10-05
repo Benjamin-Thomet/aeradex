@@ -606,6 +606,20 @@ class Teil:
     beschreibung: str = ""
 
 
+def _geldfluss(k: Kontext, fmt: str) -> list[tuple[str, bytes]]:
+    from datetime import date as _date
+
+    from . import berichte, reports
+    start, end = _date(k.year, 1, 1), _date(k.year, 12, 31)
+    reps = [reports.geldfluss(k.book, start, end), reports.kennzahlen(k.book, start, end)]
+    if fmt == "csv":
+        return [(f"Geldflussrechnung {k.year}.csv", berichte.csv(reps[0])),
+                (f"Kennzahlen {k.year}.csv", berichte.csv(reps[1]))]
+    items = [{"bericht": r, "kommentar": None} for r in reps]
+    return [(f"Geldfluss und Kennzahlen {k.year}.pdf",
+             k.report(berichte.pdf, k.book, items, f"Geldfluss und Kennzahlen {k.year}"))]
+
+
 def _mwst_relevant(k: Kontext) -> bool:
     from . import mwst
     return mwst.config(k.book)["methode"] != "keine"
@@ -628,6 +642,8 @@ TEILE = [
     Teil("lohn", "08", "Lohn", ("pdf", "csv"), _lohn, lambda k: bool(_payslips(k)),
          beschreibung="Lohnjournal und Lohnausweise"),
     Teil("kontenplan", "09", "Kontenplan", ("pdf", "csv"), _kontenplan),
+    Teil("geldfluss", "10", "Geldfluss und Kennzahlen", ("pdf", "csv"), _geldfluss,
+         beschreibung="Geldflussrechnung (indirekt, OR 961b) und KMU-Kennzahlen"),
 ]
 
 

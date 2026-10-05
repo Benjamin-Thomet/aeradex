@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -215,6 +216,41 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("report", help="Jahresrechnung (Bilanz, Erfolgsrechnung, Anhang)")
     s.add_argument("--jahr", type=int)
     s.add_argument("--pdf", nargs="?", const="", default=None)
+    s = sub.add_parser("bericht", help="Berichte für jede Periode: Erfolgsrechnung, Bilanz, Geldfluss, Kennzahlen, "
+                                       "Alter, Umsatz; Vorlagen, Kommentare, Monatsbericht")
+    s.add_argument("typ", help="erfolgsrechnung, bilanz, geldfluss, kennzahlen, debitoren, kreditoren, umsatz "
+                               "(+ Plugins) · liste · monat · vorlage-speichern · vorlage-loeschen")
+    s.add_argument("name", nargs="?", default="", help="vorlage-*: Name der Vorlage")
+    s.add_argument("--jahr", type=int)
+    s.add_argument("--periode", help="jahr, q1–q4, h1, h2, 01–12")
+    s.add_argument("--von")
+    s.add_argument("--bis")
+    s.add_argument("--spalten", choices=["gesamt", "monat", "quartal"])
+    s.add_argument("--vergleich", choices=["keine", "vorperiode", "vorjahr", "budget"])
+    s.add_argument("--stichtag")
+    s.add_argument("--nach", choices=["kunde", "konto", "monat"], help="umsatz: gruppiert nach")
+    s.add_argument("--detail", action="store_true", help="mit Konten")
+    s.add_argument("--format", default="text", choices=["text", "pdf", "xlsx", "csv"])
+    s.add_argument("--out", help="Zieldatei (Standard: berichte/)")
+    s.add_argument("--vorlage", default="", help="gespeicherte Vorlage ausführen")
+    s.add_argument("--bericht-typ", dest="bericht_typ", default="", help="vorlage-speichern: welcher Bericht")
+    s.add_argument("--monat", help="monat: JJJJ-MM (Standard: Vormonat)")
+    s.add_argument("--mail", action="store_true", help="monat: per E-Mail senden (allkvitt.yaml → mail)")
+    s.add_argument("--kommentar", help="Kommentar zu diesem Bericht speichern")
+    s.add_argument("--agent", action="store_true", help="Kommentar vom Agenten schreiben lassen")
+    s = sub.add_parser("budget", help="Budget pro Konto und Monat (für Budget vs. Ist)")
+    bus = s.add_subparsers(dest="sub", required=True)
+    c = bus.add_parser("show")
+    c.add_argument("--jahr", type=int)
+    c = bus.add_parser("set", help="Budget eines Kontos: Jahresbetrag oder 12 Monatswerte")
+    c.add_argument("--jahr", type=int)
+    c.add_argument("--konto", required=True)
+    c.add_argument("--betrag", help="Jahresbetrag (gleichmässig verteilt)")
+    c.add_argument("--monate", help="12 Werte, kommagetrennt")
+    c = bus.add_parser("vorjahr", help="Budget aus dem Ist des Vorjahres (+ Prozent), mit Saisonverlauf")
+    c.add_argument("--jahr", type=int)
+    c.add_argument("--prozent", default="0")
+    c.add_argument("--basis", type=int, help="anderes Basisjahr")
     s = sub.add_parser("dossier", help="Abschlussunterlagen eines Jahres: alles als ZIP oder einzelne Teile")
     s.add_argument("--jahr", type=int)
     s.add_argument("--teil", default="", help="nur diesen Teil als Datei (statt ZIP): jahresrechnung, saldenliste, "
@@ -490,6 +526,51 @@ def _plugin_commands(sub) -> None:
             parser.description = f"Plugin-Fehler: {exc}"
 
 
+REPORT_PARAMS = ("jahr", "periode", "von", "bis", "spalten", "vergleich", "stichtag", "nach")
+
+
+def _bericht(a, b: Book):
+    """`allkvitt bericht …`: run, export, comment, templates, monthly package."""
+    from . import berichte, reports
+    params = {k: getattr(a, k) for k in REPORT_PARAMS if getattr(a, k, None) not in (None, "")}
+    if a.typ == "liste":
+        return api.report_list(b)
+    if a.typ == "monat":
+        monat = a.monat
+        if not monat:
+            first = date.today().replace(day=1)
+            prev = date.fromordinal(first.toordinal() - 1)
+            monat = f"{prev.year}-{prev.month:02d}"
+        return api.monthly_report(b, monat, a.mail)
+    if a.typ == "vorlage-speichern":
+        return api.report_template_save(b, a.name, a.bericht_typ, **params)
+    if a.typ == "vorlage-loeschen":
+        return api.report_template_delete(b, a.name)
+    typ = "" if a.vorlage else a.typ
+    if a.kommentar:
+        return api.report_comment_save(b, a.kommentar, typ, a.vorlage, "Mensch (CLI)", **params)
+    if a.agent:
+        if a.vorlage:
+            t = berichte.run_template(b, a.vorlage, **params)          # the template's parameters + overrides
+            typ, params = t["typ"], t["parameter"]
+        said = berichte.run_agent_comment(b.root, typ, **params)
+        return {"ok": True, "meldung": "Kommentar vom Agenten gespeichert", "agent": said}
+    if a.format != "text":
+        data, name = api.report_export(b, typ, a.format, a.vorlage, a.detail, **params)
+        out = Path(a.out) if a.out else b.root / "berichte" / name
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
+        return {"ok": True, "meldung": f"{a.format.upper()} geschrieben", "datei": str(out)}
+    if a.json:
+        return api.report(b, typ, a.vorlage, **params)
+    rep = berichte.run_template(b, a.vorlage, **params) if a.vorlage else reports.run(b, typ, **params)
+    c = berichte.comment(b, rep)
+    text = berichte.text(rep, a.detail)
+    if c:
+        text += f"\nKommentar{' (veraltet)' if c['veraltet'] else ''}: {c['text']}\n"
+    return {"_text": text + "\n" + berichte.stand_text(berichte.stand(b))}
+
+
 def dispatch(a, book_path: Path | None):
     def book() -> Book:
         return Book(find_root(book_path))
@@ -550,6 +631,17 @@ def dispatch(a, book_path: Path | None):
         if not a.ziel:
             return api.book_inspect(a.datei, password)
         return api.book_import(a.datei, a.ziel, password)
+    if c == "bericht":
+        return _bericht(a, book())
+    if c == "budget":
+        b = book()
+        jahr = a.jahr or date.today().year
+        if a.sub == "show":
+            return api.budget_show(b, jahr)
+        if a.sub == "set":
+            months = [x.strip() for x in a.monate.split(",")] if a.monate else None
+            return api.budget_set(b, jahr, a.konto, a.betrag, months)
+        return api.budget_from_prior(b, jahr, a.prozent, a.basis)
     if c == "dossier":
         b = book()
         if a.liste:
@@ -837,6 +929,8 @@ def dispatch(a, book_path: Path | None):
 
 def render(cmd: str, sub: str | None, result) -> str:
     """Human output for the common commands; everything else as indented JSON."""
+    if isinstance(result, dict) and set(result) == {"_text"}:
+        return result["_text"]
     if isinstance(result, dict) and "meldung" in result and result.get("ok"):
         lines = [f"✓ {result['meldung']}"]
         if result.get("commit"):

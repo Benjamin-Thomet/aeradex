@@ -520,15 +520,20 @@ async def kontoblatt(ui: UI, request: Request):
     book = ui.book()
     year = year_param(request, book)
     nr = request.path_params["nr"]
+    window = None
     try:
-        led = account_ledger(book, nr, year)
-    except BookError as exc:
+        q = request.query_params
+        if q.get("von") or q.get("bis"):          # drill-down from a report: just that period
+            window = (max(parse_date(q.get("von") or f"{year}-01-01"), date(year, 1, 1)),
+                      min(parse_date(q.get("bis") or f"{year}-12-31"), date(year, 12, 31)))
+        led = account_ledger(book, nr, year, start=window[0] if window else None, end=window[1] if window else None)
+    except (BookError, FormatError) as exc:
         return PlainTextResponse(str(exc), status_code=404)
     acct = book.accounts[nr]
     numbers = sorted(n for n, a in book.accounts.items() if a.aktiv_ or n == nr)
     i = numbers.index(nr)
     chart = _balance_chart(led, year, acct.klasse in ("passiv", "ertrag"))
-    return ui.render(request, "kontoblatt.html", book=book, year=year, led=led, chart=chart,
+    return ui.render(request, "kontoblatt.html", book=book, year=year, led=led, chart=chart, window=window,
                      klasse=acct.klasse, prev_nr=numbers[i - 1] if i > 0 else None,
                      next_nr=numbers[i + 1] if i + 1 < len(numbers) else None,
                      konten_liste=[book.accounts[n] for n in numbers])

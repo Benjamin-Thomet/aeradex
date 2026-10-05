@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}{{ rep.titel if rep else 'Berichte' }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>{{ rep.titel if rep else 'Berichte' }}</h1><div class="sub">{{ rep.untertitel if rep else 'Bericht wählen' }}{% if vorlage %} · Vorlage «{{ vorlage }}»{% endif %}</div></div>
+  {% if rep %}<div class="actions">
+    <a class="btn" href="/berichte/export.pdf?{{ query }}" target="_blank" rel="noopener">PDF</a>
+    <a class="btn" href="/berichte/export.xlsx?{{ query }}">Excel</a>
+    <a class="btn" href="/berichte/export.csv?{{ query }}">CSV</a>
+  </div>{% endif %}
+</div>
+
+<div class="panel">
+  <form class="body" method="get" action="/berichte">
+    <div class="form four">
+      <div class="field"><label for="b-typ">Bericht</label>
+        <select class="input" id="b-typ" name="typ" style="width:100%" onchange="this.form.vorlage.value='';this.form.submit()">
+          {% for g, items in groups.items() %}<optgroup label="{{ g }}">{% for r in items %}<option value="{{ r.name }}" {{ 'selected' if r.name == typ and not vorlage }}>{{ r.label }}</option>{% endfor %}</optgroup>{% endfor %}
+        </select></div>
+      <div class="field"><label for="b-vorlage">Vorlage</label>
+        <select class="input" id="b-vorlage" name="vorlage" style="width:100%" onchange="this.form.submit()"><option value="">—</option>{% for n in vorlagen %}<option {{ 'selected' if n == vorlage }}>{{ n }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="b-jahr">Jahr</label>
+        <select class="input" id="b-jahr" name="jahr" style="width:100%">{% set years = (book.years() or [today().year]) %}{% for y in range(years[0] - 1, ([years[-1], today().year]|max) + 2)|reverse %}<option {{ 'selected' if y|string == p.jahr|string }}>{{ y }}</option>{% endfor %}</select></div>
+      {% if 'periode' in params_of %}
+      <div class="field"><label for="b-periode">Periode</label>
+        <select class="input" id="b-periode" name="periode" style="width:100%">{% for k, l in [("jahr","Ganzes Jahr"),("q1","1. Quartal"),("q2","2. Quartal"),("q3","3. Quartal"),("q4","4. Quartal"),("h1","1. Halbjahr"),("h2","2. Halbjahr")] %}<option value="{{ k }}" {{ 'selected' if k == p.periode }}>{{ l }}</option>{% endfor %}{% for m in range(1,13) %}<option value="{{ '%02d'|format(m) }}" {{ 'selected' if p.periode == '%02d'|format(m) }}>{{ MONTHS[m] }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="b-von">oder von</label><input class="input" type="date" id="b-von" name="von" value="{{ p.von or '' }}"></div>
+      <div class="field"><label for="b-bis">bis</label><input class="input" type="date" id="b-bis" name="bis" value="{{ p.bis or '' }}"></div>
+      {% endif %}
+      {% if 'spalten' in params_of %}
+      <div class="field"><label for="b-spalten">Spalten</label>
+        <select class="input" id="b-spalten" name="spalten" style="width:100%">{% for k, l in [("gesamt","eine Spalte"),("monat","je Monat"),("quartal","je Quartal")] %}<option value="{{ k }}" {{ 'selected' if k == p.spalten }}>{{ l }}</option>{% endfor %}</select></div>
+      {% endif %}
+      {% if 'vergleich' in params_of %}
+      <div class="field"><label for="b-vergleich">Vergleich</label>
+        <select class="input" id="b-vergleich" name="vergleich" style="width:100%">{% for k, l in [("keine","keiner"),("vorperiode","Vorperiode"),("vorjahr","Vorjahr"),("budget","Budget")] %}<option value="{{ k }}" {{ 'selected' if k == p.vergleich }}>{{ l }}</option>{% endfor %}</select></div>
+      {% endif %}
+      {% if 'stichtag' in params_of %}
+      <div class="field"><label for="b-stichtag">Stichtag</label><input class="input" type="date" id="b-stichtag" name="stichtag" value="{{ p.stichtag or '' }}"></div>
+      {% endif %}
+      {% if 'nach' in params_of %}
+      <div class="field"><label for="b-nach">nach</label>
+        <select class="input" id="b-nach" name="nach" style="width:100%">{% for k, l in [("kunde","Kunde"),("konto","Ertragskonto"),("monat","Monat")] %}<option value="{{ k }}" {{ 'selected' if k == p.nach }}>{{ l }}</option>{% endfor %}</select></div>
+      {% endif %}
+      <div class="field"><span class="lbl">Darstellung</span><label class="check"><input type="checkbox" name="detail" value="1" {{ 'checked' if detail }}> mit Konten</label></div>
+    </div>
+    <div class="formfoot"><span class="small muted">{{ registry[typ].beschreibung if typ in registry else '' }}</span><button class="btn primary" type="submit">Anzeigen</button></div>
+  </form>
+</div>
+
+{% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+
+{% if rep %}
+<div class="panel">
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th></th>{% for c in rep.spalten %}<th class="right">{{ c.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in rep.zeilen %}
+      {% if r.stil == 'kopf' %}
+      <tr><td colspan="{{ rep.spalten|length + 1 }}"><strong>{{ r.label }}</strong></td></tr>
+      {% else %}
+      <tr class="row"{% if r.stil in ('zwischentotal', 'total') %} style="font-weight:600"{% endif %}>
+        <td{% if r.formel %} title="{{ r.formel }}"{% endif %}>{{ r.label }}{% if r.anteil is defined and r.anteil is not none %} <span class="small muted">{{ r.anteil }} %</span>{% endif %}</td>
+        {% for c in rep.spalten %}{% set v = r.werte.get(c.key) %}
+        <td class="right num{{ ' total' if r.stil == 'total' }}">{% if c.art == 'text' and v %}<span class="pill {{ {'gut':'ok','beobachten':'warn','kritisch':'red'}.get(v, 'muted') }}">{{ v }}</span>{% else %}{{ fmt(v, r.einheit or '', c.art) }}{% endif %}</td>
+        {% endfor %}
+      </tr>
+      {% if detail %}{% for k in r.konten %}
+      <tr class="row small">
+        <td style="padding-left:28px"><span class="acc">{{ k.konto }}</span> {{ k.name }}</td>
+        {% for c in rep.spalten %}{% set link = links.get(k.konto, {}).get(c.key) %}
+        <td class="right num muted">{% if link %}<a class="link" href="{{ link }}">{{ fmt(k.werte.get(c.key), '', c.art) }}</a>{% else %}{{ fmt(k.werte.get(c.key), '', c.art) }}{% endif %}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}{% endif %}
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% for h in rep.hinweise %}<div class="body small muted" style="padding-top:6px;padding-bottom:6px">Hinweis: {{ h }}</div>{% endfor %}
+  {% if not detail and rep.typ in ('erfolgsrechnung', 'bilanz', 'geldfluss') %}<div class="body small muted" style="padding-top:0">«mit Konten» zeigt die Konten; jede Zahl führt ins Kontoblatt dieser Periode und von dort zum Beleg.</div>{% endif %}
+</div>
+
+{% if chart %}
+<div class="panel">
+  <svg class="chart" viewBox="0 0 900 175" role="img" aria-label="{{ rep.titel }} als Diagramm">
+    {% for t in chart.ticks %}<line x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}" stroke="var(--rule)"/><text x="{{ chart.left - 6 }}" y="{{ t.y + 3 }}" text-anchor="end">{{ t.wert|chf|replace(".00", "") }}</text>{% endfor %}
+    {% for b in chart.bars %}<rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" fill="{{ b.fill }}"><title>{{ b.title }}: {{ b.wert|chf }}</title></rect>{% endfor %}
+    <line x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ chart.zero }}" y2="{{ chart.zero }}" stroke="var(--rule-strong)"/>
+    {% for l in chart.labels %}<text x="{{ l.x }}" y="164" text-anchor="middle">{{ l.text }}</text>{% endfor %}
+  </svg>
+  <div class="legend">{% for l in chart.legend %}<span><i style="background:{{ l.fill }}"></i>{{ l.name }}</span>{% endfor %}</div>
+</div>
+{% endif %}
+
+<div class="grid2">
+  <div class="panel">
+    <header><h2>Kommentar</h2>{% if kommentar %}<span class="hint">{{ kommentar.autor }} · {{ kommentar.datum|datum }}{% if kommentar.veraltet %} <span class="pill warn" title="Die Zahlen haben sich seit dem Kommentar geändert">veraltet</span>{% endif %}</span>{% endif %}</header>
+    <form class="body" hx-post="/berichte/kommentar" hx-target="find .errors">
+      {% for k, v in p.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <input type="hidden" name="typ" value="{{ typ }}"><input type="hidden" name="vorlage" value="{{ vorlage }}">
+      <textarea class="input" name="text" style="min-height:90px;width:100%" placeholder="Was fällt auf? Abweichungen, Erklärungen, nächste Schritte …">{{ kommentar.text if kommentar else '' }}</textarea>
+      <div class="errors" id="kommentar-fehler"></div>
+      <div class="formfoot"><span class="small muted">Der Kommentar merkt sich die Zahlen; ändern sie sich, wird er als veraltet markiert.</span>
+        <span class="actions"><button class="btn" type="button" hx-post="/berichte/agent" hx-include="closest form" hx-target="#kommentar-fehler" hx-disabled-elt="this" title="Der Agent liest den Bericht und schreibt einen Kommentar">Agent kommentieren</button><button class="btn primary" type="submit">Speichern</button></span></div>
+    </form>
+  </div>
+  <div class="panel">
+    <header><h2>Vorlage und Monatsbericht</h2></header>
+    <form class="body" hx-post="/berichte/vorlage" hx-target="find .errors">
+      {% for k, v in p.items() if k != 'jahr' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <input type="hidden" name="typ" value="{{ typ }}">
+      <div class="form four"><div class="field" style="grid-column: span 3"><label for="v-name">Diesen Bericht als Vorlage speichern</label><input class="input" id="v-name" name="name" value="{{ vorlage }}" placeholder="z.B. Monatsreport Treuhand" required></div>
+        <div class="field"><span class="lbl">&nbsp;</span><button class="btn" type="submit">Speichern</button></div></div>
+      {{ errors() }}
+    </form>
+    {% if vorlage %}<form class="body" style="padding-top:0" hx-post="/berichte/vorlage-loeschen" hx-target="find .errors" hx-confirm="Vorlage «{{ vorlage }}» löschen?"><input type="hidden" name="name" value="{{ vorlage }}"><button class="btn small danger" type="submit">Vorlage löschen</button>{{ errors() }}</form>{% endif %}
+    <form class="body" hx-post="/berichte/monat" hx-target="find .errors">
+      <div class="form four"><div class="field" style="grid-column: span 2"><label for="m-monat">Monatsbericht</label><input class="input" type="month" id="m-monat" name="monat" value="{{ monat }}" required style="width:100%"></div>
+        <div class="field"><span class="lbl">&nbsp;</span><label class="check"><input type="checkbox" name="mail" value="1"> per E-Mail senden</label></div>
+        <div class="field"><span class="lbl">&nbsp;</span><button class="btn" type="submit">Erstellen</button></div></div>
+      {{ errors() }}
+      <span class="small muted">Erfolgsrechnung (Monat und kumuliert, mit Budget oder Vorjahr), Bilanz, Geldfluss, Kennzahlen, offene Posten — PDF und Excel in berichte/. Automatisch: <code>allkvitt bericht monat --mail</code> per Timer.</span>
+    </form>
+  </div>
+</div>
+<p class="small muted">{{ stand }}</p>
+{% endif %}
+{% endblock %}

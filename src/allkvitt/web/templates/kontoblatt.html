@@ -2,7 +2,7 @@
 {% block title %}Konto {{ led.konto }}{% endblock %}
 {% block main %}
 <div class="topbar">
-  <div><div class="crumbs"><a href="/konten?jahr={{ year }}">Konten</a> /</div><h1>{{ led.konto }} {{ led.name }}</h1><div class="sub">Kontoblatt {{ year }}{% if led.saldo_fw is not none %} · geführt in {{ led.waehrung }}, bewertet in CHF{% endif %}</div></div>
+  <div><div class="crumbs"><a href="/konten?jahr={{ year }}">Konten</a> /</div><h1>{{ led.konto }} {{ led.name }}</h1><div class="sub">Kontoblatt {% if window %}{{ window[0]|datum }} – {{ window[1]|datum }} · <a class="link" href="/konten/{{ led.konto }}?jahr={{ year }}">ganzes Jahr</a>{% else %}{{ year }}{% endif %}{% if led.saldo_fw is not none %} · geführt in {{ led.waehrung }}, bewertet in CHF{% endif %}</div></div>
   <div class="actions">
     {% if prev_nr %}<a class="btn" href="/konten/{{ prev_nr }}?jahr={{ year }}" title="Vorheriges Konto {{ prev_nr }}" aria-label="Vorheriges Konto">‹</a>{% endif %}
     <select class="input" aria-label="Konto" onchange="location.href='/konten/' + this.value + '?jahr={{ year }}'" style="max-width:260px">
@@ -31,14 +31,14 @@
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th>Datum</th><th>Beleg</th><th>Text</th><th>Gegenkonto</th><th class="right">Soll</th><th class="right">Haben</th><th class="right">Saldo</th>{% if fw %}<th class="right">{{ led.waehrung }}</th><th class="right">Kurs</th><th class="right">Saldo {{ led.waehrung }}</th>{% endif %}</tr></thead>
     <tbody>
-      <tr class="row"><td></td><td></td><td class="muted">Eröffnung</td><td></td><td></td><td></td><td class="right num">{{ led.eroeffnung|chf }}</td>{% if fw %}<td></td><td></td><td class="right num">{{ led.eroeffnung_fw|chf }}</td>{% endif %}</tr>
+      <tr class="row"><td></td><td></td><td class="muted">{{ "Anfangssaldo " ~ (window[0]|datum) if window else "Eröffnung" }}</td><td></td><td></td><td></td><td class="right num">{{ led.eroeffnung|chf }}</td>{% if fw %}<td></td><td></td><td class="right num">{{ led.eroeffnung_fw|chf }}</td>{% endif %}</tr>
       {% for z in led.zeilen %}
       <tr class="row"><td class="num">{{ z.datum|datum }}</td><td><a class="beleg" href="/journal?jahr={{ year }}&monat={{ z.datum.month }}&q={{ z.beleg|urlq }}">{{ z.beleg }}</a></td><td>{{ z.text }}</td>
         <td class="acc">{% if z.gegenkonto != 'div.' %}<a class="link" href="/konten/{{ z.gegenkonto }}?jahr={{ year }}">{{ z.gegenkonto }}</a>{% else %}div.{% endif %}</td>
         <td class="right num">{{ z.soll|chf(true) }}</td><td class="right num">{{ z.haben|chf(true) }}</td><td class="right num">{{ z.saldo|chf }}</td>{% if fw %}<td class="right num">{% if z.fw is not none %}{{ z.fw|chf(true, true) }}{% endif %}</td><td class="right num small muted">{{ z.kurs or "" }}</td><td class="right num">{{ z.saldo_fw|chf }}</td>{% endif %}</tr>
       {% endfor %}
     </tbody>
-    <tfoot><tr><td colspan="4">Total · Saldo per 31.12.{{ year }}</td><td class="right num">{{ led.total_soll|chf }}</td><td class="right num">{{ led.total_haben|chf }}</td><td class="right num total">{{ led.saldo|chf }}</td>{% if fw %}<td></td><td></td><td class="right num total">{{ led.saldo_fw|chf }}</td>{% endif %}</tr></tfoot>
+    <tfoot><tr><td colspan="4">Total · Saldo per {{ window[1]|datum if window else '31.12.' ~ year }}</td><td class="right num">{{ led.total_soll|chf }}</td><td class="right num">{{ led.total_haben|chf }}</td><td class="right num total">{{ led.saldo|chf }}</td>{% if fw %}<td></td><td></td><td class="right num total">{{ led.saldo_fw|chf }}</td>{% endif %}</tr></tfoot>
   </table></div>
 </div>
 {% endblock %}

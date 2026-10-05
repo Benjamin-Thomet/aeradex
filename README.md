@@ -297,6 +297,34 @@ allkvitt import-buch "Muster GmbH.allkvitt" ~/buchhaltung/muster --passwort
 ```
 Beim Import prüft allkvitt jede Datei gegen ihre Prüfsumme, übernimmt den git-Verlauf und führt `allkvitt check` aus.
 
+### Berichte und Budget
+Berichte für jede Periode — nicht nur zum Jahresende. Oberfläche: **Berichte** (oben), mit Diagramm, Export und
+Drill-down: jede Zahl führt ins Kontoblatt genau dieser Periode und von dort zum Beleg.
+```bash
+allkvitt bericht erfolgsrechnung --jahr 2026 --spalten monat --vergleich budget   # Monatsspalten, Budget vs. Ist
+allkvitt bericht bilanz --periode q3 --vergleich vorperiode                        # Bilanz per 30.09. gegen 30.06.
+allkvitt bericht geldfluss --jahr 2026                  # Geldflussrechnung (indirekt), abgestimmt mit den flüssigen Mitteln
+allkvitt bericht kennzahlen                             # Liquiditätsgrade, EK-Quote, Margen, DSO/DPO mit Beurteilung
+allkvitt bericht debitoren --stichtag 2026-09-30        # offene Posten nach Alter (auch: kreditoren)
+allkvitt bericht umsatz --nach kunde                    # Umsatz nach Kunde, Ertragskonto oder Monat
+allkvitt bericht erfolgsrechnung --detail --format xlsx # mit Konten, als Excel (auch pdf, csv)
+allkvitt bericht liste                                  # alle Berichte (inkl. Plugins) und gespeicherten Vorlagen
+
+allkvitt budget vorjahr --jahr 2027 --prozent 5         # Budget aus dem Ist 2026, Saisonverlauf bleibt
+allkvitt budget set --jahr 2027 --konto 6000 --betrag 24000
+
+allkvitt bericht vorlage-speichern "Monatsreport Treuhand" --bericht-typ erfolgsrechnung --spalten monat --vergleich vorjahr
+allkvitt bericht x --vorlage "Monatsreport Treuhand" --format pdf
+allkvitt bericht erfolgsrechnung --periode q3 --kommentar "Umsatz unter Budget: Auftrag X verschoben."
+allkvitt bericht erfolgsrechnung --periode q3 --agent   # der Agent schreibt den Kommentar (zitiert nur Zahlen des Berichts)
+allkvitt bericht monat --monat 2026-09 --mail           # Monatsbericht (PDF + Excel) in berichte/, optional per E-Mail
+```
+Jeder Bericht trägt seinen **Stand** (git-Commit, Prüfstatus), damit ein ausgedrucktes Blatt immer auf das Buch
+zurückführt. Ein Kommentar merkt sich die Zahlen, zu denen er geschrieben wurde: ändern sie sich, ist er als
+«veraltet» markiert. Für den automatischen Monatsbericht genügt ein Timer (siehe [docs/server.md](docs/server.md)).
+Die Jahresrechnung (`allkvitt report`) bleibt das massgebende Abschlussdokument; für ein ganzes Jahr zeigen die
+Berichte dieselben Zahlen.
+
 ## Mit einem Agenten arbeiten
 
 Jedes Buch enthält ein `AGENTS.md` (und `CLAUDE.md`) mit den Regeln für Agenten. Zwei Wege:

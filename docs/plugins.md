@@ -70,6 +70,7 @@ Die Hooks sind [pluggy](https://pluggy.readthedocs.io/)-Hooks (dasselbe System w
 | `allkvitt_instructions()` | `str` | kurzer Hinweis an den Agenten, wann er die Werkzeuge nutzt | eingeschaltet |
 | `allkvitt_commands()` | `[Command]` | Befehle `allkvitt <name> …` | eingeschaltet |
 | `allkvitt_pages()` | `[Page]` | eigene Seiten in der Oberfläche (Reiter eines Bereichs oder unter «Mehr») | eingeschaltet |
+| `allkvitt_reports()` | `[Report]` | weitere Berichte (Berichte, `allkvitt bericht`, Agent): `Report(name, label, build, params, gruppe)`, `build(book, params)` liefert die Tabelle wie `allkvitt.reports` | eingeschaltet |
 | `allkvitt_dossier_teile()` | `[DossierTeil]` | weitere Teile der Abschlussunterlagen (`allkvitt dossier`), z.B. ein Anlagenspiegel: `build(book, jahr, format)` → `[(Dateiname, bytes)]` | eingeschaltet |
 
 ### Kontenplan-Vorlagen (Daten)

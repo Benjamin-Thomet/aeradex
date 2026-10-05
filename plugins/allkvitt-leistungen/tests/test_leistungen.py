@@ -279,3 +279,19 @@ def test_pages(book):
         assert c.get("/p/leistungen/leistungen?tab=projekte&status=alle").status_code == 200
     assert_clean(Book(book.root))
     assert saldo(book, "1100") == Decimal("290.00") + Decimal("765.00")
+
+
+def test_reports(book):
+    from allkvitt import reports
+    W(book, daten.add_time, "2026-10-01", "M0001", "6", "Beratung", "K0001")
+    W(book, daten.add_time, "2026-10-02", "M0001", "2", "", "", "", False, "Intern")
+    W(book, daten.add_material, "2026-10-02", "K0001", "P001", "4")
+    W(book, daten.add_project, "K0001", "Fassade", budget_stunden="10")
+    assert {"leistungen_personen", "leistungen_produkte", "leistungen_projekte"} <= set(reports.registry(Book(book.root)))
+    rep = reports.run(Book(book.root), "leistungen_personen", jahr=2026, periode="10")
+    lea = rep["zeilen"][0]["werte"]
+    assert lea["ist"] == Decimal("8") and lea["abr"] == Decimal("6") and lea["quote"] == Decimal("75.0")
+    assert lea["wert"] == Decimal("720.00") and lea["kosten"] == Decimal("560.00")
+    prod = reports.run(Book(book.root), "leistungen_produkte", jahr=2026)
+    assert prod["zeilen"][-1]["werte"]["offen"] == Decimal("180.00")
+    assert reports.run(Book(book.root), "leistungen_projekte")["zeilen"][0]["werte"]["budget_h"] == Decimal("10")

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Budget {{ jahr }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Budget {{ jahr }}</h1><div class="sub">Ertrag {{ total.ertrag|chf }} · Aufwand {{ total.aufwand|chf }} · Ergebnis {{ (total.ertrag - total.aufwand)|chf }}</div></div>
+  <form class="actions" method="get">
+    <select class="input" name="jahr" aria-label="Jahr" onchange="this.form.submit()">{% for y in range(today().year - 2, today().year + 3)|reverse %}<option {{ 'selected' if y == jahr }}>{{ y }}</option>{% endfor %}</select>
+    <a class="btn" href="/berichte?typ=erfolgsrechnung&jahr={{ jahr }}&spalten=monat&vergleich=budget">Budget vs. Ist</a>
+  </form>
+</div>
+
+<div class="panel">
+  <header><h2>Aus dem Vorjahr</h2><span class="hint">Ist {{ jahr - 1 }} mit seinem Monatsverlauf, plus/minus Prozent, auf 100 Franken gerundet</span></header>
+  <form class="body" hx-post="/berichte/budget/vorjahr" hx-target="find .errors" {% if vorhanden %}hx-confirm="Das bestehende Budget {{ jahr }} wird ersetzt. Weiter?"{% endif %}>
+    <input type="hidden" name="jahr" value="{{ jahr }}">
+    <div class="actions"><label for="b-prozent" class="small">Veränderung %</label><input class="input num" id="b-prozent" name="prozent" value="0" style="width:90px"><button class="btn" type="submit">Budget erstellen</button></div>
+    {{ errors() }}
+  </form>
+</div>
+
+<div class="panel">
+  <header><h2>Pro Konto und Monat</h2><span class="hint">Beträge positiv (Ertrag und Aufwand); Tab springt zum nächsten Feld</span></header>
+  <form class="body" hx-post="/berichte/budget/speichern" hx-target="find .errors">
+    <input type="hidden" name="jahr" value="{{ jahr }}">
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Konto</th>{% for m in range(1, 13) %}<th class="right" style="padding:6px 4px">{{ MONTHS[m][:3] }}</th>{% endfor %}<th class="right">Jahr</th><th class="right">Ist {{ jahr - 1 }}</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        {% if loop.first or r.klasse != loop.previtem.klasse %}<tr><td colspan="15"><strong>{{ 'Ertrag' if r.klasse == 'ertrag' else 'Aufwand' }}</strong></td></tr>{% endif %}
+        <tr class="row"><td class="acc" title="{{ r.name }}" style="padding:3px 8px">{{ r.konto }} <span class="small muted">{{ r.name[:18] }}</span></td>
+          {% for v in r.monate %}<td style="padding:3px 2px"><input class="input num" name="b_{{ r.konto }}_{{ loop.index }}" value="{{ v|chf(true)|replace("'", "")|replace(".00", "") }}" aria-label="{{ r.konto }} {{ MONTHS[loop.index] }}" style="width:62px;padding:3px 5px"></td>{% endfor %}
+          <td class="right num">{{ r.jahr|chf(true) }}</td><td class="right num muted">{{ r.vorjahr|chf(true) }}</td></tr>
+      {% else %}<tr><td colspan="15" class="empty">Keine Erfolgskonten.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Gespeichert in budget/{{ jahr }}.yaml. Gleiche Monatswerte werden als Jahresbetrag abgelegt.</span><button class="btn primary" type="submit">Budget speichern</button></div>
+  </form>
+</div>
+{% endblock %}

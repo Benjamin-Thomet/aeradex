@@ -50,6 +50,12 @@ Die Kreditkarte ist ein Passivkonto; Einkäufe danach wie Bankbewegungen kontier
 **Abschluss**: `allkvitt report --jahr 2026 --pdf`, Gewinnverwendung `allkvitt allocation set 2026 --dividende … --reserve …`,
 nach der GV `allkvitt allocation book 2026 --datum …`, Periode sperren `allkvitt lock 2026-12-31`.
 Unterlagen für Treuhand/Revision: `allkvitt dossier --jahr 2026` (ZIP in berichte/, einzeln mit `--teil journal --format csv`).
+
+**Berichte**: Zahlen für eine Periode immer mit `allkvitt bericht <typ>` bzw. dem Werkzeug `period_report` holen
+(erfolgsrechnung, bilanz, geldfluss, kennzahlen, debitoren, kreditoren, umsatz; `--vergleich vorjahr|vorperiode|budget`)
+— nie selbst summieren. Ein Kommentar (`save_report_comment`) zitiert nur Zahlen aus dem Bericht und nennt Abweichungen
+und was zu prüfen ist; er wird automatisch «veraltet», wenn sich die Zahlen ändern. Budgets setzt im Modus
+«vorschlag» ein Mensch (`allkvitt budget …`); der Agent schlägt sie im Text vor.
 Belegnummern nie selbst wählen oder wiederverwenden — allkvitt vergibt sie; eine Lücke ist kein Fehler, sie steht mit
 Grund im Lückenverzeichnis. Belegdateien heissen `belege/JJJJ/<Belegnummer> <Name>`.
 Einzelfirma und Verein haben keine Gewinnverwendung: Das Ergebnis (und bei der Einzelfirma die Privatkonten)

@@ -853,6 +853,89 @@ def read_inbox_file(datei: str) -> list[dict] | str:
     return data.decode("utf-8", errors="replace")[:20000]
 
 
+# ---------- Berichte ----------
+
+_REPORT_KEYS = ("jahr", "periode", "von", "bis", "spalten", "vergleich", "stichtag", "nach")
+
+
+def period_report(typ: str = "", jahr: int | None = None, periode: str = "", von: str = "", bis: str = "",
+                  spalten: str = "", vergleich: str = "", stichtag: str = "", nach: str = "", vorlage: str = "") -> dict:
+    """Bericht für jede Periode (die Engine rechnet, nie selbst rechnen): erfolgsrechnung, bilanz, geldfluss,
+    kennzahlen, debitoren, kreditoren, umsatz (+ Plugin-Berichte, siehe report_catalog). Mit Kommentar, falls gespeichert.
+
+    Args:
+        typ: Berichtsname (leer, wenn vorlage gesetzt).
+        jahr: Geschäftsjahr; leer = aktuelles.
+        periode: jahr, q1–q4, h1, h2, 01–12.
+        von: JJJJ-MM-TT statt periode.
+        bis: JJJJ-MM-TT statt periode.
+        spalten: gesamt, monat oder quartal.
+        vergleich: keine, vorperiode, vorjahr oder budget (Spalten Abweichung und Abw. %).
+        stichtag: JJJJ-MM-TT für Bilanz-/Altersberichte.
+        nach: umsatz: kunde, konto oder monat.
+        vorlage: Name einer gespeicherten Berichtsvorlage.
+    """
+    loc = locals()
+    return _call(api.report, typ, vorlage, **{k: loc[k] for k in _REPORT_KEYS if loc[k]})
+
+
+def report_catalog() -> dict:
+    """Verfügbare Berichte (inkl. Plugins) und gespeicherte Berichtsvorlagen."""
+    return _call(api.report_list)
+
+
+def save_report_comment(text: str, typ: str = "", jahr: int | None = None, periode: str = "", von: str = "",
+                        bis: str = "", spalten: str = "", vergleich: str = "", stichtag: str = "", nach: str = "",
+                        vorlage: str = "") -> dict:
+    """Kommentar zu einem Bericht speichern (dieselben Parameter wie period_report). Nur Zahlen aus dem Bericht
+    zitieren; ändern sich die Zahlen später, wird der Kommentar als veraltet markiert.
+
+    Args:
+        text: der Kommentar (3–6 Sätze).
+        typ: Berichtsname.
+        jahr: wie period_report.
+        periode: wie period_report.
+        von: wie period_report.
+        bis: wie period_report.
+        spalten: wie period_report.
+        vergleich: wie period_report.
+        stichtag: wie period_report.
+        nach: wie period_report.
+        vorlage: wie period_report.
+    """
+    from .gitlog import AUTHOR
+    loc = locals()
+    return _call(api.report_comment_save, text, typ, vorlage, AUTHOR.get() or "Agent",
+                 **{k: loc[k] for k in _REPORT_KEYS if loc[k]})
+
+
+def budget_overview(jahr: int | None = None) -> dict:
+    """Budget eines Jahres pro Erfolgskonto (12 Monate, Jahr, Ist Vorjahr).
+
+    Args:
+        jahr: Budgetjahr; leer = aktuelles.
+    """
+    from datetime import date
+    return _call(api.budget_show, jahr or date.today().year)
+
+
+def budget_from_prior_year(jahr: int, prozent: str = "0") -> dict:
+    """Budget aus dem Ist des Vorjahres (+ Prozent, Saisonverlauf bleibt). Im agent_modus 'vorschlag' nicht
+    erlaubt — dann dem Menschen die Zahlen vorschlagen.
+
+    Args:
+        jahr: Budgetjahr.
+        prozent: Veränderung gegenüber Vorjahr, z.B. "5".
+    """
+    try:
+        mode = book().settings.get("agent_modus") or "vorschlag"
+    except BookError as exc:
+        return {"ok": False, "fehler": str(exc)}
+    if mode != "direkt":
+        return {"ok": False, "fehler": "agent_modus ist 'vorschlag': das Budget setzt ein Mensch (Berichte → Budget "
+                "oder `allkvitt budget vorjahr`). Schlage die Zahlen im Text vor."}
+    return _call(api.budget_from_prior, jahr, prozent)
+
 # Order matters for prompt caching: a stable list keeps the cached prefix valid.
 SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
           mwst_reconciliation,
@@ -864,7 +947,8 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
           book_bank_transaction, employees, payroll_run, payslip, close_payslip, lohnausweis,
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
-          closing_documents, mwst_details]
+          closing_documents, mwst_details,
+          period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year]
 CHAT_ONLY = [read_inbox_file]
 
 # Public names for plugin tools: wrap an api function so errors come back as {"ok": False, …}.

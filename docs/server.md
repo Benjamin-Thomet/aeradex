@@ -57,6 +57,29 @@ ReadWritePaths=/home/allkvitt/buecher/muster /home/allkvitt/.config/allkvitt-mus
 WantedBy=multi-user.target
 ```
 
+### Monatsbericht automatisch (Timer)
+
+`/etc/systemd/system/allkvitt-muster-monatsbericht.service` und `.timer` — am 5. jedes Monats der Bericht des
+Vormonats, per E-Mail an `mail.an` aus `allkvitt.yaml`:
+
+```ini
+# .service
+[Service]
+Type=oneshot
+User=allkvitt
+Environment=ALLKVITT_SMTP_PASSWORD=…
+ExecStart=/home/allkvitt/venv/bin/allkvitt --buch /home/allkvitt/buecher/muster bericht monat --mail
+
+# .timer
+[Timer]
+OnCalendar=*-*-05 06:00
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+
+Ohne systemd genügt cron: `0 6 5 * * allkvitt --buch … bericht monat --mail`. Das Passwort steht nie im Buch.
+
 ### Caddy (HTTPS automatisch)
 
 ```

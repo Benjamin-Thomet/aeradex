@@ -38,6 +38,10 @@ allkvitt leistungen projekt status --nummer P0001             # Budget, Wert, Ko
 allkvitt leistungen lohn --monat 2026-10                      # Stunden der Stundenlöhner in den Lohnlauf
 ```
 
+Berichte (allkvitt → Berichte, Gruppe «Leistungen», oder `allkvitt bericht leistungen_personen|leistungen_produkte|leistungen_projekte`):
+Auslastung je Person (Stunden, abrechenbar-Quote, Wert, Kosten, noch offen), Umsatz nach Produkt, Projekte mit
+Budget gegen Ist und Deckungsbeitrag.
+
 ## Wie es rechnet
 
 - **Stundensatz**, beim Erfassen festgehalten: angegeben › Projekt › Kunde (`stundensatz`) › Person. Der Lohn

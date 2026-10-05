@@ -46,6 +46,14 @@ This file is for developing allkvitt itself. Agents *operating a book* read the
   number; `Book.remember_numbers` keeps the high-water mark in `.allkvitt/belegnummern.yaml` so it is never reused.
 - `austausch.py`: the `.allkvitt` file (whole book + git bundle, optional AES-256-GCM/scrypt), import with hash,
   path and version checks.
+- `reports.py`: reports for any period, one table shape for every output (`spalten`, `zeilen` with `werte` per
+  column key and account detail): Erfolgsrechnung/Bilanz with month/quarter columns and comparison (Vorperiode,
+  Vorjahr, Budget), Geldfluss (indirect, must reconcile with cash), Kennzahlen, aging, revenue; registry + plugin hook
+  `allkvitt_reports`. For a full year it must equal `statements.year_end_statement` (tested). `budget.py`:
+  budget/<JJJJ>.yaml per account and month. `berichte.py`: text/PDF/xlsx/CSV with the Stand (commit, check status),
+  templates and comments in `auswertungen/` (comments carry a fingerprint of the figures → «veraltet»), monthly
+  package in `berichte/` (not in git). `mail.py`: SMTP, password only from `ALLKVITT_SMTP_PASSWORD`.
+  UI: `web/berichte_views.py` (Berichte, Budget grid); the Kontoblatt takes `von`/`bis` for the drill-down.
 - Writes are serialised by a lock file (`.allkvitt/write.lock`) so UI, CLI, MCP and chat never interleave.
 
 ## Rules

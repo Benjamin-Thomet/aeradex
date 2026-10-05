@@ -206,6 +206,8 @@ SECTIONS = [
     ("mwst", "MWST", "/mwst", "", "m", [
         ("abrechnung", "Abrechnung", "/mwst", ()), ("abstimmung", "Jahresabstimmung", "/mwst/abstimmung", ())]),
     ("abschluss", "Abschluss", "/abschluss", "", "a", [("jahresrechnung", "Jahresrechnung", "/abschluss", ())]),
+    ("berichte", "Berichte", "/berichte", "", "r", [
+        ("berichte", "Berichte", "/berichte", ()), ("budget", "Budget", "/berichte/budget", ())]),
 ]
 
 
@@ -479,10 +481,10 @@ def login_routes(ui: UI) -> list[Route]:
 
 
 def create_app(root: Path, token: str | None = None, auth_dir: Path | None = None, https: bool = False) -> Starlette:
-    from . import views, chat
+    from . import berichte_views, views, chat
 
     ui = UI(root, token, auth_dir, https)
-    routes = views.routes(ui) + chat.routes(ui) + (login_routes(ui) if auth_dir is not None else []) + [
+    routes = views.routes(ui) + berichte_views.routes(ui) + chat.routes(ui) + (login_routes(ui) if auth_dir is not None else []) + [
         Route("/datei/{path:path}", serve_file(ui)),
         Route("/events", events(ui)),
         Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
