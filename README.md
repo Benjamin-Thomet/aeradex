@@ -63,7 +63,7 @@ Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird g
 | **Bank** | camt.053 importieren, automatische Zuordnung, offene Bewegungen buchen/zuordnen/ignorieren, Saldoabstimmung |
 | **Kreditoren** | QR-Rechnungen aus der Inbox erkennen und erfassen, Lieferanten, offene Posten, Zahlungslauf als pain.001-Datei, Ausführung verbuchen |
 | **Lohn** | Lohnlauf pro Monat, Eingaben (Stunden, QST, Korrekturen), Abschluss, Lohnkonto, Lohnausweis |
-| **MWST** | Abrechnung je Quartal/Semester nach ESTV-Ziffern, Belege je Code, Buchen, PDF-Hilfsblatt |
+| **MWST** | Abrechnung je Quartal/Semester nach ESTV-Ziffern, vereinbarte/vereinnahmte Entgelte, Jahresabstimmung mit PDF, Abgrenzung offener Posten |
 | **Abschluss** | Bilanz und Erfolgsrechnung mit Vorjahr und Drill-down, Gewinnverwendung, Anhang, Periode sperren |
 | **Verlauf** | jeder Commit mit Diff, Änderungen von Agenten markiert |
 | **Einstellungen** | Firma, IBAN-Prüfung, Systemkonten, Lohnsätze, Agentenmodus |
@@ -113,11 +113,19 @@ batzen book --datum 2026-01-12 --soll 6500 --haben 1020 --betrag 108.10 --mwst V
 batzen mwst abrechnung 2026-Q1      # Ziffern 200 … 500 wie im ESTV-Formular
 batzen mwst buchen 2026-Q1          # MWST-Konten auf das Abrechnungskonto 2201
 batzen mwst export 2026-Q1          # eMWST-Datei (eCH-0217 v2.0) für den Upload im ESTV-Portal
+batzen mwst abstimmung 2026 --pdf   # Buchhaltung gegen gebuchte Abrechnungen, mit PDF für den Abschluss
+batzen mwst abgrenzung 2026        # vereinnahmt: Steuer auf offenen Posten per 31.12., Rückbuchung 1.1.
 ```
 Bezugsteuer (Art. 45 MWSTG) für Dienstleistungen aus dem Ausland: Code `B81` bzw. `B26` auf der
 Lieferantenrechnung. Die Steuer wird geschuldet (Ziffern 382/383) und — bei der effektiven Methode — als Vorsteuer
 wieder abgezogen (400/405); bei der Saldosteuersatzmethode ist sie Aufwand. Sie erscheint in der Abrechnung, in der
 Buchung und in der eMWST-Datei.
+
+Mit `mwst.abrechnungsart: vereinnahmt` zählen Rechnungen und Kreditoren in der Abrechnung bei Zahlung,
+anteilig bei Teilzahlungen. Die Jahresabstimmung überleitet vom Belegdatum über die offenen Posten zur
+Abrechnung und prüft Ertrags- und MWST-Konten. In der Oberfläche: MWST → Abstimmung → PDF.
+Festgestellte Fehler sind über die Jahresabstimmung (Berichtigungsabrechnung nach Art. 72 MWSTG)
+zu bereinigen; die [ESTV](https://www.estv.admin.ch/de/mwst-jahresabstimmung) nennt dafür 240 Tage nach Geschäftsjahresende.
 
 ### Kreditoren und Zahlungen
 ```bash

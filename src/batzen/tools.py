@@ -272,6 +272,18 @@ def mwst_report(periode: str) -> dict:
     return _call(api.mwst_report, periode)
 
 
+def mwst_reconciliation(jahr: int, als_pdf: bool = False) -> dict:
+    """MWST-Umsatzabstimmung eines Geschäftsjahres: Umsatz und Steuer laut Buchhaltung gegen die gebuchten
+    Abrechnungen (bei vereinnahmten Entgelten mit Überleitung über die offenen Debitoren/Kreditoren),
+    Ertrag ohne MWST-Code und die Salden der MWST-Konten. Differenzen → Jahresabstimmung (Berichtigungsabrechnung nach Art. 72 MWSTG).
+
+    Args:
+        jahr: Geschäftsjahr, z.B. 2026.
+        als_pdf: Abstimmung zusätzlich als PDF unter berichte/ ablegen.
+    """
+    return _call(api.mwst_abstimmung, jahr, als_pdf=als_pdf)
+
+
 # ---------- debitoren ----------
 
 def customers() -> list | dict:
@@ -589,6 +601,18 @@ def bank_transactions(status: str = "offen") -> list | dict:
     return _call(api.bank_list, status)
 
 
+def bank_suggestions(ids: list[str] | None = None) -> dict:
+    """Was die offenen Bankbewegungen wahrscheinlich sind, je Bewegung beste Zuordnung zuerst: offene Rechnung,
+    offener Kreditor, Quittungs-Entwurf, bestehende Buchung oder Konto aus früheren Buchungen derselben Gegenpartei.
+    `sicher` heisst: Betrag und Name passen eindeutig. Zuerst hier schauen, dann zuordnen (assign_bank_transaction)
+    oder eine Buchung vorschlagen (propose_bank_booking); übernehmen per Klick tut der Mensch.
+
+    Args:
+        ids: nur diese Bewegungen; leer = alle offenen.
+    """
+    return _call(api.bank_suggestions, ids or None)
+
+
 def assign_bank_transaction(id: str, nummer: str) -> dict:
     """Offene Bankbewegung mit einer offenen Kundenrechnung (R-…) oder Lieferantenrechnung (E-…) begleichen.
 
@@ -725,12 +749,13 @@ def read_inbox_file(datei: str) -> list[dict] | str:
 
 # Order matters for prompt caching: a stable list keeps the cached prefix valid.
 SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
+          mwst_reconciliation,
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
           exchange_rate, revaluation_preview,
           bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices, bank_rules, expenses,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
-          create_payment_run, bank_transactions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
+          create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
           book_bank_transaction, employees, payroll_run, payslip, close_payslip, lohnausweis]
 CHAT_ONLY = [read_inbox_file]
 

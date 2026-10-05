@@ -8,9 +8,11 @@ On import every transaction is matched, strongest rule first:
 
     1. credit with a QR/SCOR reference or invoice number of an open invoice → payment booked
     2. debit with the EndToEndId or reference of an open supplier bill       → payment booked
-    3. a journal row on the same bank account, same amount and side, ±7 days → reconciled
-       (salaries, manual bookings, payment runs booked earlier — never booked twice)
-    4. anything else stays open for a person or the agent
+    3. a Beleg on the same bank account, same net amount and side, ±7 days → reconciled
+       (salaries incl. expenses, manual bookings with MWST, payment runs — never booked twice)
+    4. a bank rule (recurring rent, subscriptions …)                         → booked
+    5. anything else stays open; `suggestions` lists what it probably is (open invoice or bill,
+       receipt draft, agent proposal, earlier booking, account from history) for one-click `accept`
 
 Status: gebucht (booked from the statement), abgeglichen (matched an existing booking),
 offen, ignoriert. The statement's closing balance is compared with the books.
@@ -198,25 +200,36 @@ def _linked_belege(rows: list[dict]) -> set[str]:
     return {r["Beleg"] for r in rows if r.get("Beleg") and r.get("Status") in ("gebucht", "abgeglichen")}
 
 
-def _match_existing(book: Book, konto: str, amount: Decimal, when: date, taken: set[str]) -> str | None:
-    """A journal row on this account with the same amount and side, closest date within ±7 days."""
-    best = None
+def _beleg_effects(book: Book, konto: str) -> dict[str, tuple[date, Decimal]]:
+    """Per Beleg: its date and its net effect on `konto` (in the account's currency). A Beleg may
+    touch the account in several lines — a salary paid out with expenses, a booking with MWST split off."""
     acct = book.accounts.get(konto)
     foreign = acct.waehrung if acct is not None and acct.is_foreign else ""
+    out: dict[str, tuple[date, Decimal]] = {}
     for r in book.rows:
-        if r.beleg in taken or abs((r.datum - when).days) > 7:
+        if konto not in (r.soll, r.haben):
             continue
         value = r.betrag
         if foreign:                       # a foreign-currency account: compare in its currency
             if r.waehrung != foreign or r.fw is None:
                 continue
             value = r.fw
-        side = value if r.soll == konto else (-value if r.haben == konto else None)
-        if side is None or side != amount:
+        side = value if r.soll == konto else -value
+        when, total = out.get(r.beleg, (r.datum, ZERO))
+        out[r.beleg] = (min(when, r.datum), total + side)
+    return out
+
+
+def _match_existing(book: Book, konto: str, amount: Decimal, when: date, taken: set[str],
+                    days: int = 7) -> str | None:
+    """A Beleg on this account with the same net amount and side, closest date within ±`days`."""
+    best = None
+    for beleg, (datum, net) in _beleg_effects(book, konto).items():
+        if beleg in taken or net != amount or abs((datum - when).days) > days:
             continue
-        distance = abs((r.datum - when).days)
+        distance = abs((datum - when).days)
         if best is None or distance < best[0]:
-            best = (distance, r.beleg)
+            best = (distance, beleg)
     return best[1] if best else None
 
 
@@ -496,6 +509,215 @@ def ignore(book: Book, tid: str, grund: str) -> list[Path]:
     if not grund.strip():
         raise BookError("Grund angeben (z.B. 'interner Übertrag, im anderen Konto gebucht')")
     return _set(book, tid, Status="ignoriert", Text=f"{tx['Text']} [ignoriert: {grund.strip()}]"[:240])
+
+
+# ---------- suggestions: what an open movement probably is (one click to take it) ----------
+
+_LEGAL = re.compile(r"\b(ag|gmbh|sa|sàrl|sarl|ltd|inc|schweiz|suisse|svizzera)\b")
+
+
+def _norm(s: str) -> str:
+    s = (s or "").lower()
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("é", "e"), ("è", "e"), ("à", "a")):
+        s = s.replace(a, b)
+    return re.sub(r"[^a-z0-9]", "", _LEGAL.sub("", s))
+
+
+def _name_in(name: str, *texts: str) -> bool:
+    """The (normalised) counterparty name appears in one of the texts, or a text in it."""
+    n = _norm(name)
+    if len(n) < 4:
+        return False
+    for t in texts:
+        m = _norm(t)
+        if len(m) >= 4 and (n in m or m in n):
+            return True
+    return False
+
+
+def _history(book: Book, konto: str) -> list[tuple[str, str, str, str]]:
+    """Earlier free bookings on the bank account: (text, counter account, MWST code, Beleg)."""
+    out = []
+    for beleg, rows in _group(book).items():
+        mine = [r for r in rows if konto in (r.soll, r.haben)]
+        if not mine or any(r.quelle for r in rows):
+            continue                                 # invoice/bill/payroll rows are not a pattern to repeat
+        counter = {r.haben if r.soll == konto else r.soll for r in mine} - {konto, ""}
+        main = [c for c in counter if not c.startswith("117")]   # Vorsteuer lines split off by MWST
+        if len(main) == 1:
+            out.append((rows[0].text, main[0], next((r.mwst for r in rows if r.mwst), ""), beleg))
+    return out
+
+
+def _group(book: Book) -> dict[str, list[Row]]:
+    groups: dict[str, list[Row]] = defaultdict(list)
+    for r in book.rows:
+        groups[r.beleg].append(r)
+    return groups
+
+
+def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict]]:
+    """For each open movement the likely matches, best first. A suggestion is
+    {art, ziel, label, grund, sicher, …}; `sicher` ones can be taken in bulk.
+
+    art: vorschlag (an agent's proposal for this movement), rechnung (open invoice), kreditor (open
+    supplier bill), quittung (a receipt draft paid with it), beleg (an existing booking, outside the
+    import's ±7 days), konto (book against an account known from earlier bookings or the supplier)."""
+    from . import erfassung, invoices as inv, kreditoren as kred
+    from .journal import list_proposals
+    txs = [t for t in transactions(book) if t["Status"] == "offen" and (ids is None or t["ID"] in ids)]
+    if not txs:
+        return {}
+    paid = inv.settlements(book)
+    inv_meta = inv.invoices(book)
+    open_inv = [(inv.invoice_state(book, m, paid.get(k, [])), m) for k, m in inv_meta.items()]
+    open_inv = [(s, m) for s, m in open_inv if s["status"] in ("offen", "teilbezahlt")]
+    kp = kred.payments(book)
+    open_bills = [(kred.state(book, m, kp.get(k, [])), m) for k, m in kred.bills(book).items()]
+    open_bills = [(s, m) for s, m in open_bills if s["status"] in ("offen", "angewiesen")]
+    sups = kred.suppliers(book)
+    receipts = [d for d in erfassung.drafts(book, "quittung").values()]
+    proposals = [p for p in list_proposals(book) if p.get("Bank")]
+    taken = _linked_belege(transactions(book))
+    history: dict[str, list] = {}
+    effects: dict[str, dict] = {}
+    out: dict[str, list[dict]] = {}
+    for tx in txs:
+        amount = parse_amount(tx["Betrag"])
+        when = date.fromisoformat(tx["Datum"])
+        party, text = tx.get("Gegenpartei") or "", tx.get("Text") or ""
+        konto = tx["Konto"]
+        cur = account_currency(book, konto) or "CHF"
+        found: list[dict] = []
+        for p in proposals:
+            if p["Bank"] == tx["ID"]:
+                found.append({"art": "vorschlag", "ziel": p["ID"], "sicher": False,
+                              "label": f"Vorschlag {p['ID']} freigeben: {p['Soll']} an {p['Haben']} · {p['Text']}",
+                              "grund": p.get("Begründung") or "vom Agenten vorgeschlagen"})
+        if amount > 0:
+            hits = [(s, m) for s, m in open_inv if s["waehrung"] == cur and s["offen"] == amount]
+            number_hits = [s["nummer"] for s, _ in hits if s["nummer"] in text.upper()]
+            name_hits = [s["nummer"] for s, m in hits if _name_in(
+                party, *(str(v) for k, v in (m.get("an") or {}).items() if k in ("name", "zusatz", "firma")))]
+            decisive = number_hits or name_hits
+            for s, m in hits:
+                names = [str(v) for k, v in (m.get("an") or {}).items() if k in ("name", "zusatz", "firma")]
+                by_name = _name_in(party, *names) or s["nummer"] in text.upper()
+                found.append({"art": "rechnung", "ziel": s["nummer"],
+                              "sicher": decisive == [s["nummer"]],
+                              "label": f"Rechnung {s['nummer']} · {s['name']} begleichen",
+                              "grund": "Betrag = offener Betrag" + (", Kunde stimmt" if by_name else "")})
+        elif amount < 0:
+            bill_hits = []
+            for s, m in open_bills:
+                by_nr = bool(s["rechnungsnr"] and s["rechnungsnr"].upper() in text.upper())
+                by_name = _name_in(party, s["name"] or "") or by_nr
+                same = s["waehrung"] == cur and s["offen"] == -amount
+                if same or (by_name and s["waehrung"] != cur and kred.amount_fits(book, m, s, -amount, konto)):
+                    bill_hits.append((s, same, by_name, by_nr))
+            n_same = sum(1 for _, same, _, _ in bill_hits if same)
+            number_hits = sum(1 for _, _, _, nr in bill_hits if nr)
+            for s, same, by_name, by_nr in bill_hits:
+                # several open bills with this amount: only the invoice number in the text decides
+                sure = same and ((by_nr and number_hits == 1) if n_same > 1 else by_name)
+                found.append({"art": "kreditor", "ziel": s["nummer"], "sicher": sure,
+                              "label": f"Kreditor {s['nummer']} · {s['name']}"
+                                       + (f" ({s['rechnungsnr']})" if s["rechnungsnr"] else "") + " bezahlen",
+                              "grund": ("Betrag = offener Betrag" if same else f"Rechnung in {s['waehrung']}")
+                                       + (", Lieferant stimmt" if by_name else "")})
+            for d in receipts:
+                try:
+                    r_amount = Decimal(erfassung.value(d, "betrag")).quantize(CENT)
+                    r_date = date.fromisoformat(erfassung.value(d, "datum"))
+                except Exception:
+                    continue
+                pay = d.get("zahlung") or {}
+                if pay.get("art") == "bank" and pay.get("bank") != tx["ID"]:
+                    continue                          # already matched with another movement
+                if pay.get("art") in ("spesen", "buchung") or (pay.get("art") == "konto" and pay.get("quelle")
+                                                                not in ("Standard", "Karte", "TWINT", None)):
+                    continue                          # paid in cash, privately or by credit card
+                if (erfassung.value(d, "waehrung") or "CHF").upper() != cur or r_amount != -amount \
+                        or abs((r_date - when).days) > 5:
+                    continue
+                ready = bool((d.get("konto") or {}).get("wert") or (d.get("positionen") or {}).get("zeilen"))
+                by_name = _name_in(erfassung.value(d, "name"), party, text)
+                found.append({"art": "quittung", "ziel": d["id"], "sicher": ready and by_name,
+                              "label": f"Quittung {d['id']} · {erfassung.value(d, 'name') or d['datei']} buchen"
+                                       + (f" auf {d['konto']['wert']}" if (d.get("konto") or {}).get("wert") else ""),
+                              "grund": "gleicher Betrag, Datum ±5 Tage" + ("" if ready else " — Konto fehlt noch")})
+        if konto not in effects:
+            effects[konto] = _beleg_effects(book, konto)
+        for beleg, (datum, net) in effects[konto].items():
+            if beleg not in taken and net == amount and 7 < abs((datum - when).days) <= 14:
+                found.append({"art": "beleg", "ziel": beleg, "sicher": False,
+                              "label": f"Mit Beleg {beleg} vom {datum:%d.%m.%Y} abgleichen",
+                              "grund": "schon gebucht, gleicher Betrag"})
+        key = party or text
+        if not any(f["art"] in ("rechnung", "kreditor", "quittung", "vorschlag") for f in found) and key:
+            if konto not in history:
+                history[konto] = _history(book, konto)
+            seen = [(c, m) for t, c, m, _ in history[konto] if _name_in(key, t)]
+            if seen:
+                counts = defaultdict(int)
+                for c, _ in seen:
+                    counts[c] += 1
+                best = max(counts, key=counts.get)
+                mwst_ = next((m for c, m in seen if c == best and m), "")
+                name = book.accounts[best].name if best in book.accounts else ""
+                found.append({"art": "konto", "ziel": best, "mwst": mwst_, "sicher": False,
+                              "label": f"Buchen auf {best} {name}" + (f" ({mwst_})" if mwst_ else ""),
+                              "grund": f"«{key}» wurde {counts[best]}× so gebucht"
+                                       + ("" if len(counts) == 1 else f" (auch {', '.join(c for c in counts if c != best)})")})
+            else:
+                sup = next((s for s in sups.values() if party and s.get("konto")
+                            and _name_in(party, str(s.get("name", "")))), None)
+                if sup is not None and amount < 0:
+                    k = str(sup["konto"])
+                    found.append({"art": "konto", "ziel": k, "mwst": str(sup.get("mwst") or ""), "sicher": False,
+                                  "label": f"Buchen auf {k} {book.accounts[k].name if k in book.accounts else ''}",
+                                  "grund": f"Standardkonto des Lieferanten {sup.get('name')}"})
+        order = {"vorschlag": 0, "rechnung": 1, "kreditor": 1, "quittung": 2, "beleg": 3, "konto": 4}
+        if sum(1 for f in found if f["sicher"]) > 1:
+            for f in found:
+                f["sicher"] = False                    # competing matches need a person's choice
+        found.sort(key=lambda f: (not f["sicher"], order[f["art"]]))
+        if found:
+            out[tx["ID"]] = found
+    return out
+
+
+def accept(book: Book, tid: str, art: str, ziel: str) -> tuple[str, list[Path]]:
+    """Take one suggestion for an open movement (as listed by `suggestions`)."""
+    from . import erfassung
+    from .journal import approve
+    options = suggestions(book, [tid]).get(tid, [])
+    s = next((o for o in options if o["art"] == art and o["ziel"] == ziel), None)
+    if s is None:
+        raise BookError(f"Für Bankbewegung {tid} gibt es den Vorschlag {art} {ziel} nicht (mehr)")
+    tx = find(book, tid)
+    if art in ("rechnung", "kreditor"):
+        row, touched = assign(book, tid, ziel)
+        return f"{ziel} beglichen (Beleg {row.beleg})", touched
+    if art == "beleg":
+        return f"mit Beleg {ziel} abgeglichen", link(book, tid, ziel)
+    if art == "vorschlag":
+        rows, touched = approve(book, [ziel])
+        return f"Vorschlag {ziel} gebucht (Beleg {rows[0].beleg})", touched
+    if art == "quittung":
+        meta = erfassung.draft(book, ziel)
+        v = erfassung.form_values(meta)
+        if not (v["konto"] or v["positionen"]):
+            raise BookError(f"Quittung {ziel} hat noch kein Konto — unter Prüfen kontieren")
+        cur = (v["waehrung"] or "CHF").upper()
+        rows, touched = erfassung.book_receipt(book, ziel, v["datum"] or tx["Datum"], (v["name"] or "Quittung").strip(),
+                                               v["betrag"], v["konto"], v["mwst"], v["positionen"] or None,
+                                               "" if cur == "CHF" else cur, None, {"art": "bank", "bank": tid})
+        return f"Quittung {ziel} gebucht (Beleg {rows[0].beleg})", touched
+    if art == "konto":
+        row, touched = book_transaction(book, tid, ziel, mwst=s.get("mwst") or "")
+        return f"auf {ziel} gebucht (Beleg {row.beleg})", touched
+    raise BookError(f"Unbekannte Vorschlagsart {art}")
 
 
 def reconciliation(book: Book) -> list[dict]:

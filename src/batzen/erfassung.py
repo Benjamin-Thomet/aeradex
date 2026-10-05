@@ -23,6 +23,7 @@ The text read from the file is cached under ``.batzen/erfassung/`` (not committe
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -112,10 +113,13 @@ def ocr_text(path: Path, max_pages: int = 3) -> str:
                 images.append(target)
         else:
             images = [path]
+        # Avoid OpenMP oversubscription when several documents are read at once.
+        env = os.environ.copy()
+        env.setdefault("OMP_THREAD_LIMIT", "1")
         out = []
         for img in images:
             r = subprocess.run(["tesseract", str(img), "stdout", "-l", langs, "--psm", "4"], capture_output=True,
-                               timeout=120)
+                               timeout=120, env=env)
             out.append(r.stdout.decode("utf-8", errors="replace"))
         return "\n".join(out)
     finally:
@@ -519,6 +523,24 @@ def match_payment(book: Book, meta: dict) -> dict:
         konto = card or konto
     return {"art": "konto", "konto": konto,
             "quelle": {"bar": "Barzahlung", "twint": "TWINT", "karte": "Karte", "kreditkarte": "Kreditkarte"}.get(how, "Standard")}
+
+
+def rematch_payments(book: Book) -> list[Path]:
+    """After a bank import: receipt drafts that were only assumed paid «über die Bank» (no movement
+    known yet) are matched again, so booking them uses the movement instead of booking it twice."""
+    touched = []
+    for meta in drafts(book, "quittung").values():
+        pay = meta.get("zahlung") or {}
+        if pay and (pay.get("art") != "konto" or pay.get("quelle") not in ("Standard", "Karte", "TWINT")):
+            continue
+        found = match_payment(book, meta)
+        if found.get("art") in ("bank", "buchung"):
+            path = meta.pop("_pfad")
+            meta["zahlung"] = found
+            meta.setdefault("hinweise", []).append(f"Bankimport: {found['text']}")
+            write_yaml(path, meta)
+            touched.append(path)
+    return touched
 
 
 def status(meta: dict) -> str:

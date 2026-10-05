@@ -97,6 +97,7 @@ unter `bewertung/JJJJ-MM-TT.yaml` und gehört ihren Journalzeilen (`Quelle bewer
 mwst:
   methode: effektiv        # keine | effektiv | saldo
   periode: quartal         # quartal | semester
+  abrechnungsart: vereinbart # vereinbart | vereinnahmt
   saldosteuersatz: 6.2     # nur bei saldo
   konten: {vorsteuer: "1170", vorsteuer_inv: "1171", umsatzsteuer: "2200", abrechnung: "2201", saldosteuer: "3809"}
 ```
@@ -115,6 +116,16 @@ Bezugsteuer: die Aufwandzeile trägt den Code (Bemessungsgrundlage), dazu die ge
 Saldosteuersatzmethode ist die Steuer Aufwand auf demselben Konto.
 
 Gebucht wird brutto mit Code; bei der effektiven Methode spaltet batzen die Steuer ab (Netto- und Steuerzeile tragen beide den Code). Bei der Saldosteuersatzmethode bleibt der Umsatz brutto und die Saldosteuer wird mit der Abrechnung gebucht. Gebuchte Abrechnungen liegen unter `mwst/<Periode>.yaml` und gehören ihren Journalzeilen (`Quelle mwst:2026-Q1`).
+
+Bei `vereinnahmt` bleiben Rechnungen und Kreditoren im Hauptbuch am Belegdatum; die MWST-Abrechnung
+berücksichtigt sie anteilig am Zahlungsdatum. `batzen mwst abstimmung <Jahr> --pdf` vergleicht die
+Buchhaltung mit den gebuchten Abrechnungen und legt das PDF unter `berichte/` ab.
+
+Die Abgrenzung der Steuer auf offenen Posten liegt unter `mwst/abgrenzung/<Jahr>.yaml`; sie besitzt
+die Zeilen mit `Quelle mwst:abgrenzung-<Jahr>` (31.12. und Rückbuchung 1.1.). Die Konten
+`mwst.konten.umsatzsteuer_offen` (Standard 2209) und `mwst.konten.vorsteuer_offen` (Standard 1172)
+werden beim ersten Buchen angelegt, wenn sie fehlen. `batzen check` prüft die gespeicherten Zeilen
+und meldet nachträglich geänderte offene Posten.
 
 ## vorschlaege.md
 

@@ -34,6 +34,7 @@ from starlette.staticfiles import StaticFiles
 from .. import api
 from ..book import MONTHS_DE, Book, BookError
 from ..files import FormatError, parse_date
+from .auth import token_matches
 
 HERE = Path(__file__).parent
 COOKIE = "batzen_session"
@@ -246,13 +247,13 @@ class SessionMiddleware(BaseHTTPMiddleware):
             return await self.server_mode(request, call_next)
         token = request.query_params.get("t")
         if token is not None:
-            if not hmac.compare_digest(token, self.ui.token):
+            if not token_matches(token, self.ui.token):
                 return PlainTextResponse("Ungültiger Zugangslink.", status_code=403)
             rest = "&".join(f"{k}={quote(v)}" for k, v in request.query_params.multi_items() if k != "t")
             response = RedirectResponse(path + (f"?{rest}" if rest else ""), status_code=303)
             response.set_cookie(COOKIE, self.ui.token, httponly=True, samesite="strict")
             return response
-        if not hmac.compare_digest(request.cookies.get(COOKIE, ""), self.ui.token):
+        if not token_matches(request.cookies.get(COOKIE, ""), self.ui.token):
             return HTMLResponse(LOCKED_PAGE, status_code=401)
         if request.method == "POST":
             origin = request.headers.get("origin")
@@ -260,7 +261,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
             if origin and origin.split("://", 1)[-1] != host:
                 return PlainTextResponse("Fremde Herkunft abgelehnt.", status_code=403)
             sent = request.headers.get("x-csrf", "")
-            if not hmac.compare_digest(sent, self.ui.csrf):
+            if not token_matches(sent, self.ui.csrf):
                 return PlainTextResponse("CSRF-Token fehlt oder ist falsch.", status_code=403)
         return await call_next(request)
 
@@ -285,7 +286,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
         if request.method == "POST":
             if not self._same_origin(request):
                 return PlainTextResponse("Fremde Herkunft abgelehnt.", status_code=403)
-            if not hmac.compare_digest(request.headers.get("x-csrf", ""), request.state.csrf):
+            if not token_matches(request.headers.get("x-csrf", ""), request.state.csrf):
                 return PlainTextResponse("CSRF-Token fehlt oder ist falsch.", status_code=403)
             if path != "/logout":
                 refusal = None

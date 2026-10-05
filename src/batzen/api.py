@@ -698,8 +698,8 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
                 current.setdefault("konten", {})[role] = str(nr)
         if methode != "keine":
             for role, nr in {**vat.DEFAULT_KONTEN, **(current.get("konten") or {})}.items():
-                if role != "saldosteuer" or methode == "saldo":
-                    book.account(nr)
+                if (role != "saldosteuer" or methode == "saldo") and role not in vat.ABGRENZUNG_KONTEN:
+                    book.account(nr)          # the Abgrenzung accounts are added when first needed
         data["mwst"] = current
     book.save_settings()
     return _done(book, "Einstellungen geändert", [book.root / "batzen.yaml"])
@@ -944,7 +944,10 @@ def bank_import(book: Book, datei: str) -> dict:
         source = Path(datei)
     if not source.is_file():
         raise BookError(f"Datei {datei} nicht gefunden")
+    from . import erfassung
     summary, touched = bank.import_file(book, source)
+    book.reload()
+    touched += erfassung.rematch_payments(book)
     if source.resolve().is_relative_to((book.root / "inbox").resolve()):
         source.unlink()
         touched.append(source)
@@ -1004,6 +1007,50 @@ def bank_suggest(book: Book, ids: list[str] | None = None, schwelle: float | Non
     return jsonable({"ok": True, "meldung": msg, "commit": None, "jev": res})
 
 
+def bank_suggestions(book: Book, ids: list[str] | None = None) -> dict:
+    """What the open movements probably are: {ID: [suggestion, …]}, best first (see bank.suggestions)."""
+    from . import bank
+    return jsonable(bank.suggestions(book, ids))
+
+
+def bank_accept(book: Book, id: str, art: str = "", ziel: str = "") -> dict:
+    """Take a suggestion for an open movement; without art/ziel the first one."""
+    _guard(book)
+    from . import bank
+    if not art:
+        options = bank.suggestions(book, [id]).get(id)
+        if not options:
+            raise BookError(f"Für Bankbewegung {id} gibt es keinen Vorschlag")
+        art, ziel = options[0]["art"], options[0]["ziel"]
+    msg, touched = bank.accept(book, id, art, ziel)
+    return _done(book, f"Bankbewegung {id}: {msg}", touched)
+
+
+def bank_accept_all(book: Book) -> dict:
+    """Take every sure suggestion (one per movement, best first) in one commit."""
+    _guard(book)
+    from . import bank
+    done_, touched = [], []
+    for tid, options in bank.suggestions(book).items():
+        if not options[0]["sicher"]:
+            continue
+        try:
+            # recomputed per movement: an invoice taken by one movement is no longer open for the next
+            fresh = bank.suggestions(book, [tid]).get(tid) or []
+            best = next((o for o in fresh if o["sicher"]), None)
+            if best is None:
+                continue
+            msg, t = bank.accept(book, tid, best["art"], best["ziel"])
+        except BookError:
+            continue
+        touched += t
+        done_.append(f"{tid}: {msg}")
+        book.reload()
+    if not done_:
+        return jsonable({"ok": True, "meldung": "Keine sicheren Vorschläge", "commit": None, "abgeglichen": []})
+    return _done(book, f"{len(done_)} Bankbewegungen abgeglichen", touched, abgeglichen=done_)
+
+
 def bank_reconciliation(book: Book) -> list[dict]:
     from . import bank
     return jsonable(bank.reconciliation(book))
@@ -1025,6 +1072,29 @@ def mwst_book(book: Book, periode: str) -> dict:
 
 
 mwst_book = _locked(mwst_book)
+
+
+def mwst_abstimmung(book: Book, jahr: int, pdf_out: str | None = None, als_pdf: bool = False) -> dict:
+    """Umsatz- und Steuerabstimmung eines Geschäftsjahres (Finalisierung, Art. 72 MWSTG)."""
+    from . import mwst
+    rep = mwst.abstimmung(book, int(jahr))
+    out = jsonable(rep)
+    if pdf_out or als_pdf:
+        out["pdf"] = _write_report(book, pdf_out, pdf.mwst_abstimmung_pdf(book, rep),
+                                   f"MWST-Umsatzabstimmung {jahr}.pdf")
+    return out
+
+
+def mwst_abgrenzung(book: Book, jahr: int, neu: bool = False) -> dict:
+    """Vereinnahmte Entgelte: Steuer auf offenen Debitoren/Kreditoren per 31.12. abgrenzen (Rückbuchung 1.1.)."""
+    _guard(book)
+    from . import mwst
+    saved, touched = mwst.book_abgrenzung(book, int(jahr), neu)
+    return _done(book, f"MWST-Abgrenzung {jahr} gebucht (Umsatzsteuer offen {Decimal(str(saved['umsatzsteuer'])):.2f}, "
+                 f"Vorsteuer offen {Decimal(str(saved['vorsteuer'])):.2f})", touched, abgrenzung=jsonable(saved))
+
+
+mwst_abgrenzung = _locked(mwst_abgrenzung)
 
 
 def mwst_export(book: Book, periode: str, korrektur: bool = False, out: str | None = None) -> dict:
@@ -1067,7 +1137,8 @@ payslip_inputs = _locked(payslip_inputs)
 
 
 for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_void", "payment_run", "payment_run_book",
-              "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore", "bank_suggest"):
+              "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore", "bank_suggest", "bank_accept",
+              "bank_accept_all"):
     globals()[_name] = _locked(globals()[_name])
 
 fx_revalue = _locked(fx_revalue)

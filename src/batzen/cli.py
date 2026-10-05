@@ -360,6 +360,13 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("id")
     c.add_argument("--grund", required=True)
     bs.add_parser("abstimmung", help="Schlusssaldo Bank gegen Buchhaltung")
+    c = bs.add_parser("vorschlaege", help="was die offenen Bewegungen wahrscheinlich sind (Rechnung, Kreditor, Quittung …)")
+    c.add_argument("ids", nargs="*", help="nur diese Bewegungen")
+    c = bs.add_parser("uebernehmen", help="Vorschlag übernehmen: eine Bewegung (erster Vorschlag) oder --alle sicheren")
+    c.add_argument("id", nargs="?")
+    c.add_argument("--art", default="", choices=["", "vorschlag", "rechnung", "kreditor", "quittung", "beleg", "konto"])
+    c.add_argument("--ziel", default="", help="Nummer/Konto des Vorschlags (mit --art)")
+    c.add_argument("--alle", action="store_true", help="alle sicheren Vorschläge übernehmen")
     c = bs.add_parser("kontieren", help="Gegenkonten mit Jev (TypeSafe) vorschlagen")
     c.add_argument("ids", nargs="*", help="nur diese Bewegungen")
     c.add_argument("--schwelle", type=float, help="Konfidenz ab der ein Vorschlag entsteht (Standard aus Einstellungen)")
@@ -374,6 +381,12 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("periode")
     c.add_argument("--korrektur", action="store_true", help="als Korrekturabrechnung")
     c.add_argument("--out")
+    c = ms.add_parser("abstimmung", help="Umsatz- und Steuerabstimmung des Jahres (Buchhaltung gegen Abrechnungen)")
+    c.add_argument("jahr", type=int)
+    c.add_argument("--pdf", nargs="?", const="", default=None, help="als PDF (optional Pfad)")
+    c = ms.add_parser("abgrenzung", help="vereinnahmte Entgelte: Steuer auf offenen Posten per 31.12. abgrenzen")
+    c.add_argument("jahr", type=int)
+    c.add_argument("--neu", action="store_true", help="bestehende Abgrenzung neu berechnen")
     s = sub.add_parser("lock", help="Periode sperren (unveränderlich)")
     s.add_argument("bis")
     s = sub.add_parser("unlock", help="Sperre zurücknehmen (mit Grund)")
@@ -723,12 +736,24 @@ def dispatch(a, book_path: Path | None):
             return api.bank_ignore(b, a.id, a.grund)
         if a.sub == "kontieren":
             return api.bank_suggest(b, a.ids or None, a.schwelle)
+        if a.sub == "vorschlaege":
+            return api.bank_suggestions(b, a.ids or None)
+        if a.sub == "uebernehmen":
+            if a.alle:
+                return api.bank_accept_all(b)
+            if not a.id:
+                raise BookError("ID einer Bewegung angeben oder --alle")
+            return api.bank_accept(b, a.id, a.art, a.ziel)
         return api.bank_reconciliation(b)
     if c == "mwst":
         if a.sub == "abrechnung":
             return api.mwst_report(book(), a.periode)
         if a.sub == "export":
             return api.mwst_export(book(), a.periode, a.korrektur, a.out)
+        if a.sub == "abstimmung":
+            return api.mwst_abstimmung(book(), a.jahr, a.pdf, a.pdf is not None)
+        if a.sub == "abgrenzung":
+            return api.mwst_abgrenzung(book(), a.jahr, a.neu)
         return api.mwst_book(book(), a.periode)
     if c == "lock":
         return api.lock(book(), a.bis)
@@ -796,6 +821,12 @@ def render(cmd: str, sub: str | None, result) -> str:
     if cmd == "invoice" and sub == "list":
         return _table(result, [("nummer", "Rechnung"), ("datum", "Datum"), ("name", "Kunde"), ("total", "Total"),
                                ("offen", "Offen"), ("status", "Status")], right=("total", "offen"))
+    if cmd == "bank" and sub == "vorschlaege" and isinstance(result, dict):
+        if not result:
+            return "Keine Vorschläge für offene Bewegungen."
+        return "\n".join(f"{tid}\n" + "\n".join(f"  {'✓' if o['sicher'] else '?'} {o['label']}  ({o['grund']})"
+                                                for o in opts) for tid, opts in result.items()) + \
+            "\n\n✓ = sicher (batzen bank uebernehmen --alle) · ? = prüfen (batzen bank uebernehmen ID --art … --ziel …)"
     if cmd == "bank" and sub == "list":
         return _table(result, [("ID", "ID"), ("Datum", "Datum"), ("Betrag", "Betrag"), ("Gegenpartei", "Gegenpartei"),
                                ("Text", "Text"), ("Status", "Status"), ("Beleg", "Beleg")], right=("Betrag",))
@@ -816,6 +847,32 @@ def render(cmd: str, sub: str | None, result) -> str:
             out.append(f"\n✗ Bilanzdifferenz {result['differenz']}")
         if result.get("pdf"):
             out.append(f"\nPDF {result['pdf']}")
+        return "\n".join(out)
+    if cmd == "mwst" and "zeilen" in result:
+        cash = result["abrechnungsart"] == "vereinnahmt"
+        out = [f"MWST-Umsatzabstimmung {result['jahr']} ({result['methode']}, {result['abrechnungsart']}e Entgelte)"]
+        head = f"  {'Ziffer':<11}{'Buchhaltung':>14}" + (f"{'+offen 1.1.':>14}{'−offen 31.12.':>14}" if cash else "") \
+            + f"{'Zu dekl.':>14}{'Deklariert':>14}{'Differenz':>12}"
+        out.append(head)
+        for z in result["zeilen"]:
+            out.append(f"  {z['ziffer']:<11}{_fmt(z['buchhaltung']):>14}"
+                       + (f"{_fmt(z['offen_anfang']):>14}{_fmt(z['offen_ende']):>14}" if cash else "")
+                       + f"{_fmt(z['soll']):>14}{_fmt(z['deklariert']):>14}{_fmt(z['differenz']):>12}"
+                       + ("  Rundung" if z["rundung"] else ""))
+        e = result["ertrag"]
+        out.append(f"\nErtrag laut Erfolgsrechnung {_fmt(e['total'])} · mit Umsatzcode {_fmt(e['mit_code'])} · ohne Code {_fmt(e['ohne_code'])}")
+        for k in e["konten"]:
+            if Decimal(k["ohne_code"]):
+                out.append(f"  {k['konto']} {k['name'][:40]:<42} ohne Code {_fmt(k['ohne_code']):>14}")
+        out.append("\nMWST-Konten per 31.12.")
+        for k in result["steuerkonten"]:
+            out.append(f"  {k['konto']} {k['rolle']:<24} Saldo {_fmt(k['saldo']):>12}  erwartet {_fmt(k['erwartet']):>12}"
+                       f"  Differenz {_fmt(k['differenz']):>10}" + (f"  ({k['erklaerung']})" if k["erklaerung"] else ""))
+        for h in result["hinweise"]:
+            out.append(f"· {h}")
+        out.append("\n✓ abgestimmt" if result["ok"] else "\n✗ nicht abgestimmt")
+        if result.get("pdf"):
+            out.append(f"PDF: {result['pdf']}")
         return "\n".join(out)
     if cmd == "mwst" and "ziffern" in result:
         z = result["ziffern"]

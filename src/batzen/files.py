@@ -192,13 +192,14 @@ CENT = Decimal("0.01")
 
 def parse_amount(raw, where: str = "") -> Decimal:
     """'1'234.50', '1234.5', 1234.5 → Decimal('1234.50'). Swiss apostrophes allowed."""
-    if isinstance(raw, Decimal):
-        return raw
     text = str(raw if raw is not None else "").strip().replace("'", "").replace("’", "").replace(" ", "")
     if not text:
         return Decimal("0")
     try:
-        return Decimal(text)
+        amount = raw if isinstance(raw, Decimal) else Decimal(text)
+        if not amount.is_finite():
+            raise InvalidOperation
+        return amount
     except InvalidOperation:
         raise FormatError(f"{where}: '{raw}' ist kein Betrag") from None
 

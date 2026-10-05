@@ -5,11 +5,29 @@
 <div class="topbar">
   <div><div class="crumbs"><a href="/konten?jahr={{ year }}">Konten</a> /</div><h1>{{ led.konto }} {{ led.name }}</h1><div class="sub">Kontoblatt {{ year }}{% if led.saldo_fw is not none %} · geführt in {{ led.waehrung }}, bewertet in CHF{% endif %}</div></div>
   <div class="actions">
+    {% if prev_nr %}<a class="btn" href="/konten/{{ prev_nr }}?jahr={{ year }}" title="Vorheriges Konto {{ prev_nr }}" aria-label="Vorheriges Konto">‹</a>{% endif %}
+    <select class="input" aria-label="Konto" onchange="location.href='/konten/' + this.value + '?jahr={{ year }}'" style="max-width:260px">
+      {% for a in konten_liste %}<option value="{{ a.nr }}" {{ 'selected' if a.nr == led.konto }}>{{ a.nr }} {{ a.name }}</option>{% endfor %}
+    </select>
+    {% if next_nr %}<a class="btn" href="/konten/{{ next_nr }}?jahr={{ year }}" title="Nächstes Konto {{ next_nr }}" aria-label="Nächstes Konto">›</a>{% endif %}
     <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in book.years()|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
     <a class="btn" href="/pdf/kontoblatt?konto={{ led.konto }}&jahr={{ year }}" target="_blank">PDF</a>
   </div>
 </div>
 {% set fw = led.saldo_fw is not none %}
+{% if chart %}
+<div class="panel">
+  <header><h2>Saldoverlauf</h2><span class="hint">CHF{% if chart.flip %}, Haben-Saldo nach oben{% endif %} · tiefster {{ chart.min|chf }} · höchster {{ chart.max|chf }}</span></header>
+  <svg class="chart balance" viewBox="0 0 720 190" role="img" aria-label="Saldoverlauf Konto {{ led.konto }} {{ year }}">
+    {% for t in chart.ticks %}<line x1="70" x2="710" y1="{{ t.y }}" y2="{{ t.y }}" stroke="var(--rule)"/><text x="62" y="{{ t.y + 3 }}" text-anchor="end">{{ t.v|chf|replace(".00", "") }}</text>{% endfor %}
+    <line x1="70" x2="710" y1="{{ chart.zero }}" y2="{{ chart.zero }}" stroke="var(--rule-strong)"/>
+    {% for m in chart.months %}<text x="{{ m.x + 4 }}" y="184">{{ MONTHS[m.m][:3] }}</text>{% endfor %}
+    <path d="{{ chart.area }}" fill="var(--info-soft)" stroke="none"/>
+    <path d="{{ chart.path }}" fill="none" stroke="var(--info)" stroke-width="1.6" stroke-linejoin="round"/>
+    {% for e in chart.ends %}<circle cx="{{ e.x }}" cy="{{ e.y }}" r="6" fill="transparent"><title>Ende {{ MONTHS[e.m] }}: {{ e.v|chf }}</title></circle><circle cx="{{ e.x }}" cy="{{ e.y }}" r="2" fill="var(--info)" pointer-events="none"/>{% endfor %}
+  </svg>
+</div>
+{% endif %}
 <div class="panel">
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th>Datum</th><th>Beleg</th><th>Text</th><th>Gegenkonto</th><th class="right">Soll</th><th class="right">Haben</th><th class="right">Saldo</th>{% if fw %}<th class="right">{{ led.waehrung }}</th><th class="right">Kurs</th><th class="right">Saldo {{ led.waehrung }}</th>{% endif %}</tr></thead>

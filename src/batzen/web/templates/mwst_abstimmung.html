@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}MWST-Abstimmung {{ year }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><div class="crumbs"><a class="link" href="/mwst?jahr={{ year }}">MWST</a></div>
+    <h1>Umsatzabstimmung {{ year }}</h1>
+    <div class="sub">{{ {"effektiv": "Effektive Methode", "saldo": "Saldosteuersatz " ~ cfg.saldosteuersatz ~ " %"}.get(cfg.methode, "nicht MWST-pflichtig") }}{% if rep %} · {{ cfg.abrechnungsart }}e Entgelte · Buchhaltung gegen die gebuchten Abrechnungen (Finalisierung, Art. 72 MWSTG){% endif %}</div></div>
+  <div class="actions">
+    {% if rep %}<a class="btn" href="/mwst/abstimmung/pdf?jahr={{ year }}" target="_blank">PDF</a>{% endif %}
+    <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in book.years()|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
+  </div>
+</div>
+{% if not rep %}
+<div class="alert info">Dieses Buch ist nicht MWST-pflichtig. Unter <a class="link" href="/einstellungen">Einstellungen</a> die Methode wählen.</div>
+{% else %}
+{% set cash = rep.abrechnungsart == 'vereinnahmt' %}
+{% if rep.ok %}<div class="alert ok">Umsatz und Steuer stimmen mit den Abrechnungen {{ year }} überein.</div>
+{% else %}<div class="alert warn">Nicht abgestimmt. Differenzen bis {{ rep.frist_korrektur|datum }} mit einer Jahresabstimmung (Berichtigungsabrechnung) bei der ESTV bereinigen.</div>{% endif %}
+{% for h in rep.hinweise %}<div class="alert info" style="margin-top:6px">{{ h }}</div>{% endfor %}
+
+<nav class="tabs" style="padding:0">
+  {% for p in rep.perioden %}<a href="/mwst?jahr={{ year }}&periode={{ p.periode }}">{{ p.periode[5:] }} <span class="count">{{ ('geändert' if p.veraendert else 'gebucht') if p.gebucht else 'offen' }}</span></a>{% endfor %}
+</nav>
+
+<div class="panel">
+  <header><h2>Umsatz und Steuer</h2><span class="hint">CHF · {{ 'Überleitung über die offenen Posten (Rechnungen und Kreditoren, noch nicht bezahlt)' if cash else 'Buchhaltung = zu deklarieren' }}</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Ziffer</th><th class="right" title="laut Buchhaltung (Belegdatum)">Buch</th>
+      {% if cash %}<th class="right" title="offene Posten am 1.1.">+ offen 1.1.</th><th class="right" title="offene Posten am 31.12.">− offen 31.12.</th>{% endif %}
+      <th class="right">Zu dekl.</th><th class="right">Deklariert</th><th class="right">Diff.</th></tr></thead>
+    <tbody>
+    {% for z in rep.zeilen %}
+      <tr class="{{ 'zw' if z.ziffer in ('299', '399', '479') else 'row' }}"><td><span class="num">{{ z.ziffer[:3] }}</span> {{ z.label }}</td>
+        <td class="right num">{{ z.buchhaltung|chf(true) }}</td>
+        {% if cash %}<td class="right num">{{ z.offen_anfang|chf(true) }}</td><td class="right num">{{ z.offen_ende|chf(true) }}</td>{% endif %}
+        <td class="right num">{{ z.soll|chf(true) }}</td><td class="right num">{{ z.deklariert|chf(true) }}</td>
+        <td class="right num">{% if z.differenz|float %}<span class="pill {{ 'muted' if z.rundung else 'red' }}" title="{{ 'Rundung je Abrechnung' if z.rundung }}">{{ z.differenz|chf }}</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="panel">
+    <header><h2>Ertrag laut Erfolgsrechnung</h2><span class="hint">ohne Code: erklären oder Code nachtragen</span></header>
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Konto</th><th class="right">Total</th><th class="right">mit Umsatzcode</th><th class="right">ohne Code</th></tr></thead>
+      <tbody>{% for k in rep.ertrag.konten %}
+        <tr class="row"><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ year }}">{{ k.konto }}</a> <span class="small muted">{{ k.name }}</span></td>
+          <td class="right num">{{ k.total|chf(true) }}</td><td class="right num">{{ k.mit_code|chf(true) }}</td>
+          <td class="right num">{% if k.ohne_code|float %}<span class="pill warn">{{ k.ohne_code|chf }}</span>{% endif %}</td></tr>
+      {% endfor %}</tbody>
+      <tfoot><tr><td>Total</td><td class="right num total">{{ rep.ertrag.total|chf }}</td><td class="right num">{{ rep.ertrag.mit_code|chf }}</td><td class="right num">{{ rep.ertrag.ohne_code|chf(true) }}</td></tr></tfoot>
+    </table></div>
+    {% if rep.ertrag.umsatz_andere_konten|float %}<div class="body small muted">Umsatzcodes auf anderen Konten (z.B. Eigenverbrauch, Erlösminderungen im Aufwand): {{ rep.ertrag.umsatz_andere_konten|chf }}</div>{% endif %}
+  </div>
+  <div class="panel">
+    <header><h2>MWST-Konten per 31.12.</h2><span class="hint">Saldo vor Abgrenzung</span></header>
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Konto</th><th class="right">Saldo</th><th class="right">Erwartet</th><th class="right">Differenz</th></tr></thead>
+      <tbody>{% for k in rep.steuerkonten %}
+        <tr class="row"><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ year }}">{{ k.konto }}</a> {{ k.rolle }}{% if k.erklaerung %}<br><span class="small muted">{{ k.erklaerung }}</span>{% endif %}</td>
+          <td class="right num">{{ k.saldo|chf(true) }}</td><td class="right num">{{ k.erwartet|chf(true) }}</td>
+          <td class="right num">{% if k.differenz|float %}<span class="pill red">{{ k.differenz|chf }}</span>{% endif %}</td></tr>
+      {% endfor %}
+        <tr class="row"><td>{{ rep.abrechnungskonto.konto }} Abrechnungskonto<br><span class="small muted">Zahllast noch nicht an die ESTV bezahlt (−) bzw. Guthaben (+)</span></td>
+          <td class="right num">{{ rep.abrechnungskonto.saldo|chf(true) }}</td><td></td><td></td></tr>
+      </tbody>
+    </table></div>
+    <div class="body small muted">Vorzeichen wie im Hauptbuch: Aktiven +, Passiven −.</div>
+</div>
+
+{% if cash %}
+<div class="panel">
+  <header><h2>Abgrenzung offene Posten per 31.12.{{ year }}</h2><span class="hint">vereinnahmte Entgelte</span></header>
+  <div class="body">
+    <p class="small">Die Steuer auf noch nicht bezahlten Rechnungen ist erst bei Zahlungseingang geschuldet, die Vorsteuer auf offenen Kreditoren erst bei Zahlung abziehbar. Für die Bilanz wird sie per 31.12. von {{ cfg.konten.umsatzsteuer }}/{{ cfg.konten.vorsteuer }}/{{ cfg.konten.vorsteuer_inv }} auf {{ cfg.konten.umsatzsteuer_offen }} (Passiven) bzw. {{ cfg.konten.vorsteuer_offen }} (Aktiven) umgebucht und am 1.1. zurückgebucht.</p>
+    <p>Umsatzsteuer auf offenen Debitoren <strong class="num">{{ rep.offen.ende.umsatzsteuer|chf }}</strong> · Vorsteuer auf offenen Kreditoren <strong class="num">{{ rep.offen.ende.vorsteuer|chf }}</strong></p>
+    {% if rep.offen.ende.belege %}<p class="small">{% for b in rep.offen.ende.belege %}<span class="pill muted" title="{{ b.art }}">{{ b.nummer }} {{ b.steuer|chf }}</span> {% endfor %}</p>{% endif %}
+    {% if rep.abgrenzung %}<div><span class="pill {{ 'warn' if rep.abgrenzung_veraltet else 'ok' }}">{{ 'veraltet' if rep.abgrenzung_veraltet else 'gebucht' }}</span> <span class="small muted">am {{ rep.abgrenzung.gebucht_am }}</span></div>{% endif %}
+    {% if not rep.abgrenzung or rep.abgrenzung_veraltet %}
+    <form hx-post="/mwst/abgrenzung" hx-target="find .errors" hx-confirm="MWST-Abgrenzung {{ year }} buchen (per 31.12., Rückbuchung 1.1.)?">
+      <input type="hidden" name="jahr" value="{{ year }}">{% if rep.abgrenzung %}<input type="hidden" name="neu" value="1">{% endif %}
+      {{ errors() }}
+      <div class="formfoot"><span class="small muted">Konten {{ cfg.konten.umsatzsteuer_offen }}/{{ cfg.konten.vorsteuer_offen }} werden bei Bedarf angelegt.</span><button class="btn primary" type="submit">{{ 'Abgrenzung neu buchen' if rep.abgrenzung else 'Abgrenzung buchen' }}</button></div>
+    </form>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

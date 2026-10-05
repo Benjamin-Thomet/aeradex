@@ -67,6 +67,21 @@ def test_every_page_renders(client):
         assert r.status_code == 200, f"{page}: {r.text[-400:]}"
 
 
+def test_balance_chart_preserves_opening_on_january_first():
+    from datetime import date
+    from decimal import Decimal
+    from batzen.web.views import _balance_chart
+
+    chart = _balance_chart({"eroeffnung": Decimal("1000"), "zeilen": [
+        {"datum": date(2025, 1, 1), "saldo": Decimal("750")},
+        {"datum": date(2025, 1, 1), "saldo": Decimal("500")},
+        {"datum": date(2025, 2, 1), "saldo": Decimal("600")},
+    ]}, 2025, False)
+    assert chart["max"] == Decimal("1000")
+    assert chart["ends"][0]["v"] == Decimal("500")
+    assert chart["ends"][1]["v"] == Decimal("600")
+
+
 def test_access_needs_token_and_csrf(root):
     app = create_app(root, token="tok")
     with TestClient(app) as c:
@@ -238,6 +253,11 @@ def test_mwst_screens_and_booking(client, root):
     assert client.get("/mwst/pdf?periode=2026-Q2").content.startswith(b"%PDF")
     ok(post(client, "/mwst/buchen", {"periode": "2026-Q2"}))
     assert "gebucht" in client.get("/mwst?jahr=2026&periode=2026-Q2").text
+    page = client.get("/mwst/abstimmung?jahr=2026").text
+    assert "Umsatzabstimmung 2026" in page and "Noch nicht gebuchte Abrechnungen" in page
+    response = client.get("/mwst/abstimmung/pdf?jahr=2026")
+    assert response.status_code == 200 and response.content.startswith(b"%PDF")
+    assert 'MWST-Umsatzabstimmung 2026.pdf' in response.headers["content-disposition"]
     assert errors(root) == []
 
 

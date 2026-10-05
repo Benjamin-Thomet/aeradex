@@ -188,7 +188,8 @@ def reverse(book: Book, beleg: str, datum=None, text: str = "") -> tuple[list[Ro
     d = parse_date(datum, "datum") if datum else date.today()
     ref = next_beleg(book, d.year)
     rows = [Row(datum=d, beleg=ref, text=text or f"Storno {beleg}: {r.text}", soll=r.haben,
-                haben=r.soll, betrag=r.betrag, quelle="", mwst=r.mwst) for r in original]
+                haben=r.soll, betrag=r.betrag, quelle="", mwst=r.mwst,
+                waehrung=r.waehrung, fw=r.fw, kurs=r.kurs) for r in original]
     return rows, post(book, rows)
 
 

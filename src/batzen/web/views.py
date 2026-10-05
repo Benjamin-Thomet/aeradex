@@ -8,7 +8,7 @@ import os
 import threading
 import tempfile
 from collections import OrderedDict, defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -203,7 +203,9 @@ async def pruefen(ui: UI, request: Request):
     qrbill = _qr_hint(book, f"inbox/{current.name}") if current and file_kind(current) in ("pdf", "image") else None
     from .. import bank
     bank_open = [t for t in bank.transactions(book) if t["Status"] == "offen"]
+    bank_sugg = bank.suggestions(book) if bank_open else {}
     return ui.render(request, "pruefen.html", book=book, files=files, current=current, qrbill=qrbill, bank_open=bank_open,
+                     bank_sugg=bank_sugg, bank_sicher=sum(1 for o in bank_sugg.values() if o[0]["sicher"]),
                      kind=file_kind(current) if current else None, text=text, proposals=proposals, linked=linked,
                      drafts=all_drafts, payslip_drafts=draft_rows(book), dv=erfassung.value,
                      issues=issues, accounts=account_options(book),
@@ -465,14 +467,71 @@ async def saldenliste(ui: UI, request: Request):
                      periode=periode, totals=totals, tab="saldenliste")
 
 
+def _balance_chart(led: dict, year: int, flip: bool) -> dict | None:
+    """Saldoverlauf as a step line over the year (end-of-day balances). Passive and revenue accounts
+    are drawn with the credit side up, so a growing liability or revenue rises."""
+    sign = Decimal(-1) if flip else Decimal(1)
+    start, end = date(year, 1, 1), date(year, 12, 31)
+    if year == date.today().year:
+        end = max(date.today(), max((z["datum"] for z in led["zeilen"]), default=start))
+    points = [(start, led["eroeffnung"] * sign)]
+    for z in led["zeilen"]:
+        if len(points) > 1 and points[-1][0] == z["datum"]:
+            points[-1] = (z["datum"], z["saldo"] * sign)
+        else:
+            points.append((z["datum"], z["saldo"] * sign))
+    if len(points) < 2 and not led["zeilen"]:
+        return None
+    values = [v for _, v in points]
+    lo, hi = min(min(values), ZERO), max(max(values), ZERO)
+    step = _nice_step(max(abs(lo), abs(hi)) or Decimal(100))
+    lo = (lo / step).to_integral_value(rounding="ROUND_FLOOR") * step
+    hi = (hi / step).to_integral_value(rounding="ROUND_CEILING") * step
+    if hi == lo:
+        hi = lo + step
+    left, right, top, bottom = 70.0, 710.0, 12.0, 168.0
+    days = max((end - start).days, 1)
+    x = lambda d: left + (right - left) * min((d - start).days, days) / days  # noqa: E731
+    y = lambda v: bottom - (bottom - top) * float((v - lo) / (hi - lo))  # noqa: E731
+    path = f"M{x(points[0][0]):.1f},{y(points[0][1]):.1f}"
+    for (d0, v0), (d1, v1) in zip(points, points[1:]):
+        path += f" H{x(d1):.1f} V{y(v1):.1f}"
+    path += f" H{x(end):.1f}"
+    ticks = []
+    v = lo
+    while v <= hi:
+        ticks.append({"y": round(y(v), 1), "v": v})
+        v += step
+    months = [{"x": round(x(date(year, m, 1)), 1), "m": m} for m in range(1, 13)
+              if date(year, m, 1) <= end and x(date(year, m, 1)) < right - 24]
+    ends = []
+    for m in range(1, 13):
+        last = date(year, m + 1, 1) - timedelta(days=1) if m < 12 else date(year, 12, 31)
+        if date(year, m, 1) > end:
+            break
+        val = next((v for d, v in reversed(points) if d <= last), points[0][1])
+        ends.append({"x": round(x(min(last, end)), 1), "y": round(y(val), 1), "m": m, "v": val})
+    return {"path": path, "ticks": ticks, "months": months, "ends": ends, "zero": round(y(ZERO), 1),
+            "area": path + f" V{y(ZERO):.1f} H{x(start):.1f} Z", "flip": flip,
+            "min": min(values), "max": max(values)}
+
+
 async def kontoblatt(ui: UI, request: Request):
     book = ui.book()
     year = year_param(request, book)
+    nr = request.path_params["nr"]
     try:
-        led = account_ledger(book, request.path_params["nr"], year)
+        led = account_ledger(book, nr, year)
     except BookError as exc:
         return PlainTextResponse(str(exc), status_code=404)
-    return ui.render(request, "kontoblatt.html", book=book, year=year, led=led, tab="kontenplan")
+    acct = book.accounts[nr]
+    numbers = sorted(n for n, a in book.accounts.items() if a.aktiv_ or n == nr)
+    i = numbers.index(nr)
+    chart = _balance_chart(led, year, acct.klasse in ("passiv", "ertrag"))
+    return ui.render(request, "kontoblatt.html", book=book, year=year, led=led, tab="kontenplan", chart=chart,
+                     klasse=acct.klasse, prev_nr=numbers[i - 1] if i > 0 else None,
+                     next_nr=numbers[i + 1] if i + 1 < len(numbers) else None,
+                     konten_liste=[book.accounts[n] for n in numbers])
 
 
 async def konto_neu(ui: UI, request: Request):
@@ -874,7 +933,9 @@ async def bank_page(ui: UI, request: Request):
     from .. import jev
     from .. import plugins
     formats = plugins.bank_formats(book)
+    sugg = bank.suggestions(book) if status in ("offen", "") else {}
     return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts, jev=jev.config(book),
+                     sugg=sugg, sicher=sum(1 for o in sugg.values() if o[0]["sicher"]),
                      bank_accept=",".join(sorted({x for f in formats for x in f.suffixes} | {".camt", ".053"})),
                      bank_labels=", ".join(f.label for f in formats),
                      rec=bank.reconciliation(book), open_inv=open_inv, open_bills=open_bills, rules=bank.rules(book),
@@ -959,7 +1020,13 @@ async def bank_aktion(ui: UI, request: Request):
         return await act(request, api.bank_ignore, to, book, tid, f.get("grund", ""))
     if aktion == "regel":
         return await act(request, api.bank_rule_from, to, book, tid)
+    if aktion == "uebernehmen":
+        return await act(request, api.bank_accept, to, book, tid, f.get("art", ""), f.get("ziel", ""))
     return fail("Unbekannte Aktion")
+
+
+async def bank_alle(ui: UI, request: Request):
+    return await act(request, api.bank_accept_all, request.headers.get("hx-current-url", "/bank"), ui.book())
 
 
 async def bank_regel(ui: UI, request: Request):
@@ -1438,6 +1505,34 @@ async def mwst_buchen(ui: UI, request: Request):
     return await act(request, api.mwst_book, f"/mwst?periode={periode}&jahr={periode[:4]}", ui.book(), periode)
 
 
+async def mwst_abstimmung(ui: UI, request: Request):
+    from .. import mwst
+    book = ui.book()
+    cfg = mwst.config(book)
+    year = year_param(request, book)
+    rep = mwst.abstimmung(book, year) if cfg["methode"] != "keine" else None
+    return ui.render(request, "mwst_abstimmung.html", book=book, cfg=cfg, rep=rep, year=year)
+
+
+async def mwst_abgrenzung(ui: UI, request: Request):
+    f = await request.form()
+    jahr = int(f.get("jahr") or 0)
+    return await act(request, api.mwst_abgrenzung, f"/mwst/abstimmung?jahr={jahr}", ui.book(), jahr,
+                     f.get("neu") == "1")
+
+
+async def mwst_abstimmung_pdf(ui: UI, request: Request):
+    from .. import mwst, pdf as pdfmod
+    book = ui.book()
+    year = year_param(request, book)
+    try:
+        data = pdfmod.mwst_abstimmung_pdf(book, mwst.abstimmung(book, year))
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return Response(data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="MWST-Umsatzabstimmung {year}.pdf"'})
+
+
 async def mwst_xml(ui: UI, request: Request):
     from .. import mwst
     book = ui.book()
@@ -1590,6 +1685,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/bank", h(bank_page)),
         Route("/bank/import", h(bank_upload), methods=["POST"]),
         Route("/bank/jev", h(bank_jev), methods=["POST"]),
+        Route("/bank/alle-abgleichen", h(bank_alle), methods=["POST"]),
         Route("/bank/regel", h(bank_regel), methods=["POST"]),
         Route("/bank/regel/{id:str}/entfernen", h(bank_regel), methods=["POST"]),
         Route("/bank/{id:str}/{aktion:str}", h(bank_aktion), methods=["POST"]),
@@ -1631,6 +1727,9 @@ def routes(ui: UI) -> list[Route]:
         Route("/abschluss/{aktion:str}", h(abschluss_aktion), methods=["POST"]),
         Route("/mwst", h(mwst_page)),
         Route("/mwst/buchen", h(mwst_buchen), methods=["POST"]),
+        Route("/mwst/abstimmung", h(mwst_abstimmung)),
+        Route("/mwst/abstimmung/pdf", h(mwst_abstimmung_pdf)),
+        Route("/mwst/abgrenzung", h(mwst_abgrenzung), methods=["POST"]),
         Route("/mwst/pdf", h(mwst_pdf)),
         Route("/mwst/xml", h(mwst_xml)),
         Route("/verlauf", h(verlauf)),

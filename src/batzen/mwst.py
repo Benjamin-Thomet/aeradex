@@ -22,6 +22,19 @@ effective method — deducted again as Vorsteuer (Ziffer 400 for 4xxx accounts,
 else 405), so it usually nets to zero. With the Saldosteuersatz method it is
 owed without deduction and becomes a cost on the same account.
 
+Abrechnungsart (`abrechnungsart: vereinbart | vereinnahmt`, Art. 39 MWSTG): the books always
+record invoices and supplier bills with their tax on the document date. With vereinnahmte
+Entgelte the Abrechnung counts an invoice's (or bill's) coded rows only when money comes in
+(goes out): pro rata of each payment, on its date (`cash_rows`). The tax on what is still open
+stays on the MWST accounts.
+
+Umsatzabstimmung (Art. 72 MWSTG, MWST-Info 15): once a year the turnover in the accounts is
+reconciled with what the four (two) Abrechnungen declared; a difference is corrected with a
+Jahresabstimmung (Berichtigungsabrechnung); the ESTV finalises the year after 240 days. With vereinnahmte Entgelte the books show
+more turnover than was declared (open Debitoren); `abstimmung` bridges that, and
+`book_abgrenzung` moves the tax on open Debitoren/Kreditoren from 2200/1170/1171 to their own
+balance sheet accounts per 31.12. (reversed on 1.1.), so the balance sheet shows what is owed now.
+
 The ESTV form numbers (Ziffern) follow the rates valid since 1.1.2024
 (8.1 / 2.6 / 3.8 %). Check them against the current form before filing.
 """
@@ -68,7 +81,10 @@ def _codes() -> dict[str, Code]:
 
 CODES = _codes()
 DEFAULT_KONTEN = {"vorsteuer": "1170", "vorsteuer_inv": "1171", "umsatzsteuer": "2200",
-                  "abrechnung": "2201", "saldosteuer": "3809", "differenz": "3800"}
+                  "abrechnung": "2201", "saldosteuer": "3809", "differenz": "3800",
+                  "umsatzsteuer_offen": "2209", "vorsteuer_offen": "1172"}
+ABGRENZUNG_KONTEN = {"umsatzsteuer_offen": ("MWST auf offenen Debitoren (vereinnahmte Entgelte)", "passiv"),
+                     "vorsteuer_offen": ("Vorsteuer auf offenen Kreditoren (vereinnahmte Entgelte)", "aktiv")}
 BEZUG_ZIFFERN = {"81": "382", "26": "383"}
 
 
@@ -185,17 +201,71 @@ def periods(book: Book, year: int) -> list[str]:
 
 # ---------- the Abrechnung ----------
 
-def report(book: Book, periode: str) -> dict:
-    """The MWST-Abrechnung for a period, by ESTV Ziffer, plus the rows behind each code."""
-    start, end, label = resolve(periode)
-    cfg = config(book)
-    k = cfg["konten"]
+def _deferral(book: Book) -> tuple[list[Row], list[Row], list[Row]]:
+    """Split the journal for vereinnahmte Entgelte: (rows that count on their date, coded rows of
+    invoices and bills that wait for payment, those rows recognised pro rata on payment dates).
+
+    An invoice is recognised by its settlements (payments and credit notes; a credit note's own
+    coded rows count on its date), a bill by its payments. Shares are rounded cumulatively, so a
+    fully settled document is recognised exactly as booked."""
+    from . import invoices as inv
+    from . import kreditoren as kred
+    plain, deferred = [], defaultdict(list)
+    for r in book.rows:
+        kind = r.quelle.partition(":")[0]
+        if r.mwst and kind in ("rechnung", "kreditor"):
+            deferred[r.quelle].append(r)
+        else:
+            plain.append(r)
+    if not deferred:
+        return plain, [], []
+    all_inv, settled = inv.invoices(book), inv.settlements(book)
+    all_bills, paid = kred.bills(book), kred.payments(book)
+    recognised = []
+    for quelle, rows in deferred.items():
+        kind, _, nr = quelle.partition(":")
+        if kind == "rechnung":
+            meta = all_inv.get(nr)
+            events, total, foreign = settled.get(nr, []), meta and Decimal(str(meta.get("total") or 0)), meta and inv.is_foreign(meta)
+        else:
+            meta = all_bills.get(nr)
+            events, total, foreign = paid.get(nr, []), meta and Decimal(str(meta.get("betrag") or 0)), meta and kred.is_foreign(meta)
+        if not meta or not total:
+            continue
+        done = [ZERO] * len(rows)
+        cum = ZERO
+        for ev in sorted(events, key=lambda e: (e.datum, e.beleg)):
+            cum += (ev.fw or ZERO) if foreign else ev.betrag
+            share = min(cum / total, Decimal(1))
+            for i, r in enumerate(rows):
+                target = (r.betrag * share).quantize(CENT, rounding=ROUND_HALF_UP)
+                if target != done[i]:
+                    recognised.append(Row(ev.datum, r.beleg, r.text, r.soll, r.haben, target - done[i], r.quelle,
+                                          mwst=r.mwst))
+                    done[i] = target
+    return plain, [r for g in deferred.values() for r in g], recognised
+
+
+def cash_rows(book: Book) -> list[Row]:
+    """The journal as the ESTV sees it with vereinnahmte Entgelte."""
+    plain, _, recognised = _deferral(book)
+    return plain + recognised
+
+
+def report_rows(book: Book) -> list[Row]:
+    return cash_rows(book) if config(book)["abrechnungsart"] == "vereinnahmt" else book.rows
+
+
+def _aggregate(book: Book, rows: list[Row], start: date, end: date) -> dict:
+    """Entgelt and tax per code for rows dated start..end (sign: revenue/Umsatzsteuer and
+    costs/Vorsteuer positive)."""
+    k = config(book)["konten"]
     tax_accounts = {k["umsatzsteuer"], k["vorsteuer"], k["vorsteuer_inv"], k["bezugsteuer"]}
     base: dict[str, Decimal] = defaultdict(lambda: ZERO)
     tax: dict[str, Decimal] = defaultdict(lambda: ZERO)
     bezug_vst = {"400": ZERO, "405": ZERO}
     belege: dict[str, set] = defaultdict(set)
-    for r in book.rows:
+    for r in rows:
         if not (start <= r.datum <= end) or not r.mwst:
             continue
         c = CODES.get(r.mwst)
@@ -224,8 +294,11 @@ def report(book: Book, periode: str) -> dict:
             tax[c.code] += sign * r.betrag
         else:
             base[c.code] += sign * r.betrag
+    return {"base": base, "tax": tax, "bezug_vst": bezug_vst, "belege": belege}
 
-    ziffern: dict[str, Decimal] = {}
+
+def _ziffern(cfg: dict, agg: dict) -> dict[str, Decimal]:
+    base, tax, bezug_vst = agg["base"], agg["tax"], agg["bezug_vst"]
     bezug_exact = {key: base[f"B{key}"] * RATES[key] / Decimal(100) for key in BEZUG_ZIFFERN}
     if cfg["methode"] == "saldo":
         rate = cfg["saldosteuersatz"]
@@ -263,8 +336,20 @@ def report(book: Book, periode: str) -> dict:
     saldo = ziffern["399"] - ziffern["479"]
     ziffern["500"] = saldo if saldo > 0 else ZERO
     ziffern["510"] = -saldo if saldo < 0 else ZERO
+    return ziffern
+
+
+def report(book: Book, periode: str) -> dict:
+    """The MWST-Abrechnung for a period, by ESTV Ziffer, plus the rows behind each code."""
+    start, end, label = resolve(periode)
+    cfg = config(book)
+    agg = _aggregate(book, report_rows(book), start, end)
+    base, tax, belege = agg["base"], agg["tax"], agg["belege"]
+    ziffern = _ziffern(cfg, agg)
+    saldo = ziffern["399"] - ziffern["479"]
     saved = load(book, label)
     return {"periode": label, "von": start, "bis": end, "methode": cfg["methode"],
+            "abrechnungsart": cfg["abrechnungsart"],
             "bezug_gebucht": tax["B81"] + tax["B26"],
             "saldosteuersatz": cfg["saldosteuersatz"], "ziffern": ziffern,
             "codes": {k: {"code": k, "label": CODES[k].label, "entgelt": base[k], "steuer": tax[k],
@@ -334,7 +419,7 @@ def book_report(book: Book, periode: str) -> tuple[dict, list[Path]]:
     for role, nr in cfg["konten"].items():
         if role == "saldosteuer" and rep["methode"] != "saldo":
             continue
-        if role == "differenz" and not rep["ziffern"].get("differenz"):
+        if role == "differenz" and not rep["ziffern"].get("differenz") or role in ABGRENZUNG_KONTEN:
             continue
         book.account(nr)
     ensure_open(book, rep["bis"])
@@ -348,6 +433,299 @@ def book_report(book: Book, periode: str) -> tuple[dict, list[Path]]:
     touched = post(book, rows) if rows else []
     write_yaml(path(book, label), saved)
     return {**rep, "gebucht": True}, touched + [path(book, label)]
+
+
+# ---------- vereinnahmte Entgelte: open items, Abgrenzung ----------
+
+EPOCH = date(1900, 1, 1)
+
+
+def open_items(book: Book, stichtag: date) -> dict:
+    """Tax on invoices and bills booked up to `stichtag` but not yet paid — with vereinnahmte
+    Entgelte not yet owed (deductible), so it is still on the MWST accounts."""
+    k = config(book)["konten"]
+    _, deferred, recognised = _deferral(book)
+    a, b = _aggregate(book, deferred, EPOCH, stichtag), _aggregate(book, recognised, EPOCH, stichtag)
+    agg = {"base": defaultdict(lambda: ZERO), "tax": defaultdict(lambda: ZERO),
+           "bezug_vst": {z: a["bezug_vst"][z] - b["bezug_vst"][z] for z in a["bezug_vst"]}, "belege": defaultdict(set)}
+    for key in set(a["base"]) | set(a["tax"]):
+        agg["base"][key] = a["base"][key] - b["base"][key]
+        agg["tax"][key] = a["tax"][key] - b["tax"][key]
+    t = agg["tax"]
+    accounts: dict[str, Decimal] = defaultdict(lambda: ZERO)     # signed like the ledger: Aktiven +, Passiven −
+    accounts[k["umsatzsteuer"]] -= sum((t[c] for c in CODES if CODES[c].kind == "umsatz"), ZERO)
+    accounts[k["bezugsteuer"]] -= sum((t[c] for c in CODES if CODES[c].kind == "bezug"), ZERO)
+    accounts[k["vorsteuer"]] += sum((t[c] for c in CODES if CODES[c].kind == "vorsteuer"), ZERO) + agg["bezug_vst"]["400"]
+    accounts[k["vorsteuer_inv"]] += sum((t[c] for c in CODES if CODES[c].kind == "investition"), ZERO) + agg["bezug_vst"]["405"]
+    # Which documents are open, for the list in the Abstimmung.
+    docs: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    tax_accounts = {k["umsatzsteuer"], k["vorsteuer"], k["vorsteuer_inv"], k["bezugsteuer"]}
+    for rows, sign in ((deferred, 1), (recognised, -1)):
+        for r in rows:
+            if r.datum <= stichtag and (r.soll in tax_accounts and not r.haben or r.haben in tax_accounts and not r.soll):
+                docs[r.quelle] += sign * r.betrag
+    return {"stichtag": stichtag, "aggregat": agg, "konten": {nr: v for nr, v in accounts.items() if v},
+            "umsatzsteuer": -accounts[k["umsatzsteuer"]] - (accounts[k["bezugsteuer"]] if k["bezugsteuer"] != k["umsatzsteuer"] else ZERO),
+            "vorsteuer": accounts[k["vorsteuer"]] + accounts[k["vorsteuer_inv"]],
+            "belege": [{"quelle": q, "art": "Debitor" if q.startswith("rechnung:") else "Kreditor",
+                        "nummer": q.partition(":")[2], "steuer": v} for q, v in sorted(docs.items()) if v]}
+
+
+def abgrenzung_path(book: Book, year: int) -> Path:
+    return book.root / "mwst" / "abgrenzung" / f"{year}.yaml"
+
+
+def load_abgrenzung(book: Book, year: int) -> dict | None:
+    p = abgrenzung_path(book, year)
+    return read_yaml(p) if p.exists() else None
+
+
+def abgrenzung_rows(book: Book, year: int, saved: dict) -> list[Row]:
+    """Rows a booked Abgrenzung owns: per 31.12. the tax on open items onto its own accounts,
+    reversed on 1.1. of the next year (when payment makes it owed / deductible)."""
+    k = config(book)["konten"]
+    beleg, quelle = f"MWST-ABGR-{year}", f"mwst:abgrenzung-{year}"
+    end, start = date(year, 12, 31), date(year + 1, 1, 1)
+    rows = []
+
+    def add(d, ref, soll, haben, amount, text):
+        amount = Decimal(str(amount)).quantize(CENT)
+        if not amount:
+            return
+        if amount < 0:
+            soll, haben, amount = haben, soll, -amount
+        rows.append(Row(d, ref, text, soll, haben, amount, quelle))
+
+    for nr, value in sorted((saved.get("konten") or {}).items()):
+        value = Decimal(str(value))
+        target = k["umsatzsteuer_offen"] if book.accounts.get(nr) and book.accounts[nr].klasse == "passiv" else k["vorsteuer_offen"]
+        # value is the ledger sign of the open tax on nr: clear nr, move it to target.
+        add(end, beleg, target, nr, value, f"MWST vereinnahmt: Steuer auf offenen Posten {year} auf {target}")
+        add(start, f"{beleg}-R", nr, target, value, f"MWST vereinnahmt: Rückbuchung Abgrenzung {year}")
+    return rows
+
+
+def _ensure_abgrenzung_accounts(book: Book) -> list[Path]:
+    from .book import Account
+    from .statements import default_group
+    k = config(book)["konten"]
+    added = False
+    for role, (name, klasse) in ABGRENZUNG_KONTEN.items():
+        if k[role] not in book.accounts:
+            book.accounts[k[role]] = Account(nr=k[role], name=name, klasse=klasse, gruppe=default_group(k[role], klasse))
+            added = True
+    if added:
+        book.save_accounts()
+        return [book.root / "kontenplan.yaml"]
+    return []
+
+
+def book_abgrenzung(book: Book, year: int, neu: bool = False) -> tuple[dict, list[Path]]:
+    """Book the year-end Abgrenzung (vereinnahmte Entgelte only). `neu` replaces an earlier one."""
+    from .journal import ensure_open, post
+    cfg = config(book)
+    if cfg["methode"] == "keine":
+        raise BookError("Dieses Buch ist nicht MWST-pflichtig")
+    if cfg["abrechnungsart"] != "vereinnahmt":
+        raise BookError("Die Abgrenzung offener Posten braucht es nur bei der Abrechnung nach vereinnahmten Entgelten")
+    end = date(year, 12, 31)
+    ensure_open(book, end)
+    ensure_open(book, date(year + 1, 1, 1))
+    old = load_abgrenzung(book, year)
+    if old and not neu:
+        raise BookError(f"Die MWST-Abgrenzung {year} ist bereits gebucht (neu berechnen: --neu)")
+    items = open_items(book, end)
+    saved = {"jahr": year, "stichtag": end.isoformat(),
+             "konten": {nr: v for nr, v in sorted(items["konten"].items())},
+             "umsatzsteuer": items["umsatzsteuer"], "vorsteuer": items["vorsteuer"],
+             "gebucht_am": date.today().isoformat()}
+    touched = _ensure_abgrenzung_accounts(book)
+    if old:
+        touched += book.remove_rows(lambda r: r.quelle == f"mwst:abgrenzung-{year}")
+        book.reload()
+    rows = abgrenzung_rows(book, year, saved)
+    if rows:
+        touched += post(book, rows)
+    path = abgrenzung_path(book, year)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_yaml(path, saved)
+    return saved, touched + [path]
+
+
+# ---------- Umsatzabstimmung (year end) ----------
+
+ABSTIMMUNG_ZIFFERN = {
+    "effektiv": [("200", "Total der Entgelte"), ("220", "Steuerbefreite Leistungen"),
+                 ("230", "Von der Steuer ausgenommene Leistungen"), ("299", "Steuerbares Gesamtentgelt"),
+                 ("303", "Leistungen 8.1 %"), ("303_steuer", "Steuer 8.1 %"),
+                 ("313", "Leistungen 2.6 %"), ("313_steuer", "Steuer 2.6 %"),
+                 ("343", "Beherbergung 3.8 %"), ("343_steuer", "Steuer 3.8 %"),
+                 ("382", "Bezugsteuer 8.1 % (Entgelt)"), ("383", "Bezugsteuer 2.6 % (Entgelt)"),
+                 ("399", "Total geschuldete Steuer"), ("400", "Vorsteuer Material/DL"),
+                 ("405", "Vorsteuer Investitionen/übriger Aufwand"), ("479", "Total Vorsteuer")],
+    "saldo": [("200", "Total der Entgelte"), ("220", "Steuerbefreite Leistungen"),
+              ("230", "Von der Steuer ausgenommene Leistungen"), ("299", "Steuerbares Gesamtentgelt"),
+              ("322", "Leistungen zum Saldosteuersatz"), ("322_steuer", "Saldosteuer"),
+              ("382", "Bezugsteuer 8.1 % (Entgelt)"), ("383", "Bezugsteuer 2.6 % (Entgelt)"),
+              ("399", "Total geschuldete Steuer")],
+}
+REVENUE_KINDS = ("umsatz", "befreit", "ausgenommen")
+
+
+def _ertrag(book: Book, year: int) -> dict:
+    """Revenue accounts of the Erfolgsrechnung, split into what carries a turnover code and what not."""
+    k = config(book)["konten"]
+    skip = {k["umsatzsteuer"], k["vorsteuer"], k["vorsteuer_inv"], k["bezugsteuer"]}
+    per: dict[str, dict] = {}
+    for r in book.rows:
+        if r.datum.year != year or r.quelle.startswith("mwst:"):
+            continue
+        coded = r.mwst in CODES and CODES[r.mwst].kind in REVENUE_KINDS
+        for nr, sign in ((r.haben, 1), (r.soll, -1)):
+            acct = book.accounts.get(nr)
+            if not nr or nr in skip or acct is None or acct.klasse != "ertrag":
+                continue
+            e = per.setdefault(nr, {"konto": nr, "name": acct.name, "total": ZERO, "mit_code": ZERO, "ohne_code": ZERO})
+            e["total"] += sign * r.betrag
+            e["mit_code" if coded else "ohne_code"] += sign * r.betrag
+    konten = [per[nr] for nr in sorted(per)]
+    return {"konten": konten, "total": sum((e["total"] for e in konten), ZERO),
+            "mit_code": sum((e["mit_code"] for e in konten), ZERO),
+            "ohne_code": sum((e["ohne_code"] for e in konten), ZERO)}
+
+
+def abstimmung(book: Book, year: int) -> dict:
+    """Umsatz- und Steuerabstimmung for a business year: turnover and tax in the accounts against
+    the booked Abrechnungen, the bridge for vereinnahmte Entgelte, and the MWST account balances."""
+    from datetime import timedelta
+    from .ledger import BalanceEngine
+    cfg = config(book)
+    if cfg["methode"] == "keine":
+        raise BookError("Dieses Buch ist nicht MWST-pflichtig")
+    k = cfg["konten"]
+    start, end = date(year, 1, 1), date(year, 12, 31)
+    cash = cfg["abrechnungsart"] == "vereinnahmt"
+    lines = ABSTIMMUNG_ZIFFERN["saldo" if cfg["methode"] == "saldo" else "effektiv"]
+
+    buch = _ziffern(cfg, _aggregate(book, book.rows, start, end))           # as booked (document dates)
+    soll = _ziffern(cfg, _aggregate(book, report_rows(book), start, end))   # what the year's Abrechnungen must show
+    if cash:
+        anfang, ende = open_items(book, start - timedelta(days=1)), open_items(book, end)
+        offen_a, offen_e = _ziffern(cfg, anfang["aggregat"]), _ziffern(cfg, ende["aggregat"])
+    else:
+        anfang = ende = None
+        offen_a = offen_e = {}
+
+    perioden, deklariert, unbooked_rows = [], defaultdict(lambda: ZERO), []
+    rows_for_report = report_rows(book)
+    for label in periods(book, year):
+        saved = load(book, label)
+        rep = report(book, label)
+        perioden.append({"periode": label, "gebucht": saved is not None, "veraendert": rep["veraendert"],
+                         "zahllast": Decimal(str(saved["ziffern"].get("500", 0))) - Decimal(str(saved["ziffern"].get("510", 0)))
+                         if saved else rep["zahllast"]})
+        if saved:
+            for key, v in saved["ziffern"].items():
+                deklariert[key] += Decimal(str(v))
+        else:
+            s_, e_, _ = resolve(label)
+            unbooked_rows.append(_aggregate(book, rows_for_report, s_, e_))
+    n = len(perioden)
+
+    zeilen, ok = [], True
+    for key, label in lines:
+        z = {"ziffer": key, "label": label, "buchhaltung": buch.get(key, ZERO), "soll": soll.get(key, ZERO),
+             "deklariert": deklariert.get(key, ZERO)}
+        if cash:
+            z["offen_anfang"], z["offen_ende"] = offen_a.get(key, ZERO), offen_e.get(key, ZERO)
+        z["differenz"] = z["soll"] - z["deklariert"]
+        # The ESTV computes tax per Abrechnung: up to a Rappen per period is rounding, not an error.
+        z["rundung"] = bool(z["differenz"]) and ("steuer" in key or key in ("399", "400", "405", "479")) \
+            and abs(z["differenz"]) <= Decimal("0.01") * n
+        if z["differenz"] and not z["rundung"]:
+            ok = False
+        if any(z[f] for f in ("buchhaltung", "soll", "deklariert")) or key in ("200", "299", "399"):
+            zeilen.append(z)
+
+    ertrag = _ertrag(book, year)
+    ertrag["umsatz_andere_konten"] = buch["200"] - ertrag["mit_code"] if cfg["methode"] != "saldo" else ZERO
+
+    # MWST accounts per 31.12. (before this year's Abgrenzung) against what they should hold.
+    engine = BalanceEngine(book)
+    abgr_q = f"mwst:abgrenzung-{year}"
+    abgr_rows = [r for r in book.rows if r.quelle == abgr_q and r.datum == end]
+
+    def saldo(nr: str) -> Decimal:
+        value = engine.balance_at(nr, end) if nr in book.accounts else ZERO
+        for r in abgr_rows:
+            value -= r.betrag if r.soll == nr else ZERO
+            value += r.betrag if r.haben == nr else ZERO
+        return value
+
+    expected: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    why: dict[str, list[str]] = defaultdict(list)
+    for agg, label in zip(unbooked_rows, [p["periode"] for p in perioden if not p["gebucht"]]):
+        t = agg["tax"]
+        parts = {k["umsatzsteuer"]: -sum((t[c] for c in CODES if CODES[c].kind == "umsatz"), ZERO),
+                 k["vorsteuer"]: sum((t[c] for c in CODES if CODES[c].kind == "vorsteuer"), ZERO) + agg["bezug_vst"]["400"],
+                 k["vorsteuer_inv"]: sum((t[c] for c in CODES if CODES[c].kind == "investition"), ZERO) + agg["bezug_vst"]["405"]}
+        parts[k["bezugsteuer"]] = parts.get(k["bezugsteuer"], ZERO) - sum((t[c] for c in CODES if CODES[c].kind == "bezug"), ZERO)
+        for nr, v in parts.items():
+            if v:
+                expected[nr] += v
+                why[nr].append(f"Abrechnung {label} noch nicht gebucht")
+    if ende:
+        for nr, v in ende["konten"].items():
+            expected[nr] += v
+            why[nr].append("Steuer auf offenen Posten (vereinnahmt)")
+    steuerkonten = []
+    for role, label in (("umsatzsteuer", "Umsatzsteuer"), ("bezugsteuer", "Bezugsteuer"),
+                        ("vorsteuer", "Vorsteuer Material/DL"), ("vorsteuer_inv", "Vorsteuer Investitionen")):
+        nr = k[role]
+        if any(s["konto"] == nr for s in steuerkonten) or nr not in book.accounts:
+            continue
+        have, want = saldo(nr), expected[nr]
+        steuerkonten.append({"rolle": label, "konto": nr, "name": book.accounts[nr].name, "saldo": have,
+                             "erwartet": want, "differenz": have - want, "erklaerung": "; ".join(why[nr])})
+        if have != want:
+            ok = False
+    abrechnungskonto = {"konto": k["abrechnung"], "saldo": engine.balance_at(k["abrechnung"], end)
+                        if k["abrechnung"] in book.accounts else ZERO}
+
+    saved_abgr = load_abgrenzung(book, year)
+    veraltet = bool(saved_abgr and ende and {nr: f"{Decimal(str(v)):.2f}" for nr, v in (saved_abgr.get("konten") or {}).items()}
+                    != {nr: f"{v:.2f}" for nr, v in ende["konten"].items()})
+    # ESTV: Jahresabstimmung, https://www.estv.admin.ch/de/mwst-jahresabstimmung
+    frist = end + timedelta(days=240)
+    hinweise = []
+    open_periods = [p["periode"] for p in perioden if not p["gebucht"]]
+    if open_periods:
+        hinweise.append(f"Noch nicht gebuchte Abrechnungen: {', '.join(open_periods)} — die Abstimmung ist erst "
+                        "nach allen Abrechnungen des Jahres vollständig.")
+    for p in perioden:
+        if p["veraendert"]:
+            hinweise.append(f"Abrechnung {p['periode']}: seit dem Buchen geändert — Korrekturabrechnung einreichen.")
+    if any(z["differenz"] and not z["rundung"] for z in zeilen) and not open_periods:
+        hinweise.append(f"Differenzen zu den deklarierten Abrechnungen: Jahresabstimmung (Berichtigungsabrechnung) bei der ESTV bis "
+                        f"{frist.strftime('%d.%m.%Y')} einreichen (Finalisierung, 240 Tage nach Geschäftsjahresende, Art. 72 MWSTG).")
+    if ertrag["ohne_code"]:
+        hinweise.append("Ertrag ohne MWST-Code: prüfen, ob er nicht steuerbar ist (Zinsen, Dividenden, Kursgewinne, "
+                        "Subventionen/Spenden Ziff. 900/910) oder ob der Code fehlt.")
+    if cash and ende and ende["konten"] and not saved_abgr:
+        hinweise.append(f"Vereinnahmte Entgelte: Steuer auf offenen Debitoren ({ende['umsatzsteuer']:.2f}) und Kreditoren "
+                        f"({ende['vorsteuer']:.2f}) ist noch nicht abgerechnet — per 31.12. abgrenzen "
+                        f"(Konten {k['umsatzsteuer_offen']}/{k['vorsteuer_offen']}).")
+    if veraltet:
+        hinweise.append(f"Die gebuchte Abgrenzung {year} passt nicht mehr zu den offenen Posten — neu buchen.")
+        ok = False
+    return {"jahr": year, "von": start, "bis": end, "methode": cfg["methode"], "abrechnungsart": cfg["abrechnungsart"],
+            "perioden": perioden, "zeilen": zeilen, "ertrag": ertrag, "steuerkonten": steuerkonten,
+            "abrechnungskonto": abrechnungskonto,
+            "offen": ({"anfang": {"umsatzsteuer": anfang["umsatzsteuer"], "vorsteuer": anfang["vorsteuer"]},
+                       "ende": {"umsatzsteuer": ende["umsatzsteuer"], "vorsteuer": ende["vorsteuer"],
+                                "konten": ende["konten"], "belege": ende["belege"]}} if cash else None),
+            "abgrenzung": saved_abgr, "abgrenzung_veraltet": veraltet, "frist_korrektur": frist,
+            "ok": ok and not open_periods, "hinweise": hinweise}
 
 
 # ---------- eMWST: eCH-0217 v2.0.0 for the ESTV portal ----------

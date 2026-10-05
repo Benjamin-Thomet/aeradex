@@ -299,3 +299,7 @@ table.grid tr.err td { background: var(--red-soft); }
 table.grid tfoot td { border: 0; padding: 8px; font-family: var(--f-num); }
 table.grid td.x .btn { opacity: .35; } table.grid tr:hover td.x .btn { opacity: 1; }
 @media (max-width: 760px) { table.grid { min-width: 720px; } }
+/* bank: a suggestion for an open movement, taken with one click */
+form.suggest { display: flex; align-items: center; gap: 10px; justify-content: space-between; max-width: 460px; }
+form.suggest + form.suggest, details > form.suggest { margin-top: 6px; }
+form.suggest > div { min-width: 0; }

@@ -5,6 +5,7 @@
 <div class="topbar">
   <div><h1>Bank</h1><div class="sub">Kontoauszüge im Format camt.053 aus dem E-Banking. Klare Zahlungen bucht batzen selbst, bereits Gebuchtes wird nur abgeglichen.</div></div>
   <span class="actions">
+  {% if sicher %}<form hx-post="/bank/alle-abgleichen" hx-target="find .errors" hx-confirm="{{ sicher }} sichere Vorschläge übernehmen (Rechnungen, Kreditoren, Quittungen begleichen)?"><button class="btn primary" type="submit" title="Übernimmt bei jeder Bewegung den sicheren Vorschlag — Betrag und Name stimmen">Alle sicheren abgleichen <span class="count">{{ sicher }}</span></button>{{ errors() }}</form>{% endif %}
   {% if jev.bereit and counts['offen'] %}<form hx-post="/bank/jev" hx-target="find .errors"><button class="btn" type="submit" title="Schnelle Kontierung mit TypeSafe Jev; sichere Fälle werden Vorschläge">Konten vorschlagen (Jev)</button>{{ errors() }}</form>{% endif %}
   <form class="actions" hx-post="/bank/import" hx-encoding="multipart/form-data" hx-target="find .errors">
     <input class="input" type="file" name="datei" accept="{{ bank_accept }}" aria-label="Kontoauszug" title="{{ bank_labels }}" style="width:260px">
@@ -28,14 +29,26 @@
     <span class="actions">{% for k, l in [("offen", "Offen"), ("gebucht", "Gebucht"), ("abgeglichen", "Abgeglichen"), ("ignoriert", "Ignoriert"), ("", "Alle")] %}<a class="btn small {{ '' if k == status else 'ghost' }}" href="/bank?status={{ k }}">{{ l }}{% if k and counts[k] %} <span class="count">{{ counts[k] }}</span>{% endif %}</a>{% endfor %}</span></header>
   {% if rows %}
   <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Datum</th><th>Gegenpartei / Text</th><th class="right">Betrag</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Datum</th><th>Gegenpartei / Text</th><th class="right">Betrag</th><th>{{ 'Status / Vorschlag' if sugg else 'Status' }}</th><th></th></tr></thead>
     <tbody>
     {% for t in rows %}{% set credit = t.Betrag|float > 0 %}
       <tr class="row" id="{{ t.ID }}">
         <td class="num">{{ t.Datum|datum }}</td>
         <td><strong>{{ t.Gegenpartei or '—' }}</strong><br><span class="small muted">{{ t.Text }}{% if t.Referenz %} · Ref. {{ t.Referenz }}{% endif %}</span>{% if t.Hinweis and t.Status == 'offen' %}<br><span class="pill info" title="{{ t.Hinweis }}">{{ t.Hinweis|truncate(70) }}</span>{% endif %}</td>
         <td class="right num">{{ t.Betrag|chf(sign=true) }}</td>
-        <td>{% if t.Status == 'offen' %}<span class="pill warn">offen</span>{% elif t.Status == 'ignoriert' %}<span class="pill muted">ignoriert</span>{% else %}<a class="pill ok" href="/journal?jahr={{ t.Datum[:4] }}&monat=alle&q={{ t.Beleg|urlq }}">{{ t.Status }} · {{ t.Beleg }}</a>{% if t.Hinweis and t.Hinweis.startswith('Regel ') %} <span class="pill muted">{{ t.Hinweis }}</span>{% endif %}{% endif %}</td>
+        <td>{% if t.Status == 'offen' %}{% set opts = sugg.get(t.ID) or [] %}{% if opts %}{% set o = opts[0] %}
+          <form class="suggest" hx-post="/bank/{{ t.ID }}/uebernehmen" hx-target="find .errors">
+            <input type="hidden" name="art" value="{{ o.art }}"><input type="hidden" name="ziel" value="{{ o.ziel }}">
+            <div><span class="pill {{ 'ok' if o.sicher else 'info' }}">{{ 'sicher' if o.sicher else 'prüfen' }}</span> {{ o.label }}<br><span class="small muted">{{ o.grund }}</span></div>
+            <button class="btn small {{ 'primary' if o.sicher }}" type="submit">Abgleichen</button>{{ errors() }}
+          </form>
+          {% if opts|length > 1 %}<details class="small"><summary class="muted">{{ opts|length - 1 }} weitere</summary>{% for o in opts[1:] %}
+          <form class="suggest" hx-post="/bank/{{ t.ID }}/uebernehmen" hx-target="find .errors">
+            <input type="hidden" name="art" value="{{ o.art }}"><input type="hidden" name="ziel" value="{{ o.ziel }}">
+            <div>{{ o.label }}<br><span class="small muted">{{ o.grund }}</span></div>
+            <button class="btn small" type="submit">Abgleichen</button>{{ errors() }}
+          </form>{% endfor %}</details>{% endif %}
+          {% else %}<span class="pill warn">offen</span>{% endif %}{% elif t.Status == 'ignoriert' %}<span class="pill muted">ignoriert</span>{% else %}<a class="pill ok" href="/journal?jahr={{ t.Datum[:4] }}&monat=alle&q={{ t.Beleg|urlq }}">{{ t.Status }} · {{ t.Beleg }}</a>{% if t.Hinweis and t.Hinweis.startswith('Regel ') %} <span class="pill muted">{{ t.Hinweis }}</span>{% endif %}{% endif %}</td>
         <td class="right">{% if t.Status == 'offen' %}
           <details class="drawer"><summary class="btn small">Bearbeiten</summary>
             <div class="panel" style="position:absolute;right:40px;z-index:3;padding:14px;display:flex;flex-direction:column;gap:12px;width:360px;text-align:left;box-shadow:var(--shadow)">

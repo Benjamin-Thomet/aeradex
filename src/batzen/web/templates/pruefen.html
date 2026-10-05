@@ -89,9 +89,9 @@
 
 {% if bank_open %}
 <div class="panel">
-  <header><h2>Offene Bankbewegungen</h2><a class="hint link" href="/bank">Alle {{ bank_open|length }} bearbeiten →</a></header>
-  <ul class="todo">{% for t in bank_open[:5] %}
-    <li><a href="/bank#{{ t.ID }}"><span class="stripe {{ 'info' if t.Betrag|float > 0 else 'warn' }}"></span><div><div class="t">{{ t.Gegenpartei or t.Text or 'Bankbewegung' }}</div><div class="d">{{ t.Datum|datum }} · {{ t.Text }}</div></div><span class="num">{{ t.Betrag|chf(sign=true) }}</span></a></li>
+  <header><h2>Offene Bankbewegungen</h2><span class="actions">{% if bank_sicher %}<form hx-post="/bank/alle-abgleichen" hx-target="find .errors" hx-confirm="{{ bank_sicher }} sichere Vorschläge übernehmen?"><button class="btn small primary" type="submit">Alle sicheren abgleichen <span class="count">{{ bank_sicher }}</span></button>{{ errors() }}</form>{% endif %}<a class="hint link" href="/bank">Alle {{ bank_open|length }} bearbeiten →</a></span></header>
+  <ul class="todo">{% for t in bank_open[:5] %}{% set o = (bank_sugg.get(t.ID) or [none])[0] %}
+    <li><a href="/bank#{{ t.ID }}"><span class="stripe {{ 'info' if t.Betrag|float > 0 else 'warn' }}"></span><div><div class="t">{{ t.Gegenpartei or t.Text or 'Bankbewegung' }}</div><div class="d">{{ t.Datum|datum }} · {% if o %}<span class="pill {{ 'ok' if o.sicher else 'info' }}">{{ o.label }}</span>{% else %}{{ t.Text }}{% endif %}</div></div><span class="num">{{ t.Betrag|chf(sign=true) }}</span></a></li>
   {% endfor %}</ul>
 </div>
 {% endif %}

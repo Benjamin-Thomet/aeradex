@@ -432,6 +432,81 @@ def receivables_pdf(book: Book, ar: dict) -> bytes:
 
 
 
+def mwst_abstimmung_pdf(book: Book, rep: dict) -> bytes:
+    """Year-end reconciliation, including cash-basis bridge and unresolved findings."""
+    year = rep["jahr"]
+    cash = rep["abrechnungsart"] == "vereinnahmt"
+    width = landscape(A4)[0] - 2 * SIDE
+    buf = io.BytesIO()
+    title = f"MWST-Umsatzabstimmung {year}"
+    doc = _doc(buf, title, book.settings.firma, pagesize=landscape(A4),
+               label=f"{book.settings.firma} · {title}")
+    story = [P(title, "title"),
+             P(f"{book.settings.firma} · {book.settings.get('uid') or ''} · "
+               f"{rep['methode']} · {rep['abrechnungsart']}e Entgelte · Stand {d(date.today())}", "small"),
+             P("Umsatz und Steuer stimmen mit den gebuchten Abrechnungen überein." if rep["ok"] else
+               "Nicht abgestimmt. Offene Abrechnungen und Differenzen prüfen.", "bold")]
+    for hint in rep["hinweise"]:
+        story.append(P(hint, "small"))
+    story += [P("Umsatz und Steuer (CHF)", "h2")]
+    header = ["Ziffer / Bezeichnung", "Buchhaltung"]
+    if cash:
+        header += ["+ offen 1.1.", "− offen 31.12."]
+    header += ["Zu deklarieren", "Deklariert", "Differenz"]
+    data = [header]
+    for row in rep["zeilen"]:
+        values = [row["buchhaltung"]]
+        if cash:
+            values += [row["offen_anfang"], row["offen_ende"]]
+        values += [row["soll"], row["deklariert"], row["differenz"]]
+        data.append([P(f"{row['ziffer'][:3]} {row['label']}", "cell")] + [chf(v) for v in values])
+    story += [_grid(data, [width * 0.34] + [width * 0.66 / (len(header) - 1)] * (len(header) - 1),
+                    right_cols=tuple(range(1, len(header)))),
+              P("Buchhaltung nach Belegdatum; deklariert laut gebuchten Abrechnungen. "
+                "Steuerdifferenzen bis 1 Rappen je Abrechnung gelten als Rundung.", "small"),
+              P("Gebuchte Abrechnungen", "h2")]
+    periods = [["Periode", "Status", "Zahllast CHF"]]
+    for period in rep["perioden"]:
+        status = "seit Buchung geändert" if period["veraendert"] else "gebucht" if period["gebucht"] else "offen"
+        periods.append([period["periode"], status, chf(period["zahllast"])])
+    story += [_grid(periods, [width * 0.2, width * 0.6, width * 0.2], right_cols=(2,)),
+              P("Ertrag laut Erfolgsrechnung", "h2")]
+    revenue = [["Konto / Bezeichnung", "Total CHF", "mit Umsatzcode", "ohne Code"]]
+    for account in rep["ertrag"]["konten"]:
+        revenue.append([P(f"{account['konto']} {account['name']}", "cell"), chf(account["total"]),
+                        chf(account["mit_code"]), chf(account["ohne_code"])])
+    revenue.append(["Total"] + [chf(rep["ertrag"][key]) for key in ("total", "mit_code", "ohne_code")])
+    story += [_grid(revenue, [width * 0.46] + [width * 0.18] * 3,
+                    total_rows=(len(revenue) - 1,), right_cols=(1, 2, 3))]
+    if rep["ertrag"]["umsatz_andere_konten"]:
+        story.append(P(f"Umsatzcodes auf anderen Konten: {chf(rep['ertrag']['umsatz_andere_konten'])} CHF", "small"))
+    story.append(P("MWST-Konten per 31.12. (vor Abgrenzung)", "h2"))
+    accounts = [["Konto / Erklärung", "Saldo CHF", "Erwartet", "Differenz"]]
+    for account in rep["steuerkonten"]:
+        accounts.append([P(f"{account['konto']} {account['rolle']} · {account['erklaerung']}", "cell"),
+                         chf(account["saldo"]), chf(account["erwartet"]), chf(account["differenz"])])
+    settlement = rep["abrechnungskonto"]
+    accounts.append([f"{settlement['konto']} Abrechnungskonto", chf(settlement["saldo"]), "", ""])
+    story += [_grid(accounts, [width * 0.55] + [width * 0.15] * 3, right_cols=(1, 2, 3)),
+              P("Vorzeichen wie im Hauptbuch: Aktiven +, Passiven −. Das Abrechnungskonto zeigt "
+                "offene Zahllast (−) bzw. Guthaben (+) gegenüber der ESTV.", "small")]
+    if cash:
+        end = rep["offen"]["ende"]
+        status = "veraltet" if rep["abgrenzung_veraltet"] else "gebucht" if rep["abgrenzung"] else "noch nicht gebucht"
+        story += [P("Abgrenzung der offenen Posten", "h2"),
+                  P(f"Umsatzsteuer offen: {chf(end['umsatzsteuer'])} CHF · "
+                    f"Vorsteuer offen: {chf(end['vorsteuer'])} CHF · Abgrenzung: {status}", "small")]
+        if end["belege"]:
+            items = [["Art", "Beleg", "Steuer CHF"]] + [
+                [item["art"], item["nummer"], chf(item["steuer"])] for item in end["belege"]]
+            story.append(_grid(items, [width * 0.2, width * 0.6, width * 0.2], right_cols=(2,)))
+    story += [Spacer(1, 4 * mm), P(f"Einreichefrist Jahresabstimmung (Berichtigungsabrechnung nach Art. 72 MWSTG): "
+                                 f"{d(rep['frist_korrektur'])}. Vergleich mit den gebuchten Abrechnungen; "
+                                 "die Einreichung im ESTV-Portal separat prüfen.", "small")]
+    doc.build(story)
+    return buf.getvalue()
+
+
 def mwst_pdf(book: Book, rep: dict) -> bytes:
     """Summary of a MWST-Abrechnung to transcribe into the ESTV portal."""
     s = book.settings

@@ -33,6 +33,11 @@ SESSION_DAYS = 14
 ADMIN_ONLY = ("/einstellungen", "/abschluss/sperre", "/abschluss/entsperren")
 
 
+def token_matches(sent: str, expected: str) -> bool:
+    """Compare ASCII tokens, rejecting malformed user input without raising."""
+    return sent.isascii() and hmac.compare_digest(sent, expected)
+
+
 def config_dir(explicit: str | Path | None = None) -> Path:
     path = Path(explicit or os.environ.get("BATZEN_CONFIG") or Path.home() / ".config" / "batzen")
     path.mkdir(parents=True, exist_ok=True)
@@ -174,7 +179,7 @@ class Sessions:
             payload = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
         except (ValueError, TypeError):
             return None
-        if not hmac.compare_digest(sig, self._sign(payload)):
+        if not token_matches(sig, self._sign(payload)):
             return None
         data = json.loads(payload)
         return data if data.get("exp", 0) > time.time() else None

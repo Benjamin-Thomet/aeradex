@@ -59,22 +59,33 @@ def commit(root: Path, message: str, paths: list[Path] | None = None) -> str | N
     when the book is not a repo, commits are disabled, or nothing changed."""
     if os.environ.get("BATZEN_NO_COMMIT") or not is_repo(root):
         return None
-    if paths:
+    rel = None
+    if paths is not None:
         rel = sorted({str(Path(p).resolve().relative_to(root)) for p in paths
                       if Path(p).resolve().is_relative_to(root)})
+        if not rel:
+            return None
         tracked = set(_git(root, "ls-files", "--", *rel, check=False).stdout.splitlines())
+        deleted = set(_git(root, "diff", "--cached", "--name-only", "--diff-filter=D", "--", *rel,
+                           check=False).stdout.splitlines())
         # A path that is gone and was never committed (a receipt moved out of an
         # untracked inbox) has nothing to stage; git would reject it.
-        rel = [r for r in rel if (root / r).exists() or r in tracked]
-        if rel:
-            _git(root, "add", "-A", "--", *rel)
+        rel = [r for r in rel if (root / r).exists() or r in tracked or r in deleted]
+        if not rel:
+            return None
+        to_stage = [r for r in rel if (root / r).exists() or r in tracked]
+        if to_stage:
+            _git(root, "add", "-A", "--", *to_stage)
     else:
         _git(root, "add", "-A")
-    if _git(root, "diff", "--cached", "--quiet", check=False).returncode == 0:
+    scope = ["--", *rel] if rel is not None else []
+    if _git(root, "diff", "--cached", "--quiet", *scope, check=False).returncode == 0:
         return None
     author = AUTHOR.get() or os.environ.get("BATZEN_AUTHOR")
     extra = [f"--author={author}"] if author else []
-    result = _git(root, "commit", "-q", *extra, "-m", message, check=False)
+    # --only leaves unrelated staged work in the index for its own commit.
+    only = ["--only", "--", *rel] if rel is not None else []
+    result = _git(root, "commit", "-q", *extra, "-m", message, *only, check=False)
     if result.returncode != 0:
         raise RuntimeError("git commit abgelehnt:\n" + (result.stdout + result.stderr).strip())
     return _git(root, "rev-parse", "--short", "HEAD").stdout.strip()

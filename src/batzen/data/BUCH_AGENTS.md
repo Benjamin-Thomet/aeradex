@@ -31,9 +31,11 @@ mit. Fremdwährung: Betrag in der Rechnungswährung, gebucht zum BAZG-Kurs. Dien
 MWST-pflichtigen Büchern: Code B81 (Bezugsteuer). Zahlen: `batzen zahlungslauf erstellen E-2026-0001 … --datum …`
 erzeugt die pain.001-Datei fürs E-Banking.
 
-**Kontoauszug (camt.053) in `inbox/`**: `batzen bank import inbox/x.xml`. Danach `batzen bank list --status offen`:
-passt eine Bewegung zu einer offenen Rechnung/einem Kreditor → `batzen bank zuordnen ID NUMMER`; sonst
-Buchung vorschlagen (MCP: propose_bank_booking) mit dem Gegenkonto.
+**Kontoauszug (camt.053) in `inbox/`**: `batzen bank import inbox/x.xml`. Danach `batzen bank vorschlaege`
+(MCP: bank_suggestions): je offene Bewegung die wahrscheinliche Zuordnung — Rechnung, Kreditor, Quittung, Beleg
+oder Konto aus früheren Buchungen. Passt eine Bewegung zu einer offenen Rechnung/einem Kreditor →
+`batzen bank zuordnen ID NUMMER`; sonst Buchung vorschlagen (MCP: propose_bank_booking) mit dem Gegenkonto.
+Sichere Vorschläge übernimmt der Mensch mit einem Klick («Alle sicheren abgleichen»).
 
 **Zahlungseingang**: `batzen invoice match --betrag 1500 --text "<Bankzeile>"` → `batzen invoice pay R-2026-0001 --datum …`
 
@@ -46,6 +48,14 @@ nach der GV `batzen allocation book 2026 --datum …`, Periode sperren `batzen l
 `batzen status --json` zeigt `mwst_methode`. Bei `effektiv`: weist der Beleg MWST aus, mit `--mwst` buchen
 (V81 Vorsteuer Material/Dienstleistungen, I81 Investitionen/übriger Aufwand, U81 Umsatz; 2.6 % = V26/I26/U26)
 und den **Bruttobetrag** angeben. Bei `saldo` oder `keine`: ohne Vorsteuer-Code buchen.
+
+**Jahresabschluss bei MWST-Pflicht:** Vor dem Sperren des Jahres alle MWST-Abrechnungen buchen und
+`batzen mwst abstimmung 2026 --pdf --json` ausführen (MCP: `mwst_reconciliation`, `als_pdf: true`).
+Umsatz- und Steuerdifferenzen sowie Ertrag ohne MWST-Code prüfen und erklären; festgestellte Fehler
+mit der Jahresabstimmung (Berichtigungsabrechnung nach Art. 72 MWSTG) bei der ESTV bereinigen.
+Die angezeigte Frist beachten. Bei `abrechnungsart: vereinnahmt` zusätzlich die Steuer auf offenen
+Debitoren/Kreditoren mit `batzen mwst abgrenzung 2026 --json` per 31.12. abgrenzen (Rückbuchung am 1.1.).
+Danach die Abstimmung erneut prüfen und das PDF für die Abschlussunterlagen erstellen.
 
 ## Kontierungs-Hinweise (KMU-Kontenrahmen)
 - Bank 1020 · Kasse 1000 · Debitoren 1100 · Kreditoren 2000 · Vorsteuer 1170/1171 · Umsatzsteuer 2200

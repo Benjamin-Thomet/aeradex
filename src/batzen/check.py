@@ -481,6 +481,20 @@ def check_mwst(book: Book, rows: list[Row], by_beleg: dict) -> list[Issue]:
         if current["veraendert"]:
             out.append(Issue("warnung", book.rel(path), f"Seit der MWST-Abrechnung {label} wurden Buchungen mit "
                              "MWST-Code geändert — Korrekturabrechnung bei der ESTV nötig"))
+    # A booked year-end Abgrenzung (vereinnahmte Entgelte) owns its rows too.
+    abgr = folder / "abgrenzung"
+    for path in sorted(abgr.glob("*.yaml")) if abgr.exists() else []:
+        saved = read_yaml(path)
+        year = int(saved.get("jahr") or path.stem)
+        quelle = f"mwst:abgrenzung-{year}"
+        known.add(quelle)
+        if Counter(map(_key, mwst.abgrenzung_rows(book, year, saved))) != Counter(map(_key, owned.get(quelle, []))):
+            out.append(Issue("fehler", book.rel(path), "Buchung der MWST-Abgrenzung passt nicht zur gespeicherten Abgrenzung"))
+        if cfg["abrechnungsart"] == "vereinnahmt":
+            now = {nr: f"{v:.2f}" for nr, v in mwst.open_items(book, date(year, 12, 31))["konten"].items()}
+            if now != {nr: f"{Decimal(str(v)):.2f}" for nr, v in (saved.get("konten") or {}).items()}:
+                out.append(Issue("warnung", book.rel(path), f"Die offenen Posten per 31.12.{year} haben sich seit der "
+                                 "MWST-Abgrenzung geändert — Abgrenzung neu buchen"))
     for quelle, group in owned.items():
         if quelle not in known:
             out.append(Issue("fehler", group[0].where, f"Quelle {quelle}: MWST-Abrechnung existiert nicht"))
