@@ -56,6 +56,11 @@ DEFAULT_SYSTEM_ACCOUNTS = {
     "spesen": "2210",
 }
 
+# Legal forms batzen knows, and the kind of equity they keep. Anything else counts as a company.
+RECHTSFORMEN = {"ag": "gesellschaft", "gmbh": "gesellschaft", "genossenschaft": "gesellschaft",
+                "einzelfirma": "einzelfirma", "einzelunternehmen": "einzelfirma", "verein": "verein"}
+KONTENPLAN_FUER = {"gesellschaft": "kmu", "einzelfirma": "einzelfirma", "verein": "verein"}
+
 
 class BookError(Exception):
     """Something the user asked for that the book's rules refuse."""
@@ -73,6 +78,7 @@ class Account:
     aktiv_: bool = True
     waehrung: str = "CHF"          # account currency; foreign-currency rows carry FW and Kurs
     eroeffnung_fw: Decimal = ZERO  # signed opening balance in the account currency (first year)
+    abschluss: str = ""            # equity account its balance moves into at the next opening (Privat → Eigenkapital)
 
     @property
     def is_foreign(self) -> bool:
@@ -133,6 +139,11 @@ class Settings:
     def sperre_bis(self) -> date | None:
         raw = self.data.get("sperre_bis")
         return parse_date(raw, "batzen.yaml sperre_bis") if raw else None
+
+    @property
+    def rechtsform_art(self) -> str:
+        """gesellschaft (AG, GmbH …: Gewinnverwendung, Dividende), einzelfirma (Privat, Eigenkapital) or verein."""
+        return RECHTSFORMEN.get(str(self.data.get("rechtsform") or "GmbH").strip().lower(), "gesellschaft")
 
     def konto(self, role: str) -> str:
         return str((self.data.get("konten") or {}).get(role) or DEFAULT_SYSTEM_ACCOUNTS[role])
@@ -356,6 +367,7 @@ def load_accounts(path: Path) -> dict[str, Account]:
             aktiv_=bool(item.get("aktiv", True)),
             waehrung=str(item.get("waehrung") or "CHF").upper(),
             eroeffnung_fw=parse_amount(item.get("eroeffnung_fw", 0), where),
+            abschluss=str(item.get("abschluss") or "").strip(),
         )
     return accounts
 
@@ -380,6 +392,8 @@ def save_accounts(path: Path, accounts: dict[str, Account]) -> None:
             item["waehrung"] = a.waehrung
         if a.eroeffnung_fw:
             item["eroeffnung_fw"] = a.eroeffnung_fw
+        if a.abschluss:
+            item["abschluss"] = a.abschluss
         out.append(item)
     write_yaml(path, {"konten": out})
 

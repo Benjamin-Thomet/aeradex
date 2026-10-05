@@ -61,8 +61,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("ordner")
     s.add_argument("--firma", required=True)
     s.add_argument("--jahr", type=int)
-    s.add_argument("--rechtsform", default="GmbH")
-    s.add_argument("--kontenplan", default="kmu")
+    s.add_argument("--rechtsform", default="GmbH", help="AG, GmbH, Einzelfirma oder Verein (bestimmt den Kontenplan)")
+    s.add_argument("--kontenplan", help="Vorlage statt der zur Rechtsform passenden: kmu, einzelfirma, verein, …")
     for f in ("uid", "strasse", "nr", "plz", "ort", "iban", "telefon", "email"):
         s.add_argument(f"--{f}", default="")
     s.add_argument("--ohne-git", action="store_true")

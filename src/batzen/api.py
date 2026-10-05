@@ -69,17 +69,21 @@ def _done(book: Book, message: str, paths: list[Path], **data) -> dict:
 
 # ---------- book ----------
 
-def init_book(path: Path, firma: str, jahr: int | None = None, kontenplan: str = "kmu",
+def init_book(path: Path, firma: str, jahr: int | None = None, kontenplan: str | None = None,
               rechtsform: str = "GmbH", git: bool = True, **settings) -> dict:
+    """A new book. Without `kontenplan` the template follows the legal form:
+    AG/GmbH → kmu, Einzelfirma → einzelfirma, Verein → verein."""
+    from .book import KONTENPLAN_FUER, Settings
     root = Path(path).resolve()
     if (root / "batzen.yaml").exists():
         raise BookError(f"{root} enthält bereits ein Buch")
-    root.mkdir(parents=True, exist_ok=True)
     from . import plugins
+    kontenplan = kontenplan or KONTENPLAN_FUER[Settings(firma, {"rechtsform": rechtsform}).rechtsform_art]
     templates = plugins.kontenplaene()
     if kontenplan not in templates:
         raise BookError(f"Kontenplan-Vorlage '{kontenplan}' unbekannt (vorhanden: {', '.join(sorted(templates))})")
     template = templates[kontenplan]
+    root.mkdir(parents=True, exist_ok=True)
     from .files import read_yaml as _read
     system_overrides = {k: str(v) for k, v in ((_read(template) or {}).get("systemkonten") or {}).items()}
     data = {

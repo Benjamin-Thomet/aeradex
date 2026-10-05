@@ -78,6 +78,15 @@ def run(book: Book) -> list[Issue]:
             f"Eröffnungsbilanz geht nicht auf: Aktiven + Passiven = {opening} (muss 0 sein)")
     if any(a.eroeffnung for a in accounts.values() if a.is_pl):
         add("fehler", "kontenplan.yaml", "Erfolgskonten dürfen keinen Eröffnungssaldo haben")
+    for a in accounts.values():
+        if not a.abschluss:
+            continue
+        target = accounts.get(a.abschluss)
+        if not a.is_balance_sheet:
+            add("fehler", "kontenplan.yaml", f"Konto {a.nr}: abschluss nur für Bilanzkonten")
+        elif target is None or target.gruppe != "eigenkapital" or target.abschluss:
+            add("fehler", "kontenplan.yaml",
+                f"Konto {a.nr}: abschluss {a.abschluss} muss ein Eigenkapitalkonto ohne eigenen abschluss sein")
 
     # ---- journal ----
     try:

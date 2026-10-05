@@ -43,6 +43,8 @@ Sichere Vorschläge übernimmt der Mensch mit einem Klick («Alle sicheren abgle
 
 **Abschluss**: `batzen report --jahr 2026 --pdf`, Gewinnverwendung `batzen allocation set 2026 --dividende … --reserve …`,
 nach der GV `batzen allocation book 2026 --datum …`, Periode sperren `batzen lock 2026-12-31`.
+Einzelfirma und Verein haben keine Gewinnverwendung: Das Ergebnis (und bei der Einzelfirma die Privatkonten)
+geht bei der Eröffnung des Folgejahres von selbst ins Eigenkapital — nichts buchen.
 
 ## MWST
 `batzen status --json` zeigt `mwst_methode`. Bei `effektiv`: weist der Beleg MWST aus, mit `--mwst` buchen
@@ -63,3 +65,10 @@ Danach die Abstimmung erneut prüfen und das PDF für die Abschlussunterlagen er
 - Büromaterial 6500 · Telefon/Internet 6510 · Informatik 6570 · Werbung 6600 · Reisespesen 6640
 - Abschreibungen 6800 · Zinsaufwand 6900 · Bankspesen 6940 · Direkte Steuern 8900
 - Soll = wohin der Wert fliesst (Aufwand ↑, Aktiven ↑, Passiven ↓). Haben = woher (Ertrag ↑, Bank ↓ bei Zahlung).
+
+**Einzelfirma** (`rechtsform: Einzelfirma`): Was der Inhaber privat bezieht oder bezahlt, ist kein Aufwand.
+- Privatbezug, private Rechnung ab Geschäftskonto: Soll 2850 Privat. Einlage des Inhabers: Haben 2850.
+- Persönliche AHV/IV/EO-Beiträge des Inhabers (Akonto- und Schlussrechnung der Ausgleichskasse als
+  Selbständigerwerbender): Soll 2851 Privat AHV — nicht 5700 (das ist der Arbeitgeberanteil für Angestellte).
+- Einkommens- und Vermögenssteuern des Inhabers: Soll 2852 Privat Steuern (es gibt kein Konto Direkte Steuern).
+- Privatanteile an Geschäftsaufwand: Privat an 6270 (Fahrzeug) bzw. 6512 (Telefon) — vom Treuhänder bestätigen lassen.

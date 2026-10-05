@@ -9,7 +9,9 @@ negative (credit) one. An account's balance in a year is therefore
 Years chain without storing anything per year: a balance-sheet account opens
 at last year's close, a P&L account at zero, and the whole of last year's
 result folds into the Gewinnvortrag account at the opening — so the books
-carry forward on their own and the prior-year column is always live.
+carry forward on their own and the prior-year column is always live. Accounts
+with `abschluss: <nr>` (the Privat accounts of an Einzelfirma) fold into that
+equity account the same way.
 """
 from __future__ import annotations
 
@@ -41,6 +43,10 @@ class BalanceEngine:
         self.accounts = book.accounts
         self.first_year = book.settings.erstes_jahr
         self.retained = book.settings.konto("gewinnvortrag")
+        self._closing_into: dict[str, list[str]] = defaultdict(list)
+        for nr, a in self.accounts.items():
+            if a.abschluss:
+                self._closing_into[a.abschluss].append(nr)
         self._by_year: dict[int, list[Row]] = defaultdict(list)
         for r in book.rows:
             self._by_year[r.datum.year].append(r)
@@ -65,8 +71,11 @@ class BalanceEngine:
             value = ZERO
         elif year <= self.first_year:
             value = acct.eroeffnung if year == self.first_year else ZERO
+        elif acct.abschluss:
+            value = ZERO                  # closed into its equity account (Privat → Eigenkapital)
         elif acct.is_balance_sheet:
             value = self.balance(nr, year - 1)
+            value += sum((self.balance(src, year - 1) for src in self._closing_into.get(nr, ())), ZERO)
             if nr == self.retained:
                 value += self.result(year - 1)
         else:

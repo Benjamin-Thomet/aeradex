@@ -6,7 +6,6 @@ eigenes Plugin per Pull Request dort eintragen, ein Maintainer prüft es (siehe 
 
 | Plugin | Art | Was es tut | Stand |
 |---|---|---|---|
-| [batzen-kontenplan-verein](plugins/batzen-kontenplan-verein) | Daten | Kontenplan für Schweizer Vereine | ungeprüft |
 | [batzen-anlagen](plugins/batzen-anlagen) | Dokumente, Seite | Anlagenbuchhaltung: Abschreibungen, Abgänge, Anlagenspiegel | ungeprüft |
 | [batzen-revolut](plugins/batzen-revolut) | Bankformat | Revolut-Kontoauszüge (CSV, Business und Privat) | ungeprüft, mit echtem Export zu prüfen |
 

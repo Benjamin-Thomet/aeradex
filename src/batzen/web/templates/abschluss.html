@@ -75,6 +75,17 @@
 {{ stmt("Erfolgsrechnung", st.erfolg) }}
 
 <div class="grid2 even">
+  {% if st.eigenkapital %}{% set ek = st.eigenkapital %}
+  <div class="panel">
+    <header><h2>{{ ek.name }} {{ year }}</h2><span class="hint">geht bei der Eröffnung {{ year + 1 }} ins Konto {{ ek.konto }}</span></header>
+    <div class="tablewrap"><table class="ledger"><tbody>
+      <tr><td>{{ ek.name }} 31.12. vor Abschluss</td><td class="right num">{{ ek.bestand|chf }}</td></tr>
+      {% for p in ek.privat %}<tr><td>{{ p.konto }} {{ p.name }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}
+      <tr><td>Jahresergebnis</td><td class="right num">{{ ek.jahresergebnis|chf }}</td></tr>
+      <tr class="total"><td>{{ ek.name }} nach Abschluss</td><td class="right num">{{ ek.neu|chf }}</td></tr>
+    </tbody></table></div>
+  </div>
+  {% else %}
   <div class="panel">
     <header><h2>Gewinnverwendung {{ year }}</h2>{% if g.gebucht %}<span class="pill ok">gebucht</span>{% endif %}</header>
     <div class="tablewrap"><table class="ledger"><tbody>
@@ -109,6 +120,7 @@
     </form>{% endif %}
     {% endif %}
   </div>
+  {% endif %}
   <div class="panel">
     <header><h2>Periode sperren</h2><span class="hint">GeBüV: abgeschlossene Perioden bleiben unverändert</span></header>
     <form class="body" hx-post="/abschluss/sperre" hx-target="find .errors" hx-confirm="Buchungen bis zu diesem Datum endgültig sperren? Korrekturen gehen danach nur noch als neue Buchung.">

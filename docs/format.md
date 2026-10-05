@@ -49,6 +49,12 @@ konten:
 - `waehrung`: Fremdwährung eines Bilanzkontos (`EUR`, `USD` …), z.B. `{nr: "1021", name: Bank EUR, klasse: aktiv, waehrung: EUR}`.
   Die Buchhaltung bleibt in CHF; jede Zeile auf diesem Konto trägt zusätzlich den Betrag in der Fremdwährung
   und den Kurs. `eroeffnung_fw`: Eröffnungssaldo in der Fremdwährung (`eroeffnung` ist der CHF-Wert).
+- `abschluss`: Eigenkapitalkonto, in das der Saldo bei der Eröffnung des Folgejahres übergeht, z.B. bei der
+  Einzelfirma `{nr: "2850", name: Privat, klasse: passiv, abschluss: "2800"}`. Das Konto beginnt jedes Jahr bei null.
+
+Vorlagen (`batzen init --rechtsform …` wählt die passende, `--kontenplan` übersteuert): `kmu` für AG und GmbH,
+`einzelfirma` (Eigenkapital 2800, Privat 2850, Privat AHV 2851, Privat Steuern 2852; Ergebnis direkt ins
+Eigenkapital, keine Gewinnverwendung) und `verein` (Vereinsvermögen, Fonds, Mitgliederbeiträge).
 
 ## journal/JJJJ/JJJJ-MM.md
 

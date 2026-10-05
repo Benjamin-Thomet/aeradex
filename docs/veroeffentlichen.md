@@ -7,7 +7,7 @@ Nichts davon ist erledigt, bevor es hier abgehakt ist. Veröffentlicht wird erst
 
 | Wo | Name | Stand |
 |---|---|---|
-| PyPI | `batzen`, `batzen-anlagen`, `batzen-revolut`, `batzen-kontenplan-verein` | frei |
+| PyPI | `batzen`, `batzen-anlagen`, `batzen-revolut` | frei |
 | GitHub | `batzen` | belegt (Privatkonto seit 2012) |
 | GitHub | `batzen-ch`, `batzen-app`, `batzenhq`, `getbatzen`, `batzen-buchhaltung` | frei |
 | Domain | `batzen.ch`, `batzen.com`, `batzen.io`, `batzen.org`, `batzen.app`, `batzen.dev`, `batzen-app.ch` | registriert |

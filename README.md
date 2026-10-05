@@ -36,6 +36,7 @@ pip install -e ".[ui,mcp,scan]"  # Python ≥ 3.11
 batzen init ~/buchhaltung/muster --firma "Muster GmbH" --jahr 2026 \
   --strasse Bahnhofstrasse --nr 1 --plz 3000 --ort Bern \
   --iban "CH93 0076 2011 6238 5295 7" --uid CHE-123.456.789
+# --rechtsform GmbH (Standard), AG, Einzelfirma oder Verein wählt den passenden Kontenplan
 cd ~/buchhaltung/muster
 
 # Eröffnungsbilanz in kontenplan.yaml eintragen (eroeffnung: 20000 bei 1020, -20000 bei 2800), dann:
@@ -311,7 +312,6 @@ Export — kommt als Plugin, ein gewöhnliches Python-Paket:
 
 ```bash
 pip install batzen-revolut && batzen plugins ein revolut
-batzen init ~/buecher/turnverein --firma "Turnverein Muster" --kontenplan verein   # mit batzen-kontenplan-verein
 ```
 
 Plugins schreiben nur über die Prüfung von batzen; Buchungen, die ihnen gehören, prüft `batzen check` wie

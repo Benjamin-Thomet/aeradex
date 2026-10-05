@@ -351,17 +351,24 @@ def statement_pdf(book: Book, st: dict, anhang_blocks: list) -> bytes:
 
     story += [block("Aktiven", st["aktiven"]), Spacer(1, 8 * mm), block("Passiven", st["passiven"]),
               PageBreak(), P("Erfolgsrechnung", "h2"), block("", st["erfolg"])]
-    g = st["gewinnverwendung"]
-    story += [Spacer(1, 10 * mm), KeepTogether([
-        P("Antrag über die Verwendung des Bilanzgewinns", "h2"),
-        _grid([["", "CHF"],
-               ["Gewinnvortrag", chf(g["gewinnvortrag"])],
-               ["Jahresgewinn / Jahresverlust", chf(g["jahresgewinn"])],
-               ["Bilanzgewinn", chf(g["bilanzgewinn"])],
-               ["Dividende", f"−{chf(g['dividende'])}"],
-               ["Zuweisung gesetzliche Gewinnreserve", f"−{chf(g['reserve'])}"],
-               ["Vortrag auf neue Rechnung", chf(g["vortrag_neu"])]],
-              [width * 0.62, width * 0.19], total_rows=[3, 6], right_cols=(1,))])]
+    g, ek = st["gewinnverwendung"], st.get("eigenkapital")
+    if ek:
+        data = [["", "CHF"], [f"{ek['name']} 31.12. vor Abschluss", chf(ek["bestand"])],
+                *[[f"{p['konto']} {p['name']}", chf(p["betrag"])] for p in ek["privat"]],
+                ["Jahresergebnis", chf(ek["jahresergebnis"])], [f"{ek['name']} nach Abschluss", chf(ek["neu"])]]
+        story += [Spacer(1, 10 * mm), KeepTogether([P(f"Veränderung {ek['name']}", "h2"),
+                  _grid(data, [width * 0.62, width * 0.19], total_rows=[len(data) - 1], right_cols=(1,))])]
+    if g:
+        story += [Spacer(1, 10 * mm), KeepTogether([
+            P("Antrag über die Verwendung des Bilanzgewinns", "h2"),
+            _grid([["", "CHF"],
+                   ["Gewinnvortrag", chf(g["gewinnvortrag"])],
+                   ["Jahresgewinn / Jahresverlust", chf(g["jahresgewinn"])],
+                   ["Bilanzgewinn", chf(g["bilanzgewinn"])],
+                   ["Dividende", f"−{chf(g['dividende'])}"],
+                   ["Zuweisung gesetzliche Gewinnreserve", f"−{chf(g['reserve'])}"],
+                   ["Vortrag auf neue Rechnung", chf(g["vortrag_neu"])]],
+                  [width * 0.62, width * 0.19], total_rows=[3, 6], right_cols=(1,))])]
     if anhang_blocks:
         story += [PageBreak(), P("Anhang", "h2")]
         for kind, text in anhang_blocks:

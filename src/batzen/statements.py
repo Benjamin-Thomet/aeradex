@@ -234,12 +234,39 @@ def year_end_statement(book: Book, year: int, engine: BalanceEngine | None = Non
         "total_aktiven": total_a[0], "total_passiven": -total_p[0],
         "differenz": total_a[0] + total_p[0],
         "jahresergebnis": -res_c,
-        "gewinnverwendung": profit_allocation(book, year, engine),
+        "gewinnverwendung": profit_allocation(book, year, engine)
+                            if book.settings.rechtsform_art == "gesellschaft" else None,
+        "eigenkapital": equity_change(book, year, engine)
+                        if book.settings.rechtsform_art != "gesellschaft" else None,
         "fremdwaehrung": {"konten": foreign, "stichtag": stichtag, "bewertet": revalued} if foreign else None,
     }
 
 
+# ---------- Eigenkapital (Einzelfirma, Verein) ----------
+
+def equity_change(book: Book, year: int, engine: BalanceEngine | None = None) -> dict:
+    """How the equity account moves into the next year: opening, the Privat accounts that close
+    into it, the year's result. Positive numbers = equity. Einzelfirma and Verein have no
+    Gewinnverwendung — this is what happens instead, at the opening of the next year."""
+    engine = engine or BalanceEngine(book)
+    nr = book.settings.konto("gewinnvortrag")
+    acct = book.accounts.get(nr)
+    anfang = -engine.balance(nr, year)
+    privat = [{"konto": a.nr, "name": a.name, "betrag": -engine.balance(a.nr, year)}
+              for a in sorted(book.accounts.values(), key=lambda a: a.nr) if a.abschluss == nr]
+    gewinn = -engine.result(year)
+    return {"jahr": year, "konto": nr, "name": acct.name if acct else nr, "bestand": anfang, "privat": privat,
+            "jahresergebnis": gewinn, "neu": anfang + sum((p["betrag"] for p in privat), ZERO) + gewinn}
+
+
 # ---------- Gewinnverwendung ----------
+
+def _require_company(book: Book) -> None:
+    if book.settings.rechtsform_art != "gesellschaft":
+        from .book import BookError
+        raise BookError(f"Gewinnverwendung und Dividende gibt es nur bei AG und GmbH (Rechtsform: "
+                        f"{book.settings.get('rechtsform')}); das Ergebnis geht ins Eigenkapital")
+
 
 def allocation_path(book: Book, year: int):
     return book.root / "abschluss" / str(year) / "gewinnverwendung.yaml"
@@ -305,6 +332,7 @@ def parse_anhang(text: str) -> list[tuple[str, str]]:
 
 def set_allocation(book: Book, year: int, dividende=0, reserve=0):
     """Store the proposed Gewinnverwendung for `year` (decided by the GV)."""
+    _require_company(book)
     from .files import write_yaml
 
     current = profit_allocation(book, year)
@@ -327,6 +355,7 @@ def book_allocation(book: Book, year: int, datum=None):
     from .files import parse_date, write_yaml
     from .journal import post
 
+    _require_company(book)
     alloc = profit_allocation(book, year)
     if alloc["gebucht"]:
         raise BookError(f"Gewinnverwendung {year} ist bereits gebucht")
@@ -385,6 +414,7 @@ def pay_dividend(book: Book, year: int, datum=None, konto: str = ""):
     from .book import BookError
     from .files import parse_date, write_yaml
     from .journal import ensure_open, post
+    _require_company(book)
     alloc = profit_allocation(book, year)
     if not alloc["gebucht"]:
         raise BookError(f"Gewinnverwendung {year} ist noch nicht gebucht")

@@ -23,9 +23,10 @@ from .book import Book
 
 
 def make_book(path: Path, firma: str = "Test GmbH", jahr: int = 2026, plugins: tuple | list = (),
-              kontenplan: str = "kmu", eroeffnung: dict | None = None, git: bool = False, **settings) -> Book:
+              kontenplan: str | None = None, eroeffnung: dict | None = None, git: bool = False, **settings) -> Book:
     """A fresh book under `path`/buch. `eroeffnung` sets opening balances, e.g.
-    {"1020": 20000, "2800": -20000}; `plugins` are switched on."""
+    {"1020": 20000, "2800": -20000}; `plugins` are switched on. The chart follows `rechtsform` unless
+    `kontenplan` names one."""
     root = Path(path) / "buch"
     api.init_book(root, firma, jahr, kontenplan=kontenplan, git=git, **settings)
     book = Book(root)

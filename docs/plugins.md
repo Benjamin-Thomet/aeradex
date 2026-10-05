@@ -82,7 +82,8 @@ konten:
 - {nr: "1020", name: Bank, klasse: aktiv}
 ```
 
-Beispiel: [`plugins/batzen-kontenplan-verein`](../plugins/batzen-kontenplan-verein).
+Der Hook gibt `{name: pfad}` zurück; `batzen init --kontenplan name` nutzt die Vorlage. Mitgeliefert sind
+`kmu` (AG, GmbH), `einzelfirma` und `verein`; eine Vorlage aus einem Plugin mit gleichem Namen ersetzt sie nicht.
 
 ### Bankformate
 

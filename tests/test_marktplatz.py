@@ -89,7 +89,7 @@ def test_catalog_over_https_is_cached(tmp_path, monkeypatch):
 
 def test_bundled_catalog_lists_the_examples_unreviewed():
     names = {e["name"]: e for e in marktplatz.load()["plugins"]}
-    assert set(names) >= {"anlagen", "revolut", "kontenplan-verein"}
+    assert set(names) >= {"anlagen", "revolut"}
     assert all(e["status"] == "ungeprüft" for e in names.values())
 
 
