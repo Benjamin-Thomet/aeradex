@@ -38,8 +38,10 @@ Die mit `api._locked` registrierten Schreiboperationen benutzen `storage.transac
 7. Transaktion als abgeschlossen markieren und Arbeitskopie/Sicherung entfernen.
 
 Die Veröffentlichung umfasst alle geänderten Buchdateien. In Git landen weiterhin
-nur die von der Operation gemeldeten Pfade, ergänzt um Formatmigrationen und
-Idempotenzbelege. Erzeugte OCR-/Kurs-Caches werden dadurch nicht versehentlich
+die von der Operation gemeldeten Pfade sowie alle durch sie geänderten, bereits
+versionierten Dateien (etwa der alte Inbox-Pfad eines verschobenen Belegs), ergänzt
+um Formatmigrationen und Idempotenzbelege. Unveränderte fremde Arbeitsänderungen
+bleiben ausserhalb des Commits. Erzeugte OCR-/Kurs-Caches werden dadurch nicht versehentlich
 zusätzlich versioniert.
 
 Fehler vor der Veröffentlichung verändern das Originalbuch nicht. Fehler während

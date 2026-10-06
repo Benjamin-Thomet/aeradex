@@ -342,3 +342,20 @@ def test_transaction_keeps_generated_files_out_of_git(tmp_path):
     tracked = gitlog._git(book.root, 'ls-files').stdout.splitlines()
     assert 'note.md' in tracked
     assert '.allkvitt/erfassung/ocr.txt' not in tracked
+
+
+def test_receipt_move_commits_old_inbox_path_without_unrelated_edits(tmp_path):
+    from allkvitt import gitlog
+    book = make_book(tmp_path, git=True)
+    note = book.root / 'note.md'
+    note.write_text('original')
+    gitlog.commit(book.root, 'note', [note])
+    note.write_text('uncommitted user edit')
+    api.inbox_add(book, 'receipt.txt', b'Receipt')
+    api.post_entry(book, '2026-01-05', '6500', '1020', '45.80', 'Receipt', datei='inbox/receipt.txt')
+    tracked = gitlog._git(book.root, 'ls-files').stdout.splitlines()
+    assert 'inbox/receipt.txt' not in tracked
+    assert 'belege/2026/26-001 receipt.txt' in tracked
+    assert gitlog._git(book.root, 'diff', '--name-only').stdout.strip() == 'note.md'
+    assert gitlog._git(book.root, 'show', 'HEAD:note.md').stdout == 'original'
+    assert note.read_text() == 'uncommitted user edit'

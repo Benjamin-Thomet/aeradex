@@ -319,8 +319,13 @@ def transactional(fn):
                     else:
                         atomic_write(target, (work / rel).read_bytes())
                 message = "\n".join(dict.fromkeys(tx["messages"])) or f"allkvitt: {fn.__name__}"
-                commit_paths = [root / p for p in changes if tx["commit_all"] or any(
-                    p == wanted or p.startswith(wanted.rstrip("/") + "/") for wanted in tx["commit_paths"])]
+                # Include changes to already versioned files, especially a receipt's
+                # old inbox path after a move. Unchanged user edits are not in changes.
+                tracked = set(gitlog._git(root, "ls-files", "-z", check=False).stdout.split("\0")) \
+                    if gitlog.is_repo(root) else set()
+                commit_paths = [root / p for p in changes if p in tracked or tx["commit_all"] or any(
+                    wanted == "." or p == wanted or p.startswith(wanted.rstrip("/") + "/")
+                    for wanted in tx["commit_paths"])]
                 commit = gitlog.commit(root, message + f"\n\nAllkvitt-Transaction: {manifest['id']}",
                                        commit_paths)
                 manifest["phase"] = "committed"
