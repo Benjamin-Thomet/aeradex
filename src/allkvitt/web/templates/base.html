@@ -17,10 +17,8 @@
     <a class="brand" href="/" aria-label="allkvitt — Übersicht"><span class="coin" aria-hidden="true">a</span><b>allkvitt</b></a>
     <nav class="sections" aria-label="Hauptnavigation">
       {% for s in nv.bereiche %}{% if s is none %}<span class="sep" aria-hidden="true"></span>{% else %}
-      <a href="{{ s.url }}" class="{{ 'on' if s.on }}" {{ 'aria-current=page' if s.on }} title="{{ s.label }} (g {{ s.kuerzel }})" data-key="{{ s.kuerzel }}">{{ s.label }}{% if s.badge %}<span class="badge">{{ s.badge }}</span>{% endif %}</a>{% endif %}{% endfor %}
+      <a href="{{ s.url }}" class="{{ 'on' if s.on }}" {{ 'aria-current=page' if s.on }} title="{{ s.label }}{% if s.kuerzel %} (g {{ s.kuerzel }}){% endif %}" {% if s.kuerzel %}data-key="{{ s.kuerzel }}"{% endif %}>{{ s.label }}{% if s.badge %}<span class="badge">{{ s.badge }}</span>{% endif %}</a>{% endif %}{% endfor %}
     </nav>
-    {% if nv.mehr %}<details class="menu more {{ 'on' if nv.mehr_on }}"><summary>Mehr</summary>
-        <div class="menubox">{% for m in nv.mehr %}<a href="{{ m.url }}" class="{{ 'on' if m.on }}">{{ m.label }}</a>{% endfor %}</div></details>{% endif %}
     <div class="system">
       {% if nav.fehler %}<a href="/einstellungen#pruefung" class="status bad" title="{{ nav.fehler }} Fehler im Buch — anzeigen"><span class="dot bad"></span>{{ nav.fehler }}</a>
       {% else %}<a href="/einstellungen#pruefung" class="status" title="Buch geprüft · 0 Fehler"><span class="dot"></span><span class="vh">Geprüft</span></a>{% endif %}

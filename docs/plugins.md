@@ -11,6 +11,7 @@ allkvitt plugins aus revolut
 ```
 
 In der Oberfläche: **Einstellungen → Plugins** (im Serverbetrieb nur für Admins).
+Die Seiten eingeschalteter Erweiterungen stehen unter dem Hauptmenüpunkt **Plugins**.
 
 ## Die Regeln
 
@@ -69,7 +70,7 @@ Die Hooks sind [pluggy](https://pluggy.readthedocs.io/)-Hooks (dasselbe System w
 | `allkvitt_tools()` | `[Funktion]` | Werkzeuge für Agenten (MCP und Chat in der Oberfläche) | eingeschaltet |
 | `allkvitt_instructions()` | `str` | kurzer Hinweis an den Agenten, wann er die Werkzeuge nutzt | eingeschaltet |
 | `allkvitt_commands()` | `[Command]` | Befehle `allkvitt <name> …` | eingeschaltet |
-| `allkvitt_pages()` | `[Page]` | eigene Seiten in der Oberfläche (Reiter eines Bereichs oder unter «Mehr») | eingeschaltet |
+| `allkvitt_pages()` | `[Page]` | eigene Seiten in der Oberfläche unter «Plugins» | eingeschaltet |
 | `allkvitt_reports()` | `[Report]` | weitere Berichte (Berichte, `allkvitt bericht`, Agent): `Report(name, label, build, params, gruppe)`, `build(book, params)` liefert die Tabelle wie `allkvitt.reports` | eingeschaltet |
 | `allkvitt_dossier_teile()` | `[DossierTeil]` | weitere Teile der Abschlussunterlagen (`allkvitt dossier`), z.B. ein Anlagenspiegel: `build(book, jahr, format)` → `[(Dateiname, bytes)]` | eingeschaltet |
 
@@ -189,12 +190,12 @@ from allkvitt.plugins import Page
 @hookimpl
 def allkvitt_pages():
     return [Page("anlagen", "Anlagen", "anlagen.html", context=lambda book, query: {...},
-                 actions={"erfassen": lambda book, form: api.write(book, "…", erfassen, …)},
-                 bereich="abschluss")]
+                 actions={"erfassen": lambda book, form: api.write(book, "…", erfassen, …)})]
 ```
 
-`bereich` legt fest, wo die Seite in der Navigation erscheint: als Reiter eines Bereichs (`debitoren`,
-`kreditoren`, `lohn`, `konten`, `mwst`, `abschluss`). Ohne `bereich` steht sie oben unter «Mehr».
+Alle Seiten eingeschalteter Plugins erscheinen als Reiter unter **Plugins** (z.B. Leistungen,
+Offerten, Anlagen). Der Menüpunkt erscheint, sobald eine Erweiterung Seiten beiträgt.
+Das frühere Feld `bereich` bleibt für bestehende Plugins erhalten, beeinflusst die Navigation aber nicht mehr.
 
 Die Seite liegt unter `/p/<plugin>/<slug>`, die Vorlage im Ordner `templates/` des Plugin-Pakets (in
 `package-data` aufnehmen). Sie darf `{% extends "base.html" %}` und die Makros aus `_macros.html` verwenden.

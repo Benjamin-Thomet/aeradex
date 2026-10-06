@@ -105,9 +105,9 @@ class Command:
 
 @dataclass
 class Page:
-    """A page in the web UI: ``/p/<plugin>/<slug>``. With ``bereich`` (e.g. "debitoren",
-    "kreditoren", "lohn", "konten", "abschluss") it is a tab of that section in the top
-    navigation; without, it is listed under «Mehr».
+    """A page in the web UI: ``/p/<plugin>/<slug>``. Enabled plugin pages appear as
+    tabs under «Plugins». ``bereich`` is retained for compatibility with older
+    plugins and no longer affects navigation.
 
     ``template`` is a Jinja file in the plugin package's ``templates/`` folder (it may
     ``{% extends "base.html" %}`` and use the core macros); ``context(book, query)``

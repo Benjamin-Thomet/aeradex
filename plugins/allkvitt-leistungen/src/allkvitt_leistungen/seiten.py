@@ -202,8 +202,7 @@ PAGES = [
     Page("leistungen", "Leistungen", "leistungen.html", _context,
          {"zeit": _zeit, "material": _material, "loeschen": _loeschen, "rechnung": _rechnung,
           "projekt_neu": _projekt_neu, "projekt_status": _projekt_status, "person": _person,
-          "produkt_neu": _produkt_neu, "produkt": _produkt, "feiertage": _feiertage, "kunde": _kunde, "lohn": _lohn},
-         bereich="debitoren"),
+          "produkt_neu": _produkt_neu, "produkt": _produkt, "feiertage": _feiertage, "kunde": _kunde, "lohn": _lohn}),
     Page("offerten", "Offerten", "offerten.html", _offerten_context,
-         {"neu": _offerte_neu, "status": _offerte_status, "rechnung": _offerte_rechnung}, bereich="debitoren"),
+         {"neu": _offerte_neu, "status": _offerte_status, "rechnung": _offerte_rechnung}),
 ]

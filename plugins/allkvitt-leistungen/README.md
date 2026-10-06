@@ -2,7 +2,9 @@
 
 Offerten, Zeiterfassung, Produkte, Projekte, Stundenkontrolle und Abrechnung an Kunden für
 [allkvitt](../../README.md). Abgerechnet wird über die normalen allkvitt-Rechnungen (QR-Rechnung, Debitor 1100 an
-Ertrag, MWST) — das Plugin bucht selbst nichts. Oberfläche: Plugins → **Leistungen** und **Offerten**.
+Ertrag, MWST) — das Plugin bucht selbst nichts. Oberfläche: Hauptmenüpunkt **Plugins**,
+darunter **Leistungen** (Erfassen, Abrechnen, Projekte, Stundenkontrolle,
+Stammdaten) und **Offerten**. Die erstellten Rechnungen erscheinen unter **Debitoren**.
 
 ```bash
 pip install allkvitt-leistungen && allkvitt plugins ein leistungen

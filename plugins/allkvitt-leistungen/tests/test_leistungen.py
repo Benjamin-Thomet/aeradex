@@ -248,7 +248,7 @@ def test_pages(book):
             assert r.status_code == 204, r.text
             return r
 
-        assert 'href="/p/leistungen/leistungen"' in c.get("/debitoren").text            # tabs of Debitoren
+        assert 'href="/p/leistungen/leistungen"' in c.get("/debitoren").text            # Plugins navigation
         post("/p/leistungen/leistungen/kunde", {"name": "Neu", "ort": "Thun", "stundensatz": "100"})
         post("/p/leistungen/leistungen/person", {"name": "Inhaber", "satz": "130", "soll_woche": "40"})
         post("/p/leistungen/leistungen/zeit", {"datum": "2026-10-01", "wer": "M0001", "stunden": "2",

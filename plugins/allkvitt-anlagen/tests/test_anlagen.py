@@ -79,7 +79,7 @@ def test_plugin_page(book):
     with TestClient(app) as c:
         c.get("/?t=tok", follow_redirects=False)
         h = {"X-CSRF": app.state.ui.csrf, "HX-Request": "true"}
-        assert 'href="/p/anlagen/anlagen"' in c.get("/abschluss").text                   # a tab of Abschluss
+        assert 'href="/p/anlagen/anlagen"' in c.get("/abschluss").text                   # Plugins navigation
         r = c.post("/p/anlagen/anlagen/erfassen", headers=h,
                    data={"bezeichnung": "Laptop Lea", "datum": "2026-03-15", "wert": "2400", "kategorie": "edv"})
         assert r.status_code == 204, r.text

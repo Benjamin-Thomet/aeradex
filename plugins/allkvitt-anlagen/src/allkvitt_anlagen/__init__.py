@@ -129,4 +129,4 @@ def _dispose(book, form):
 @hookimpl
 def allkvitt_pages():
     return [Page("anlagen", "Anlagen", "anlagen.html", _context,
-                 {"erfassen": _add, "abschreiben": _depreciate, "abgang": _dispose}, bereich="abschluss")]
+                 {"erfassen": _add, "abschreiben": _depreciate, "abgang": _dispose})]

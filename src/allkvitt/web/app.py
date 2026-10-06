@@ -162,8 +162,7 @@ class UI:
         ctx.setdefault("vat_codes", mwst.CODES)
         try:
             from .. import plugins
-            ctx.setdefault("plugin_pages", [{"url": f"/p/{name}/{pg.slug}", "label": pg.label,
-                                             "bereich": getattr(pg, "bereich", "")}
+            ctx.setdefault("plugin_pages", [{"url": f"/p/{name}/{pg.slug}", "label": pg.label}
                                             for name, pg in plugins.pages(book)])
         except Exception:
             ctx.setdefault("plugin_pages", [])
@@ -218,13 +217,11 @@ def _under(path: str, prefix: str) -> bool:
 
 def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: str = "") -> dict:
     """The two navigation rows: sections (with badge and active flag), and the tabs of the active
-    section. Plugin pages join the tabs of their `bereich`, the others go under «Mehr»."""
-    by_section: dict[str, list[dict]] = {}
-    more = []
-    for pg in plugin_pages:
-        (by_section.setdefault(pg["bereich"], []) if pg.get("bereich") else more).append(pg)
+    section. All enabled plugin pages appear in a shared «Plugins» section."""
     sections, active = [], None
-    for item in SECTIONS:
+    plugin_section = [("plugins", "Plugins", plugin_pages[0]["url"], "", "", [
+        (pg["url"], pg["label"], pg["url"], ()) for pg in plugin_pages])] if plugin_pages else []
+    for item in [*SECTIONS, *([None, *plugin_section] if plugin_section else [])]:
         if item is None:
             sections.append(None)
             continue
@@ -232,12 +229,11 @@ def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: st
         if key == "mwst" and vat_method in ("", "keine"):
             continue
         tabs = [{"key": k, "label": lb, "url": u, "prefixes": (u, *extra)} for k, lb, u, extra in tabs]
-        tabs += [{"key": pg["url"], "label": pg["label"], "url": pg["url"], "prefixes": (pg["url"],)}
-                 for pg in by_section.get(key, [])]
         prefixes = [url] + [p for t in tabs for p in t["prefixes"]]
         on = any(_under(path, p) for p in prefixes)
         entry = {"key": key, "label": label, "url": url, "badge": counts.get(badge) if badge else 0,
-                 "kuerzel": keyc, "on": on, "tabs": tabs if len(tabs) > 1 else []}
+                 "kuerzel": keyc, "on": on,
+                 "tabs": tabs if len(tabs) > 1 or key == "plugins" else []}
         if on and active is None:
             active = entry
         sections.append(entry)
@@ -247,8 +243,7 @@ def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: st
                    key=lambda x: x[0], default=(0, active["tabs"][0] if active["tabs"] else None))[1]
         for t in active["tabs"]:
             t["on"] = t is best
-    more = [{**pg, "on": _under(path, pg["url"])} for pg in more]
-    return {"bereiche": sections, "aktiv": active, "mehr": more, "mehr_on": any(m["on"] for m in more)}
+    return {"bereiche": sections, "aktiv": active}
 
 
 def nav_counts(book: Book) -> dict:

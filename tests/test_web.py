@@ -414,6 +414,8 @@ def test_top_navigation():
     from allkvitt.web.app import navigation
     counts = {"pruefen": 3, "bank": 7, "entwuerfe": 0}
     pages = [{"url": "/p/leistungen/leistungen", "label": "Leistungen", "bereich": "debitoren"},
+             {"url": "/p/leistungen/offerten", "label": "Offerten", "bereich": "leistungen"},
+             {"url": "/p/anlagen/anlagen", "label": "Anlagen", "bereich": "abschluss"},
              {"url": "/p/x/seite", "label": "Fremd", "bereich": ""}]
 
     def at(path, methode="effektiv"):
@@ -422,19 +424,30 @@ def test_top_navigation():
 
     nv, s = at("/debitoren/kunden")
     assert nv["aktiv"]["key"] == "debitoren" and [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Kunden"]
-    assert "Leistungen" in [t["label"] for t in nv["aktiv"]["tabs"]]                 # plugin page as a tab
+    assert "Leistungen" not in [t["label"] for t in nv["aktiv"]["tabs"]]
+    assert [t["label"] for t in s["plugins"]["tabs"]] == ["Leistungen", "Offerten", "Anlagen", "Fremd"]
     nv, _ = at("/debitoren/rechnung/R-2026-0001")
     assert [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Rechnungen"]
     nv, _ = at("/p/leistungen/leistungen")
-    assert nv["aktiv"]["key"] == "debitoren" and [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Leistungen"]
+    assert nv["aktiv"]["key"] == "plugins" and [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Leistungen"]
+    for slug, label in (("/p/leistungen/offerten", "Offerten"), ("/p/anlagen/anlagen", "Anlagen"),
+                        ("/p/anlagen/anlagen/abschreiben", "Anlagen")):
+        nv, _ = at(slug)
+        assert nv["aktiv"]["key"] == "plugins"
+        assert [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == [label]
+    nv, _ = at("/abschluss")
+    assert not any(t["label"] == "Anlagen" for t in nv["aktiv"]["tabs"])
     nv, _ = at("/lohn/lohnkonto/2026/M0001")
     assert [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Mitarbeitende"]
     nv, s = at("/p/x/seite")
-    assert nv["aktiv"] is None and nv["mehr_on"] and [m["label"] for m in nv["mehr"]] == ["Fremd"]
+    assert nv["aktiv"]["key"] == "plugins" and [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Fremd"]
     assert s["bank"]["badge"] == 7 and s["pruefen"]["badge"] == 3
     nv, s = at("/", "keine")
     assert "mwst" not in s and s["uebersicht"]["on"] and not s["journal"]["on"]
     assert at("/journal")[1]["journal"]["tabs"] == []                                  # no tab row
+    assert not any(s and s["key"] == "plugins" for s in navigation("/", counts, [])["bereiche"])
+    nv = navigation("/p/anlagen/anlagen", counts, pages[2:3])
+    assert nv["aktiv"]["key"] == "plugins" and nv["aktiv"]["tabs"][0]["on"]
 
 
 def test_top_navigation_renders(client):
