@@ -1,9 +1,9 @@
 """The operations of allkvitt, shared by the CLI and the MCP server.
 
 Every function takes a Book (or a path), returns plain JSON-able data, and —
-for writes — commits its changes to git with a descriptive message. Writes
-refuse to start on a book that already has errors, so a bad state is never
-compounded; what they write is validated before it touches a file.
+for writes — validates an isolated working copy and publishes it as one recoverable
+transaction with a descriptive git commit. Writes refuse to start on a book that
+already has errors. See storage.py for locks, revision checks and recovery.
 """
 from __future__ import annotations
 
@@ -58,8 +58,7 @@ def _done(book: Book, message: str, paths: list[Path], **data) -> dict:
     book.reload()
     errors = [i for i in checks.run(book) if i.level == "fehler"]
     if errors:
-        raise BookError("Interner Fehler: Schreibvorgang hat das Buch ungültig gemacht. "
-                        "Bitte `git diff` prüfen.\n" + "\n".join(map(str, errors)))
+        raise BookError("Änderung hat das Buch ungültig gemacht und wird zurückgewiesen.\n" + "\n".join(map(str, errors)))
     commit = gitlog.commit(book.root, f"allkvitt: {message}", paths)
     return jsonable({"ok": True, "meldung": message, "commit": commit,
                      "dateien": sorted({book.rel(p) for p in paths
@@ -87,7 +86,7 @@ def init_book(path: Path, firma: str, jahr: int | None = None, kontenplan: str |
     from .files import read_yaml as _read
     system_overrides = {k: str(v) for k, v in ((_read(template) or {}).get("systemkonten") or {}).items()}
     data = {
-        "firma": firma, "rechtsform": rechtsform, "uid": settings.get("uid", ""),
+        "format_version": 1, "firma": firma, "rechtsform": rechtsform, "uid": settings.get("uid", ""),
         "adresse": {"strasse": settings.get("strasse", ""), "nr": settings.get("nr", ""),
                     "plz": settings.get("plz", ""), "ort": settings.get("ort", ""), "land": "CH"},
         "telefon": settings.get("telefon", ""), "email": settings.get("email", ""),
@@ -108,7 +107,7 @@ def init_book(path: Path, firma: str, jahr: int | None = None, kontenplan: str |
             (root / folder / ".gitkeep").write_text("")
     book = Book(root)
     payroll.write_default_config(book)
-    (root / ".gitignore").write_text("berichte/\n.allkvitt/write.lock\n.DS_Store\n__pycache__/\n")
+    (root / ".gitignore").write_text("berichte/\n.allkvitt/write.lock\n.allkvitt/transaction/\n**/.allkvitt-tmp-*\n.DS_Store\n__pycache__/\n")
     agents = (DATA / "BUCH_AGENTS.md").read_text(encoding="utf-8")
     (root / "AGENTS.md").write_text(agents.replace("{firma}", firma), encoding="utf-8")
     claude = root / "CLAUDE.md"
@@ -123,6 +122,7 @@ def init_book(path: Path, firma: str, jahr: int | None = None, kontenplan: str |
 
 
 def status(book: Book) -> dict:
+    from .storage import revision
     issues = checks.run(book)
     states = [invoices.invoice_state(book, m) for m in invoices.invoices(book).values()]
     open_inv = [s for s in states if s["status"] in ("offen", "teilbezahlt")]
@@ -133,6 +133,7 @@ def status(book: Book) -> dict:
                  Decimal("0"))
     return jsonable({
         "firma": book.settings.firma, "buch": book.root, "jahre": book.years(),
+        "revision": revision(book.root), "format_version": book.settings.get("format_version", 0),
         "mwst_methode": (book.settings.get("mwst") or {}).get("methode") or "keine",
         "sperre_bis": book.settings.sperre_bis, "buchungen": len(book.rows),
         "fluessige_mittel": liquid, "jahresergebnis_laufend": -eng.result(year),
@@ -816,35 +817,7 @@ def invoice_preview(book: Book, positionen: list[dict]) -> dict:
 # UI, CLI, MCP and the chat agent may all write the same book. A lock file
 # serialises them; within a process an RLock keeps nested calls re-entrant.
 
-import fcntl
-import functools
-import threading
-
-_local_lock = threading.RLock()
-_depth = threading.local()
-
-
-def _locked(fn):
-    @functools.wraps(fn)
-    def wrapper(book, *args, **kwargs):
-        with _local_lock:
-            outer = getattr(_depth, "n", 0) == 0
-            handle = None
-            if outer:
-                path = book.root / ".allkvitt" / "write.lock"
-                path.parent.mkdir(parents=True, exist_ok=True)
-                handle = open(path, "w")
-                fcntl.flock(handle, fcntl.LOCK_EX)
-            _depth.n = getattr(_depth, "n", 0) + 1
-            try:
-                book.reload()          # see what the previous writer wrote
-                return fn(book, *args, **kwargs)
-            finally:
-                _depth.n -= 1
-                if handle:
-                    fcntl.flock(handle, fcntl.LOCK_UN)
-                    handle.close()
-    return wrapper
+from .storage import transactional as _locked
 
 
 WRITES = ("add_account", "post_entry", "post_split", "reverse_entry", "propose", "approve", "reject",
@@ -1751,3 +1724,8 @@ def qst_sync(book: Book, kanton: str, jahr: int) -> dict:
         path.write_text(json.dumps(table, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
         paths.append(path)
     return _done(book, f"ESTV-Quellensteuertarife {jahr}: {', '.join(cantons)} importiert", paths)
+
+
+# Readers share the publication lock so each API call sees a consistent book.
+from .storage import install_read_locks as _install_read_locks
+_install_read_locks(globals())

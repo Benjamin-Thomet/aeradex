@@ -8,6 +8,9 @@ git diffs small and makes the lock hashes in `check.py` stable.
 from __future__ import annotations
 
 import re
+import os
+import stat
+import tempfile
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -21,6 +24,79 @@ class FormatError(ValueError):
 
 
 # ---------- YAML ----------
+
+class _Loader(getattr(yaml, "CSafeLoader", yaml.SafeLoader)):
+    """Reject ambiguous mappings and construct decimal scalars without floats."""
+
+    def construct_mapping(self, node, deep=False):
+        self.flatten_mapping(node)
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                duplicate = key in seen
+                seen.add(key)
+            except TypeError:
+                raise yaml.constructor.ConstructorError(None, None, "ungültiger Schlüssel", key_node.start_mark)
+            if duplicate:
+                raise yaml.constructor.ConstructorError(None, None, f"doppelter Schlüssel: {key}", key_node.start_mark)
+        return super().construct_mapping(node, deep=deep)
+
+
+def _decimal_constructor(loader, node):
+    value = loader.construct_scalar(node).replace("_", "")
+    try:
+        if ":" in value:
+            raise InvalidOperation
+        number = Decimal(value)
+        if not number.is_finite():
+            raise InvalidOperation
+        return number
+    except InvalidOperation:
+        raise yaml.constructor.ConstructorError(None, None, f"ungültige Dezimalzahl: {value}", node.start_mark)
+
+
+_Loader.add_constructor("tag:yaml.org,2002:float", _decimal_constructor)
+
+
+def fsync_directory(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def atomic_write(path: Path, data: bytes) -> None:
+    """Atomically replace one file, syncing its content and directory entries."""
+    path = Path(path)
+    missing, parent = [], path.parent
+    while not parent.exists():
+        missing.append(parent)
+        parent = parent.parent
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for directory in reversed(missing):
+        fsync_directory(directory.parent)
+    if path.is_symlink():
+        raise FormatError(f"{path}: Schreiben durch einen symbolischen Link ist nicht erlaubt")
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600
+    fd, name = tempfile.mkstemp(prefix=".allkvitt-tmp-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            os.fchmod(out.fileno(), mode)
+            out.write(data)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(name, path)
+        fsync_directory(path.parent)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    atomic_write(path, text.encode("utf-8"))
+
 
 class _Dumper(yaml.SafeDumper):
     pass
@@ -46,14 +122,14 @@ def dump_yaml(data) -> str:
 
 def read_yaml(path: Path):
     try:
-        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = yaml.load(path.read_text(encoding="utf-8"), Loader=_Loader)
+        return {} if data is None else data
     except yaml.YAMLError as exc:
         raise FormatError(f"{path}: kein gültiges YAML ({exc})") from exc
 
 
 def write_yaml(path: Path, data) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_yaml(data), encoding="utf-8")
+    atomic_write_text(path, dump_yaml(data))
 
 
 # ---------- Markdown with frontmatter ----------
@@ -67,7 +143,8 @@ def read_frontmatter(path: Path) -> tuple[dict, str]:
     if not match:
         raise FormatError(f"{path}: Frontmatter (--- … ---) fehlt")
     try:
-        meta = yaml.safe_load(match.group(1)) or {}
+        meta = yaml.load(match.group(1), Loader=_Loader)
+        meta = {} if meta is None else meta
     except yaml.YAMLError as exc:
         raise FormatError(f"{path}: Frontmatter ist kein gültiges YAML ({exc})") from exc
     if not isinstance(meta, dict):
@@ -76,10 +153,8 @@ def read_frontmatter(path: Path) -> tuple[dict, str]:
 
 
 def write_frontmatter(path: Path, meta: dict, body: str = "") -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     body = body.strip("\n")
-    path.write_text("---\n" + dump_yaml(meta) + "---\n" + (f"\n{body}\n" if body else ""),
-                    encoding="utf-8")
+    atomic_write_text(path, "---\n" + dump_yaml(meta) + "---\n" + (f"\n{body}\n" if body else ""))
 
 
 # ---------- Markdown tables ----------
@@ -133,8 +208,13 @@ def parse_table(text: str, source: str = "") -> MdTable:
     if start is None:
         return MdTable(columns=[], rows=[], head=text.rstrip("\n"))
     columns = _split_row(lines[start])
+    if any(not c for c in columns) or len(set(columns)) != len(columns):
+        raise FormatError(f"{source}:{start + 1}: leere oder doppelte Spaltennamen")
+    specs = _split_row(lines[start + 1])
+    if len(specs) != len(columns):
+        raise FormatError(f"{source}:{start + 2}: Trennzeile hat {len(specs)} statt {len(columns)} Spalten")
     align = {}
-    for col, spec in zip(columns, _split_row(lines[start + 1])):
+    for col, spec in zip(columns, specs):
         spec = spec.strip()
         if spec.endswith(":") and not spec.startswith(":"):
             align[col] = "right"
@@ -157,7 +237,7 @@ def _cell(value) -> str:
 def render_table(table: MdTable) -> str:
     cols = table.columns
     data = [[_cell(r.get(c, "")) for c in cols] for r in table.rows]
-    widths = [max([3, len(c)] + [len(row[i]) for row in data]) for i, c in enumerate(cols)]  # "---" minimum
+    widths = [max(3, len(c)) for c in cols]  # "---" minimum
 
     def fmt(cells):
         out = []
@@ -165,7 +245,7 @@ def render_table(table: MdTable) -> str:
             out.append(cell.rjust(widths[i]) if table.align.get(c) == "right" else cell.ljust(widths[i]))
         return "| " + " | ".join(out) + " |"
 
-    sep = "| " + " | ".join(("-" * (widths[i] - 1) + ":") if table.align.get(c) == "right"
+    sep = "| " + " | ".join(("-" * max(3, widths[i] - 1) + ":") if table.align.get(c) == "right"
                             else "-" * widths[i] for i, c in enumerate(cols)) + " |"
     parts = []
     if table.head:
@@ -181,8 +261,7 @@ def read_table(path: Path) -> MdTable:
 
 
 def write_table(path: Path, table: MdTable) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_table(table), encoding="utf-8")
+    atomic_write_text(path, render_table(table))
 
 
 # ---------- Values ----------

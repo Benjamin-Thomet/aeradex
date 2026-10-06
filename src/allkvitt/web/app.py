@@ -425,8 +425,11 @@ async def watch(ui: UI) -> None:
         return
 
     def relevant(_change, path: str) -> bool:
-        parts = Path(path).parts
-        return ".git" not in parts and not path.endswith("write.lock") and "__pycache__" not in parts
+        from ..storage import internal
+        try:
+            return not internal(Path(path).relative_to(ui.root).as_posix())
+        except ValueError:
+            return True
 
     async for _changes in awatch(ui.root, watch_filter=relevant, debounce=400):
         ui.version += 1

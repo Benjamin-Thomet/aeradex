@@ -30,8 +30,12 @@ exec "{python}" -m allkvitt --buch "$(git rev-parse --show-toplevel)" check --qu
 
 
 def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    if args and args[0] == "commit":
+        # The pre-commit checker is a child of the process holding the book lock.
+        env["ALLKVITT_INTERNAL_CHECK_ROOT"] = str(root)
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8",
-                          errors="replace", check=check)
+                          errors="replace", check=check, env=env)
 
 
 def is_repo(root: Path) -> bool:
@@ -57,6 +61,9 @@ def install_hook(root: Path) -> None:
 def commit(root: Path, message: str, paths: list[Path] | None = None) -> str | None:
     """Stage `paths` (or everything) and commit. Returns the short hash, or None
     when the book is not a repo, commits are disabled, or nothing changed."""
+    from .storage import defer_commit
+    if defer_commit(root, message, paths):
+        return None
     if os.environ.get("ALLKVITT_NO_COMMIT") or not is_repo(root):
         return None
     rel = None
@@ -77,7 +84,7 @@ def commit(root: Path, message: str, paths: list[Path] | None = None) -> str | N
         if to_stage:
             _git(root, "add", "-A", "--", *to_stage)
     else:
-        _git(root, "add", "-A")
+        _git(root, "add", "-A", "--", ".", ":(exclude).allkvitt/transaction", ":(exclude).allkvitt/write.lock", ":(exclude)**/.allkvitt-tmp-*")
     scope = ["--", *rel] if rel is not None else []
     if _git(root, "diff", "--cached", "--quiet", *scope, check=False).returncode == 0:
         return None

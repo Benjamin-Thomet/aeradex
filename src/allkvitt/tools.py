@@ -30,6 +30,8 @@ Regeln:
 - Im agent_modus 'vorschlag' nur propose_booking verwenden (mit beleg_datei, wenn eine Quittung vorliegt); ein Mensch gibt frei.
 - Gebuchtes wird nie gelöscht: Korrekturen per reverse_entry (Storno) bzw. Rechnungen per void/credit.
 - Nach jeder Änderung ist das Buch geprüft und in git committet; bei Fehlern die Meldung lesen und korrigieren.
+- status() liefert revision. Bei Schreibtools mit expected_revision diesen Stand mitgeben; nach Konflikten neu lesen.
+- Bei Schreibtools mit idempotency_key einen eindeutigen Schlüssel verwenden und bei Timeout/Wiederholung beibehalten.
 - Beträge als Text mit Punkt: "1234.50". Datum als JJJJ-MM-TT.
 - MWST: status() nennt die mwst_methode. Bei "effektiv" und einem Beleg mit ausgewiesener MWST den Code mitgeben
   (V81/I81 Vorsteuer, U81 Umsatz …) und den BRUTTO-Betrag buchen; die Steuer wird automatisch abgespalten.
@@ -186,7 +188,8 @@ def list_inbox() -> list | dict:
 # ---------- journal ----------
 
 def propose_booking(datum: str, soll: str, haben: str, betrag: str, text: str, begruendung: str,
-                    beleg_datei: str = "", mwst: str = "", waehrung: str = "") -> dict:
+                    beleg_datei: str = "", mwst: str = "", waehrung: str = "",
+                    expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """Buchung vorschlagen (wird geprüft, aber erst nach Freigabe durch einen Menschen gebucht).
 
     Args:
@@ -202,8 +205,11 @@ def propose_booking(datum: str, soll: str, haben: str, betrag: str, text: str, b
             Dann ist betrag BRUTTO (inkl. MWST); die Steuer wird automatisch abgespalten.
         waehrung: nur bei Fremdwährung (Beleg in EUR/USD … oder Konto mit Fremdwährung, siehe list_accounts):
             ISO-Code; betrag ist dann in dieser Währung, umgerechnet wird zum BAZG-Tageskurs des Datums.
+        expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
+        idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
-    return _call(api.propose, datum, soll, haben, betrag, text, begruendung, beleg_datei, mwst, waehrung=waehrung)
+    return _call(api.propose, datum, soll, haben, betrag, text, begruendung, beleg_datei, mwst, waehrung=waehrung,
+                 expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
 def list_proposals() -> list | dict:
@@ -212,7 +218,8 @@ def list_proposals() -> list | dict:
 
 
 def book_entry(datum: str, soll: str, haben: str, betrag: str, text: str, beleg_datei: str = "",
-               mwst: str = "", waehrung: str = "") -> dict:
+               mwst: str = "", waehrung: str = "",
+               expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """Buchung direkt erfassen (nur agent_modus: direkt).
 
     Args:
@@ -224,8 +231,11 @@ def book_entry(datum: str, soll: str, haben: str, betrag: str, text: str, beleg_
         beleg_datei: Pfad zur Quittung, z.B. "inbox/x.pdf".
         mwst: MWST-Code (siehe propose_booking); betrag dann brutto.
         waehrung: Fremdwährung (siehe propose_booking).
+        expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
+        idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
-    return _direct(api.post_entry, datum, soll, haben, betrag, text, "", beleg_datei or None, mwst, waehrung)
+    return _direct(api.post_entry, datum, soll, haben, betrag, text, "", beleg_datei or None, mwst, waehrung,
+                 expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
 def exchange_rate(waehrung: str, datum: str = "") -> dict:
@@ -248,7 +258,8 @@ def revaluation_preview(stichtag: str) -> dict:
     return _call(api.fx_preview, stichtag)
 
 
-def book_split(datum: str, text: str, zeilen: list[dict], beleg_datei: str = "") -> dict:
+def book_split(datum: str, text: str, zeilen: list[dict], beleg_datei: str = "",
+               expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """Sammelbuchung (nur agent_modus: direkt).
 
     Args:
@@ -256,28 +267,39 @@ def book_split(datum: str, text: str, zeilen: list[dict], beleg_datei: str = "")
         text: Buchungstext.
         zeilen: z.B. [{"soll": "6500", "betrag": "40.00"}, {"haben": "1020", "betrag": "40.00"}]; der Beleg muss aufgehen.
         beleg_datei: Pfad zur Quittung.
+        expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
+        idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
-    return _direct(api.post_split, datum, text, zeilen, "", beleg_datei or None)
+    return _direct(api.post_split, datum, text, zeilen, "", beleg_datei or None,
+                 expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
-def approve_proposals(ids: list[str]) -> dict:
+def approve_proposals(ids: list[str],
+                      expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """Vorschläge buchen (nur agent_modus: direkt; sonst gibt ein Mensch frei).
 
     Args:
         ids: z.B. ["V-001"].
+        expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
+        idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
-    return _direct(api.approve, ids)
+    return _direct(api.approve, ids,
+                 expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
-def reverse_entry(beleg: str, datum: str = "", text: str = "") -> dict:
+def reverse_entry(beleg: str, datum: str = "", text: str = "",
+                  expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """Storno eines manuellen Belegs per Gegenbuchung (nur agent_modus: direkt).
 
     Args:
         beleg: Belegnummer, z.B. "26-004".
         datum: Datum der Gegenbuchung; leer = heute.
         text: optionaler Text.
+        expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
+        idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
-    return _direct(api.reverse_entry, beleg, datum or None, text)
+    return _direct(api.reverse_entry, beleg, datum or None, text,
+                 expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
 def mwst_report(periode: str) -> dict:
@@ -346,7 +368,8 @@ def invoices(status: str = "") -> list | dict:
     return _call(api.invoice_list, status)
 
 
-def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: str = "") -> dict:
+def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: str = "",
+                   expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """QR-Rechnung ausstellen und verbuchen; erzeugt die PDF mit QR-Einzahlungsschein.
 
     Args:
@@ -354,8 +377,11 @@ def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: st
         positionen: z.B. [{"text": "Beratung", "menge": 10, "einheit": "h", "preis": "150.00", "konto": "3400"}] (konto optional).
         datum: Rechnungsdatum JJJJ-MM-TT; leer = heute.
         text: Einleitungstext auf der Rechnung.
+        expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
+        idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
-    return _call(api.invoice_create, kunde, positionen, datum or None, text)
+    return _call(api.invoice_create, kunde, positionen, datum or None, text,
+                 expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
 def match_payment(betrag: str, text: str = "") -> dict:
@@ -368,7 +394,8 @@ def match_payment(betrag: str, text: str = "") -> dict:
     return _call(api.invoice_match, betrag, text)
 
 
-def pay_invoice(nummer: str, betrag: str = "", datum: str = "", konto: str = "") -> dict:
+def pay_invoice(nummer: str, betrag: str = "", datum: str = "", konto: str = "",
+                expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """Zahlungseingang auf Rechnung buchen (Bank an Debitoren).
 
     Args:
@@ -376,8 +403,11 @@ def pay_invoice(nummer: str, betrag: str = "", datum: str = "", konto: str = "")
         betrag: leer = ganzer offener Betrag.
         datum: Valuta JJJJ-MM-TT; leer = heute.
         konto: Geldkonto; leer = Bank aus den Einstellungen.
+        expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
+        idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
-    return _call(api.invoice_pay, nummer, betrag or None, datum or None, konto or None)
+    return _call(api.invoice_pay, nummer, betrag or None, datum or None, konto or None,
+                 expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
 def credit_invoice(nummer: str, betrag: str = "", datum: str = "", grund: str = "") -> dict:

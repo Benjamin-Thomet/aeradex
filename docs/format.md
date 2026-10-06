@@ -2,9 +2,12 @@
 
 Alle Dateien sind UTF-8. Beträge stehen in Dateien immer ohne Tausendertrennzeichen mit Punkt und zwei Nachkommastellen (`1234.50`); beim Einlesen werden `1'234.50` und `1234.5` ebenfalls akzeptiert. Datum: `JJJJ-MM-TT`.
 
+Details zu Transaktionen, Wiederherstellung, Formatversionen und Agenten-Wiederholungen: [Textspeicher](storage.md).
+
 ## allkvitt.yaml
 
 ```yaml
+format_version: 1            # ohne Feld: altes Format, Migration beim nächsten erfolgreichen Schreiben
 firma: Muster GmbH
 rechtsform: GmbH
 uid: CHE-123.456.789          # mit Suffix " MWST" = MWST-pflichtig

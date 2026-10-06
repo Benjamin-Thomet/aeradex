@@ -89,6 +89,9 @@ def book_files(book: Book, with_inbox: bool = True) -> list[Path]:
     out = []
     for path in sorted(book.root.rglob("*")):
         rel = path.relative_to(book.root)
+        from .storage import internal
+        if internal(rel.as_posix()):
+            continue
         if rel.parts[0] in SKIP_DIRS or rel.as_posix() in SKIP_FILES or path.name in SKIP_FILES:
             continue
         if not with_inbox and rel.parts[0] == "inbox" and path.name != ".gitkeep":

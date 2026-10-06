@@ -82,6 +82,7 @@ class Account:
     waehrung: str = "CHF"          # account currency; foreign-currency rows carry FW and Kurs
     eroeffnung_fw: Decimal = ZERO  # signed opening balance in the account currency (first year)
     abschluss: str = ""            # equity account its balance moves into at the next opening (Privat → Eigenkapital)
+    extra: dict = field(default_factory=dict)  # extension fields survive edits
 
     @property
     def is_foreign(self) -> bool:
@@ -197,6 +198,8 @@ class Book:
     def settings(self) -> Settings:
         if self._settings is None:
             data = read_yaml(self.root / "allkvitt.yaml")
+            from .bookformat import validate_version
+            validate_version(data)
             self._settings = Settings(firma=str(data.get("firma") or ""), data=data)
         return self._settings
 
@@ -368,7 +371,10 @@ def load_journal_file(path: Path, root: Path) -> list[Row]:
     table = read_table(path)
     rel = str(path.relative_to(root))
     if not table.columns:
-        return []
+        raise FormatError(f"{rel}: gültige Journaltabelle fehlt")
+    if any(line.lstrip().startswith("|") or re.match(r"\s*\d{4}-\d{2}-\d{2}\s*\|", line)
+           for line in (table.head + "\n" + table.tail).splitlines()):
+        raise FormatError(f"{rel}: Tabellenzeilen ausserhalb der Journaltabelle")
     missing = [c for c in ("Datum", "Beleg", "Soll", "Haben", "Betrag") if c not in table.columns]
     if missing:
         raise FormatError(f"{rel}: Spalte(n) fehlen: {', '.join(missing)}")
@@ -385,6 +391,8 @@ def load_accounts(path: Path) -> dict[str, Account]:
     accounts: dict[str, Account] = {}
     for i, item in enumerate(items, 1):
         where = f"{path.name} Eintrag {i}"
+        if not isinstance(item, dict):
+            raise FormatError(f"{where}: erwartet eine Zuordnung")
         nr = str(item.get("nr", "")).strip()
         if not nr:
             raise FormatError(f"{where}: 'nr' fehlt")
@@ -403,6 +411,9 @@ def load_accounts(path: Path) -> dict[str, Account]:
             waehrung=str(item.get("waehrung") or "CHF").upper(),
             eroeffnung_fw=parse_amount(item.get("eroeffnung_fw", 0), where),
             abschluss=str(item.get("abschluss") or "").strip(),
+            extra={k: v for k, v in item.items() if k not in {
+                "nr", "name", "klasse", "gruppe", "eroeffnung", "vorjahr", "gruppe_negativ",
+                "aktiv", "waehrung", "eroeffnung_fw", "abschluss"}},
         )
     return accounts
 
@@ -412,7 +423,7 @@ def save_accounts(path: Path, accounts: dict[str, Account]) -> None:
 
     out = []
     for a in sorted(accounts.values(), key=lambda a: a.nr):
-        item = {"nr": a.nr, "name": a.name, "klasse": a.klasse}
+        item = {**a.extra, "nr": a.nr, "name": a.name, "klasse": a.klasse}
         if a.gruppe != default_group(a.nr, a.klasse):
             item["gruppe"] = a.gruppe
         if a.eroeffnung:
@@ -430,7 +441,8 @@ def save_accounts(path: Path, accounts: dict[str, Account]) -> None:
         if a.abschluss:
             item["abschluss"] = a.abschluss
         out.append(item)
-    write_yaml(path, {"konten": out})
+    original = read_yaml(path) if path.exists() else {}
+    write_yaml(path, {**(original if isinstance(original, dict) else {}), "konten": out})
 
 
 def _klasse_for(nr: str) -> str:
