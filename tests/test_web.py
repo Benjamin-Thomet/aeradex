@@ -181,6 +181,47 @@ def test_payroll_inputs_close_reopen(client, root):
     assert errors(root) == []
 
 
+def test_payroll_year_picker_shows_uncomputed_months(client):
+    from lxml import html
+    doc = html.fromstring(client.get("/lohn?jahr=2027").text)
+    options = doc.xpath('//select[@name="monat"]/option')
+    assert {o.get("value") for o in options} == {f"2027-{m:02d}" for m in range(1, 13)}
+    assert doc.xpath('//select[@name="jahr"]/option[@selected]')[0].get("value") == "2027"
+    assert len(doc.xpath('//details[@id="monate"]//tbody/tr')) == 12
+    assert len(doc.xpath('//details[@id="monate"]//a[contains(@href, "2027-")]')) == 12
+    assert 'href="/lohn/lohnkonto/2027/M0001"' in client.get("/lohn/mitarbeiter?jahr=2027").text
+    assert client.get("/lohn/lohnkonto/2026/M0001?jahr=2027").url.path == "/lohn/lohnkonto/2027/M0001"
+
+
+def test_lohnausweis_readiness_and_year_status(client, root):
+    from lxml import html
+    from allkvitt import api
+    api.employee_add(Book(root), "Mia", "Jahresabschluss", monatslohn=5000, eintritt="2026-10-15")
+    api.employee_update(Book(root), "M0003", austritt="2026-11-10", aktiv=False)
+    # Inactive today must still be visible for missing historical months of employment.
+    assert "Mia Jahresabschluss" in client.get("/lohn?monat=2026-10").text
+    url = "/lohn/lohnkonto/2026/M0003"
+    target = "/lohn/lohnausweis/2026/M0003"
+    doc = html.fromstring(client.get(url).text)
+    rows = doc.xpath('//table[contains(@class,"ledger")]/tbody/tr')[:12]
+    assert len(rows) == 12
+    assert "ausserhalb Anstellung" in rows[0].text_content()
+    assert "nicht gerechnet" in rows[9].text_content()
+    assert doc.xpath(f'//form[@hx-post="{target}"]/button[@disabled]')
+    result = post(client, target)
+    assert "nicht gerechnet: 2026-10, 2026-11" in result.text
+    assert not (root / "lohnausweise" / "2026" / "M0003.pdf").exists()
+    api.payroll_run(Book(root), "2026-10", "M0003")
+    api.payslip_close(Book(root), "2026-10", "M0003")
+    api.payroll_run(Book(root), "2026-11", "M0003")
+    assert "nicht abgeschlossen: 2026-11" in post(client, target).text
+    api.payslip_close(Book(root), "2026-11", "M0003")
+    doc = html.fromstring(client.get(url).text)
+    assert not doc.xpath(f'//form[@hx-post="{target}"]/button[@disabled]')
+    ok(post(client, target))
+    assert "Lohnausweis 2026 öffnen" in client.get(url).text
+
+
 def test_employee_add_and_edit(client, root):
     ok(post(client, "/lohn/mitarbeiter/neu", {"vorname": "Mia", "nachname": "Neu", "lohnart": "monat",
                                                "monatslohn": "5000", "pensum": "60", "eintritt": "2026-04-01",
@@ -456,3 +497,34 @@ def test_top_navigation_renders(client):
     assert 'class="tabsrow"' in page and 'href="/debitoren/offene-posten"' in page
     assert 'class="navlist"' not in page
     assert 'class="tabsrow"' not in client.get("/journal").text
+
+
+def test_salary_bank_file_download(client, root):
+    from allkvitt import api
+    for nr in ('M0001', 'M0002'):
+        api.employee_update(Book(root), nr, iban='CH9300762011623852957', ort='Bern', land='CH')
+        ok(post(client, f'/lohn/abrechnung/2026-03/{nr}/abschliessen'))
+    ok(post(client, '/lohn/zahlung/erstellen', {'monat': '2026-03', 'datum': '2026-03-25'}))
+    page = client.get('/lohn?monat=2026-03')
+    assert 'Bankdatei herunterladen' in page.text
+    from allkvitt.payroll_payments import active
+    info = active(Book(root), 2026, 3)
+    r = client.get('/datei/' + info['datei'])
+    assert r.status_code == 200 and b'pain.001.001.09' in r.content
+    assert client.post('/lohn/zahlung/erstellen', data={'monat': '2026-03'}).status_code == 403
+
+
+def test_estv_import_ui(client, root, monkeypatch):
+    from allkvitt import qst_estv
+    from test_payroll_review import records
+    monkeypatch.setattr(qst_estv, 'download', lambda k, y: qst_estv.parse(records(k, y), k, y, 'fixture'))
+    ok(post(client, '/lohn/qst-import', {'kanton': 'ZH', 'jahr': '2026'}))
+    assert 'ZH 2026' in client.get('/lohn/mitarbeiter').text
+
+
+def test_employee_can_clear_flat_withholding_rate(client, root):
+    from allkvitt import api, payroll
+    api.employee_update(Book(root), 'M0001', qst=None, qst_satz='0.05')
+    ok(post(client, '/lohn/mitarbeiter/M0001', {'vorname': 'Lea', 'nachname': 'Muster',
+                                              'lohnart': 'monat', 'qst_code': '', 'qst_satz_pct': ''}))
+    assert payroll.employee(Book(root), 'M0001')['qst_satz'] == 0

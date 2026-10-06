@@ -206,6 +206,14 @@ def build_parser() -> argparse.ArgumentParser:
         c = ps.add_parser(name)
         c.add_argument("monat")
         c.add_argument("mitarbeiter")
+    c = ps.add_parser("payment-export", help="Bankdatei pain.001 erstellen")
+    c.add_argument("monat")
+    c.add_argument("ausfuehrung")
+    c = ps.add_parser("payment-cancel", help="Lohnzahlungsdatei zurückziehen; Bankauftrag separat stornieren")
+    c.add_argument("monat")
+    c = ps.add_parser("qst-sync", help="Offizielle ESTV-Tarife laden")
+    c.add_argument("kanton", help="Kantonskürzel oder ALLE")
+    c.add_argument("jahr", type=int)
     c = ps.add_parser("lohnkonto")
     c.add_argument("jahr", type=int)
     c.add_argument("mitarbeiter")
@@ -726,6 +734,12 @@ def dispatch(a, book_path: Path | None):
         return api.employee_add(book(), a.vorname, a.nachname, **fields)
     if c == "payroll":
         b = book()
+        if a.sub == "payment-export":
+            return api.payroll_payment_export(b, a.monat, a.ausfuehrung)
+        if a.sub == "payment-cancel":
+            return api.payroll_payment_cancel(b, a.monat)
+        if a.sub == "qst-sync":
+            return api.qst_sync(b, a.kanton, a.jahr)
         if a.sub == "run":
             inputs = {k: getattr(a, k) for k in ("stunden", "bvg", "kinderzulagen", "korrektur", "korrektur_text",
                                                  "qst_satzbestimmend", "qst_gesamtpensum") if getattr(a, k) is not None}

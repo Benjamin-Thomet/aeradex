@@ -135,7 +135,7 @@ def add_employee(book: Book, vorname: str, nachname: str, **fields) -> tuple[dic
             "bvg_betrag": fields.pop("bvg_betrag", 0), "ag_bvg_betrag": fields.pop("ag_bvg_betrag", 0),
             "kinderzulagen": fields.pop("kinderzulagen", 0),
             "qst": fields.pop("qst", None), "qst_satz": fields.pop("qst_satz", 0),
-            "aktiv": True}
+            "iban": fields.pop("iban", ""), "aktiv": True}
     if fields:
         raise BookError(f"Unbekannte Felder: {', '.join(fields)}")
     for key in ("geburtsdatum", "eintritt"):
@@ -170,7 +170,7 @@ def monatsstunden(emp: dict) -> Decimal:
 def eigenes_pensum(emp: dict, hours=None) -> Decimal:
     """This employer's own workload for the month in percent (KS 45 Ziff. 6.4)."""
     if not is_hourly(emp):
-        return D(emp.get("pensum") or 100)
+        return D(emp.get("pensum") if emp.get("pensum") is not None else 100)
     ms = monatsstunden(emp)
     if not ms:
         return ZERO
@@ -187,27 +187,25 @@ def satzbestimmendes_einkommen(gross, eigenes, gesamtpensum, fallback=None) -> D
     return money(D(gross) / eigen * gesamt)
 
 
-def quellensteuer_rate(emp: dict, satzbestimmend=None) -> Decimal:
+def quellensteuer_rate(emp: dict, satzbestimmend=None, year=None) -> Decimal:
     if not uses_tarif(emp):
         return D(emp.get("qst_satz"))
     t = emp["qst"]
     try:
-        return qst.rate(t["kanton"], int(t["jahr"]), t["code"], satzbestimmend or 0)
-    except qst.UnknownTariff:
-        # A code that no longer resolves must not fall back to a wrong rate:
-        # deduct nothing, and the zero on the payslip gets noticed.
-        return ZERO
+        return qst.rate(t["kanton"], int(year or t["jahr"]), t["code"], satzbestimmend or 0)
+    except qst.UnknownTariff as exc:
+        raise BookError(str(exc)) from exc
 
 
-def calculate(emp: dict, cfg: dict, year: int, month: int, inputs: dict) -> dict:
+def calculate(emp: dict, cfg: dict, year: int, month: int, inputs: dict, tariff: dict | None = None) -> dict:
     """All wage, deduction and net amounts for one month.
 
     Monthly wage = Monatslohn × Pensum, prorated by calendar days on a mid-month
     start; hourly wage = Stundenlohn × Stunden. The Ferienzuschlag is added on top,
-    or split back out when `ferien_inbegriffen`. Deductions are on the gross."""
+    or split back out when `ferien_inbegriffen`. QST additionally taxes allowances."""
     an = cfg["saetze_an"]
     full_time = money(emp.get("monatslohn"))
-    pensum = money(D(emp.get("pensum") or 100) / Decimal("100"))
+    pensum = D(emp.get("pensum") if emp.get("pensum") is not None else 100) / Decimal("100")
     rate = money(emp.get("stundenlohn"))
     hours = D(inputs.get("stunden") if inputs.get("stunden") is not None else emp.get("standard_stunden"))
 
@@ -244,23 +242,64 @@ def calculate(emp: dict, cfg: dict, year: int, month: int, inputs: dict) -> dict
         return money(gross * D(r))
 
     ahv, alv, ktg, uvg = pct(an.get("ahv")), pct(an.get("alv")), pct(an.get("ktg")), pct(an.get("uvg"))
-    eigen = eigenes_pensum(emp, hours)
-    satzb = satzbestimmendes_einkommen(gross, eigen, inputs.get("qst_gesamtpensum"),
-                                       inputs.get("qst_satzbestimmend"))
-    qst_rate = quellensteuer_rate(emp, satzb)
-    quellensteuer = pct(qst_rate)
     bvg = money(inputs.get("bvg") if inputs.get("bvg") is not None else emp.get("bvg_betrag"))
     kz = money(inputs.get("kinderzulagen") if inputs.get("kinderzulagen") is not None else emp.get("kinderzulagen"))
+    # KS 45 3.2 / 6.3: family allowances are taxable, although AHV-exempt.
+    taxable = money(gross + kz)
+    eigen = eigenes_pensum(emp, hours)
+    explicit = inputs.get("qst_satzbestimmend")
+    total_workload = D(inputs.get("qst_gesamtpensum"))
+    if explicit is not None and total_workload:
+        raise BookError("QST: entweder Gesamtpensum oder satzbestimmendes Einkommen angeben")
+    if explicit is not None:
+        satzb = money(explicit)
+    else:
+        satzb = taxable  # KS 45 6.3/6.4: one employment, monthly payment
+        if uses_tarif(emp):
+            from .qst_estv import ANNUAL
+            if emp['qst']['kanton'].upper() in ANNUAL:
+                raise BookError("QST-Jahresmodell: geprüftes satzbestimmendes Jahreseinkommen / 12 eingeben; Jahresausgleich separat prüfen")
+            # KS 45 6.6: only periodic components are currently modelled here.
+            first, last = date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
+            start = max(parse_date(emp['eintritt']), first) if emp.get('eintritt') else first
+            end = min(parse_date(emp['austritt']), last) if emp.get('austritt') else last
+            start_day = min(start.day, 30)
+            if start == last:
+                start_day = 30
+            end_day = 30 if end == last else min(end.day, 30)
+            tax_days = end_day - start_day + 1 if first <= start <= end <= last else 0
+            if taxable > 0 and 0 < tax_days < 30:
+                satzb = money(taxable * 30 / tax_days)
+        if total_workload:
+            if eigen <= 0 or total_workload < eigen:
+                raise BookError("QST-Gesamtpensum muss mindestens dem eigenen Pensum entsprechen")
+            satzb = money(satzb / eigen * total_workload)
+    minimum = ZERO
+    if emp.get('qst') and not uses_tarif(emp):
+        raise BookError("Quellensteuer: Kanton, Jahr und Tarifcode vollständig erfassen")
+    if uses_tarif(emp) and taxable > 0 and satzb <= 0:
+        raise BookError("QST: satzbestimmendes Einkommen muss positiv sein")
+    if uses_tarif(emp) and tariff is not None:
+        from .qst_estv import lookup
+        try:
+            qst_rate, minimum = lookup(tariff, emp['qst']['code'], satzb)
+        except qst.UnknownTariff as exc:
+            raise BookError(str(exc)) from exc
+    else:
+        qst_rate = quellensteuer_rate(emp, satzb, year)
+    quellensteuer = money(max(taxable * qst_rate, minimum)) if taxable > 0 else ZERO
     korrektur = money(inputs.get("korrektur"))
     abzuege = ahv + alv + bvg + ktg + uvg + quellensteuer
     net = gross + kz + korrektur - abzuege
     return {
         "lohnart": "stunde" if is_hourly(emp) else "monat",
-        "pensum": money(D(emp.get("pensum") or 100)), "stundenlohn": rate, "stunden": money(hours),
+        "pensum": money(D(emp.get("pensum") if emp.get("pensum") is not None else 100)), "stundenlohn": rate, "stunden": money(hours),
         "grundlohn": base, "ferienzuschlag_satz": ferien_rate, "ferienzuschlag": ferien,
         "bruttolohn": gross,
         "ahv": ahv, "alv": alv, "uvg": uvg, "ktg": ktg, "bvg": bvg,
         "qst_code": emp["qst"]["code"] if uses_tarif(emp) else "",
+        "qst_quelle": (tariff or {}).get("sha256", ""), "qst_basis": taxable, "qst_jahr": year,
+        "qst_kanton": (emp.get("qst") or {}).get("kanton", ""),
         "qst_satz": qst_rate, "qst_satzbestimmend": satzb, "quellensteuer": quellensteuer,
         "kinderzulagen": kz, "korrektur": korrektur, "total_abzuege": abzuege, "nettolohn": net,
     }
@@ -381,9 +420,17 @@ def _with_expenses(book: Book, meta: dict) -> None:
         meta.pop("spesenkonto", None)
 
 
+def _tariff(book, emp, year):
+    from .qst_estv import table
+    return table(book, emp['qst']['kanton'], year) if uses_tarif(emp) else None
+
+
 def run(book: Book, year: int, month: int, nr: str | None = None, inputs: dict | None = None) -> list[tuple[dict, Path]]:
     """Create or recalculate draft payslips for the month (all active employees,
     or one). Closed payslips are left alone."""
+    from .payroll_payments import active
+    if active(book, year, month):
+        raise BookError("Lohnzahlungsdatei besteht bereits — zuerst zurückziehen")
     cfg = config(book)
     out = []
     targets = [employee(book, nr)] if nr else [e for e in employees(book).values() if e.get("aktiv", True)]
@@ -402,12 +449,13 @@ def run(book: Book, year: int, month: int, nr: str | None = None, inputs: dict |
                                  "korrektur_text": "", "qst_satzbestimmend": None, "qst_gesamtpensum": None}}
         if inputs:
             meta["eingaben"].update({k: v for k, v in inputs.items() if v is not None})
-        meta["werte"] = calculate(emp, cfg, year, month, meta["eingaben"])
+        meta["werte"] = calculate(emp, cfg, year, month, meta["eingaben"], _tariff(book, emp, year))
         _with_expenses(book, meta)
         meta.pop("ag", None)
         meta.pop("fingerprint", None)
-        out.append((meta, _save(book, emp, meta)))
-    return out
+        out.append((emp, meta))
+    # Validate every employee before writing any draft.
+    return [(meta, _save(book, emp, meta)) for emp, meta in out]
 
 
 def booking_rows(meta: dict, cfg: dict) -> list[Row]:
@@ -453,7 +501,7 @@ def close(book: Book, year: int, month: int, nr: str) -> tuple[dict, list[Path]]
     cfg = config(book)
     emp = employee(book, nr)
     # Recalculate once more so the frozen figures match the current inputs.
-    meta["werte"] = calculate(emp, cfg, year, month, meta.get("eingaben") or {})
+    meta["werte"] = calculate(emp, cfg, year, month, meta.get("eingaben") or {}, _tariff(book, emp, year))
     meta.setdefault("eingaben", {})
     _with_expenses(book, meta)
     w = meta["werte"]
@@ -471,6 +519,9 @@ def close(book: Book, year: int, month: int, nr: str) -> tuple[dict, list[Path]]
 
 
 def reopen(book: Book, year: int, month: int, nr: str) -> tuple[dict, list[Path]]:
+    from .payroll_payments import active
+    if active(book, year, month):
+        raise BookError("Zuerst die Lohnzahlungsdatei zurückziehen und einen Bankauftrag gegebenenfalls bei der Bank stornieren")
     meta = load_payslip(book, year, month, nr)
     if meta.get("status") != "abgeschlossen":
         raise BookError(f"Lohnabrechnung {nr} {month:02d}/{year} ist nicht abgeschlossen")

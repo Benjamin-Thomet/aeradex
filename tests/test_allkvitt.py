@@ -176,8 +176,8 @@ def test_payroll_monthly_prorated_with_qst(book):
     api.payroll_run(Book(book.root), "2026-01", "M0001", {"qst_gesamtpensum": 80})
     w = api.payslip_show(Book(book.root), "2026-01", "M0001")["werte"]
     assert w["bruttolohn"] == "2632.26"                     # 4800 × 17/31
-    assert w["qst_satzbestimmend"] == "2632.26"            # Brutto / 80 × 80
-    assert Decimal(w["quellensteuer"]) == (Decimal("2632.26") * qst.rate("BS", 2026, "A0N", Decimal("2632.26"))).quantize(Decimal("0.01"))
+    assert w["qst_satzbestimmend"] == "4935.49"            # KS 45 6.6: Brutto / 16 × 30
+    assert Decimal(w["quellensteuer"]) == (Decimal("2632.26") * qst.rate("BS", 2026, "A0N", Decimal("4935.49"))).quantize(Decimal("0.01"))
     api.payslip_close(Book(book.root), "2026-01", "M0001")
     b = Book(book.root)
     assert errors(b) == []
@@ -217,13 +217,51 @@ def test_reopen_removes_booking(book):
 
 
 def test_lohnausweis(book):
-    api.employee_add(book, "Tom", "Test", monatslohn=5000, ahv_nr="756.1234.5678.97", geburtsdatum="1990-01-01")
+    api.employee_add(book, "Tom", "Test", monatslohn=5000, ahv_nr="756.1234.5678.97", geburtsdatum="1990-01-01",
+                     eintritt="2026-01-01")
+    api.employee_update(Book(book.root), "M0001", austritt="2026-02-28")
     for m in ("01", "02"):
         api.payroll_run(Book(book.root), f"2026-{m}")
         api.payslip_close(Book(book.root), f"2026-{m}", "M0001")
     res = api.lohnausweis_create(Book(book.root), 2026, "M0001")
     assert res["ziffern"]["z1"] == 10000
     assert (book.root / res["pdf"]).read_bytes().startswith(b"%PDF")
+
+
+def test_lohnausweis_requires_missing_and_draft_months_to_be_closed(book):
+    # Product rule: all months overlapping the recorded employment must be closed.
+    # This checks completeness only; the verified payroll arithmetic is unchanged.
+    api.employee_add(book, "Tom", "Test", monatslohn=5000, eintritt="2026-01-01")
+    api.employee_update(Book(book.root), "M0001", austritt="2026-02-28")
+    api.payroll_run(Book(book.root), "2026-01")
+    api.payslip_close(Book(book.root), "2026-01", "M0001")
+    with pytest.raises(BookError, match="nicht gerechnet: 2026-02"):
+        api.lohnausweis_create(Book(book.root), 2026, "M0001")
+    path = book.root / "lohnausweise" / "2026" / "M0001.pdf"
+    assert not path.exists()
+    api.payroll_run(Book(book.root), "2026-02")
+    with pytest.raises(BookError, match="nicht abgeschlossen: 2026-02"):
+        api.lohnausweis_create(Book(book.root), 2026, "M0001")
+    api.payslip_close(Book(book.root), "2026-02", "M0001")
+    api.lohnausweis_create(Book(book.root), 2026, "M0001")
+    original = path.read_bytes()
+    api.payslip_reopen(Book(book.root), "2026-01", "M0001")
+    with pytest.raises(BookError, match="nicht abgeschlossen: 2026-01"):
+        api.lohnausweis_create(Book(book.root), 2026, "M0001")
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("start,end,year,expected", [
+    (None, None, 2026, set(range(1, 13))),
+    ("2026-03-31", "2026-05-01", 2026, {3, 4, 5}),
+    ("2025-11-01", "2026-02-01", 2026, {1, 2}),
+    ("2026-11-01", "2027-02-01", 2026, {11, 12}),
+    ("2027-01-01", None, 2026, set()),
+    (None, "2025-12-31", 2026, set()),
+])
+def test_lohnausweis_employment_months(start, end, year, expected):
+    from allkvitt.lohnausweis import employment_months
+    assert employment_months({"eintritt": start, "austritt": end}, year) == expected
 
 
 # ---------- statements & year chain ----------

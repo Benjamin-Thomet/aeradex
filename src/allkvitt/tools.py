@@ -792,6 +792,26 @@ def payroll_run(monat: str, mitarbeiter: str = "", eingaben: dict | None = None)
     return _call(api.payroll_run, monat, mitarbeiter or None, eingaben)
 
 
+def payroll_payment_export(monat: str, ausfuehrung: str) -> dict:
+    """Bankdatei pain.001 für abgeschlossene Löhne erstellen; kein Bankversand.
+
+    Args:
+        monat: JJJJ-MM.
+        ausfuehrung: Gewünschtes Zahlungsdatum JJJJ-MM-TT.
+    """
+    return _call(api.payroll_payment_export, monat, ausfuehrung)
+
+
+def qst_sync(kanton: str, jahr: int) -> dict:
+    """Offizielle Quellensteuertarife der ESTV laden oder aktualisieren.
+
+    Args:
+        kanton: Kantonskürzel oder ALLE.
+        jahr: Tarifjahr ab 2025.
+    """
+    return _call(api.qst_sync, kanton, jahr)
+
+
 def payslip(monat: str, mitarbeiter: str) -> dict:
     """Eine Lohnabrechnung anzeigen.
 
@@ -814,6 +834,7 @@ def close_payslip(monat: str, mitarbeiter: str) -> dict:
 
 def lohnausweis(jahr: int, mitarbeiter: str) -> dict:
     """Lohnausweis (Formular 11) aus den abgeschlossenen Abrechnungen des Jahres.
+    Alle Monate der Anstellung müssen gerechnet und abgeschlossen sein.
 
     Args:
         jahr: Kalenderjahr.
@@ -945,7 +966,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
-          book_bank_transaction, employees, payroll_run, payslip, close_payslip, lohnausweis,
+          book_bank_transaction, employees, payroll_run, payroll_payment_export, qst_sync, payslip, close_payslip, lohnausweis,
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
           closing_documents, mwst_details,
           period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year]

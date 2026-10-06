@@ -21,7 +21,7 @@ from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
 
-from .book import Book
+from .book import Book, BookError
 from .files import parse_date
 from .payroll import display_name, employee, payslips
 
@@ -38,9 +38,23 @@ def _num_field(n: int) -> str:
     return str(n) if n else ""
 
 
+def employment_months(emp: dict, year: int) -> set[int]:
+    """Months overlapping the recorded employment period, including partial months."""
+    start = max(date(year, 1, 1), parse_date(emp["eintritt"])) if emp.get("eintritt") else date(year, 1, 1)
+    end = min(date(year, 12, 31), parse_date(emp["austritt"])) if emp.get("austritt") else date(year, 12, 31)
+    return set(range(start.month, end.month + 1)) if start <= end else set()
+
+
 def annual_totals(book: Book, year: int, nr: str) -> dict:
     slips = [p for p in payslips(book, year) if p["mitarbeiter"] == nr]
     closed = [p for p in slips if p.get("status") == "abgeschlossen"]
+    expected = employment_months(employee(book, nr), year)
+    by_month = {int(p["monat"]): p for p in slips}
+    missing = sorted(expected - by_month.keys())
+    drafts = sorted(int(p["monat"]) for p in slips if p.get("status") != "abgeschlossen")
+    months = [{"monat": m, "status": (by_month[m].get("status", "entwurf") if m in by_month else
+               "nicht gerechnet" if m in expected else "ausserhalb Anstellung")}
+              for m in range(1, 13)]
 
     def total(key):
         return sum((Decimal(str(p["werte"].get(key) or 0)) for p in closed), Decimal("0"))
@@ -54,9 +68,23 @@ def annual_totals(book: Book, year: int, nr: str) -> dict:
     uebrige = sum((spesen.amount_chf(book, claims[n]) for n in paid if n in claims and claims[n].get("art") == "uebrige"),
                   Decimal("0"))
     return {"monate": len(closed), "entwuerfe": len(slips) - len(closed), "spesen_uebrige": uebrige,
+            "fehlende_monate": missing, "offene_monate": drafts, "monatsstatus": months,
+            "vollstaendig": bool(closed) and not missing and not drafts,
             "z1": z1, "z8": z1, "z9": z9, "z10_1": z10_1, "z11": z1 - z9 - z10_1,
             "z12": _fr(total("quellensteuer")), "ktg": _fr(total("ktg")),
             "netto_ausbezahlt": total("nettolohn")}
+
+
+def require_complete(totals: dict, year: int, nr: str) -> None:
+    problems = []
+    if totals["fehlende_monate"]:
+        problems.append("nicht gerechnet: " + ", ".join(f"{year}-{m:02d}" for m in totals["fehlende_monate"]))
+    if totals["offene_monate"]:
+        problems.append("nicht abgeschlossen: " + ", ".join(f"{year}-{m:02d}" for m in totals["offene_monate"]))
+    if problems:
+        raise BookError(f"Lohnausweis {year} für {nr} noch nicht vollständig — " + "; ".join(problems))
+    if not totals["monate"]:
+        raise BookError(f"Keine abgeschlossenen Lohnabrechnungen {year} für {nr}")
 
 
 def pensum_remark(book: Book, year: int, nr: str) -> str:
@@ -84,6 +112,7 @@ def pensum_remark(book: Book, year: int, nr: str) -> str:
 def build_pdf(book: Book, year: int, nr: str, on_date: date | None = None) -> bytes:
     emp = employee(book, nr)
     totals = annual_totals(book, year, nr)
+    require_complete(totals, year, nr)
     s = book.settings
     von = date(year, 1, 1)
     if emp.get("eintritt"):

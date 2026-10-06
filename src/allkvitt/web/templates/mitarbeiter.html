@@ -12,6 +12,8 @@
     <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ a.strasse or '' }}"></div>
     <div class="field"><label>Nr.</label><input class="input" name="nr" value="{{ a.nr or '' }}"></div>
     <div class="field"><label>PLZ / Ort</label><span class="actions" style="flex-wrap:nowrap"><input class="input" name="plz" value="{{ a.plz or '' }}" style="width:80px"><input class="input" name="ort" value="{{ a.ort or '' }}"></span></div>
+    <div class="field"><label>Lohnkonto IBAN</label><input class="input" name="iban" value="{{ e.iban or '' }}" placeholder="CH… / LI…"></div>
+    <div class="field"><label>Land (ISO-Code)</label><input class="input" name="land" value="{{ a.land or 'CH' }}" maxlength="2"></div>
     <div class="field"><label>Eintritt</label><input class="input" type="date" name="eintritt" value="{{ e.eintritt or '' }}"></div>
     {% if not isnew %}<div class="field"><label>Austritt</label><input class="input" type="date" name="austritt" value="{{ e.austritt or '' }}"></div>{% endif %}
     <div class="field"><label>Lohnart</label><select class="input" name="lohnart" style="width:100%"><option value="monat" {{ 'selected' if e.lohnart != 'stunde' }}>Monatslohn</option><option value="stunde" {{ 'selected' if e.lohnart == 'stunde' }}>Stundenlohn</option></select></div>
@@ -34,7 +36,7 @@
 </form>
 {% endmacro %}
 {% block main %}
-<div class="topbar"><div><h1>Mitarbeitende</h1><div class="sub">{{ emps|length }} erfasst</div></div><div class="actions"><a class="btn primary" href="/lohn/mitarbeiter?neu=1#neu">Mitarbeiter erfassen</a></div></div>
+<div class="topbar"><div><h1>Mitarbeitende</h1><div class="sub">{{ emps|length }} erfasst</div></div><div class="actions"><form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr für Lohnkonto und Lohnausweis">{% for y in years|reverse %}<option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form><a class="btn primary" href="/lohn/mitarbeiter?neu=1#neu">Mitarbeiter erfassen</a></div></div>
 <div class="panel">
   {% if emps %}
   <div class="tablewrap"><table class="ledger">
@@ -45,7 +47,7 @@
         <td class="small">{% if e.lohnart == 'stunde' %}{{ e.stundenlohn|chf }}/h{% else %}{{ e.monatslohn|chf }} × {{ e.pensum }} %{% endif %}</td>
         <td class="small">{{ e.qst.code if e.qst else ('pauschal ' ~ (e.qst_satz|pct) if e.qst_satz else '—') }}</td>
         <td class="num">{{ e.eintritt|datum }}</td>
-        <td class="right"><span class="rowactions"><a class="btn small" href="/lohn/lohnkonto/{{ today().year }}/{{ nr }}">Lohnkonto</a><a class="btn small ghost" href="/lohn/mitarbeiter?edit={{ nr }}#edit">Bearbeiten</a></span></td></tr>
+        <td class="right"><span class="rowactions"><a class="btn small" href="/lohn/lohnkonto/{{ year }}/{{ nr }}">Lohnkonto / Lohnausweis {{ year }}</a><a class="btn small ghost" href="/lohn/mitarbeiter?edit={{ nr }}&jahr={{ year }}#edit">Bearbeiten</a></span></td></tr>
       {% if edit == nr %}<tr><td colspan="6" id="edit" style="padding:0">{{ empform(e, "/lohn/mitarbeiter/" ~ nr, false) }}</td></tr>{% endif %}
     {% endfor %}
     </tbody>
@@ -56,4 +58,9 @@
   <summary><header style="border-bottom:0"><h2>+ Mitarbeiter erfassen</h2></header></summary>
   {{ empform({}, "/lohn/mitarbeiter/neu", true) }}
 </details>
+<div class="panel body">
+  <h2>Quellensteuertarife von der ESTV</h2>
+  <p class="small muted">Offizielle Tarife nach Kanton und Jahr laden oder aktualisieren. Der Lohnlauf verwendet sein Abrechnungsjahr. Abgeschlossene Abrechnungen bleiben unverändert. FR, GE, TI, VD und VS benötigen eine geprüfte Jahresberechnung.</p>
+  <form hx-post="/lohn/qst-import" hx-target="find .errors"><label>Kanton <select class="input" name="kanton">{% for k in kantone %}<option>{{ k }}</option>{% endfor %}<option value="ALLE">Alle Kantone</option></select></label> <label>Jahr <input class="input" name="jahr" type="number" min="2025" max="2099" value="{{ today().year }}" required></label> <button class="btn" type="submit">ESTV-Tarife laden</button>{{ errors() }}</form>
+</div>
 {% endblock %}

@@ -5,7 +5,7 @@
 {% set w = slip.werte %}{% set i = slip.eingaben or {} %}{% set closed = slip.status == 'abgeschlossen' %}
 <div class="topbar">
   <div><div class="crumbs"><a href="/lohn?monat={{ monat }}">Lohn {{ MONTHS[m] }} {{ y }}</a> /</div><h1>{{ slip.name }} {{ status_pill(slip.status) }}</h1>
-    <div class="sub">{{ emp.nummer }} · {% if w.lohnart == 'stunde' %}Stundenlohn{% else %}Monatslohn, Pensum {{ w.pensum }} %{% endif %}{% if emp.qst %} · Quellensteuer Tarif {{ emp.qst.code }} ({{ emp.qst.kanton }} {{ emp.qst.jahr }}){% endif %}</div></div>
+    <div class="sub">{{ emp.nummer }} · {% if w.lohnart == 'stunde' %}Stundenlohn{% else %}Monatslohn, Pensum {{ w.pensum }} %{% endif %}{% if w.qst_code %} · Quellensteuer Tarif {{ w.qst_code }} ({{ w.qst_kanton or emp.qst.kanton }} {{ w.qst_jahr or emp.qst.jahr }}){% endif %}</div></div>
   <div class="actions">
     {% if pdf %}<a class="btn" href="/datei/{{ pdf|urlq }}" target="_blank">PDF</a>{% endif %}
     <a class="btn" href="/lohn/lohnkonto/{{ y }}/{{ emp.nummer }}">Lohnkonto {{ y }}</a>
@@ -26,11 +26,13 @@
         {% for key, label in [("ahv","AHV/IV/EO"),("alv","ALV"),("uvg","NBU"),("ktg","KTG")] %}{% if w[key]|float %}
         <tr><td>{{ label }}</td><td class="right num">{{ w.bruttolohn|chf }}</td><td class="right num">{{ cfg.saetze_an[key]|pct(3) }}</td><td class="right num">{{ w[key]|minus }}</td></tr>{% endif %}{% endfor %}
         {% if w.bvg|float %}<tr><td>BVG</td><td></td><td></td><td class="right num">{{ w.bvg|minus }}</td></tr>{% endif %}
-        {% if w.quellensteuer|float or tarif %}<tr><td>Quellensteuer {{ w.qst_code }}</td><td class="right num">{{ w.qst_satzbestimmend|chf if w.qst_code else w.bruttolohn|chf }}</td><td class="right num">{{ w.qst_satz|pct }}</td><td class="right num">{{ w.quellensteuer|minus }}</td></tr>{% endif %}
+        {% if w.quellensteuer|float or tarif %}<tr><td>Quellensteuer {{ w.qst_code }}{% if w.qst_code %}<div class="small muted">Satzbestimmend: CHF {{ w.qst_satzbestimmend|chf }}</div>{% endif %}</td><td class="right num">{{ w.get("qst_basis", w.bruttolohn)|chf }}</td><td class="right num">{{ w.qst_satz|pct }}</td><td class="right num">{{ w.quellensteuer|minus }}</td></tr>{% endif %}
         <tr class="zw"><td>Total Abzüge</td><td></td><td></td><td class="right num">{{ w.total_abzuege|minus }}</td></tr>
         {% if w.kinderzulagen|float %}<tr><td>Kinderzulagen</td><td></td><td></td><td class="right num">{{ w.kinderzulagen|chf }}</td></tr>{% endif %}
         {% if w.korrektur|float %}<tr><td>{{ i.korrektur_text or 'Korrektur' }}</td><td></td><td></td><td class="right num">{{ w.korrektur|chf }}</td></tr>{% endif %}
-        <tr class="total"><td>Nettolohn (Auszahlung)</td><td></td><td></td><td class="right num">{{ w.nettolohn|chf }}</td></tr>
+        <tr class="total"><td>Nettolohn</td><td></td><td></td><td class="right num">{{ w.nettolohn|chf }}</td></tr>
+        {% if w.get('spesen') %}<tr><td>Spesen (effektiv)</td><td></td><td></td><td class="right num">{{ w.spesen|chf }}</td></tr>{% endif %}
+        <tr class="total"><td>Auszahlung</td><td></td><td></td><td class="right num">{{ w.get('auszahlung', w.nettolohn)|chf }}</td></tr>
       </tbody>
     </table></div>
     {% if closed and slip.ag %}
@@ -53,7 +55,7 @@
         <div class="field"><label>Korrektur (CHF, ±)</label><input class="input num" name="korrektur" value="{{ i.korrektur if i.korrektur else '' }}" placeholder="0.00"></div>
         <div class="field"><label>Text der Korrektur</label><input class="input" name="korrektur_text" value="{{ i.korrektur_text or '' }}" placeholder="z.B. Spesen"></div>
         {% if tarif %}
-        <div class="field wide"><span class="lbl">Quellensteuer nach Tarif (KS 45 Ziff. 6.4/6.5): eines der beiden Felder füllen</span></div>
+        <div class="field wide"><span class="lbl">Quellensteuer: ohne Eingabe monatliche Auszahlung bei einem Arbeitgeber. Bei mehreren Arbeitgebern Gesamtpensum angeben; Sonderfälle mit geprüftem satzbestimmendem Einkommen (monatlicher Wert).</span></div>
         <div class="field"><label>Gesamtpensum % (alle Arbeitgeber)</label><input class="input num" name="qst_gesamtpensum" value="{{ i.qst_gesamtpensum or '' }}" placeholder="z.B. 80"></div>
         <div class="field"><label>Satzbestimmendes Einkommen</label><input class="input num" name="qst_satzbestimmend" value="{{ i.qst_satzbestimmend or '' }}" placeholder="CHF"></div>
         {% endif %}

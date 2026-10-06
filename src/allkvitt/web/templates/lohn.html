@@ -5,10 +5,18 @@
 <div class="topbar">
   <div><h1>Lohn {{ MONTHS[m] }} {{ y }}</h1><div class="sub">Entwürfe rechnen jederzeit neu; abgeschlossene Abrechnungen sind eingefroren und verbucht.</div></div>
   <div class="actions">
+    <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for year in years|reverse %}<option value="{{ year }}" {{ 'selected' if year == y }}>{{ year }}</option>{% endfor %}</select></form>
     <form method="get"><select class="input" name="monat" onchange="this.form.submit()" aria-label="Monat">{% for mo in months|reverse %}<option value="{{ mo }}" {{ 'selected' if mo == monat }}>{{ MONTHS[mo[5:]|int] }} {{ mo[:4] }}</option>{% endfor %}</select></form>
     <form hx-post="/lohn/lauf" hx-target="find .errors"><input type="hidden" name="monat" value="{{ monat }}"><button class="btn primary" type="submit">Lohnlauf {{ MONTHS[m] }} rechnen</button>{{ errors() }}</form>
   </div>
 </div>
+<details class="panel drawer" id="monate" open>
+  <summary><header style="border-bottom:0"><h2>Monatsübersicht {{ y }}</h2><span class="hint">Alle zwölf Monate · Eintritt und Austritt berücksichtigt</span></header></summary>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Monat</th><th>Status</th><th class="right">Nicht gerechnet</th><th class="right">Entwürfe</th><th class="right">Abgeschlossen</th></tr></thead>
+    <tbody>{% for mo in month_status %}<tr class="row"><td><a class="link" href="/lohn?monat={{ mo.monat }}">{{ MONTHS[mo.m] }}</a></td><td><span class="pill {{ 'ok' if mo.status == 'abgeschlossen' else 'muted' if mo.status == 'keine Löhne' else 'warn' }}">{{ mo.status }}</span></td><td class="right num">{{ mo.fehlend }}</td><td class="right num">{{ mo.entwuerfe }}</td><td class="right num">{{ mo.abgeschlossen }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</details>
 <div class="panel">
   {% if rows %}
   <div class="tablewrap"><table class="ledger">
@@ -21,6 +29,7 @@
         <td>{% if s %}{{ status_pill(s.status) }}{% for w in r.warnings %} <span class="pill warn" title="{{ w }}">{{ w.split(':')[0] }}</span>{% endfor %}{% else %}<span class="pill muted">nicht gerechnet</span>{% endif %}</td>
         {% if s %}<td class="right num">{{ s.werte.bruttolohn|chf }}</td><td class="right num">{{ s.werte.total_abzuege|minus }}</td><td class="right num">{{ s.werte.nettolohn|chf }}</td>{% else %}<td></td><td></td><td></td>{% endif %}
         <td class="right"><span class="rowactions">
+          <a class="btn small" href="/lohn/lohnkonto/{{ y }}/{{ e.nummer }}">Lohnkonto / Lohnausweis</a>
           {% if s %}<a class="btn small" href="/lohn/abrechnung/{{ monat }}/{{ e.nummer }}">Öffnen</a>
             {% if s.status != 'abgeschlossen' %}<form hx-post="/lohn/abrechnung/{{ monat }}/{{ e.nummer }}/abschliessen" hx-target="find .errors" {% if r.warnings %}hx-confirm="{{ r.warnings|join('\n') }}\n\nTrotzdem abschliessen?"{% endif %}><button class="btn small primary" type="submit">Abschliessen</button>{{ errors() }}</form>{% endif %}
           {% else %}<form hx-post="/lohn/lauf" hx-target="find .errors"><input type="hidden" name="monat" value="{{ monat }}"><input type="hidden" name="mitarbeiter" value="{{ e.nummer }}"><button class="btn small" type="submit">Rechnen</button>{{ errors() }}</form>{% endif %}
@@ -30,7 +39,19 @@
     </tbody>
     <tfoot><tr><td colspan="3">Total {{ MONTHS[m] }}</td><td class="right num">{{ totals.bruttolohn|chf }}</td><td class="right num">{{ totals.total_abzuege|minus }}</td><td class="right num total">{{ totals.nettolohn|chf }}</td><td></td></tr></tfoot>
   </table></div>
-  {% else %}<div class="empty">Noch keine Mitarbeitenden. <a class="link" href="/lohn/mitarbeiter?neu=1">Mitarbeiter erfassen</a></div>{% endif %}
+  {% else %}<div class="empty">Keine Mitarbeitenden mit Anstellung oder Abrechnung in diesem Monat. <a class="link" href="/lohn/mitarbeiter">Mitarbeitende anzeigen</a></div>{% endif %}
+</div>
+<div class="panel body">
+  <h2>Löhne an die Bank übergeben</h2>
+  {% if zahlung %}
+  <p>{{ zahlung.anzahl }} Zahlungen · CHF {{ zahlung.total|chf }} · Ausführung {{ zahlung.ausfuehrung|datum }}</p>
+  <a class="btn primary" href="/datei/{{ zahlung.datei|urlq }}" download>Bankdatei herunterladen (pain.001)</a>
+  <p class="small muted">Diese Datei einmal im E-Banking hochladen und freigeben. Erneutes Herunterladen liefert denselben Auftrag. Die Datei ist keine Zahlungsbestätigung.</p>
+  <form hx-post="/lohn/zahlung/zurueckziehen" hx-target="find .errors" hx-confirm="Ein bereits hochgeladener Auftrag muss zuerst bei der Bank storniert werden. Ist sichergestellt, dass dieser Auftrag nicht ausgeführt wird?"><input type="hidden" name="monat" value="{{ monat }}"><button class="btn small" type="submit">Zahlungsdatei zurückziehen</button>{{ errors() }}</form>
+  {% else %}
+  <p class="small muted">Alle Abrechnungen zuerst abschliessen. IBAN und Adresse bei den Mitarbeitenden ergänzen. Die Auszahlung enthält rückerstattete Spesen.</p>
+  <form hx-post="/lohn/zahlung/erstellen" hx-target="find .errors"><input type="hidden" name="monat" value="{{ monat }}"><label>Ausführungsdatum <input class="input" name="datum" type="date" required value="{{ today().isoformat() }}"></label> <button class="btn primary" type="submit">Bankdatei erstellen</button>{{ errors() }}</form>
+  {% endif %}
 </div>
 <details class="panel drawer" id="spesen" {{ 'open' if spesen|rejectattr('lohn')|list }}>
   <summary><header style="border-bottom:0"><h2>Spesen</h2><span class="hint">{{ spesen|rejectattr('lohn')|list|length }} offen · privat bezahlte Auslagen, Rückzahlung mit dem nächsten Lohn</span></header></summary>

@@ -3,19 +3,26 @@
 {% block title %}Lohnkonto {{ emp.vorname }} {{ year }}{% endblock %}
 {% block main %}
 <div class="topbar">
-  <div><div class="crumbs"><a href="/lohn/mitarbeiter">Mitarbeitende</a> /</div><h1>Lohnkonto {{ emp.vorname }} {{ emp.nachname }} {{ year }}</h1><div class="sub">Nur abgeschlossene Monate · {{ la.entwuerfe }} Entwurf/Entwürfe nicht enthalten</div></div>
+  <div><div class="crumbs"><a href="/lohn/mitarbeiter?jahr={{ year }}">Mitarbeitende</a> /</div><h1>Lohnkonto {{ emp.vorname }} {{ emp.nachname }} {{ year }}</h1><div class="sub">Beträge aus abgeschlossenen Abrechnungen · {{ la.entwuerfe }} Entwurf/Entwürfe nicht enthalten</div></div>
   <div class="actions">
+    <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in years|reverse %}<option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
     {% if la_pdf %}<a class="btn" href="/datei/{{ la_pdf|urlq }}" target="_blank">Lohnausweis {{ year }} öffnen</a>{% endif %}
-    <form hx-post="/lohn/lohnausweis/{{ year }}/{{ emp.nummer }}" hx-target="find .errors"><button class="btn primary" type="submit" {{ 'disabled' if not la.monate }}>Lohnausweis {{ 'neu ' if la_pdf }}erstellen</button>{{ errors() }}</form>
+    <form hx-post="/lohn/lohnausweis/{{ year }}/{{ emp.nummer }}" hx-target="find .errors"><button class="btn primary" type="submit" {{ 'disabled' if not la.vollstaendig }}>Lohnausweis {{ 'neu ' if la_pdf }}erstellen</button>{{ errors() }}</form>
   </div>
 </div>
+{% if not la.vollstaendig %}<div class="alert warn">
+  <strong>Lohnausweis noch nicht bereit.</strong> Alle Abrechnungen der Anstellung im gewählten Jahr müssen vorhanden und abgeschlossen sein.
+  {% if la.fehlende_monate %}<p>Nicht gerechnet: {% for mo in la.fehlende_monate %}<a class="link" href="/lohn?monat={{ year }}-{{ '%02d'|format(mo) }}">{{ MONTHS[mo] }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+  {% if la.offene_monate %}<p>Nicht abgeschlossen: {% for mo in la.offene_monate %}<a class="link" href="/lohn/abrechnung/{{ year }}-{{ '%02d'|format(mo) }}/{{ emp.nummer }}">{{ MONTHS[mo] }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+  {% if not la.monate %}<p>Noch keine abgeschlossenen Abrechnungen.</p>{% endif %}
+  {% if la_pdf %}<p>Der vorhandene PDF-Lohnausweis wurde früher erstellt. Er bestätigt den aktuellen Abschlussstand nicht.</p>{% endif %}
+</div>{% endif %}
 {% set keys = [("bruttolohn","Brutto"),("ahv","AHV"),("alv","ALV"),("uvg","NBU"),("ktg","KTG"),("bvg","BVG"),("quellensteuer","QST"),("kinderzulagen","KZ"),("korrektur","Korr."),("nettolohn","Netto")] %}
 <div class="panel">
   <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Monat</th>{% for k, l in keys %}<th class="right">{{ l }}</th>{% endfor %}</tr></thead>
-    <tbody>{% for mo, vals in lk.monate.items() %}<tr class="row"><td><a class="link" href="/lohn/abrechnung/{{ year }}-{{ '%02d'|format(mo) }}/{{ emp.nummer }}">{{ MONTHS[mo] }}</a></td>{% for k, l in keys %}<td class="right num">{{ vals[k]|chf(true) }}</td>{% endfor %}</tr>
-    {% else %}<tr><td colspan="11" class="empty">Noch keine abgeschlossenen Monate in {{ year }}.</td></tr>{% endfor %}</tbody>
-    <tfoot><tr><td>Total</td>{% for k, l in keys %}<td class="right num {{ 'total' if k == 'nettolohn' }}">{{ lk.total[k]|chf(true) }}</td>{% endfor %}</tr></tfoot>
+    <thead><tr><th>Monat</th><th>Status</th>{% for k, l in keys %}<th class="right">{{ l }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for mo in la.monatsstatus %}{% set vals = lk.monate.get(mo.monat) %}<tr class="row"><td>{% if mo.status == 'ausserhalb Anstellung' %}{{ MONTHS[mo.monat] }}{% else %}<a class="link" href="{% if mo.status == 'nicht gerechnet' %}/lohn?monat={{ year }}-{{ '%02d'|format(mo.monat) }}{% else %}/lohn/abrechnung/{{ year }}-{{ '%02d'|format(mo.monat) }}/{{ emp.nummer }}{% endif %}">{{ MONTHS[mo.monat] }}</a>{% endif %}</td><td><span class="pill {{ 'ok' if mo.status == 'abgeschlossen' else 'muted' if mo.status == 'ausserhalb Anstellung' else 'warn' }}">{{ mo.status }}</span></td>{% for k, l in keys %}<td class="right num">{{ vals[k]|chf(true) if vals else '' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    <tfoot><tr><td colspan="2">Total abgeschlossen</td>{% for k, l in keys %}<td class="right num {{ 'total' if k == 'nettolohn' }}">{{ lk.total[k]|chf(true) }}</td>{% endfor %}</tr></tfoot>
   </table></div>
 </div>
 <div class="grid2 even">

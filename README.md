@@ -248,7 +248,7 @@ allkvitt employee add --vorname Lea --nachname Muster --monatslohn 6000 --pensum
 allkvitt payroll run 2026-01                     # Entwürfe für alle Mitarbeitenden
 allkvitt payroll run 2026-01 --mitarbeiter M0001 --qst-gesamtpensum 80
 allkvitt payroll close 2026-01 M0001             # einfrieren, verbuchen, PDF
-allkvitt payroll lohnausweis 2026 M0001          # Formular 11, ausgefüllt
+allkvitt payroll lohnausweis 2026 M0001          # nach Abschluss aller Anstellungsmonate
 ```
 **Spesen:** Auslagen, die Mitarbeitende privat bezahlt haben (Quittung unter Prüfen hochladen und «Privat bezahlt
 von …» wählen, oder Lohn → Spesen, oder `allkvitt spesen add`), werden gegen 2210 «Sonstige kurzfristige Verbindlichkeiten» (`konten.spesen`) gebucht
@@ -257,6 +257,14 @@ im Lohnausweis unter Ziffer 13.1.2, Reisespesen sind mit dem Kreuz in 13.1.1 abg
 
 Lohnmeldungen über ELM (Swissdec) gibt es nicht: übermitteln darf nur von Swissdec zertifizierte Lohnsoftware.
 Lohnausweis (Formular 11) und Lohnkonto entstehen als PDF.
+In der Oberfläche zeigt **Lohn** für das gewählte Jahr alle zwölf Monate mit fehlenden,
+offenen und abgeschlossenen Abrechnungen. **Lohn → Mitarbeitende → Lohnkonto / Lohnausweis**
+bietet die Jahresauswahl und die Erstellung. Ein Lohnausweis lässt sich erst erstellen,
+wenn alle Monate der erfassten Anstellung im Jahr gerechnet und abgeschlossen sind;
+Eintritt und Austritt begrenzen den Zeitraum. Fehlende Datumsangaben gelten als Anstellung
+ab Jahresanfang bzw. bis Jahresende. Das gilt auch bei Stundenlohn; Monate ohne Lohn
+benötigen dann eine geprüfte, abgeschlossene Nullabrechnung. Offene Abrechnungen werden
+auch ausserhalb dieses Zeitraums berücksichtigt und müssen abgeschlossen werden.
 
 
 ### Abschluss

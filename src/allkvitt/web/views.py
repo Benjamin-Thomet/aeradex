@@ -174,10 +174,8 @@ def draft_rows(book: Book) -> list[dict]:
 def payslip_warnings(slip: dict, emp: dict) -> list[str]:
     warnings = []
     w = slip.get("werte") or {}
-    inputs = slip.get("eingaben") or {}
-    if payroll.uses_tarif(emp) and not Decimal(str(w.get("quellensteuer") or 0)):
-        if not (inputs.get("qst_satzbestimmend") or inputs.get("qst_gesamtpensum")):
-            warnings.append("QST-Eingabe fehlt: ohne satzbestimmendes Einkommen oder Gesamtpensum wird keine Quellensteuer abgezogen")
+    if payroll.uses_tarif(emp) and 'qst_basis' not in w:
+        warnings.append("Ältere QST-Berechnung: Entwurf neu rechnen; abgeschlossene Abrechnung prüfen")
     if not Decimal(str(w.get("bruttolohn") or 0)):
         warnings.append("Bruttolohn ist 0")
     return warnings
@@ -739,35 +737,73 @@ async def kunde_speichern(ui: UI, request: Request):
 
 # ---------- Lohn ----------
 
-def payroll_months(book: Book) -> list[str]:
-    months = sorted({f"{p['jahr']}-{int(p['monat']):02d}" for p in payroll.payslips(book)})
-    this = f"{date.today().year}-{date.today().month:02d}"
-    if this not in months:
-        months.append(this)
-    return sorted(months)
+def payroll_years(book: Book, selected: int | None = None) -> list[int]:
+    years = set(book.years()) | {date.today().year}
+    years.update(int(p["jahr"]) for p in payroll.payslips(book))
+    if selected is not None:
+        years.add(selected)
+    return list(range(min(years), max(years) + 1))
+
+
+def payroll_months(book: Book, year: int | None = None) -> list[str]:
+    return [f"{y}-{m:02d}" for y in ([year] if year is not None else payroll_years(book)) for m in range(1, 13)]
 
 
 async def lohn(ui: UI, request: Request):
     book = ui.book()
-    months = payroll_months(book)
-    monat = request.query_params.get("monat") or next((m for m in months if any(
-        p.get("status") != "abgeschlossen" for p in payroll.payslips(book) if f"{p['jahr']}-{int(p['monat']):02d}" == m)),
-        months[-1])
+    from ..lohnausweis import employment_months
+    all_slips = payroll.payslips(book)
+    requested = request.query_params.get("monat")
+    y = int(requested.split("-")[0]) if requested else int(request.query_params.get("jahr") or date.today().year)
+    months = payroll_months(book, y)
+    monat = requested or next((f"{y}-{int(p['monat']):02d}" for p in all_slips
+                              if int(p["jahr"]) == y and p.get("status") != "abgeschlossen"),
+                             f"{y}-{date.today().month:02d}")
     y, m = (int(x) for x in monat.split("-"))
     emps = payroll.employees(book)
-    slips = {p["mitarbeiter"]: p for p in payroll.payslips(book, y) if int(p["monat"]) == m}
+    employed = {nr: employment_months(emp, y) for nr, emp in emps.items()}
+    year_slips = [p for p in all_slips if int(p["jahr"]) == y]
+    slips = {p["mitarbeiter"]: p for p in year_slips if int(p["monat"]) == m}
+    month_status = []
+    for mo in range(1, 13):
+        entries = {p["mitarbeiter"]: p for p in year_slips if int(p["monat"]) == mo}
+        expected = {nr for nr, months_of_employment in employed.items() if mo in months_of_employment}
+        missing = len(expected - entries.keys())
+        drafts = sum(p.get("status") != "abgeschlossen" for p in entries.values())
+        closed = sum(p.get("status") == "abgeschlossen" for p in entries.values())
+        status = "nicht gerechnet" if missing else "Entwurf" if drafts else "abgeschlossen" if closed else "keine Löhne"
+        month_status.append({"monat": f"{y}-{mo:02d}", "m": mo, "status": status,
+                             "fehlend": missing, "entwuerfe": drafts, "abgeschlossen": closed})
     rows = []
     for nr, emp in emps.items():
         slip = slips.get(nr)
-        if not slip and not emp.get("aktiv", True):
+        if not slip and m not in employed[nr]:
             continue
         rows.append({"emp": emp, "slip": slip, "warnings": payslip_warnings(slip, emp) if slip else []})
     totals = {k: sum((Decimal(str(r["slip"]["werte"][k])) for r in rows if r["slip"]), ZERO)
               for k in ("bruttolohn", "total_abzuege", "nettolohn")}
-    from .. import spesen as sp
+    from .. import spesen as sp, payroll_payments
     expense_rows = sp.summary(book)
     return ui.render(request, "lohn.html", spesen=expense_rows, accounts=account_options(book), book=book, monat=monat, months=months, rows=rows, totals=totals,
-                     y=y, m=m)
+                     y=y, m=m, years=payroll_years(book, y), month_status=month_status,
+                     zahlung=payroll_payments.active(book, y, m))
+
+
+async def lohnzahlung(ui: UI, request: Request):
+    f = await request.form()
+    monat = f.get('monat', '')
+    if request.path_params['aktion'] == 'zurueckziehen':
+        return await act(request, api.payroll_payment_cancel, f'/lohn?monat={monat}', ui.book(), monat)
+    return await act(request, api.payroll_payment_export, f'/lohn?monat={monat}', ui.book(), monat, f.get('datum'))
+
+
+async def qst_importieren(ui: UI, request: Request):
+    f = await request.form()
+    try:
+        year = int(f.get('jahr', ''))
+    except ValueError:
+        return fail('Ungültiges Tarifjahr')
+    return await act(request, api.qst_sync, '/lohn/mitarbeiter', ui.book(), f.get('kanton', ''), year)
 
 
 async def lohnlauf(ui: UI, request: Request):
@@ -814,13 +850,16 @@ async def abrechnung_aktion(ui: UI, request: Request):
 
 async def mitarbeiter(ui: UI, request: Request):
     book = ui.book()
-    from .. import qst
+    year = int(request.query_params.get("jahr") or date.today().year)
+    from .. import qst, qst_estv
+    imported = [(p.stem[:2], int(p.stem[3:])) for p in (book.root / 'lohn' / 'qst_tarife').glob('??-????.json')]
     return ui.render(request, "mitarbeiter.html", book=book, emps=payroll.employees(book),
                      edit=request.query_params.get("edit"), neu=request.query_params.get("neu"),
-                     tarife=qst.available())
+                     tarife=sorted(set(qst.available() + imported)), kantone=qst_estv.CANTONS,
+                     year=year, years=payroll_years(book, year))
 
 
-EMP_TEXT = ("vorname", "nachname", "strasse", "nr", "plz", "ort", "ahv_nr", "geburtsdatum", "eintritt", "austritt", "lohnart")
+EMP_TEXT = ("vorname", "nachname", "strasse", "nr", "plz", "ort", "ahv_nr", "geburtsdatum", "eintritt", "austritt", "lohnart", "iban", "land")
 EMP_NUM = ("monatslohn", "pensum", "stundenlohn", "standard_stunden", "vollzeit_stunden_woche", "bvg_betrag",
            "ag_bvg_betrag", "kinderzulagen", "qst_satz")
 
@@ -834,11 +873,11 @@ async def mitarbeiter_speichern(ui: UI, request: Request):
             fields[k] = str(parse_amount(raw))
     if (f.get("ferienzuschlag") or "").strip():
         fields["ferienzuschlag_satz"] = str(parse_amount(f.get("ferienzuschlag")) / 100)
-    if (f.get("qst_satz_pct") or "").strip():
-        fields["qst_satz"] = str(parse_amount(f.get("qst_satz_pct")) / 100)
+    fields["qst_satz"] = str(parse_amount(f.get("qst_satz_pct")) / 100) if (f.get("qst_satz_pct") or "").strip() else "0"
     fields["ferien_inbegriffen"] = f.get("ferien_inbegriffen") == "1"
     code = (f.get("qst_code") or "").strip().upper()
     if code:
+        fields["qst_satz"] = "0"
         kanton, _, jahr = (f.get("qst_tabelle") or "").partition("-")
         fields["qst"] = {"kanton": kanton, "jahr": int(jahr or 0), "code": code}
     else:
@@ -860,12 +899,16 @@ async def mitarbeiter_speichern(ui: UI, request: Request):
 async def lohnkonto(ui: UI, request: Request):
     book = ui.book()
     year, nr = int(request.path_params["jahr"]), request.path_params["nr"]
+    selected = int(request.query_params.get("jahr") or year)
+    if selected != year:
+        return RedirectResponse(f"/lohn/lohnkonto/{selected}/{nr}", status_code=303)
     lk = payroll.lohnkonto(book, year, nr)
     emp = payroll.employee(book, nr)
     from .. import lohnausweis
     la = lohnausweis.annual_totals(book, year, nr)
     la_path = book.root / "lohnausweise" / str(year) / f"{nr}.pdf"
     return ui.render(request, "lohnkonto.html", book=book, lk=lk, emp=emp, year=year, la=la,
+                     years=payroll_years(book, year),
                      la_pdf=book.rel(la_path) if la_path.exists() else None,
                      ag_order=payroll.AG_ORDER, ag_label=payroll.AG_LABEL)
 
@@ -1879,6 +1922,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/kreditoren/lieferanten/neu", h(lieferant_speichern), methods=["POST"]),
         Route("/kreditoren/lieferanten/{nr:str}", h(lieferant_speichern), methods=["POST"]),
         Route("/lohn", h(lohn)),
+        Route("/lohn/zahlung/{aktion:str}", h(lohnzahlung), methods=["POST"]),
+        Route("/lohn/qst-import", h(qst_importieren), methods=["POST"]),
         Route("/lohn/lauf", h(lohnlauf), methods=["POST"]),
         Route("/lohn/abrechnung/{monat:str}/{nr:str}", h(abrechnung)),
         Route("/lohn/abrechnung/{monat:str}/{nr:str}/{aktion:str}", h(abrechnung_aktion), methods=["POST"]),

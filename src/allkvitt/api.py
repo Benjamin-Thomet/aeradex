@@ -434,13 +434,11 @@ def lohnkonto(book: Book, jahr: int, mitarbeiter: str) -> dict:
 def lohnausweis_create(book: Book, jahr: int, mitarbeiter: str) -> dict:
     _guard(book)
     totals = lohnausweis.annual_totals(book, jahr, mitarbeiter)
-    if not totals["monate"]:
-        raise BookError(f"Keine abgeschlossenen Lohnabrechnungen {jahr} für {mitarbeiter}")
+    lohnausweis.require_complete(totals, jahr, mitarbeiter)
     path = book.root / "lohnausweise" / str(jahr) / f"{mitarbeiter}.pdf"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(lohnausweis.build_pdf(book, jahr, mitarbeiter))
-    warn = f" ({totals['entwuerfe']} Entwurf/Entwürfe nicht berücksichtigt)" if totals["entwuerfe"] else ""
-    return _done(book, f"Lohnausweis {jahr} für {mitarbeiter} erstellt{warn}", [path],
+    return _done(book, f"Lohnausweis {jahr} für {mitarbeiter} erstellt", [path],
                  ziffern=totals, pdf=book.rel(path))
 
 
@@ -607,7 +605,7 @@ def employee_update(book: Book, nummer: str, **fields) -> dict:
     nr = nummer
     emp = payroll.employee(book, nr)
     allowed = {"vorname", "nachname", "ahv_nr", "geburtsdatum", "eintritt", "austritt", "lohnart",
-               "ferien_inbegriffen", "qst", "aktiv", *EMPLOYEE_NUMERIC, *_ADDRESS_KEYS}
+               "ferien_inbegriffen", "qst", "aktiv", "iban", *EMPLOYEE_NUMERIC, *_ADDRESS_KEYS}
     unknown = set(fields) - allowed
     if unknown:
         raise BookError(f"Unbekannte Felder: {', '.join(sorted(unknown))}")
@@ -1289,6 +1287,8 @@ def payslip_inputs(book: Book, monat: str, mitarbeiter: str, eingaben: dict) -> 
     meta["eingaben"] = {k: eingaben.get(k) for k in allowed}
     meta["eingaben"]["korrektur"] = meta["eingaben"]["korrektur"] or 0
     meta["eingaben"]["korrektur_text"] = meta["eingaben"]["korrektur_text"] or ""
+    emp = payroll.employee(book, mitarbeiter)
+    payroll.calculate(emp, payroll.config(book), y, m, meta["eingaben"], payroll._tariff(book, emp, y))
     write_frontmatter(slip["_pfad"], meta, body)
     results = payroll.run(book, y, m, mitarbeiter)
     w = results[0][0]["werte"]
@@ -1716,3 +1716,38 @@ def budget_from_prior(book: Book, jahr: int, prozent=0, basis: int | None = None
 
 for _name in ("report_template_save", "report_template_delete", "report_comment_save", "budget_set", "budget_grid_save", "budget_from_prior"):
     globals()[_name] = _locked(globals()[_name])
+
+
+@_locked
+def payroll_payment_export(book: Book, monat: str, ausfuehrung: str) -> dict:
+    from . import payroll_payments
+    _guard(book)
+    y, m = _ym(monat)
+    info, paths = payroll_payments.create(book, y, m, ausfuehrung)
+    return _done(book, f"Lohnzahlungsdatei {monat} bereit", paths, zahlung=info)
+
+
+@_locked
+def payroll_payment_cancel(book: Book, monat: str) -> dict:
+    from . import payroll_payments
+    _guard(book)
+    y, m = _ym(monat)
+    paths = payroll_payments.cancel(book, y, m)
+    return _done(book, f"Lohnzahlungsdatei {monat} zurückgezogen (Bankauftrag separat stornieren)", paths)
+
+
+@_locked
+def qst_sync(book: Book, kanton: str, jahr: int) -> dict:
+    """Download official tariffs, validate all requested cantons before writing."""
+    import json
+    from . import qst_estv
+    _guard(book)
+    cantons = qst_estv.CANTONS if kanton.upper() == 'ALLE' else [kanton.upper()]
+    tables = [qst_estv.download(k, jahr) for k in cantons]
+    paths = []
+    for table in tables:
+        path = qst_estv.table_path(book, table['kanton'], jahr)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(table, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
+        paths.append(path)
+    return _done(book, f"ESTV-Quellensteuertarife {jahr}: {', '.join(cantons)} importiert", paths)

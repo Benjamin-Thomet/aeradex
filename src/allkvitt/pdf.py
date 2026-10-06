@@ -323,8 +323,10 @@ def payslip_pdf(book: Book, meta: dict, emp: dict) -> bytes:
     if Decimal(str(w.get("bvg") or 0)):
         rows.append(["BVG", "", "", f"−{chf(w['bvg'])}"])
     if Decimal(str(w.get("quellensteuer") or 0)):
+        if w.get("qst_code"):
+            rows.append(["Satzbestimmendes Einkommen", chf(w.get("qst_satzbestimmend")), "", ""])
         rows.append([f"Quellensteuer {w.get('qst_code') or ''}".strip(),
-                     chf(w.get("qst_satzbestimmend")) if w.get("qst_code") else chf(w["bruttolohn"]),
+                     chf(w.get("qst_basis", w["bruttolohn"])),
                      f"{Decimal(str(w['qst_satz'])) * 100:.2f} %", f"−{chf(w['quellensteuer'])}"])
     rows.append(["Total Abzüge", "", "", f"−{chf(w['total_abzuege'])}"])
     abz_row = len(rows) - 1

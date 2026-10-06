@@ -56,6 +56,7 @@ def test_open_claim_can_be_withdrawn(book):
 
 
 def test_lohnausweis_other_expenses(book):
+    api.employee_update(book, "M0001", eintritt="2026-03-01", austritt="2026-03-31")
     api.expense_add(book, "M0001", "2026-03-10", "Fachbuch", "120.00", "5810", art="uebrige")
     api.expense_add(Book(book.root), "M0001", "2026-03-12", "Hotel", "180.00", "5820", art="reise")
     api.payroll_run(Book(book.root), "2026-03")

@@ -24,7 +24,7 @@ from pathlib import Path
 
 TARIF_DIR = Path(__file__).resolve().parent / "data" / "qst_tarife"
 
-CODE_RE = re.compile(r"^([ABCH])([0-5])([YN])$")
+CODE_RE = re.compile(r"^([ABCDEFGHLMNPQRSTUV])([0-9])([YN])$")
 KIST_LABEL = {"Y": "mit Kirchensteuer", "N": "ohne Kirchensteuer"}
 
 
@@ -38,8 +38,8 @@ def parse_code(code: str) -> tuple[str, int, str]:
     if not match:
         raise UnknownTariff(f"Ungültiger Tarifcode: {code!r}")
     family, children, kist = match.group(1), int(match.group(2)), match.group(3)
-    if family == "H" and children == 0:
-        raise UnknownTariff("Tarif H gilt für Alleinerziehende und beginnt bei einem Kind")
+    if family in {"H", "P", "U"} and children == 0:
+        raise UnknownTariff(f"Tarif {family} beginnt bei einem Kind")
     return family, children, kist
 
 
@@ -98,9 +98,9 @@ def codes(kanton: str, jahr: int) -> list[tuple[str, str]]:
         if not block:
             continue
         first = block.get("erste_kinderspalte", 0)
-        width = len(block["stufen"]["Y"][0]) - 2
+        width = len(next(iter(block["stufen"].values()))[0]) - 2
         for children in range(first, first + width):
-            for kist in ("Y", "N"):
+            for kist in block["stufen"]:
                 kids = ("ohne Kind" if children == 0
                         else "1 Kind" if children == 1 else f"{children} Kinder")
                 out.append((f"{family}{children}{kist}",
