@@ -8,9 +8,10 @@ import io
 import json
 from decimal import Decimal
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from zipfile import ZipFile, BadZipFile
 
+from . import __version__
 from .book import BookError
 
 CANTONS = tuple('AG AI AR BE BL BS FR GE GL GR JU LU NE NW OW SG SH SO SZ TG TI UR VD VS ZG ZH'.split())
@@ -64,7 +65,9 @@ def download(canton, year):
         raise BookError('ESTV-Import: gültigen Kanton und Jahr ab 2025 wählen')
     url = f'https://www.estv2.admin.ch/qst/{year}/loehne/tar{year % 100:02d}{canton.lower()}.zip'
     try:
-        with urlopen(url, timeout=30) as response:
+        # ESTV answers the default Python-urllib User-Agent with 403 Forbidden
+        request = Request(url, headers={'User-Agent': f'allkvitt/{__version__}'})
+        with urlopen(request, timeout=30) as response:
             payload = response.read(MAX_BYTES + 1)
         if len(payload) > MAX_BYTES:
             raise BookError('ESTV-Download zu gross')
