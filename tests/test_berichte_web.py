@@ -27,7 +27,7 @@ def client(tmp_path):
 
 def test_pages_and_exports(client):
     c = client
-    assert 'href="/berichte"' in c.get("/").text                                   # in the top navigation
+    assert 'href="/berichte"' in c.get("/journal").text                            # tab under Buchhaltung
     for q in ("typ=erfolgsrechnung&jahr=2026&spalten=monat&vergleich=vorperiode&detail=1",
               "typ=bilanz&jahr=2026&periode=q1", "typ=geldfluss&jahr=2026", "typ=kennzahlen&jahr=2026",
               "typ=debitoren&jahr=2026", "typ=kreditoren&jahr=2026", "typ=umsatz&jahr=2026&nach=monat"):

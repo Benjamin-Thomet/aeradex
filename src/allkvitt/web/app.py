@@ -167,7 +167,8 @@ class UI:
         except Exception:
             ctx.setdefault("plugin_pages", [])
         ctx.setdefault("navigation", navigation(request.url.path, ctx["nav"], ctx["plugin_pages"],
-                                                ctx["vat"].get("methode", "") if isinstance(ctx["vat"], dict) else ""))
+                                                ctx["vat"].get("methode", "") if isinstance(ctx["vat"], dict) else "",
+                                                str(ctx.get("status") or request.query_params.get("status") or "")))
         html = self.env.get_template(template).render(
             request=request, book=book, settings=book.settings, csrf=getattr(request.state, "csrf", self.csrf),
             flash=flash, path=request.url.path, user=getattr(request.state, "user", None), **ctx)
@@ -180,44 +181,48 @@ class UI:
         return HTMLResponse(self.env.get_template(template).render(csrf=self.csrf, **ctx))
 
 
-# The top navigation: (key, label, url, badge key, shortcut, [tabs]); a tab is (key, label, url, extra prefixes).
-# Order follows the work: the day (review, bank, journal), the sub-ledgers, then reports and the year.
+# The top navigation: (key, label, url, badge key, shortcut, [tabs]); a tab is (key, label, url, extra prefixes)
+# or (key, label, url, extra prefixes, badge key). A tab url with `?status=…` is a status tab: it is on when the
+# page shows that status. Order follows the work: buying, selling, the bank, wages, then the books themselves.
 SECTIONS = [
-    ("uebersicht", "Übersicht", "/", "", "u", []),
-    ("pruefen", "Prüfen", "/pruefen", "pruefen", "p", []),
-    ("bank", "Bank", "/bank", "bank", "b", []),
-    ("journal", "Journal", "/journal", "", "j", []),
-    None,
-    ("debitoren", "Debitoren", "/debitoren", "", "d", [
-        ("rechnungen", "Rechnungen", "/debitoren", ()), ("kunden", "Kunden", "/debitoren/kunden", ()),
-        ("offene", "Offene Posten", "/debitoren/offene-posten", ()),
-        ("mahnungen", "Mahnungen", "/debitoren/mahnungen", ())]),
-    ("kreditoren", "Kreditoren", "/kreditoren", "", "k", [
-        ("rechnungen", "Rechnungen", "/kreditoren", ()),
-        ("offene", "Offene Posten", "/kreditoren/offene-posten", ()),
+    ("uebersicht", "Übersicht", "/", "todo", "u", []),
+    ("einkauf", "Einkauf", "/kreditoren", "einkauf", "k", [
+        ("entwurf", "Entwürfe", "/kreditoren?status=entwurf", ("/kreditoren/neu", "/eingang/quittung"), "einkauf"),
+        ("offen", "Offen", "/kreditoren?status=offen", ("/kreditoren/rechnung",)),
+        ("bezahlt", "Bezahlt", "/kreditoren?status=bezahlt", ()),
+        ("alle", "Alle", "/kreditoren?status=alle", ()),
         ("zahlungen", "Zahlungsläufe", "/kreditoren/zahlungen", ("/kreditoren/zahlungslauf",)),
-        ("lieferanten", "Lieferanten", "/kreditoren/lieferanten", ())]),
+        ("lieferanten", "Lieferanten", "/kreditoren/lieferanten", ()),
+        ("offene", "Offene Posten", "/kreditoren/offene-posten", ())]),
+    ("verkauf", "Verkauf", "/debitoren", "verkauf", "d", [
+        ("entwurf", "Entwürfe", "/debitoren?status=entwurf", ("/debitoren/extern",), "verkauf"),
+        ("offen", "Offen", "/debitoren?status=offen", ("/debitoren/rechnung", "/debitoren/neu")),
+        ("bezahlt", "Bezahlt", "/debitoren?status=bezahlt", ()),
+        ("alle", "Alle", "/debitoren?status=alle", ()),
+        ("kunden", "Kunden", "/debitoren/kunden", ()),
+        ("mahnungen", "Mahnungen", "/debitoren/mahnungen", ()),
+        ("offene", "Offene Posten", "/debitoren/offene-posten", ())]),
+    ("bank", "Bank", "/bank", "bank", "b", [
+        ("abgleichen", "Abgleichen", "/bank", (), "bank"), ("bewegungen", "Bewegungen", "/bank/bewegungen", ()),
+        ("regeln", "Regeln", "/bank/regeln", ()), ("abstimmung", "Abstimmung", "/bank/abstimmung", ())]),
     ("lohn", "Lohn", "/lohn", "entwuerfe", "l", [
         ("lauf", "Lohnlauf", "/lohn", ()),
         ("mitarbeiter", "Mitarbeitende", "/lohn/mitarbeiter", ("/lohn/lohnkonto", "/lohn/lohnausweis"))]),
-    None,
-    ("konten", "Konten", "/konten", "", "o", [
-        ("kontenplan", "Kontenplan", "/konten", ()), ("saldenliste", "Saldenliste", "/konten/saldenliste", ())]),
-    ("mwst", "MWST", "/mwst", "", "m", [
-        ("abrechnung", "Abrechnung", "/mwst", ()), ("abstimmung", "Jahresabstimmung", "/mwst/abstimmung", ())]),
-    ("abschluss", "Abschluss", "/abschluss", "", "a", [("jahresrechnung", "Jahresrechnung", "/abschluss", ())]),
-    ("berichte", "Berichte", "/berichte", "", "r", [
-        ("berichte", "Berichte", "/berichte", ()), ("budget", "Budget", "/berichte/budget", ())]),
+    ("buchhaltung", "Buchhaltung", "/journal", "vorschlaege", "j", [
+        ("journal", "Journal", "/journal", ()), ("vorschlaege", "Vorschläge", "/vorschlaege", (), "vorschlaege"),
+        ("kontenplan", "Kontenplan", "/konten", ()), ("saldenliste", "Saldenliste", "/konten/saldenliste", ()),
+        ("mwst", "MWST", "/mwst", ()), ("berichte", "Berichte", "/berichte", ()),
+        ("budget", "Budget", "/berichte/budget", ()), ("abschluss", "Abschluss", "/abschluss", ())]),
 ]
-
 
 def _under(path: str, prefix: str) -> bool:
     return path == prefix or (prefix != "/" and path.startswith(prefix.rstrip("/") + "/"))
 
 
-def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: str = "") -> dict:
+def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: str = "", status: str = "") -> dict:
     """The two navigation rows: sections (with badge and active flag), and the tabs of the active
-    section. All enabled plugin pages appear in a shared «Plugins» section."""
+    section. `status` is the status the page shows (for status tabs). All enabled plugin pages appear
+    in a shared «Plugins» section."""
     sections, active = [], None
     plugin_section = [("plugins", "Plugins", plugin_pages[0]["url"], "", "", [
         (pg["url"], pg["label"], pg["url"], ()) for pg in plugin_pages])] if plugin_pages else []
@@ -226,10 +231,12 @@ def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: st
             sections.append(None)
             continue
         key, label, url, badge, keyc, tabs = item
-        if key == "mwst" and vat_method in ("", "keine"):
-            continue
-        tabs = [{"key": k, "label": lb, "url": u, "prefixes": (u, *extra)} for k, lb, u, extra in tabs]
-        prefixes = [url] + [p for t in tabs for p in t["prefixes"]]
+        hidden = [t[2] for t in tabs if t[0] == "mwst" and vat_method in ("", "keine")]   # page still belongs here
+        tabs = [{"key": t[0], "label": t[1], "url": t[2], "base": t[2].split("?")[0],
+                 "status": t[2].split("?status=")[1] if "?status=" in t[2] else None,
+                 "prefixes": (t[2].split("?")[0], *t[3]), "badge": counts.get(t[4]) if len(t) > 4 else 0}
+                for t in tabs if t[2] not in hidden]
+        prefixes = [url, *hidden] + [p for t in tabs for p in t["prefixes"]]
         on = any(_under(path, p) for p in prefixes)
         entry = {"key": key, "label": label, "url": url, "badge": counts.get(badge) if badge else 0,
                  "kuerzel": keyc, "on": on,
@@ -238,9 +245,16 @@ def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: st
             active = entry
         sections.append(entry)
     if active:
-        # the tab whose prefix matches longest; a page below the section (a single invoice) → the first tab
-        best = max(((len(p), t) for t in active["tabs"] for p in t["prefixes"] if _under(path, p)),
-                   key=lambda x: x[0], default=(0, active["tabs"][0] if active["tabs"] else None))[1]
+        def score(t: dict) -> int:
+            # a status tab is on for its own list (by status) and for its extra prefixes (draft review, detail)
+            if t["status"] is not None:
+                if path == t["base"]:      # a status without a tab of its own (storniert …) → «Alle»
+                    return 1000 if t["status"] == status else (1 if t["status"] == "alle" else 0)
+                return max((len(p) for p in t["prefixes"][1:] if _under(path, p)), default=0)
+            return max((len(p) for p in t["prefixes"] if _under(path, p)), default=0)
+        top, best = max(((score(t), t) for t in active["tabs"]), key=lambda x: x[0], default=(0, None))
+        # a page below the section without a tab of its own → the first tab
+        best = best if top else (active["tabs"][0] if active["tabs"] else None)
         for t in active["tabs"]:
             t["on"] = t is best
     return {"bereiche": sections, "aktiv": active}
@@ -255,10 +269,17 @@ def nav_counts(book: Book) -> dict:
     drafts = [p for p in payroll.payslips(book) if p.get("status") != "abgeschlossen"]
     from .. import check
     from .. import bank
+    from .. import erfassung
     errors = sum(1 for i in check.run(book) if i.level == "fehler")
     bank_open = sum(1 for t in bank.transactions(book) if t["Status"] == "offen")
-    return {"inbox": len(files), "vorschlaege": len(proposals), "entwuerfe": len(drafts), "fehler": errors,
-            "bank": bank_open, "pruefen": len(files) + len(proposals) + len(drafts) + bank_open}
+    eingang = list(erfassung.drafts(book).values())
+    drafted = {d.get("datei") for d in eingang}
+    unread = sum(1 for p in files if f"inbox/{p.name}" not in drafted)
+    buying = sum(1 for d in eingang if d.get("art", "kreditor") in ("kreditor", "quittung"))
+    selling = sum(1 for d in eingang if d.get("art") == "debitor")
+    return {"inbox": unread, "vorschlaege": len(proposals), "entwuerfe": len(drafts), "fehler": errors,
+            "bank": bank_open, "einkauf": buying, "verkauf": selling,
+            "todo": unread + buying + selling + bank_open + len(proposals) + len(drafts)}
 
 
 def done(message: str, to: str, kind: str = "ok") -> Response:

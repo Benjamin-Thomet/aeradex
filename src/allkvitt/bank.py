@@ -561,8 +561,10 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
     {art, ziel, label, grund, sicher, …}; `sicher` ones can be taken in bulk.
 
     art: vorschlag (an agent's proposal for this movement), rechnung (open invoice), kreditor (open
-    supplier bill), quittung (a receipt draft paid with it), beleg (an existing booking, outside the
-    import's ±7 days), konto (book against an account known from earlier bookings or the supplier)."""
+    supplier bill), quittung (a receipt draft paid with it), regel (a bank rule recognises it), beleg (an
+    existing booking, outside the import's ±7 days), konto (book against an account known from earlier
+    bookings or the supplier). A suggestion with `pruefen` (a receipt without an account) cannot be taken
+    in one click; it points to the page where it is completed."""
     from . import erfassung, invoices as inv, kreditoren as kred
     from .journal import list_proposals
     txs = [t for t in transactions(book) if t["Status"] == "offen" and (ids is None or t["ID"] in ids)]
@@ -643,6 +645,7 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
                 ready = bool((d.get("konto") or {}).get("wert") or (d.get("positionen") or {}).get("zeilen"))
                 by_name = _name_in(erfassung.value(d, "name"), party, text)
                 found.append({"art": "quittung", "ziel": d["id"], "sicher": ready and by_name,
+                              **({} if ready else {"pruefen": f"/eingang/quittung?entwurf={d['id']}"}),
                               "label": f"Quittung {d['id']} · {erfassung.value(d, 'name') or d['datei']} buchen"
                                        + (f" auf {d['konto']['wert']}" if (d.get("konto") or {}).get("wert") else ""),
                               "grund": "gleicher Betrag, Datum ±5 Tage" + ("" if ready else " — Konto fehlt noch")})
@@ -653,8 +656,16 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
                 found.append({"art": "beleg", "ziel": beleg, "sicher": False,
                               "label": f"Mit Beleg {beleg} vom {datum:%d.%m.%Y} abgleichen",
                               "grund": "schon gebucht, gleicher Betrag"})
+        matched = any(f["art"] in ("rechnung", "kreditor", "quittung", "vorschlag") for f in found)
+        rule = None if matched else matching_rule(book, tx)
+        if rule is not None:                          # e.g. a rule added after the import
+            name = book.accounts[str(rule["konto"])].name if str(rule["konto"]) in book.accounts else ""
+            found.append({"art": "regel", "ziel": rule["id"], "sicher": True,
+                          "label": f"Regel {rule['id']} «{rule.get('name') or rule.get('gegenpartei') or rule.get('text')}»:"
+                                   f" auf {rule['konto']} {name} buchen",
+                          "grund": "wiederkehrende Bewegung, Regel erkennt sie"})
         key = party or text
-        if not any(f["art"] in ("rechnung", "kreditor", "quittung", "vorschlag") for f in found) and key:
+        if not matched and rule is None and key:
             if konto not in history:
                 history[konto] = _history(book, konto)
             seen = [(c, m) for t, c, m, _ in history[konto] if _name_in(key, t)]
@@ -677,7 +688,7 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
                     found.append({"art": "konto", "ziel": k, "mwst": str(sup.get("mwst") or ""), "sicher": False,
                                   "label": f"Buchen auf {k} {book.accounts[k].name if k in book.accounts else ''}",
                                   "grund": f"Standardkonto des Lieferanten {sup.get('name')}"})
-        order = {"vorschlag": 0, "rechnung": 1, "kreditor": 1, "quittung": 2, "beleg": 3, "konto": 4}
+        order = {"vorschlag": 0, "regel": 1, "rechnung": 1, "kreditor": 1, "quittung": 2, "beleg": 3, "konto": 4}
         if sum(1 for f in found if f["sicher"]) > 1:
             for f in found:
                 f["sicher"] = False                    # competing matches need a person's choice
@@ -704,11 +715,18 @@ def accept(book: Book, tid: str, art: str, ziel: str) -> tuple[str, list[Path]]:
     if art == "vorschlag":
         rows, touched = approve(book, [ziel])
         return f"Vorschlag {ziel} gebucht (Beleg {rows[0].beleg})", touched
+    if art == "regel":
+        rule = matching_rule(book, tx)
+        if rule is None or rule["id"] != ziel:
+            raise BookError(f"Regel {ziel} passt nicht (mehr) auf Bankbewegung {tid}")
+        row, touched = _book_with_rule(book, tx, rule)
+        return (f"mit Regel {ziel} gebucht (Beleg {row.beleg})",
+                touched + _set(book, tid, Status="gebucht", Beleg=row.beleg, Hinweis=f"Regel {ziel}"))
     if art == "quittung":
         meta = erfassung.draft(book, ziel)
         v = erfassung.form_values(meta)
         if not (v["konto"] or v["positionen"]):
-            raise BookError(f"Quittung {ziel} hat noch kein Konto — unter Prüfen kontieren")
+            raise BookError(f"Quittung {ziel} hat noch kein Konto — unter Einkauf › Entwürfe kontieren")
         cur = (v["waehrung"] or "CHF").upper()
         rows, touched = erfassung.book_receipt(book, ziel, v["datum"] or tx["Datum"], (v["name"] or "Quittung").strip(),
                                                v["betrag"], v["konto"], v["mwst"], v["positionen"] or None,
@@ -718,6 +736,75 @@ def accept(book: Book, tid: str, art: str, ziel: str) -> tuple[str, list[Path]]:
         row, touched = book_transaction(book, tid, ziel, mwst=s.get("mwst") or "")
         return f"auf {ziel} gebucht (Beleg {row.beleg})", touched
     raise BookError(f"Unbekannte Vorschlagsart {art}")
+
+
+def candidates(book: Book, tid: str, q: str = "") -> list[dict]:
+    """«Suchen & zuordnen» for one open movement: open invoices (money in) or supplier bills and receipt
+    drafts (money out), and bookings on the account not linked to a movement yet. Without a query only
+    those with the same amount; with one, anything whose name, number or text contains it (or whose
+    amount equals it). Each hit: {art, ziel, label, grund, betrag}; art rechnung/kreditor → `assign`,
+    beleg → `link`, quittung → completed on its own page."""
+    from . import erfassung, invoices as inv, kreditoren as kred
+    tx = find(book, tid)
+    amount = parse_amount(tx["Betrag"])
+    konto = tx["Konto"]
+    query = (q or "").strip()
+    try:
+        q_amount = abs(parse_amount(query)) if query else None
+    except Exception:
+        q_amount = None
+
+    def wanted(value: Decimal, *texts: str) -> bool:
+        if not query:
+            return value == abs(amount)
+        if q_amount is not None and value == q_amount:
+            return True
+        needle = query.lower()
+        return any(needle in (t or "").lower() for t in texts) or _name_in(query, *texts)
+
+    out: list[dict] = []
+    if amount > 0:
+        paid = inv.settlements(book)
+        for k, m in inv.invoices(book).items():
+            s = inv.invoice_state(book, m, paid.get(k, []))
+            if s["status"] not in ("offen", "teilbezahlt"):
+                continue
+            if wanted(s["offen"], s["nummer"], s["name"], str((m.get("extern") or {}).get("rechnungsnr", ""))):
+                out.append({"art": "rechnung", "ziel": s["nummer"], "betrag": s["offen"],
+                            "label": f"Rechnung {s['nummer']} · {s['name']}",
+                            "grund": f"offen {s['offen']:.2f}, fällig {s['faellig']}"})
+    else:
+        kp = kred.payments(book)
+        for k, m in kred.bills(book).items():
+            s = kred.state(book, m, kp.get(k, []))
+            if s["status"] not in ("offen", "angewiesen"):
+                continue
+            if wanted(s["offen"], s["nummer"], s["name"], s.get("rechnungsnr") or ""):
+                out.append({"art": "kreditor", "ziel": s["nummer"], "betrag": s["offen"],
+                            "label": f"Kreditor {s['nummer']} · {s['name']}"
+                                     + (f" ({s['rechnungsnr']})" if s.get("rechnungsnr") else ""),
+                            "grund": f"offen {s['offen']:.2f}, fällig {s['faellig']}"})
+        for d in erfassung.drafts(book, "quittung").values():
+            try:
+                r_amount = Decimal(erfassung.value(d, "betrag")).quantize(CENT)
+            except Exception:
+                continue
+            if wanted(r_amount, d["id"], erfassung.value(d, "name"), d.get("datei") or ""):
+                out.append({"art": "quittung", "ziel": d["id"], "betrag": r_amount,
+                            "pruefen": f"/eingang/quittung?entwurf={d['id']}",
+                            "label": f"Quittung {d['id']} · {erfassung.value(d, 'name') or d['datei']}",
+                            "grund": f"vom {erfassung.value(d, 'datum') or '?'}"})
+    taken = _linked_belege(transactions(book))
+    groups = _group(book)
+    for beleg, (datum, net) in _beleg_effects(book, konto).items():
+        if beleg in taken or (net > 0) != (amount > 0) or not net:
+            continue
+        text = groups[beleg][0].text if groups.get(beleg) else ""
+        if wanted(abs(net), beleg, text):
+            out.append({"art": "beleg", "ziel": beleg, "betrag": abs(net),
+                        "label": f"Beleg {beleg} · {text}", "grund": f"schon gebucht am {datum:%d.%m.%Y}"})
+    out.sort(key=lambda c: (c["betrag"] != abs(amount), c["art"] == "beleg"))
+    return out[:30]
 
 
 def reconciliation(book: Book) -> list[dict]:

@@ -84,7 +84,7 @@
 <div class="panel" id="jev">
   <header><h2>Jev (TypeSafe) für Bank-Kontierung</h2>{% if jev.bereit %}<span class="pill ok">eingeschaltet</span>{% elif jev.aktiv %}<span class="pill warn">TYPESAFE_API_KEY fehlt</span>{% else %}<span class="pill muted">aus</span>{% endif %}</header>
   <form class="body" hx-post="/einstellungen/jev" hx-target="find .errors">
-    <p class="small">Schlägt für offene Bankbewegungen das Gegenkonto vor, mit Konfidenz. Ab der Schwelle entsteht ein Vorschlag unter Prüfen, darunter nur ein Hinweis; gebucht wird nie automatisch. An TypeSafe (USA) gehen pro Bewegung: Gegenpartei, Mitteilung, Betrag, der Kontenplan und bis zu fünf frühere Buchungen derselben Gegenpartei. Bewegungen von Mitarbeitenden werden nie gesendet.</p>
+    <p class="small">Schlägt für offene Bankbewegungen das Gegenkonto vor, mit Konfidenz. Ab der Schwelle entsteht ein Vorschlag (Buchhaltung › Vorschläge), darunter nur ein Hinweis; gebucht wird nie automatisch. An TypeSafe (USA) gehen pro Bewegung: Gegenpartei, Mitteilung, Betrag, der Kontenplan und bis zu fünf frühere Buchungen derselben Gegenpartei. Bewegungen von Mitarbeitenden werden nie gesendet.</p>
     <div class="form three">
       <label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if jev.aktiv }}> für dieses Buch einschalten</label>
       <div class="field"><label for="jv-s">Schwelle (Konfidenz 0.3–0.99)</label><input class="input num" id="jv-s" name="schwelle" value="{{ jev.schwelle }}"></div>

@@ -153,7 +153,7 @@ def test_bank_suggestion_forms(book, tmp_path):
     app = create_app(book.root, token="tok")
     with TestClient(app) as client:
         client.get("/?t=tok", follow_redirects=False)
-        for page in ("/bank", "/pruefen"):
+        for page in ("/bank",):
             response = client.get(page)
             assert response.status_code == 200
             assert "Alle sicheren abgleichen" in response.text and "R-2026-0001" in response.text

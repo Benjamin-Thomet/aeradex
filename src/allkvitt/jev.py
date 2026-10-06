@@ -6,7 +6,7 @@ probabilities and a confidence. That fits allkvitt's rule exactly — code does
 the arithmetic, the model makes one narrow decision, and the confidence
 decides whether a person has to look:
 
-    confidence ≥ threshold  →  a proposal in Prüfen (never booked directly)
+    confidence ≥ threshold  →  a proposal (Buchhaltung › Vorschläge) (never booked directly)
     below                   →  only a hint on the bank transaction
 
 The same applies to supplier bill drafts (Kreditoren upload): Jev picks the

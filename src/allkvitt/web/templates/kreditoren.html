@@ -1,18 +1,24 @@
 {% extends "base.html" %}
 {% from "_macros.html" import errors, status_pill, eingang_upload, eingang_table %}
-{% block title %}Kreditoren{% endblock %}
+{% block title %}Einkauf{% endblock %}
 {% block main %}
 <div class="topbar">
-  <div><h1>Kreditoren</h1><div class="sub">Lieferantenrechnungen · offen {{ op.total_offen|chf }} · Saldo Konto {{ op.kreditorenkonto }}: {{ op.saldo_kreditoren|chf }}{% if op.differenz|float %} <span class="pill red">Differenz {{ op.differenz|chf }}</span>{% endif %}</div></div>
-  <div class="actions"><a class="btn primary" href="/kreditoren/neu">Rechnung erfassen</a></div>
+  <div><h1>{{ {"entwurf": "Entwürfe", "offen": "Offen", "bezahlt": "Bezahlt", "alle": "Alle Lieferantenrechnungen", "angewiesen": "Angewiesen", "storniert": "Storniert"}[status] }}</h1>
+    <div class="sub">{% if status == 'entwurf' %}Eingelesene Lieferantenrechnungen und Quittungen. Prüfen, freigeben, fertig: Freigeben bucht.{% else %}Lieferantenrechnungen · offen {{ op.total_offen|chf }} · Saldo Konto {{ op.kreditorenkonto }}: {{ op.saldo_kreditoren|chf }}{% if op.differenz|float %} <span class="pill red">Differenz {{ op.differenz|chf }}</span>{% endif %}{% endif %}</div></div>
+  <div class="actions"><a class="btn" href="/kreditoren/neu">Von Hand erfassen</a></div>
 </div>
+
+{% if status == 'entwurf' %}
 <div class="panel" id="entwuerfe">
-  {{ eingang_upload("kreditor", "Rechnungen einlesen", "PDFs, Scans oder Handyfotos — mehrere auf einmal.", ocr, jev, auto_agent, settings.get('agent_backend')) }}
-  {% if drafts %}{{ eingang_table(drafts, book, dv) }}{% endif %}
+  {% if drafts %}{{ eingang_table(drafts, book, dv, true) }}
+  {% else %}<div class="empty">Keine Entwürfe. Rechnungen und Quittungen oben rechts unter <strong>Beleg hochladen</strong> einlesen, oder unten hineinziehen.</div>{% endif %}
 </div>
+<details class="panel drawer" {{ 'open' if not drafts }}>
+  <summary><header style="border-bottom:0"><h2>Einlesen und Einstellungen</h2><span class="hint">QR, Text, OCR · Konto vom Lieferanten, Jev oder Agenten</span></header></summary>
+  {{ eingang_upload("kreditor", "Rechnungen einlesen", "PDFs, Scans oder Handyfotos — mehrere auf einmal.", ocr, jev, auto_agent, settings.get('agent_backend')) }}
+</details>
+{% else %}
 <form class="panel" hx-post="/kreditoren/zahlungslauf" hx-target="find .errors">
-  <header><h2>Rechnungen</h2>
-    <span class="actions">{% for k, l in [("", "Alle"), ("offen", "Offen"), ("angewiesen", "Angewiesen"), ("bezahlt", "Bezahlt"), ("storniert", "Storniert")] %}<a class="btn small {{ '' if k == status else 'ghost' }}" href="/kreditoren?status={{ k }}">{{ l }}</a>{% endfor %}</span></header>
   {% if rows %}
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th></th><th>Kreditor</th><th>Lieferant</th><th>Rg.-Nr.</th><th>Fällig</th><th class="right">Betrag</th><th class="right">Offen</th><th>Status</th></tr></thead>
@@ -27,13 +33,16 @@
     {% endfor %}
     </tbody>
   </table></div>
+  {% if rows|selectattr("status", "equalto", "offen")|list %}
   <div class="body">
     {{ errors() }}
     <div class="formfoot">
-      <span class="small muted">Markierte Rechnungen als Zahlungsdatei (pain.001) für dein E-Banking. Gebucht wird erst, wenn die Bank ausgeführt hat.</span>
+      <span class="small muted">Markierte Rechnungen als Zahlungsdatei (pain.001) für dein E-Banking. Als bezahlt gelten sie, sobald die Zahlung unter <a class="link" href="/bank">Bank › Abgleichen</a> erscheint.</span>
       <span class="actions"><label class="lbl" for="zl-d">Ausführung</label><input class="input" id="zl-d" type="date" name="datum" value="{{ default_date }}" style="width:auto"><button class="btn primary" type="submit">Zahlungslauf erstellen</button></span>
     </div>
-  </div>
-  {% else %}<div class="empty">Keine Lieferantenrechnungen{% if status %} mit diesem Status{% endif %}. QR-Rechnungen in die Inbox legen: allkvitt erkennt sie unter <a class="link" href="/pruefen">Prüfen</a>.</div>{% endif %}
+  </div>{% endif %}
+  {% else %}<div class="empty">{% if status == 'offen' %}Keine offenen Lieferantenrechnungen.{% elif status == 'bezahlt' %}Noch keine bezahlten Lieferantenrechnungen.{% else %}Keine Lieferantenrechnungen{% if status != 'alle' %} mit diesem Status{% endif %}.{% endif %}</div>{% endif %}
 </form>
+{% if status == 'bezahlt' %}<p class="small muted">Gebuchte Quittungen haben keine eigene Liste; sie stehen mit ihrem Beleg im <a class="link" href="/journal">Journal</a>.</p>{% endif %}
+{% endif %}
 {% endblock %}

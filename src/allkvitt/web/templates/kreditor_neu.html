@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, accounts_datalist, mwst_select %}
+{% from "_macros.html" import errors, accounts_datalist, mwst_select, draft_crumbs, approve_buttons %}
 {% macro posrow(p={}) %}<div class="splitrow"><input class="input" name="p_konto" list="konten" aria-label="Konto" value="{{ p.konto or '' }}"><input class="input num" name="p_betrag" inputmode="decimal" aria-label="Betrag brutto" value="{{ p.betrag or '' }}"><input class="input" name="p_text" aria-label="Text" value="{{ p.text or '' }}">{% if vat.methode != 'keine' %}{{ mwst_select("p_mwst", vat, vat_codes, kinds=("vorsteuer","investition","bezug"), selected=p.mwst or "", label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Zeile entfernen">✕</button></div>{% endmacro %}
 {% block title %}Kreditor erfassen{% endblock %}
 {% block main %}
 {% set sc = sc_override or scan or {} %}{% set k = sc.kreditor or {} %}{% set ev = ev or {} %}{% set qf = quellen_felder or {} %}
 {% macro src(key) %}{% if qf.get(key) %} <span class="pill {{ 'ok' if qf[key].quelle == 'QR' else 'info' if qf[key].quelle.startswith('Agent') else 'muted' }}" title="erkannt aus: {{ qf[key].quelle }}">{{ qf[key].quelle }}</span>{% endif %}{% endmacro %}
 <div class="topbar">
-  <div><div class="crumbs"><a href="/kreditoren">Kreditoren</a> /</div><h1>Lieferantenrechnung erfassen</h1>
+  <div>{{ draft_crumbs(dnav, "/kreditoren", "Einkauf") }}<h1>{{ 'Lieferantenrechnung prüfen' if entwurf else 'Lieferantenrechnung erfassen' }}</h1>
     <div class="sub">Wird gebucht (Aufwand{{ ' + Vorsteuer' if vat.methode == 'effektiv' }} an {{ settings.konto('kreditoren') }}) und eingefroren.{% if datei %} Die Datei wird nach belege/ verschoben.{% endif %}</div></div>
 </div>
 {{ accounts_datalist(accounts) }}
@@ -60,7 +60,7 @@
         <div class="field wide"><label for="k-mi">Mitteilung (ohne Referenz)</label><input class="input" id="k-mi" name="mitteilung" value="{{ sc.mitteilung or '' }}"></div>
       </div>
       {{ errors() }}
-      <div class="formfoot"><span class="small muted">IBAN und Referenz werden geprüft, bevor gebucht wird.</span><button class="btn primary" type="submit">Erfassen und buchen</button></div>
+      <div class="formfoot"><span class="small muted">IBAN und Referenz werden geprüft, bevor gebucht wird.</span>{{ approve_buttons(dnav) }}</div>
     </div>
   </form>
 </div>

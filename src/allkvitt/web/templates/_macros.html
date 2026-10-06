@@ -48,3 +48,7 @@
     {% endfor %}</tbody>
   </table></div>
 {% endmacro %}
+{% macro draft_crumbs(dnav, fallback_url, fallback_label) %}{% if dnav %}<div class="crumbs draftnav"><a href="{{ dnav.tab }}">{{ 'Verkauf' if '/debitoren' in dnav.tab else 'Einkauf' }} › Entwürfe</a> / Entwurf {{ dnav.pos }} von {{ dnav.total }}
+  {% if dnav.prev %}<a class="btn small ghost" href="{{ dnav.prev }}" title="Voriger Entwurf" aria-label="Voriger Entwurf">‹</a>{% endif %}{% if dnav.next %}<a class="btn small ghost" href="{{ dnav.next }}" title="Nächster Entwurf" aria-label="Nächster Entwurf">›</a>{% endif %}</div>
+{% else %}<div class="crumbs"><a href="{{ fallback_url }}">{{ fallback_label }}</a> /</div>{% endif %}{% endmacro %}
+{% macro approve_buttons(dnav, label="Erfassen und buchen") %}{% if dnav %}<span class="actions">{% if dnav.total > 1 %}<button class="btn" type="submit" name="weiter" value="1" title="Freigeben und gleich den nächsten Entwurf öffnen">Freigeben &amp; nächster</button>{% endif %}<button class="btn primary" type="submit" title="Bucht den Beleg und legt die Datei ab">Freigeben</button></span>{% else %}<button class="btn primary" type="submit">{{ label }}</button>{% endif %}{% endmacro %}

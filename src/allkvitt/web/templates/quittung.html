@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, accounts_datalist, mwst_select %}
+{% from "_macros.html" import errors, accounts_datalist, mwst_select, draft_crumbs, approve_buttons %}
 {% block title %}Quittung {{ entwurf.id }}{% endblock %}
 {% set qf = quellen_felder or {} %}
 {% macro src(key) %}{% if qf.get(key) %} <span class="pill {{ 'info' if qf[key].quelle.startswith('Agent') else 'muted' }}" title="erkannt aus: {{ qf[key].quelle }}">{{ qf[key].quelle }}</span>{% endif %}{% endmacro %}
 {% macro posrow(p={}) %}<div class="splitrow"><input class="input" name="p_konto" list="konten" aria-label="Konto" value="{{ p.konto or '' }}"><input class="input num" name="p_betrag" inputmode="decimal" aria-label="Betrag brutto" value="{{ p.betrag or '' }}"><input class="input" name="p_text" aria-label="Text" value="{{ p.text or '' }}">{% if vat.methode != 'keine' %}{{ mwst_select("p_mwst", vat, vat_codes, kinds=("vorsteuer","investition","bezug"), selected=p.mwst or "", label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Zeile entfernen">✕</button></div>{% endmacro %}
 {% block main %}
 <div class="topbar">
-  <div><div class="crumbs"><a href="/pruefen#eingang">Prüfen</a> /</div><h1>Quittung buchen</h1>
+  <div>{{ draft_crumbs(dnav, "/kreditoren?status=entwurf", "Einkauf") }}<h1>Quittung prüfen</h1>
     <div class="sub">Etwas bereits Bezahltes: Aufwand an das Konto, über das bezahlt wurde. Die Quittung wird unter belege/ abgelegt.</div></div>
 </div>
 {{ accounts_datalist(accounts) }}
@@ -49,7 +49,7 @@
         </details>
       </div>
       {{ errors() }}
-      <div class="formfoot"><span class="small muted">Wird geprüft, gebucht und in git festgehalten.</span><button class="btn primary" type="submit">Buchen</button></div>
+      <div class="formfoot"><span class="small muted">Wird geprüft, gebucht und in git festgehalten.</span>{{ approve_buttons(dnav, "Buchen") }}</div>
     </div>
   </form>
 </div>

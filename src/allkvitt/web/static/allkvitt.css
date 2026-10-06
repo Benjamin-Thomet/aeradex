@@ -340,3 +340,60 @@ table.grid td.x .btn { opacity: .35; } table.grid tr:hover td.x .btn { opacity: 
 form.suggest { display: flex; align-items: center; gap: 10px; justify-content: space-between; max-width: 460px; }
 form.suggest + form.suggest, details > form.suggest { margin-top: 6px; }
 form.suggest > div { min-width: 0; }
+
+/* ---- global upload (header) ---- */
+.menu.upload > summary::after { content: ""; margin: 0; }
+.menu.upload .menubox { min-width: 340px; max-width: min(420px, calc(100vw - 32px)); }
+.menu.upload .dropzone { display: flex; flex-direction: column; gap: 10px; padding: 18px; text-align: left; cursor: pointer; }
+.menu.upload form { display: flex; flex-direction: column; gap: 10px; }
+
+/* ---- Übersicht inbox rows ---- */
+.todo .row2 { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 16px; }
+.panel > header form { display: inline-flex; gap: 8px; align-items: center; }
+
+/* ---- review pages: position in the draft list ---- */
+.crumbs.draftnav { display: flex; align-items: center; gap: 6px; }
+
+/* ---- Bank › Abgleichen: one card per open movement ---- */
+.bankimport input[type=file] { width: 240px; }
+.recline { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.recline a { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 12px; border: 1px solid var(--rule);
+  border-radius: 999px; background: var(--sheet); text-decoration: none; font-size: 13px; }
+.recline a.bad { border-color: var(--red); }
+.bankcard { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); background: var(--sheet); border: 1px solid var(--rule);
+  border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; flex-shrink: 0; scroll-margin-top: 120px; }
+.bankcard:target { border-color: var(--info); }
+.bankcard.done { display: block; padding: 14px 18px; color: var(--ok); background: var(--ok-soft); border-color: transparent; box-shadow: none; font-weight: 500; }
+.bankline { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 16px 18px;
+  border-right: 1px solid var(--rule); background: var(--paper); }
+.bankline .party { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.bankline .party .pill { align-self: flex-start; }
+.bankline .amount { font-size: 15px; font-weight: 600; }
+.bankline .amount.in { color: var(--ok); }
+.ctabs { display: flex; flex-wrap: wrap; align-content: flex-start; min-width: 0; }
+.ctabs > input { position: absolute; opacity: 0; pointer-events: none; }
+.ctabs > label { padding: 10px 14px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+.ctabs > label:hover { color: var(--ink); }
+.ctabs > input:checked + label { color: var(--ink); border-bottom-color: var(--ink); }
+.ctabs > input:focus-visible + label { outline: 2px solid var(--red); outline-offset: -2px; }
+.ctabs > .pane { display: none; order: 1; flex-basis: 100%; padding: 12px 18px 16px; border-top: 1px solid var(--rule); min-width: 0; }
+.ctabs > input:nth-of-type(1):checked ~ .pane:nth-of-type(1),
+.ctabs > input:nth-of-type(2):checked ~ .pane:nth-of-type(2),
+.ctabs > input:nth-of-type(3):checked ~ .pane:nth-of-type(3),
+.ctabs > input:nth-of-type(4):checked ~ .pane:nth-of-type(4) { display: flex; flex-direction: column; gap: 8px; }
+.match { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px dashed var(--rule); }
+.match:first-child { border-top: 0; }
+.match.first { padding: 10px 12px; border: 1px solid var(--rule); border-radius: var(--r); }
+.match.first.sure { border-color: var(--ok); background: var(--ok-soft); }
+.match form { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.match.first .btn.primary { min-width: 72px; }
+.pane form.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pane form.inline .input { flex: 1 1 220px; }
+.pane .formfoot.wide { grid-column: 1 / -1; }
+.treffer { display: flex; flex-direction: column; }
+@media (max-width: 900px) {
+  .bankcard { display: block; }
+  .bankline { border-right: 0; border-bottom: 1px solid var(--rule); }
+  .bankimport input[type=file] { width: 100%; }
+}
+.tabsrow a .badge { margin-left: 6px; }

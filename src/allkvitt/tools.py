@@ -704,7 +704,7 @@ def propose_bank_booking(id: str, konto: str, text: str, begruendung: str, mwst:
 
 def suggest_bank_accounts(ids: list[str] | None = None) -> dict:
     """Lässt Jev (TypeSafe, falls im Buch eingeschaltet) Gegenkonten für offene Bankbewegungen vorschlagen:
-    sichere Fälle werden Vorschläge unter Prüfen, unsichere bekommen nur einen Hinweis. Schnell und günstig —
+    sichere Fälle werden Vorschläge (Buchhaltung › Vorschläge), unsichere bekommen nur einen Hinweis. Schnell und günstig —
     vor eigenen Vorschlägen aufrufen und die Hinweise als zweite Meinung nutzen.
 
     Args:

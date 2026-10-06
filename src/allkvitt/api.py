@@ -1136,6 +1136,12 @@ def bank_suggestions(book: Book, ids: list[str] | None = None) -> dict:
     return jsonable(bank.suggestions(book, ids))
 
 
+def bank_candidates(book: Book, id: str, q: str = "") -> list[dict]:
+    """«Suchen & zuordnen»: what an open movement could be matched with (see bank.candidates)."""
+    from . import bank
+    return jsonable(bank.candidates(book, id, q))
+
+
 def bank_accept(book: Book, id: str, art: str = "", ziel: str = "") -> dict:
     """Take a suggestion for an open movement; without art/ziel the first one."""
     _guard(book)

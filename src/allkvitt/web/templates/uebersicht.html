@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% from "_macros.html" import errors %}
 {% block title %}Übersicht{% endblock %}
 {% block main %}
 <div class="topbar">
   <div><h1>Übersicht</h1><div class="sub">Geschäftsjahr {{ d.year }} · Stand {{ today()|datum }}</div></div>
   <div class="actions">
     <a class="btn" href="/journal?neu=1">Neue Buchung <kbd>N</kbd></a>
-    {% if nav.pruefen %}<a class="btn primary" href="/pruefen">{{ nav.pruefen }} Punkt{{ 'e' if nav.pruefen != 1 }} prüfen</a>{% endif %}
+    {% if todos %}<a class="btn primary" href="{{ todos[0].href }}">Weiter: {{ todos[0].title|truncate(40) }}</a>{% endif %}
   </div>
 </div>
 
@@ -34,10 +35,10 @@
       {% if d.overdue %}<span class="pill red">{{ d.overdue|length }} überfällig</span>{% elif d.ar.posten %}<span class="pill ok">nicht fällig</span>{% endif %}</span>
     {% for p in d.ar.posten[:1] %}<span class="meta">{{ p.nummer }} {{ p.name }}, fällig {{ p.faellig|datum("%d.%m.") }}</span>{% endfor %}
   </a>
-  <a class="figure" href="/pruefen">
-    <span class="label">Zu prüfen</span>
-    <span class="value">{{ nav.pruefen }}</span>
-    <span class="meta">{{ nav.inbox }} Inbox · {{ nav.vorschlaege }} Vorschläge · {{ nav.entwuerfe }} Lohnentwürfe</span>
+  <a class="figure" href="#todo">
+    <span class="label">Zu erledigen</span>
+    <span class="value">{{ nav.todo }}</span>
+    <span class="meta">{{ nav.einkauf + nav.verkauf }} Entwürfe · {{ nav.bank }} Bank · {{ nav.vorschlaege }} Vorschläge{% if nav.inbox %} · {{ nav.inbox }} Inbox{% endif %}</span>
     {% if nav.fehler %}<span class="meta"><span class="pill red">{{ nav.fehler }} Fehler im Buch</span></span>{% endif %}
   </a>
 </div>
@@ -62,17 +63,31 @@
     <div class="legend"><span><i style="background:var(--ok)"></i>Ertrag</span><span><i style="background:var(--rule-strong)"></i>Aufwand</span>{% if nav.entwuerfe %}<span>Lohnentwürfe sind noch nicht enthalten</span>{% endif %}</div>
   </div>
 
-  <div class="panel">
-    <header><h2>Was ansteht</h2><a class="hint link" href="/pruefen">Alles prüfen →</a></header>
+  <div class="panel" id="todo">
+    <header><h2>Was ansteht</h2><span class="hint">jede Zeile führt dorthin, wo du es erledigst</span></header>
     {% if todos %}
     <ul class="todo">
-      {% for t in todos[:7] %}
+      {% for t in todos[:9] %}
       <li><a href="{{ t.href }}"><span class="stripe {{ t.level }}"></span><div><div class="t">{{ t.title }}</div><div class="d">{{ t.detail }}</div></div><span class="pill {{ {'red': 'red', 'warn': 'warn', 'info': 'info'}.get(t.level, 'muted') }}">{{ t.tag }}</span></a></li>
       {% endfor %}
     </ul>
-    {% else %}<div class="empty">Nichts offen. Neue Quittungen legst du in <strong>Prüfen</strong> ab oder in den Ordner <code>inbox/</code>.</div>{% endif %}
+    {% else %}<div class="empty">Nichts offen. Neue Rechnungen und Quittungen oben rechts unter <strong>Beleg hochladen</strong> oder in den Ordner <code>inbox/</code>.</div>{% endif %}
   </div>
 </div>
+
+{% if inbox %}{% set readable = [] %}{% for f in inbox if f.suffix|lower in ('.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.txt') %}{% set _ = readable.append(f) %}{% endfor %}
+<div class="panel" id="inbox">
+  <header><h2>Inbox</h2><span class="hint">{{ inbox|length }} Datei{{ 'en' if inbox|length != 1 }}, noch nicht eingelesen</span>
+    {% if readable|length > 1 %}<form hx-post="/eingang/einlesen" hx-target="find .errors" hx-indicator="find .busy">{% for f in readable %}<input type="hidden" name="datei" value="inbox/{{ f.name }}">{% endfor %}<span class="busy small muted htmx-indicator">Lese …</span><button class="btn small primary" type="submit">Alle {{ readable|length }} einlesen</button>{{ errors() }}</form>{% endif %}</header>
+  <ul class="todo">{% for f in inbox %}{% set sfx = f.suffix|lower %}
+    <li><div class="row2"><span class="stripe info"></span><div><div class="t"><a class="link" href="/datei/inbox/{{ f.name|urlq }}" target="_blank">{{ f.name }}</a></div>
+      <div class="d">{{ (f.stat().st_size / 1024)|round(1) }} KB · {% if f in readable %}wird ein Entwurf unter Einkauf oder Verkauf{% elif sfx in ('.xml', '.camt', '.053') %}Kontoauszug{% else %}Kontoauszug oder andere Datei{% endif %}</div></div>
+      {% if f in readable %}<form hx-post="/eingang/einlesen" hx-target="find .errors"><input type="hidden" name="datei" value="inbox/{{ f.name }}"><button class="btn small" type="submit">Einlesen</button>{{ errors() }}</form>
+      {% elif sfx in ('.xml', '.camt', '.053') %}<form hx-post="/bank/karte/importieren" hx-target="find .errors"><input type="hidden" name="datei" value="inbox/{{ f.name }}"><button class="btn small" type="submit">Bei der Bank importieren</button>{{ errors() }}</form>
+      {% else %}<a class="btn small ghost" href="/bank/bewegungen#neu">Zur Bank</a>{% endif %}</div></li>
+  {% endfor %}</ul>
+</div>
+{% endif %}
 
 <div class="panel">
   <header><h2>Letzte Änderungen</h2><a class="hint link" href="/verlauf">Ganzer Verlauf →</a></header>

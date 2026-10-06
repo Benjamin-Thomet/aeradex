@@ -76,7 +76,7 @@
       <div class="field"><label>Art</label><select class="input" name="art" style="width:100%"><option value="reise">Reise/Verpflegung/Übernachtung</option><option value="uebrige">übrige Spesen</option></select></div>
       <div class="field"><label>Quittung</label><input class="input" type="file" name="datei" accept=".pdf,image/*"></div>
     </div>
-    {{ errors() }}<div class="formfoot"><span class="small muted">Oder unter Prüfen eine Quittung hochladen und «Privat bezahlt von …» wählen. Gebucht wird Aufwand an {{ settings.konto('spesen') }}; der Lohnlauf zahlt sie aus.</span><button class="btn primary" type="submit">Spesen erfassen</button></div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Oder eine Quittung unter «Beleg hochladen» einlesen und beim Prüfen «Privat bezahlt von …» wählen. Gebucht wird Aufwand an {{ settings.konto('spesen') }}; der Lohnlauf zahlt sie aus.</span><button class="btn primary" type="submit">Spesen erfassen</button></div>
   </form>
 </details>
 {% endblock %}

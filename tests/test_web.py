@@ -263,9 +263,10 @@ def test_settings_accounts_and_closing(client, root):
 
 def test_inbox_upload(client, root):
     to = ok(post(client, "/pruefen/upload", files={"datei": ("Rechnung Swisscom.pdf", b"%PDF-1.4 test", "application/pdf")}))
-    assert "rechnung-swisscom.pdf" in to
+    assert to == "/#inbox"
     assert (root / "inbox" / "rechnung-swisscom.pdf").exists()
-    assert client.get("/pruefen?datei=rechnung-swisscom.pdf").status_code == 200
+    assert 'id="inbox"' in client.get("/").text and "rechnung-swisscom.pdf" in client.get("/").text
+    assert client.get("/pruefen?datei=rechnung-swisscom.pdf", follow_redirects=False).headers["location"] == "/#inbox"
 
 
 def test_ui_and_cli_writes_are_one_history(client, root):
@@ -311,7 +312,7 @@ def test_kreditoren_from_inbox_qr_to_payment(client, root, tmp_path):
     pdf = sup / core.invoice_create(Book(sup), "K0001", [{"text": "Papier", "menge": 1, "preis": "86.40"}],
                                     "2026-03-02")["pdf"]
     shutil.copy(pdf, root / "inbox" / "papeterie.pdf")
-    assert "QR-Rechnung erkannt" in client.get("/pruefen?datei=papeterie.pdf").text
+    assert "papeterie.pdf" in client.get("/").text                              # waits in the inbox
     page = client.get("/kreditoren/neu?datei=inbox/papeterie.pdf").text
     assert "Papeterie Muster AG" in page and "86.40" in page
     to = ok(post(client, "/kreditoren/neu", {"lieferant": "neu", "s_name": "Papeterie Muster AG", "s_strasse": "Marktgasse",
@@ -342,10 +343,10 @@ def test_bank_screen_import_and_book(client, root):
                      "2026-03-01", "2026-03-31")
     ok(post(client, "/bank/import", files={"datei": ("maerz.xml", data, "application/xml")}))
     page = client.get("/bank").text
-    tid = page.split('<tr class="row" id="')[1].split('"')[0]
-    assert "Kontoführung" in page and "offen" in client.get("/pruefen").text
+    tid = page.split('<article class="bankcard" id="karte-')[1].split('"')[0]
+    assert "Kontoführung" in page and "Bankbewegung abgleichen" in client.get("/").text
     ok(post(client, f"/bank/{tid}/buchen", {"konto": "6940  Bankspesen", "text": "Kontoführung März", "mwst": ""}))
-    assert "gebucht" in client.get("/bank?status=gebucht").text
+    assert "gebucht" in client.get("/bank/bewegungen?status=gebucht").text
     assert errors(root) == []
 
 
@@ -453,39 +454,44 @@ def test_buch_export(client, root, tmp_path):
 
 def test_top_navigation():
     from allkvitt.web.app import navigation
-    counts = {"pruefen": 3, "bank": 7, "entwuerfe": 0}
+    counts = {"todo": 9, "bank": 7, "entwuerfe": 0, "einkauf": 2, "verkauf": 0, "vorschlaege": 1}
     pages = [{"url": "/p/leistungen/leistungen", "label": "Leistungen", "bereich": "debitoren"},
              {"url": "/p/leistungen/offerten", "label": "Offerten", "bereich": "leistungen"},
              {"url": "/p/anlagen/anlagen", "label": "Anlagen", "bereich": "abschluss"},
              {"url": "/p/x/seite", "label": "Fremd", "bereich": ""}]
 
-    def at(path, methode="effektiv"):
-        nv = navigation(path, counts, pages, methode)
+    def at(path, methode="effektiv", status=""):
+        nv = navigation(path, counts, pages, methode, status)
         return nv, {s["key"]: s for s in nv["bereiche"] if s}
 
+    def on(nv):
+        return [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")]
+
+    nv, s = at("/")
+    assert [k for k in s] == ["uebersicht", "einkauf", "verkauf", "bank", "lohn", "buchhaltung", "plugins"]
+    assert s["uebersicht"]["on"] and s["uebersicht"]["badge"] == 9 and s["bank"]["badge"] == 7
     nv, s = at("/debitoren/kunden")
-    assert nv["aktiv"]["key"] == "debitoren" and [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Kunden"]
+    assert nv["aktiv"]["key"] == "verkauf" and on(nv) == ["Kunden"]
     assert "Leistungen" not in [t["label"] for t in nv["aktiv"]["tabs"]]
     assert [t["label"] for t in s["plugins"]["tabs"]] == ["Leistungen", "Offerten", "Anlagen", "Fremd"]
     nv, _ = at("/debitoren/rechnung/R-2026-0001")
-    assert [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Rechnungen"]
-    nv, _ = at("/p/leistungen/leistungen")
-    assert nv["aktiv"]["key"] == "plugins" and [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Leistungen"]
-    for slug, label in (("/p/leistungen/offerten", "Offerten"), ("/p/anlagen/anlagen", "Anlagen"),
-                        ("/p/anlagen/anlagen/abschreiben", "Anlagen")):
+    assert on(nv) == ["Offen"]
+    nv, _ = at("/kreditoren", status="entwurf")
+    assert on(nv) == ["Entwürfe"] and nv["aktiv"]["tabs"][0]["badge"] == 2
+    assert on(at("/kreditoren", status="storniert")[0]) == ["Alle"]
+    assert on(at("/eingang/quittung")[0]) == ["Entwürfe"]
+    for slug, label in (("/p/leistungen/leistungen", "Leistungen"), ("/p/leistungen/offerten", "Offerten"),
+                        ("/p/anlagen/anlagen", "Anlagen"), ("/p/anlagen/anlagen/abschreiben", "Anlagen"),
+                        ("/p/x/seite", "Fremd")):
         nv, _ = at(slug)
-        assert nv["aktiv"]["key"] == "plugins"
-        assert [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == [label]
+        assert nv["aktiv"]["key"] == "plugins" and on(nv) == [label]
     nv, _ = at("/abschluss")
     assert not any(t["label"] == "Anlagen" for t in nv["aktiv"]["tabs"])
-    nv, _ = at("/lohn/lohnkonto/2026/M0001")
-    assert [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Mitarbeitende"]
-    nv, s = at("/p/x/seite")
-    assert nv["aktiv"]["key"] == "plugins" and [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")] == ["Fremd"]
-    assert s["bank"]["badge"] == 7 and s["pruefen"]["badge"] == 3
-    nv, s = at("/", "keine")
-    assert "mwst" not in s and s["uebersicht"]["on"] and not s["journal"]["on"]
-    assert at("/journal")[1]["journal"]["tabs"] == []                                  # no tab row
+    assert on(at("/lohn/lohnkonto/2026/M0001")[0]) == ["Mitarbeitende"]
+    assert on(at("/bank/regeln")[0]) == ["Regeln"] and on(at("/bank")[0]) == ["Abgleichen"]
+    nv, s = at("/mwst", "keine")
+    assert nv["aktiv"]["key"] == "buchhaltung" and "MWST" not in [t["label"] for t in nv["aktiv"]["tabs"]]
+    assert "MWST" in [t["label"] for t in at("/journal")[0]["aktiv"]["tabs"]]
     assert not any(s and s["key"] == "plugins" for s in navigation("/", counts, [])["bereiche"])
     nv = navigation("/p/anlagen/anlagen", counts, pages[2:3])
     assert nv["aktiv"]["key"] == "plugins" and nv["aktiv"]["tabs"][0]["on"]
@@ -496,7 +502,7 @@ def test_top_navigation_renders(client):
     assert 'class="top"' in page and 'aria-label="Hauptnavigation"' in page
     assert 'class="tabsrow"' in page and 'href="/debitoren/offene-posten"' in page
     assert 'class="navlist"' not in page
-    assert 'class="tabsrow"' not in client.get("/journal").text
+    assert 'class="tabsrow"' not in client.get("/").text
 
 
 def test_salary_bank_file_download(client, root):

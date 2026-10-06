@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Bankabstimmung{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Abstimmung</h1><div class="sub">Schlusssaldo laut Bank gegen die Buchhaltung, je importiertem Auszug. «noch offen» sind Bewegungen, die noch nicht abgeglichen sind.</div></div>
+  <span class="actions">{% include "_bank_kopf.html" %}</span>
+</div>
+{% if rec %}
+<div class="panel">
+  <header><h2>Abstimmung</h2><span class="hint">Schlusssaldo laut Bank gegen die Buchhaltung</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Auszug</th><th>Konto</th><th>Per</th><th class="right">Bank</th><th class="right">Buchhaltung</th><th class="right">noch offen</th><th class="right">Differenz</th></tr></thead>
+    <tbody>{% for r in rec|reverse %}<tr class="row"><td class="small">{{ r.id }}</td><td class="acc">{{ r.konto }}</td><td class="num">{{ r.datum|datum }}</td>
+      <td class="right num">{{ r.bank|chf }}</td><td class="right num">{{ r.buch|chf }}</td><td class="right num">{{ r.offen|chf(true) }}</td>
+      <td class="right">{% if r.differenz|float %}<span class="pill red">{{ r.differenz|chf }}</span>{% else %}<span class="pill ok">stimmt</span>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+{% if not rec %}<div class="panel"><div class="empty">Noch kein Auszug mit Schlusssaldo importiert.</div></div>{% endif %}
+{% endblock %}

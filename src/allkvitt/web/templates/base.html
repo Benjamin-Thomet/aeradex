@@ -20,6 +20,17 @@
       <a href="{{ s.url }}" class="{{ 'on' if s.on }}" {{ 'aria-current=page' if s.on }} title="{{ s.label }}{% if s.kuerzel %} (g {{ s.kuerzel }}){% endif %}" {% if s.kuerzel %}data-key="{{ s.kuerzel }}"{% endif %}>{{ s.label }}{% if s.badge %}<span class="badge">{{ s.badge }}</span>{% endif %}</a>{% endif %}{% endfor %}
     </nav>
     <div class="system">
+      {% if not user or user.can_write %}<details class="menu upload" id="uploadMenu">
+        <summary class="btn small primary" title="Rechnungen, Quittungen oder Kontoauszüge hochladen">Beleg hochladen</summary>
+        <div class="menubox right">
+          <form hx-post="/eingang/einlesen" hx-encoding="multipart/form-data" hx-target="find .errors" hx-indicator="find .busy">
+            <label class="dropzone" for="globalUpload"><input id="globalUpload" class="input" type="file" name="dateien" multiple accept=".pdf,image/*,.txt,.xml,.csv,.xlsx">
+              <span class="small muted">Hierher ziehen oder auswählen. allkvitt erkennt die Art: Lieferantenrechnungen und Quittungen landen unter <strong>Einkauf › Entwürfe</strong>, eigene Rechnungen unter <strong>Verkauf › Entwürfe</strong>, Kontoauszüge gehen zur Bank. Gebucht wird erst, wenn du freigibst.</span></label>
+            <div class="errors"></div>
+            <div class="formfoot"><span class="busy small muted htmx-indicator">Lese Belege …</span><button class="btn primary" type="submit">Einlesen</button></div>
+          </form>
+        </div>
+      </details>{% endif %}
       {% if nav.fehler %}<a href="/einstellungen#pruefung" class="status bad" title="{{ nav.fehler }} Fehler im Buch — anzeigen"><span class="dot bad"></span>{{ nav.fehler }}</a>
       {% else %}<a href="/einstellungen#pruefung" class="status" title="Buch geprüft · 0 Fehler"><span class="dot"></span><span class="vh">Geprüft</span></a>{% endif %}
       <details class="menu mandant">
@@ -39,7 +50,7 @@
   </div>
   {% if nv.aktiv and nv.aktiv.tabs %}
   <nav class="tabsrow" aria-label="{{ nv.aktiv.label }}">
-    {% for t in nv.aktiv.tabs %}<a href="{{ t.url }}" class="{{ 'on' if t.on }}" {{ 'aria-current=page' if t.on }}>{{ t.label }}</a>{% endfor %}
+    {% for t in nv.aktiv.tabs %}<a href="{{ t.url }}" class="{{ 'on' if t.on }}" {{ 'aria-current=page' if t.on }}>{{ t.label }}{% if t.badge %}<span class="badge">{{ t.badge }}</span>{% endif %}</a>{% endfor %}
   </nav>
   {% endif %}
 </header>

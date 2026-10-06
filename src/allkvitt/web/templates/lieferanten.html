@@ -32,7 +32,7 @@
       {% if edit == nr %}<tr><td colspan="6" id="edit" style="padding:0">{{ form(s, "/kreditoren/lieferanten/" ~ nr) }}</td></tr>{% endif %}
     {% endfor %}</tbody>
   </table></div>
-  {% else %}<div class="empty">Noch keine Lieferanten. Am schnellsten: eine QR-Rechnung in die Inbox legen und unter Prüfen «Als Kreditor erfassen».</div>{% endif %}
+  {% else %}<div class="empty">Noch keine Lieferanten. Am schnellsten: eine QR-Rechnung oben rechts unter «Beleg hochladen» einlesen und unter Einkauf › Entwürfe freigeben.</div>{% endif %}
 </div>
 <div class="panel"><header><h2>Lieferant anlegen</h2></header>{{ form({}, "/kreditoren/lieferanten/neu") }}</div>
 {% endblock %}

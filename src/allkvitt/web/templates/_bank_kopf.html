@@ -1,0 +1,7 @@
+{% from "_macros.html" import errors, accounts_datalist %}
+<form class="actions bankimport" hx-post="/bank/import" hx-encoding="multipart/form-data" hx-target="find .errors">
+  <input class="input" type="file" name="datei" accept="{{ bank_accept }}" aria-label="Kontoauszug" title="{{ bank_labels }}; andere CSV/Excel-Formate und Kreditkarten-PDFs liest der Agent">
+  <input class="input" name="konto" list="konten" placeholder="Konto (Kreditkarte)" aria-label="Konto" title="Nur für Kreditkartenabrechnungen und Dateien ohne IBAN, z.B. 2040" style="width:150px">
+  <button class="btn" type="submit">Auszug importieren</button>{{ errors() }}
+</form>
+{{ accounts_datalist(accounts) }}

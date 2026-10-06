@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, mwst_select %}
+{% block title %}Bank abgleichen{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Abgleichen</h1><div class="sub">{% if rows %}{{ rows|length }} offene Bewegung{{ 'en' if rows|length != 1 }}, älteste zuerst. Links die Bank, rechts was es sein dürfte: ein Klick auf <strong>OK</strong> bucht.{% else %}Alles abgeglichen.{% endif %}</div></div>
+  <span class="actions">
+    {% if sicher %}<form hx-post="/bank/alle-abgleichen" hx-target="find .errors" hx-confirm="{{ sicher }} sichere Vorschläge übernehmen?"><button class="btn primary" type="submit" title="Übernimmt bei jeder Bewegung den sicheren Vorschlag — Betrag und Name stimmen">Alle sicheren abgleichen <span class="count">{{ sicher }}</span></button>{{ errors() }}</form>{% endif %}
+    {% if jev.bereit and rows %}<form hx-post="/bank/jev" hx-target="find .errors"><button class="btn" type="submit" title="Schnelle Kontierung mit TypeSafe Jev; sichere Fälle werden Vorschläge">Konten vorschlagen (Jev)</button>{{ errors() }}</form>{% endif %}
+    {% include "_bank_kopf.html" %}
+  </span>
+</div>
+
+{% if rec %}<div class="recline">{% for r in rec %}
+  <a href="/bank/abstimmung" class="{{ 'bad' if r.differenz|float }}"><span class="acc">{{ r.konto }}</span> per {{ r.datum|datum }} · Bank <span class="num">{{ r.bank|chf }}</span> · Buch <span class="num">{{ r.buch|chf }}</span>{% if r.offen|float %} · noch offen <span class="num">{{ r.offen|chf }}</span>{% endif %}
+    {% if r.differenz|float %}<span class="pill red">Differenz {{ r.differenz|chf }}</span>{% else %}<span class="pill ok">stimmt</span>{% endif %}</a>{% endfor %}
+</div>{% endif %}
+
+{% include "_bank_neu.html" %}
+
+{% for t in rows %}{% set credit = t.Betrag|float > 0 %}{% set opts = sugg.get(t.ID) or [] %}{% set best = opts[0] if opts else none %}
+<article class="bankcard" id="karte-{{ t.ID }}">
+  <div class="bankline">
+    <div class="when num">{{ t.Datum|datum }}</div>
+    <div class="party"><strong>{{ t.Gegenpartei or t.Text or 'Bankbewegung' }}</strong>
+      <span class="small muted">{% if t.Gegenpartei %}{{ t.Text }}{% endif %}{% if t.Referenz %} · Ref. {{ t.Referenz }}{% endif %} · Konto {{ t.Konto }}</span>
+      {% if t.Hinweis %}<span class="pill info" title="{{ t.Hinweis }}">{{ t.Hinweis|truncate(60) }}</span>{% endif %}</div>
+    <div class="amount num {{ 'in' if credit else 'out' }}">{{ t.Betrag|chf(sign=true) }}</div>
+  </div>
+  <div class="ctabs">
+    <input type="radio" name="tab-{{ t.ID }}" id="v-{{ t.ID }}" {{ 'checked' if best }}><label for="v-{{ t.ID }}">Vorschlag{% if opts|length > 1 %} <span class="count">{{ opts|length }}</span>{% endif %}</label>
+    <input type="radio" name="tab-{{ t.ID }}" id="s-{{ t.ID }}"><label for="s-{{ t.ID }}">Suchen</label>
+    <input type="radio" name="tab-{{ t.ID }}" id="n-{{ t.ID }}" {{ 'checked' if not best }}><label for="n-{{ t.ID }}">Neu buchen</label>
+    <input type="radio" name="tab-{{ t.ID }}" id="i-{{ t.ID }}"><label for="i-{{ t.ID }}">Ignorieren</label>
+    <div class="pane">
+      {% if best %}
+      {% for o in opts %}
+      <div class="match {{ 'sure' if o.sicher }} {{ 'first' if loop.first }}">
+        <div><span class="pill {{ 'ok' if o.sicher else 'info' }}">{{ 'sicher' if o.sicher else 'prüfen' }}</span> {{ o.label }}<div class="small muted">{{ o.grund }}</div></div>
+        {% if o.pruefen %}<a class="btn small" href="{{ o.pruefen }}">Quittung prüfen →</a>
+        {% else %}<form hx-post="/bank/{{ t.ID }}/uebernehmen" hx-target="find .errors">
+          <input type="hidden" name="art" value="{{ o.art }}"><input type="hidden" name="ziel" value="{{ o.ziel }}"><input type="hidden" name="karte" value="1">
+          <button class="btn {{ 'primary' if loop.first }} {{ 'small' if not loop.first }}" type="submit">{{ 'OK' if loop.first else 'Wählen' }}</button>{{ errors() }}
+        </form>{% endif %}
+      </div>{% endfor %}
+      {% else %}<div class="small muted">Kein Vorschlag. Unter <strong>Suchen</strong> eine offene Rechnung oder bestehende Buchung finden, oder unter <strong>Neu buchen</strong> direkt auf ein Konto buchen.</div>{% endif %}
+    </div>
+    <div class="pane">
+      <input class="input" type="search" name="q" placeholder="Name, Rechnungsnummer oder Betrag" aria-label="Suchen"
+             hx-get="/bank/{{ t.ID }}/suchen" hx-trigger="input changed delay:300ms, search" hx-target="next .treffer">
+      <div class="treffer" hx-get="/bank/{{ t.ID }}/suchen" hx-trigger="intersect once"><span class="small muted">Suche …</span></div>
+    </div>
+    <div class="pane">
+      <form class="form three" hx-post="/bank/{{ t.ID }}/buchen" hx-target="find .errors">
+        <input type="hidden" name="karte" value="1">
+        <div class="field"><label for="k-{{ t.ID }}">{{ 'Ertrag / Konto' if credit else 'Aufwand / Konto' }}</label><input class="input" id="k-{{ t.ID }}" name="konto" list="konten" placeholder="{{ 'z.B. 3400 Ertrag' if credit else 'z.B. 6940 Bankspesen' }}" required></div>
+        <div class="field"><label for="x-{{ t.ID }}">Text</label><input class="input" id="x-{{ t.ID }}" name="text" value="{{ (t.Gegenpartei ~ ' ' ~ t.Text)|trim|truncate(100, true, '') }}"></div>
+        {{ mwst_select("mwst", vat, vat_codes, id="m-" ~ t.ID) }}
+        <div class="formfoot wide">
+          {% if t.Gegenpartei %}<label class="check small"><input type="checkbox" name="regel" value="1"> Immer so buchen (Regel für «{{ t.Gegenpartei|truncate(30) }}»)</label>{% else %}<span></span>{% endif %}
+          <button class="btn primary" type="submit">Buchen</button>
+        </div>
+        {{ errors() }}
+      </form>
+    </div>
+    <div class="pane">
+      <form class="inline" hx-post="/bank/{{ t.ID }}/ignorieren" hx-target="find .errors">
+        <input type="hidden" name="karte" value="1">
+        <input class="input" name="grund" placeholder="Grund, z.B. interner Übertrag, im anderen Konto gebucht" required aria-label="Grund">
+        <button class="btn" type="submit">Ignorieren</button>{{ errors() }}
+      </form>
+    </div>
+  </div>
+</article>
+{% else %}
+<div class="panel"><div class="empty">Keine offenen Bankbewegungen. Neuen Auszug oben importieren (E-Banking → Kontoauszug als camt.053 / ISO 20022 exportieren) oder oben rechts unter <strong>Beleg hochladen</strong>.</div></div>
+{% endfor %}
+{% endblock %}

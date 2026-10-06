@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors, accounts_datalist, mwst_select %}
+{% from "_macros.html" import errors, accounts_datalist, mwst_select, draft_crumbs, approve_buttons %}
 {% block title %}Externe Rechnung erfassen{% endblock %}
 {% set qf = quellen_felder or {} %}{% set ev = ev or {} %}
 {% macro src(key) %}{% if qf.get(key) %} <span class="pill {{ 'info' if qf[key].quelle.startswith('Agent') else 'muted' }}" title="erkannt aus: {{ qf[key].quelle }}">{{ qf[key].quelle }}</span>{% endif %}{% endmacro %}
 {% block main %}
 <div class="topbar">
-  <div><div class="crumbs"><a href="/debitoren">Debitoren</a> /</div><h1>Rechnung erfassen, die ausserhalb von allkvitt erstellt wurde</h1>
+  <div>{{ draft_crumbs(dnav, "/debitoren", "Verkauf") }}<h1>{{ 'Eigene Rechnung prüfen' if entwurf else 'Rechnung erfassen, die ausserhalb von allkvitt erstellt wurde' }}</h1>
     <div class="sub">Wird als offener Posten gebucht (Debitoren an Ertrag{{ ' + MWST' if vat.methode != 'keine' }}): Zahlungen werden zugeordnet wie bei allkvitt-Rechnungen. Das Original wird abgelegt.</div></div>
 </div>
 {{ accounts_datalist(accounts) }}
@@ -45,7 +45,7 @@
       <div class="field wide"><label for="d-ref">QR- oder SCOR-Referenz (falls auf dem Original){{ src('referenz') }}</label><input class="input num" id="d-ref" name="referenz" value="{{ ev.referenz or '' }}" style="text-align:left"></div>
     </div>
     {{ errors() }}
-    <div class="formfoot"><span class="small muted">Mit MWST-Code ist der Betrag brutto; die Steuer wird herausgerechnet.</span><button class="btn primary" type="submit">Erfassen und buchen</button></div>
+    <div class="formfoot"><span class="small muted">Mit MWST-Code ist der Betrag brutto; die Steuer wird herausgerechnet.</span>{{ approve_buttons(dnav) }}</div>
     </div>
   </form>
 </div>

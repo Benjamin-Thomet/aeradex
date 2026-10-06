@@ -54,22 +54,22 @@ allkvitt ui                        # öffnet allkvitt im Browser (nur lokal, mit
 
 Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird geprüft und in git festgehalten.
 
+Sechs Bereiche, jeder mit einem klaren Ablauf. Belege lädst du an einer Stelle hoch (**Beleg hochladen** oben
+rechts); allkvitt erkennt die Art und legt einen Entwurf an. Gebucht wird erst, wenn du freigibst.
+
 | Bereich | Was du dort machst |
 |---|---|
-| **Übersicht** | Liquidität, Ergebnis, offene Debitoren, was ansteht, letzte Änderungen |
-| **Prüfen** | Inbox mit Vorschau (PDF, Bild, Text), Buchung daneben erfassen, Agenten-Vorschläge freigeben, Lohnentwürfe abschliessen |
-| **Journal** | Buchungen in einem Raster wie in Excel erfassen (Datum, Beschreibung, Soll, Haben, Betrag, MWST-Code; Enter, leeres Datum = wie oben, Zeilen aus Excel einfügen, alles oder nichts buchen), Monate, Suche, Storno, Belege |
-| **Konten** | Kontenplan bearbeiten, Saldenliste nach Periode, Kontoblatt |
-| **Debitoren** | Kunden, Rechnungen mit Live-Total und QR-PDF, Zahlung zuordnen, Gutschrift, Storno, offene Posten |
-| **Bank** | camt.053 importieren, automatische Zuordnung, offene Bewegungen buchen/zuordnen/ignorieren, Saldoabstimmung |
-| **Kreditoren** | QR-Rechnungen aus der Inbox erkennen und erfassen, Lieferanten, offene Posten, Zahlungslauf als pain.001-Datei, Ausführung verbuchen |
+| **Übersicht** | Liquidität, Ergebnis, offene Debitoren; **Was ansteht** als eine Liste, jede Zeile führt dorthin, wo du es erledigst; Inbox-Dateien einlesen |
+| **Einkauf** | Lieferantenrechnungen und Quittungen: **Entwürfe → Offen → Bezahlt** (plus Alle). Entwurf prüfen, «Freigeben» oder «Freigeben & nächster»; Zahlungslauf als pain.001, Lieferanten, offene Posten |
+| **Verkauf** | Rechnungen mit Live-Total und QR-PDF: **Entwürfe → Offen → Bezahlt** (plus Alle); externe Rechnungen einlesen und freigeben, Gutschrift, Storno, Kunden, Mahnungen, offene Posten |
+| **Bank** | **Abgleichen** wie bei Xero: eine Karte pro offener Bewegung, daneben der passende Kreditor, Debitor, die Quittung, Bankregel oder frühere Buchung; ein Klick auf OK. Sonst «Suchen» (Name, Nummer, Betrag), «Neu buchen» (optional «Immer so buchen» als Regel) oder «Ignorieren». Dazu Bewegungen, Regeln und Saldoabstimmung |
 | **Lohn** | Lohnlauf pro Monat, Eingaben (Stunden, QST, Korrekturen), Abschluss, Lohnkonto, Lohnausweis |
-| **MWST** | Abrechnung je Quartal/Semester nach ESTV-Ziffern, vereinbarte/vereinnahmte Entgelte, Jahresabstimmung mit PDF, Abgrenzung offener Posten |
-| **Abschluss** | Bilanz und Erfolgsrechnung mit Vorjahr und Drill-down, Gewinnverwendung, Anhang, Periode sperren |
-| **Verlauf** | jeder Commit mit Diff, Änderungen von Agenten markiert |
-| **Einstellungen** | Firma, IBAN-Prüfung, Systemkonten, Lohnsätze, Agentenmodus |
+| **Buchhaltung** | Journal (Raster wie in Excel: Enter, leeres Datum = wie oben, Zeilen aus Excel einfügen), Agenten-Vorschläge freigeben, Kontenplan, Saldenliste, MWST nach ESTV-Ziffern, Berichte, Budget, Abschluss (Bilanz, Erfolgsrechnung, Anhang, Periode sperren) |
 
-Rechts sitzt der **Agent** (Claude): «Bereite die Quittungen in der Inbox vor», «Welche Rechnungen sind überfällig?». Er arbeitet mit denselben Werkzeugen wie der MCP-Server; seine Vorschläge erscheinen sofort unter *Prüfen*. Er läuft wahlweise über **Claude Code**, **Codex** oder **opencode** (jeweils dein eigener Login, kein zusätzlicher Schlüssel) oder über die Claude API (`ANTHROPIC_API_KEY`). Auswahl pro Buch unter *Einstellungen → Agent*, oder `ALLKVITT_CHAT_BACKEND=claude-code|codex|opencode|api`. Der Agent darf das Buch lesen, ändern kann er es nur über die allkvitt-Werkzeuge (Codex läuft in der Read-only-Sandbox, opencode ohne Edit/Shell). Im Verlauf steht, welcher Agent was gemacht hat.
+Oben rechts: **Verlauf** (jeder Commit mit Diff, Agenten markiert) und **Einstellungen** (Firma, IBAN-Prüfung,
+Systemkonten, Lohnsätze, Agentenmodus).
+
+Rechts sitzt der **Agent** (Claude): «Bereite die Quittungen in der Inbox vor», «Welche Rechnungen sind überfällig?». Er arbeitet mit denselben Werkzeugen wie der MCP-Server; seine Vorschläge erscheinen sofort unter *Buchhaltung › Vorschläge*, eingelesene Belege unter *Einkauf/Verkauf › Entwürfe*. Er läuft wahlweise über **Claude Code**, **Codex** oder **opencode** (jeweils dein eigener Login, kein zusätzlicher Schlüssel) oder über die Claude API (`ANTHROPIC_API_KEY`). Auswahl pro Buch unter *Einstellungen → Agent*, oder `ALLKVITT_CHAT_BACKEND=claude-code|codex|opencode|api`. Der Agent darf das Buch lesen, ändern kann er es nur über die allkvitt-Werkzeuge (Codex läuft in der Read-only-Sandbox, opencode ohne Edit/Shell). Im Verlauf steht, welcher Agent was gemacht hat.
 
 **Eigene Agenten im Terminal** nutzen denselben MCP-Server:
 ```bash
@@ -154,7 +154,7 @@ Fremdwährungskonten per Stichtag bewertet. Positionen (`--position`, im Formula
 tragen je ein Konto, einen Bruttobetrag und einen eigenen MWST-Code; der Agent schlägt Aufteilungen im Entwurf vor.
 
 ### Belegeingang: Quittungen, Lieferantenrechnungen, eigene extern erstellte Rechnungen
-Oberfläche: Prüfen → Belege hochladen (alle Arten), Kreditoren → Rechnungen einlesen, Debitoren → Rechnungen einlesen.
+Oberfläche: «Beleg hochladen» oben rechts (alle Arten); die Entwürfe erscheinen unter Einkauf › Entwürfe bzw. Verkauf › Entwürfe.
 ```bash
 allkvitt eingang einlesen inbox/*.pdf inbox/foto.jpg   # → Entwürfe, nichts wird gebucht; die Art wird erkannt
 allkvitt eingang list
@@ -195,7 +195,7 @@ allkvitt bank abstimmung                      # Schlusssaldo Bank gegen Buchhalt
 Beim Import bucht allkvitt Zahlungen mit QR-/SCOR-Referenz oder Rechnungsnummer selbst, erkennt Zahlungen aus
 eigenen Zahlungsläufen (EndToEndId) und gleicht bereits Gebuchtes (z.B. Löhne) nur ab. Danach greifen die
 **Bankregeln** für Wiederkehrendes (Miete, Abos, Spesen): «Immer so buchen» bei einer gebuchten Bewegung oder
-`allkvitt bank regel add --gegenpartei SWISSCOM --konto 6510`. Der Rest landet unter *Prüfen*; der Agent kann zuordnen
+`allkvitt bank regel add --gegenpartei SWISSCOM --konto 6510`. Der Rest wartet unter *Bank › Abgleichen*; der Agent kann zuordnen
 oder Buchungen vorschlagen. Auszüge von Fremdwährungskonten (z.B. EUR) werden in der Kontowährung importiert und
 zum BAZG-Kurs gebucht; die Saldoabstimmung vergleicht den Saldo in der Währung.
 
@@ -236,7 +236,7 @@ export TYPESAFE_API_KEY=…              # Early-Access-Schlüssel von console.t
 # Einstellungen → Jev einschalten (pro Buch), Schwelle wählen
 allkvitt bank kontieren                  # oder Knopf «Konten vorschlagen (Jev)» auf der Bank-Seite
 ```
-Ab der Schwelle entsteht ein Vorschlag unter *Prüfen*, darunter nur ein Hinweis; gebucht wird nie automatisch.
+Ab der Schwelle entsteht ein Vorschlag (*Buchhaltung › Vorschläge*), darunter nur ein Hinweis; gebucht wird nie automatisch.
 Gesendet werden Gegenpartei, Mitteilung, Betrag, Kontenplan und bis zu fünf frühere Buchungen derselben
 Gegenpartei. Bewegungen von Mitarbeitenden werden nie gesendet. TypeSafe ist ein US-Anbieter (Early Access,
 nicht Open Source); für Mandantenbücher Einverständnis klären.
@@ -250,7 +250,7 @@ allkvitt payroll run 2026-01 --mitarbeiter M0001 --qst-gesamtpensum 80
 allkvitt payroll close 2026-01 M0001             # einfrieren, verbuchen, PDF
 allkvitt payroll lohnausweis 2026 M0001          # nach Abschluss aller Anstellungsmonate
 ```
-**Spesen:** Auslagen, die Mitarbeitende privat bezahlt haben (Quittung unter Prüfen hochladen und «Privat bezahlt
+**Spesen:** Auslagen, die Mitarbeitende privat bezahlt haben (Quittung unter *Beleg hochladen* einlesen und «Privat bezahlt
 von …» wählen, oder Lohn → Spesen, oder `allkvitt spesen add`), werden gegen 2210 «Sonstige kurzfristige Verbindlichkeiten» (`konten.spesen`) gebucht
 und mit dem nächsten Lohn ausbezahlt — nicht AHV-pflichtig, nach dem Nettolohn. Übrige effektive Spesen erscheinen
 im Lohnausweis unter Ziffer 13.1.2, Reisespesen sind mit dem Kreuz in 13.1.1 abgedeckt.

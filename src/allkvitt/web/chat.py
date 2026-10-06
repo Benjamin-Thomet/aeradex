@@ -4,7 +4,7 @@ Uses the Anthropic SDK's tool runner over the same tool registry as the MCP
 server (`allkvitt.tools`). Each turn runs in a worker thread; its progress
 (tool calls, text, errors) is streamed to the browser over SSE. Commits the
 agent makes are attributed to it in git, and in `agent_modus: vorschlag` it
-can only propose bookings, which then appear in Prüfen for a person to approve.
+can only propose bookings, which then appear under Vorschläge for a person to approve.
 """
 from __future__ import annotations
 
@@ -33,9 +33,9 @@ from .. import gitlog, tools
 MODEL = os.environ.get("ALLKVITT_MODEL", "claude-opus-5-5")
 MAX_ITERATIONS = 16
 
-PAGE_LABELS = {"/": "Übersicht", "/pruefen": "Prüfen", "/journal": "Journal", "/konten": "Konten",
-               "/debitoren": "Debitoren", "/lohn": "Lohn", "/abschluss": "Abschluss", "/verlauf": "Verlauf",
-               "/einstellungen": "Einstellungen"}
+PAGE_LABELS = {"/": "Übersicht", "/kreditoren": "Einkauf", "/debitoren": "Verkauf", "/bank": "Bank",
+               "/vorschlaege": "Vorschläge", "/journal": "Journal", "/konten": "Konten", "/lohn": "Lohn",
+               "/abschluss": "Abschluss", "/verlauf": "Verlauf", "/einstellungen": "Einstellungen"}
 
 
 def _api_credentials() -> str | None:
@@ -202,7 +202,7 @@ class BaseAgent:
         if agents_md.exists():
             book_rules = agents_md.read_text(encoding="utf-8")
         return (tools.instructions_for(self.root) + "\n\nDu arbeitest in der allkvitt-Oberfläche; der Mensch sieht deine "
-                "Vorschläge sofort unter «Prüfen». Antworte knapp auf Deutsch (Schweizer Schreibweise, kein ß), "
+                "Vorschläge sofort: Buchungsvorschläge unter «Buchhaltung › Vorschläge», eingelesene Belege unter «Einkauf/Verkauf › Entwürfe», Bankbewegungen unter «Bank › Abgleichen». Antworte knapp auf Deutsch (Schweizer Schreibweise, kein ß), "
                 "nenne Belegnummern und Beträge, die die Tools zurückgeben.\n\n" + book_rules)
 
 

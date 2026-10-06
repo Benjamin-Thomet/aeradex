@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, accounts_datalist, mwst_select %}
+{% block title %}Bankregeln{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Regeln</h1><div class="sub">Wiederkehrende Bewegungen (Miete, Abos, Bankspesen): Der Import bucht sie selbst, unter Abgleichen erscheinen sie als sicherer Vorschlag. Am schnellsten entsteht eine Regel beim Buchen mit «Immer so buchen».</div></div>
+</div>
+{{ accounts_datalist(accounts) }}
+<div class="panel" id="regeln">
+  <header><h2>Regeln</h2><span class="hint">{{ rules|length }} Regel{{ 'n' if rules|length != 1 }}</span></header>
+  {% if rules %}<div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Regel</th><th>erkennt</th><th>Konto</th><th>Text</th><th></th></tr></thead>
+    <tbody>{% for r in rules %}<tr class="row">
+      <td><span class="beleg">{{ r.id }}</span></td>
+      <td>{% if r.gegenpartei %}Gegenpartei «{{ r.gegenpartei }}»{% endif %}{% if r.text %} Text «{{ r.text }}»{% endif %}{% if r.betrag %} · genau {{ r.betrag|chf }}{% endif %}{% if r.richtung %} · nur {{ r.richtung }}{% endif %}</td>
+      <td class="acc">{{ r.konto }} <span class="small muted">{{ book.accounts[r.konto].name if r.konto in book.accounts }}</span>{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}</td>
+      <td class="small">{{ r.buchungstext }}</td>
+      <td class="right"><form hx-post="/bank/regel/{{ r.id }}/entfernen" hx-target="find .errors" hx-confirm="Regel {{ r.id }} entfernen?"><button class="btn small ghost" type="submit" aria-label="Entfernen">✕</button>{{ errors() }}</form></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>{% endif %}
+  <form class="body" hx-post="/bank/regel" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label for="r-gp">Gegenpartei enthält</label><input class="input" id="r-gp" name="gegenpartei" placeholder="z.B. SWISSCOM"></div>
+      <div class="field"><label for="r-tx">oder Text enthält</label><input class="input" id="r-tx" name="text" placeholder="z.B. Kontoführung"></div>
+      <div class="field"><label for="r-be">Betrag genau (optional)</label><input class="input num" id="r-be" name="betrag" inputmode="decimal" placeholder="z.B. 89.00"></div>
+      <div class="field"><label for="r-ri">Richtung</label><select class="input" id="r-ri" name="richtung" style="width:100%"><option value="">beide</option><option value="belastung">nur Belastungen</option><option value="gutschrift">nur Gutschriften</option></select></div>
+      <div class="field"><label for="r-ko">Konto</label><input class="input" id="r-ko" name="konto" list="konten" required placeholder="z.B. 6510"></div>
+      {{ mwst_select("mwst", vat, vat_codes, id="r-mw") }}
+      <div class="field"><label for="r-bt">Buchungstext</label><input class="input" id="r-bt" name="buchungstext"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Greift nur, wenn keine Rechnung, kein Kreditor und keine bestehende Buchung passt; offene Bewegungen werden gleich gebucht.</span><button class="btn small primary" type="submit">Regel anlegen</button></div>
+  </form>
+</div>
+{% endblock %}

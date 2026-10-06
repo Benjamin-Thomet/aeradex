@@ -113,32 +113,58 @@ def _sparkline(values: list[Decimal]) -> str:
     return " ".join(f"{i * 200 / n:.1f},{30 - float((v - lo) / span) * 24:.1f}" for i, v in enumerate(values))
 
 
+def unread_inbox(book: Book) -> list[Path]:
+    """Files in the inbox that are not read in yet (no draft points to them)."""
+    from .. import erfassung
+    inbox = book.root / "inbox"
+    drafted = {d.get("datei") for d in erfassung.drafts(book).values()}
+    return [p for p in sorted(inbox.iterdir()) if p.is_file() and not p.name.startswith(".")
+            and f"inbox/{p.name}" not in drafted] if inbox.exists() else []
+
+
 def todo_items(book: Book) -> list[dict]:
-    """Everything that waits for a person, most urgent first."""
+    """Everything that waits for a person, one line per stack, most urgent first. Each line leads to
+    the one place where that work is done."""
+    from .. import bank, erfassung
     items = []
     issues = checks.run(book)
     for i in issues:
         if i.level == "fehler":
             items.append({"level": "red", "title": i.message, "detail": i.where, "tag": "Fehler", "href": "/einstellungen#pruefung"})
-    inbox = book.root / "inbox"
-    for p in sorted(inbox.iterdir()) if inbox.exists() else []:
-        if p.is_file() and not p.name.startswith("."):
-            items.append({"level": "info", "title": p.name, "detail": "Datei in der Inbox", "tag": "Inbox",
-                          "href": f"/pruefen?datei={p.name}"})
-    for prop in journal.list_proposals(book):
-        items.append({"level": "info", "title": f"{prop['Text']}, {prop['Betrag']}",
-                      "detail": f"Vorschlag {prop['ID']} · {prop['Soll']} an {prop['Haben']}", "tag": "Vorschlag",
-                      "href": "/pruefen#vorschlaege"})
-    drafts = defaultdict(list)
+    unread = unread_inbox(book)
+    if unread:
+        items.append({"level": "info", "title": f"{len(unread)} Datei{'en' if len(unread) > 1 else ''} in der Inbox einlesen",
+                      "detail": " · ".join(p.name for p in unread[:3]) + (" …" if len(unread) > 3 else ""),
+                      "tag": "Inbox", "href": "#inbox"})
+    drafts = list(erfassung.drafts(book).values())
+    for group, label, href in (("einkauf", "Einkauf", "/kreditoren?status=entwurf"),
+                               ("verkauf", "Verkauf", "/debitoren?status=entwurf")):
+        mine = [d for d in drafts if (d.get("art") == "debitor") == (group == "verkauf")]
+        if mine:
+            ready = sum(1 for d in mine if d.get("status") == "bereit")
+            items.append({"level": "warn" if any(d.get("status") == "konflikt" for d in mine) else "info",
+                          "title": f"{len(mine)} Entw{'ürfe' if len(mine) > 1 else 'urf'} im {label} freigeben",
+                          "detail": f"{ready} bereit" + (f" · {len(mine) - ready} brauchen noch Angaben" if ready < len(mine) else ""),
+                          "tag": "Entwürfe", "href": href})
+    open_tx = [t for t in bank.transactions(book) if t["Status"] == "offen"]
+    if open_tx:
+        sure = sum(1 for o in bank.suggestions(book).values() if o[0]["sicher"])
+        items.append({"level": "info", "title": f"{len(open_tx)} Bankbewegung{'en' if len(open_tx) > 1 else ''} abgleichen",
+                      "detail": f"{sure} mit sicherem Vorschlag" if sure else "ohne sicheren Vorschlag",
+                      "tag": "Bank", "href": "/bank"})
+    proposals = journal.list_proposals(book)
+    if proposals:
+        items.append({"level": "info", "title": f"{len(proposals)} Vorschl{'äge' if len(proposals) > 1 else 'ag'} des Agenten freigeben",
+                      "detail": " · ".join(p["Text"] for p in proposals[:3]), "tag": "Vorschläge", "href": "/vorschlaege"})
+    slips_by_month = defaultdict(list)
     for slip in payroll.payslips(book):
         if slip.get("status") != "abgeschlossen":
-            drafts[f"{slip['jahr']}-{int(slip['monat']):02d}"].append(slip)
-    for month, slips in sorted(drafts.items()):
+            slips_by_month[f"{slip['jahr']}-{int(slip['monat']):02d}"].append(slip)
+    for month, slips in sorted(slips_by_month.items()):
         items.append({"level": "warn", "title": f"Löhne {month[5:]}/{month[:4]} abschliessen",
                       "detail": " · ".join(f"{s.get('name')} {Decimal(str(s['werte']['nettolohn'])):,.2f} netto".replace(",", "'") for s in slips),
                       "tag": f"{len(slips)} Entwurf" + ("e" if len(slips) > 1 else ""), "href": f"/lohn?monat={month}"})
     from .. import kreditoren as kred
-    from datetime import timedelta
     soon = (date.today() + timedelta(days=7)).isoformat()
     due = [r for r in kred.open_payables(book)["posten"] if r["status"] == "offen" and r["faellig"] <= soon]
     if due:
@@ -155,21 +181,10 @@ def todo_items(book: Book) -> list[dict]:
 async def uebersicht(ui: UI, request: Request):
     book = ui.book()
     data = await asyncio.to_thread(overview_data, book)
-    return ui.render(request, "uebersicht.html", book=book, d=data, todos=todo_items(book))
+    return ui.render(request, "uebersicht.html", book=book, d=data, todos=todo_items(book), inbox=unread_inbox(book))
 
 
 # ---------- Prüfen ----------
-
-def draft_rows(book: Book) -> list[dict]:
-    out = []
-    emps = payroll.employees(book)
-    for slip in payroll.payslips(book):
-        if slip.get("status") == "abgeschlossen":
-            continue
-        emp = emps.get(slip["mitarbeiter"], {})
-        out.append({"slip": slip, "emp": emp, "warnings": payslip_warnings(slip, emp)})
-    return out
-
 
 def payslip_warnings(slip: dict, emp: dict) -> list[str]:
     warnings = []
@@ -182,32 +197,14 @@ def payslip_warnings(slip: dict, emp: dict) -> list[str]:
 
 
 async def pruefen(ui: UI, request: Request):
+    """The old review page: its parts now live where the work is done (Übersicht, Einkauf/Verkauf
+    › Entwürfe, Bank › Abgleichen, Buchhaltung › Vorschläge)."""
+    return RedirectResponse("/#inbox" if request.query_params.get("datei") else "/", status_code=303)
+
+
+async def vorschlaege_page(ui: UI, request: Request):
     book = ui.book()
-    inbox = book.root / "inbox"
-    from .. import erfassung
-    all_drafts = list(erfassung.drafts(book).values())
-    drafted = {d.get("datei") for d in all_drafts}
-    files = [p for p in sorted(inbox.iterdir()) if p.is_file() and not p.name.startswith(".")
-             and f"inbox/{p.name}" not in drafted] if inbox.exists() else []
-    chosen = request.query_params.get("datei")
-    current = next((p for p in files if p.name == chosen), files[0] if files else None)
-    proposals = journal.list_proposals(book)
-    linked = next((p for p in proposals if current and Path(p.get("Datei") or "").name == current.name), None)
-    text = None
-    if current and file_kind(current) == "text":
-        text = current.read_text(encoding="utf-8", errors="replace")[:5000]
-    issues = [i for i in checks.run(book) if not (i.level == "hinweis" and i.where.startswith("lohn/"))
-              and i.where != "inbox"]
-    qrbill = _qr_hint(book, f"inbox/{current.name}") if current and file_kind(current) in ("pdf", "image") else None
-    from .. import bank
-    bank_open = [t for t in bank.transactions(book) if t["Status"] == "offen"]
-    bank_sugg = bank.suggestions(book) if bank_open else {}
-    return ui.render(request, "pruefen.html", book=book, files=files, current=current, qrbill=qrbill, bank_open=bank_open,
-                     bank_sugg=bank_sugg, bank_sicher=sum(1 for o in bank_sugg.values() if o[0]["sicher"]),
-                     kind=file_kind(current) if current else None, text=text, proposals=proposals, linked=linked,
-                     drafts=all_drafts, payslip_drafts=draft_rows(book), dv=erfassung.value,
-                     issues=issues, accounts=account_options(book),
-                     currencies=currencies(book), next_beleg=journal.next_beleg(book, date.today().year))
+    return ui.render(request, "vorschlaege.html", book=book, proposals=journal.list_proposals(book))
 
 
 async def inbox_upload(ui: UI, request: Request):
@@ -216,14 +213,14 @@ async def inbox_upload(ui: UI, request: Request):
     if not upload or not getattr(upload, "filename", ""):
         return fail("Keine Datei gewählt.")
     data = await upload.read()
-    return await act(request, api.inbox_add, lambda r: f"/pruefen?datei={Path(r['datei']).name}", ui.book(),
+    return await act(request, api.inbox_add, "/#inbox", ui.book(),
                      upload.filename, data)
 
 
 async def pruefen_buchen(ui: UI, request: Request):
     f = await request.form()
     datei = f.get("datei") or None
-    return await act(request, api.post_entry, "/pruefen", ui.book(), f.get("datum"), acct(f.get("soll")),
+    return await act(request, api.post_entry, "/journal", ui.book(), f.get("datum"), acct(f.get("soll")),
                      acct(f.get("haben")), f.get("betrag"), f.get("text", ""), "", datei and f"inbox/{datei}",
                      f.get("mwst", ""), f.get("waehrung", ""), f.get("kurs") or None)
 
@@ -232,8 +229,8 @@ async def vorschlag(ui: UI, request: Request):
     f = await request.form()
     ids = f.getlist("id") or [request.path_params.get("id")]
     if request.path_params["aktion"] == "freigeben":
-        return await act(request, api.approve, request.headers.get("hx-current-url", "/pruefen"), ui.book(), ids)
-    return await act(request, api.reject, request.headers.get("hx-current-url", "/pruefen"), ui.book(), ids)
+        return await act(request, api.approve, request.headers.get("hx-current-url", "/vorschlaege"), ui.book(), ids)
+    return await act(request, api.reject, request.headers.get("hx-current-url", "/vorschlaege"), ui.book(), ids)
 
 
 # ---------- Journal ----------
@@ -576,13 +573,17 @@ async def kurs(ui: UI, request: Request):
 
 async def debitoren(ui: UI, request: Request):
     book = ui.book()
-    status = request.query_params.get("status", "")
-    rows = api.invoice_list(book, status)
+    drafts = group_drafts(book, "verkauf")
+    status = request.query_params.get("status") or ("entwurf" if drafts else "offen")
+    if status != "entwurf" and status not in VERKAUF_TABS:
+        status = "alle"
+    wanted = VERKAUF_TABS.get(status)
+    rows = [r for r in api.invoice_list(book) if wanted is None or r["status"] in wanted] if status != "entwurf" else []
     rows.sort(key=lambda r: r["nummer"], reverse=True)
     ar = invoices.aged_receivables(book)
     from .. import erfassung, jev
     return ui.render(request, "debitoren.html", book=book, rows=rows, status=status, ar=ar,
-                     drafts=list(erfassung.drafts(book, "debitor").values()), dv=erfassung.value,
+                     drafts=drafts, dv=erfassung.value,
                      ocr=bool(erfassung.ocr_languages()), jev=jev.config(book))
 
 
@@ -981,33 +982,70 @@ async def abschluss_aktion(ui: UI, request: Request):
 
 # ---------- Bank ----------
 
+def _bank_common(book) -> dict:
+    """What every bank page needs for the import form at the top."""
+    from .. import plugins
+    formats = plugins.bank_formats(book)
+    return {"bank_accept": ",".join(sorted({x for f in formats for x in f.suffixes}
+                                           | {".camt", ".053", ".csv", ".txt", ".xlsx", ".pdf"})),
+            "bank_labels": ", ".join(f.label for f in formats), "accounts": account_options(book)}
+
+
+def _rec_latest(rec: list[dict]) -> list[dict]:
+    """The latest reconciliation per account (the one line the reconcile page shows)."""
+    latest: dict[str, dict] = {}
+    for r in rec:
+        if r["konto"] not in latest or r["datum"] >= latest[r["konto"]]["datum"]:
+            latest[r["konto"]] = r
+    return list(latest.values())
+
+
 async def bank_page(ui: UI, request: Request):
-    from .. import bank, invoices as inv, kreditoren as kred
+    """Bank › Abgleichen: one card per open movement, the best match next to it, one click to take it."""
+    from .. import bank, jev
     book = ui.book()
-    status = request.query_params.get("status", "offen")
+    rows = sorted((t for t in bank.transactions(book) if t["Status"] == "offen"), key=lambda t: (t["Datum"], t["ID"]))
+    sugg = bank.suggestions(book) if rows else {}
+    rec = bank.reconciliation(book)
+    return ui.render(request, "bank_abgleich.html", book=book, rows=rows, sugg=sugg, jev=jev.config(book),
+                     sicher=sum(1 for o in sugg.values() if o[0]["sicher"]), pending=_bank_pending(book),
+                     rec=_rec_latest(rec), **_bank_common(book))
+
+
+async def bank_bewegungen(ui: UI, request: Request):
+    from .. import bank
+    book = ui.book()
+    status = request.query_params.get("status", "")
     rows = [t for t in bank.transactions(book) if not status or t["Status"] == status]
-    rows.sort(key=lambda t: (t["Datum"], t["ID"]), reverse=status != "offen")
-    paid = inv.settlements(book)
-    open_inv = [inv.invoice_state(book, m, paid.get(k, [])) for k, m in inv.invoices(book).items()]
-    open_inv = [x for x in open_inv if x["status"] in ("offen", "teilbezahlt")]
-    kp = kred.payments(book)
-    open_bills = [kred.state(book, m, kp.get(k, [])) for k, m in kred.bills(book).items()]
-    open_bills = [x for x in open_bills if x["status"] in ("offen", "angewiesen")]
+    rows.sort(key=lambda t: (t["Datum"], t["ID"]), reverse=True)
     counts = defaultdict(int)
     for t in bank.transactions(book):
         counts[t["Status"]] += 1
-    from .. import jev
-    from .. import plugins
-    formats = plugins.bank_formats(book)
-    sugg = bank.suggestions(book) if status in ("offen", "") else {}
-    return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts, jev=jev.config(book),
-                     sugg=sugg, sicher=sum(1 for o in sugg.values() if o[0]["sicher"]),
-                     bank_accept=",".join(sorted({x for f in formats for x in f.suffixes}
-                                                 | {".camt", ".053", ".csv", ".txt", ".xlsx", ".pdf"})),
-                     pending=_bank_pending(book),
-                     bank_labels=", ".join(f.label for f in formats),
-                     rec=bank.reconciliation(book), open_inv=open_inv, open_bills=open_bills, rules=bank.rules(book),
-                     accounts=account_options(book))
+    return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts,
+                     pending=_bank_pending(book), **_bank_common(book))
+
+
+async def bank_regeln(ui: UI, request: Request):
+    from .. import bank
+    book = ui.book()
+    return ui.render(request, "bank_regeln.html", book=book, rules=bank.rules(book), **_bank_common(book))
+
+
+async def bank_abstimmung(ui: UI, request: Request):
+    from .. import bank
+    book = ui.book()
+    return ui.render(request, "bank_abstimmung.html", book=book, rec=bank.reconciliation(book), **_bank_common(book))
+
+
+async def bank_suchen(ui: UI, request: Request):
+    """«Suchen & zuordnen» on a reconcile card: candidates for one open movement (HTMX partial)."""
+    book = ui.book()
+    tid = request.path_params["id"]
+    try:
+        hits = await asyncio.to_thread(api.bank_candidates, book, tid, request.query_params.get("q", ""))
+    except BookError as exc:
+        return HTMLResponse(f'<div class="alert error">{exc}</div>')
+    return ui.partial("_bank_treffer.html", hits=hits, tid=tid, q=request.query_params.get("q", ""))
 
 
 async def bank_upload(ui: UI, request: Request):
@@ -1140,24 +1178,43 @@ async def plugin_einstellung(ui: UI, request: Request):
     return await act(request, fn, "/einstellungen#plugins", ui.book(), f.get("name", ""))
 
 
+def _book_and_rule(book, tid: str, konto: str, text: str, mwst: str, rule: bool) -> dict:
+    """«Neu buchen» on a reconcile card; with «Immer so buchen» also a rule for the next ones."""
+    res = api.bank_book(book, tid, konto, text, mwst)
+    if rule:
+        res = api.bank_rule_from(Book(book.root), tid)
+    return res
+
+
 async def bank_aktion(ui: UI, request: Request):
     f = await request.form()
     tid, aktion = request.path_params["id"], request.path_params["aktion"]
     to = request.headers.get("hx-current-url", "/bank")
     book = ui.book()
     if aktion == "buchen":
-        return await act(request, api.bank_book, to, book, tid, acct(f.get("konto")), f.get("text", ""), f.get("mwst", ""))
-    if aktion == "zuordnen":
-        return await act(request, api.bank_assign, to, book, tid, f.get("nummer", ""))
-    if aktion == "abgleichen":
-        return await act(request, api.bank_link, to, book, tid, (f.get("beleg") or "").strip())
-    if aktion == "ignorieren":
-        return await act(request, api.bank_ignore, to, book, tid, f.get("grund", ""))
-    if aktion == "regel":
-        return await act(request, api.bank_rule_from, to, book, tid)
-    if aktion == "uebernehmen":
-        return await act(request, api.bank_accept, to, book, tid, f.get("art", ""), f.get("ziel", ""))
-    return fail("Unbekannte Aktion")
+        call = (_book_and_rule, book, tid, acct(f.get("konto")), f.get("text", ""), f.get("mwst", ""), f.get("regel") == "1")
+    elif aktion == "zuordnen":
+        call = (api.bank_assign, book, tid, f.get("nummer", ""))
+    elif aktion == "abgleichen":
+        call = (api.bank_link, book, tid, (f.get("beleg") or "").strip())
+    elif aktion == "ignorieren":
+        call = (api.bank_ignore, book, tid, f.get("grund", ""))
+    elif aktion == "regel":
+        call = (api.bank_rule_from, book, tid)
+    elif aktion == "uebernehmen":
+        call = (api.bank_accept, book, tid, f.get("art", ""), f.get("ziel", ""))
+    else:
+        return fail("Unbekannte Aktion")
+    if not f.get("karte"):
+        return await act(request, call[0], to, *call[1:])
+    try:
+        res = await asyncio.to_thread(*call)
+    except (BookError, FormatError, ValueError, KeyError, RuntimeError) as exc:
+        return fail(str(exc))
+    from markupsafe import escape
+    msg = res.get("meldung", "Erledigt") if isinstance(res, dict) else "Erledigt"
+    return HTMLResponse(f'<div class="bankcard done" id="karte-{escape(tid)}" role="status">✓ {escape(msg)}</div>',
+                        headers={"HX-Retarget": f"#karte-{tid}", "HX-Reswap": "outerHTML"})
 
 
 async def bank_alle(ui: UI, request: Request):
@@ -1170,7 +1227,8 @@ async def bank_regel(ui: UI, request: Request):
     if request.path_params.get("id"):
         return await act(request, api.bank_rule_remove, to, ui.book(), request.path_params["id"])
     return await act(request, api.bank_rule_add, to, ui.book(), acct(f.get("konto")), f.get("gegenpartei", ""),
-                     f.get("text", ""), None, "", "", f.get("buchungstext", ""))
+                     f.get("text", ""), f.get("betrag") or None, f.get("richtung", ""), f.get("mwst", ""),
+                     f.get("buchungstext", ""))
 
 
 async def spesen_aktion(ui: UI, request: Request):
@@ -1226,25 +1284,62 @@ async def plugin_aktion(ui: UI, request: Request):
 
 # ---------- Kreditoren ----------
 
-def _qr_hint(book: Book, rel: str) -> dict | None:
-    """Scan an inbox file for a Swiss QR-bill (quietly: no QR, no hint)."""
-    from .. import kreditoren as kred
-    try:
-        return kred.scan(book, rel)
-    except Exception:
-        return None
+# Status tabs of Einkauf and Verkauf: tab → the document statuses it lists (None = every status).
+EINKAUF_TABS = {"offen": ("offen", "angewiesen"), "bezahlt": ("bezahlt",), "alle": None,
+                "angewiesen": ("angewiesen",), "storniert": ("storniert",)}
+VERKAUF_TABS = {"offen": ("offen", "teilbezahlt"), "bezahlt": ("bezahlt",), "alle": None,
+                "teilbezahlt": ("teilbezahlt",), "storniert": ("storniert",)}
+DRAFT_GROUPS = {"einkauf": ("kreditor", "quittung"), "verkauf": ("debitor",)}
+DRAFT_REVIEW = {"kreditor": "/kreditoren/neu?entwurf=", "quittung": "/eingang/quittung?entwurf=",
+                "debitor": "/debitoren/extern?entwurf="}
+DRAFT_TAB = {"einkauf": "/kreditoren?status=entwurf", "verkauf": "/debitoren?status=entwurf"}
+
+
+def group_drafts(book: Book, group: str) -> list[dict]:
+    from .. import erfassung
+    return sorted((d for d in erfassung.drafts(book).values() if d.get("art", "kreditor") in DRAFT_GROUPS[group]),
+                  key=lambda d: d["id"])
+
+
+def _group_of(art: str) -> str:
+    return "verkauf" if art == "debitor" else "einkauf"
+
+
+def draft_nav(book: Book, meta: dict) -> dict:
+    """«Entwurf 2 von 5» with the previous/next draft of the same list, for the review pages."""
+    items = group_drafts(book, _group_of(meta.get("art", "kreditor")))
+    ids = [d["id"] for d in items]
+    i = ids.index(meta["id"]) if meta["id"] in ids else 0
+    url = lambda d: DRAFT_REVIEW[d.get("art", "kreditor")] + d["id"]
+    return {"pos": i + 1, "total": len(items), "tab": DRAFT_TAB[_group_of(meta.get("art", "kreditor"))],
+            "prev": url(items[i - 1]) if i > 0 else "", "next": url(items[i + 1]) if i + 1 < len(items) else ""}
+
+
+def after_draft(book: Book, art: str, draft_id: str, weiter: bool) -> str:
+    """Where to go once a draft is approved: with «Freigeben & nächster» the next draft of the list that
+    is not with the agent, else back to the list."""
+    group = _group_of(art)
+    if weiter:
+        for d in group_drafts(book, group):
+            if d["id"] != draft_id and d.get("status") != "agent":
+                return DRAFT_REVIEW[d.get("art", "kreditor")] + d["id"]
+    return DRAFT_TAB[group]
 
 
 async def kreditoren_page(ui: UI, request: Request):
     from .. import kreditoren as kred
     book = ui.book()
-    status = request.query_params.get("status", "")
+    drafts = group_drafts(book, "einkauf")
+    status = request.query_params.get("status") or ("entwurf" if drafts else "offen")
+    if status != "entwurf" and status not in EINKAUF_TABS:
+        status = "alle"
     paid = kred.payments(book)
     rows = [kred.state(book, m, paid.get(k, [])) for k, m in kred.bills(book).items()]
-    rows = [r for r in rows if not status or r["status"] == status]
-    rows.sort(key=lambda r: (r["status"] not in ("offen", "angewiesen"), r["faellig"], r["nummer"]))
+    wanted = EINKAUF_TABS.get(status)
+    rows = [r for r in rows if wanted is None or r["status"] in wanted] if status != "entwurf" else []
+    rows.sort(key=lambda r: (r["status"] not in ("offen", "angewiesen"), r["faellig"], r["nummer"]),
+              reverse=status == "bezahlt")
     from .. import erfassung, jev
-    drafts = list(erfassung.drafts(book, "kreditor").values())
     return ui.render(request, "kreditoren.html", book=book, rows=rows, status=status, op=kred.open_payables(book),
                      default_date=_next_workday().isoformat(), drafts=drafts,
                      auto_agent=erfassung.agent_auto(book), jev=jev.config(book),
@@ -1269,23 +1364,35 @@ def _agent_in_background(root: Path, ids: list[str]) -> None:
         threading.Thread(target=work, daemon=True).start()
 
 
-EINGANG_BACK = {"kreditor": "/kreditoren#entwuerfe", "debitor": "/debitoren#entwuerfe", "quittung": "/pruefen#eingang",
-                "": "/pruefen#eingang"}
+EINGANG_BACK = {"kreditor": "/kreditoren?status=entwurf", "quittung": "/kreditoren?status=entwurf",
+                "debitor": "/debitoren?status=entwurf", "": "/kreditoren?status=entwurf"}
+STATEMENT_SUFFIXES = (".xml", ".camt", ".053")
 
 
 async def eingang_einlesen(ui: UI, request: Request):
-    """Upload (or an inbox file from Prüfen) → drafts. PDFs and images are read; anything else
-    (bank statements, CSV) only lands in the inbox."""
+    """Upload (or inbox files from the Übersicht) → drafts. PDFs and images are read; camt statements
+    are imported at the bank; anything else (CSV, Excel) lands in the inbox. Without a given kind the
+    answer leads to where the drafts landed: Einkauf or Verkauf › Entwürfe."""
     from .. import erfassung
     form = await request.form()
     art = (form.get("art") or ("kreditor" if request.url.path.startswith("/kreditoren") else "")).strip()
     uploads = [u for u in form.getlist("dateien") if getattr(u, "filename", "")]
-    datei = form.get("datei")
-    if not uploads and not datei:
+    targets = [d for d in form.getlist("datei") if d]
+    if not uploads and not targets:
         return fail("Keine Datei gewählt.")
-    created, errors_, stored = [], [], 0
-    targets = [datei] if datei else []
+    created, errors_, stored, statements = [], [], 0, []
     for upload in uploads:
+        if not art and Path(upload.filename).suffix.lower() in STATEMENT_SUFFIXES:
+            tmpdir = Path(tempfile.mkdtemp(prefix="allkvitt-"))
+            tmp = tmpdir / Path(upload.filename).name
+            tmp.write_bytes(await upload.read())
+            try:
+                statements.append((await asyncio.to_thread(api.bank_import, ui.book(), str(tmp)))["meldung"])
+            except (BookError, FormatError) as exc:
+                errors_.append(f"{upload.filename}: {exc}")
+            finally:
+                tmp.unlink(missing_ok=True)
+            continue
         try:
             res = await asyncio.to_thread(api.inbox_add, ui.book(), upload.filename, await upload.read())
         except BookError as exc:
@@ -1303,22 +1410,29 @@ async def eingang_einlesen(ui: UI, request: Request):
             errors_.append(f"{Path(target).name}: {exc}")
     if erfassung.agent_auto(ui.book()):
         _agent_in_background(ui.root, [d["id"] for d in created if erfassung.needs_agent(d)])
-    if errors_ and not created and not stored:
+    if errors_ and not created and not stored and not statements:
         return fail(" · ".join(errors_))
     kinds = defaultdict(int)
     for d in created:
         kinds[erfassung.ARTEN[d["art"]]] += 1
-    msg = ", ".join(f"{n}× {k}" for k, n in kinds.items()) or "Datei(en) in der Inbox"
-    if stored and created:
-        msg += f", {stored} weitere Datei(en) in der Inbox"
+    parts = [f"{n}× {k}" for k, n in kinds.items()] + statements
+    if stored:
+        parts.append(f"{stored} Datei(en) in der Inbox (Kontoauszug als CSV/Excel: unter Bank importieren)")
+    msg = ", ".join(parts)
     if errors_:
         msg += f" · Probleme: {' · '.join(errors_)}"
-    return done(msg, EINGANG_BACK.get(art, "/pruefen#eingang"), "warn" if errors_ else "ok")
+    if art:
+        to = EINGANG_BACK.get(art, "/kreditoren?status=entwurf")
+    elif created:
+        to = DRAFT_TAB["verkauf" if all(d["art"] == "debitor" for d in created) else "einkauf"]
+    else:
+        to = "/bank" if statements else "/#inbox"
+    return done(msg, to, "warn" if errors_ else "ok")
 
 
 async def eingang_entwurf(ui: UI, request: Request):
     draft_id, aktion = request.path_params["id"], request.path_params["aktion"]
-    back = request.headers.get("hx-current-url") or "/pruefen#eingang"
+    back = request.headers.get("hx-current-url") or "/kreditoren?status=entwurf"
     if aktion == "agent":
         try:
             await asyncio.to_thread(api.bill_draft_mark, ui.book(), draft_id, "agent", "An den Agenten übergeben")
@@ -1350,6 +1464,7 @@ async def quittung_pruefen(ui: UI, request: Request):
     return ui.render(request, "quittung.html", book=book, entwurf=meta, ev=v, pay=pay, open_tx=open_tx,
                      employees={nr: e for nr, e in payroll.employees(book).items() if e.get("aktiv", True)},
                      liquid=liquid, kind=file_kind(book.root / meta["datei"]), quellen_felder=meta.get("felder") or {},
+                     dnav=draft_nav(book, meta),
                      accounts=account_options(book), currencies=currencies(book),
                      today=date.today().isoformat())
 
@@ -1370,7 +1485,8 @@ async def quittung_buchen(ui: UI, request: Request):
     lines = [{"konto": acct(k), "betrag": b, "text": t, "mwst": m}
              for k, b, t, m in zip(f.getlist("p_konto"), f.getlist("p_betrag"), f.getlist("p_text"), codes) if k or b]
     cur = (f.get("waehrung") or "CHF").upper()
-    return await act(request, api.receipt_book, "/pruefen#eingang", ui.book(), draft_id, f.get("datum"),
+    return await act(request, api.receipt_book, after_draft(ui.book(), "quittung", draft_id, f.get("weiter") == "1"),
+                     ui.book(), draft_id, f.get("datum"),
                      (f.get("text") or "").strip() or "Quittung", f.get("betrag"), acct(f.get("konto")),
                      f.get("mwst") or "", lines or None, "" if cur == "CHF" else cur, f.get("kurs") or None, zahlung)
 
@@ -1387,6 +1503,7 @@ async def debitor_extern(ui: UI, request: Request):
         v = erfassung.form_values(meta)
     custs = invoices.customers(book)
     return ui.render(request, "debitor_extern.html", book=book, entwurf=meta, ev=v, customers=custs,
+                     dnav=draft_nav(book, meta) if meta else None,
                      chosen=v.get("kunde") if v.get("kunde") in custs else "",
                      kind=file_kind(book.root / meta["datei"]) if meta else None,
                      quellen_felder=(meta or {}).get("felder") or {}, accounts=account_options(book),
@@ -1416,13 +1533,14 @@ async def debitor_extern_erfassen(ui: UI, request: Request):
         fields["konto"] = acct(f.get("konto"))
     if f.get("datei") and not fields.get("entwurf"):
         fields["datei"] = f.get("datei")
-    return await act(request, api.invoice_external, lambda r: f"/debitoren/rechnung/{r['rechnung']['nummer']}", book,
-                     kunde, f.get("betrag"), **fields)
+    to = (after_draft(book, "debitor", fields["entwurf"], f.get("weiter") == "1") if fields.get("entwurf")
+          else lambda r: f"/debitoren/rechnung/{r['rechnung']['nummer']}")
+    return await act(request, api.invoice_external, to, book, kunde, f.get("betrag"), **fields)
 
 
 async def kreditoren_einstellung(ui: UI, request: Request):
     f = await request.form()
-    return await act(request, api.settings_update, "/kreditoren#entwuerfe", ui.book(),
+    return await act(request, api.settings_update, "/kreditoren?status=entwurf", ui.book(),
                      kreditoren={"agent_automatisch": f.get("agent_automatisch") == "1"})
 
 
@@ -1456,7 +1574,7 @@ async def kreditor_neu(ui: UI, request: Request):
                          scan_error=None, suppliers=sups, chosen=v["lieferant"] if v["lieferant"] in sups else "",
                          accounts=account_options(book), today=date.today().isoformat(),
                          entwurf=meta, ev=v, quellen_felder=meta.get("felder") or {}, currencies=currencies(book),
-                         warnungen=erfassung.warnings(book, meta))
+                         warnungen=erfassung.warnings(book, meta), dnav=draft_nav(book, meta))
     if datei:
         try:
             scan = kred.scan(book, datei)
@@ -1501,8 +1619,9 @@ async def kreditor_erfassen(ui: UI, request: Request):
              for k, b, t, m in zip(f.getlist("p_konto"), f.getlist("p_betrag"), f.getlist("p_text"), codes) if k or b]
     if lines:
         fields["positionen"] = lines
-    return await act(request, api.bill_add, lambda r: f"/kreditoren/rechnung/{r['kreditor']['nummer']}", book,
-                     lieferant, f.get("betrag"), **fields)
+    to = (after_draft(book, "kreditor", fields["entwurf"], f.get("weiter") == "1") if fields.get("entwurf")
+          else lambda r: f"/kreditoren/rechnung/{r['kreditor']['nummer']}")
+    return await act(request, api.bill_add, to, book, lieferant, f.get("betrag"), **fields)
 
 
 async def kreditor_detail(ui: UI, request: Request):
@@ -1887,6 +2006,11 @@ def routes(ui: UI) -> list[Route]:
         Route("/debitoren/kunden/{nr:str}", h(kunde_speichern), methods=["POST"]),
         Route("/debitoren/rechnung/{nr:str}", h(rechnung)),
         Route("/debitoren/rechnung/{nr:str}/{aktion:str}", h(rechnung_aktion), methods=["POST"]),
+        Route("/bank/bewegungen", h(bank_bewegungen), methods=["GET"]),
+        Route("/bank/regeln", h(bank_regeln), methods=["GET"]),
+        Route("/bank/abstimmung", h(bank_abstimmung), methods=["GET"]),
+        Route("/bank/{id:str}/suchen", h(bank_suchen), methods=["GET"]),
+        Route("/vorschlaege", h(vorschlaege_page), methods=["GET"]),
         Route("/bank", h(bank_page)),
         Route("/bank/import", h(bank_upload), methods=["POST"]),
         Route("/bank/jev", h(bank_jev), methods=["POST"]),

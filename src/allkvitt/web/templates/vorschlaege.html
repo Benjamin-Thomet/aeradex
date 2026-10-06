@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Vorschläge{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Vorschläge</h1><div class="sub">Freie Buchungen, die der Agent vorbereitet hat. Nichts davon ist gebucht, bis du freigibst; die Begründung kommt vom Agenten.</div></div>
+  <div class="actions">
+    {% if proposals|length > 1 %}
+    <form hx-post="/vorschlaege/freigeben" hx-target="find .errors">{% for p in proposals %}<input type="hidden" name="id" value="{{ p.ID }}">{% endfor %}<button class="btn" type="submit">Alle {{ proposals|length }} freigeben</button>{{ errors() }}</form>
+    {% endif %}
+  </div>
+</div>
+<div class="panel" id="vorschlaege">
+  {% for p in proposals %}
+  <div class="proposal">
+    <span class="beleg">{{ p.ID }}</span>
+    <div class="what">
+      <strong>{{ p.Text }}</strong>
+      <span class="posting">{{ p.Datum|datum }} · {{ p.Soll }} {{ book.accounts[p.Soll].name if p.Soll in book.accounts }} an {{ p.Haben }} {{ book.accounts[p.Haben].name if p.Haben in book.accounts }} · {% if p.FW %}{{ p.FW }} {{ p.Betrag|chf }} zu {{ p.Kurs }}{% else %}{{ p.Betrag|chf }}{% endif %}{% if p.MWST %} · {{ p.MWST }} brutto{% endif %}</span>
+      <span class="why">{% if p["Begründung"] %}«{{ p["Begründung"] }}»{% endif %} · {% if p.Datei %}<a class="link" href="/datei/{{ p.Datei|urlq }}" target="_blank">{{ p.Datei }}</a>{% elif p.Bank %}Bankbewegung {{ p.Bank }}{% else %}keine Beleg-Datei{% endif %}</span>
+    </div>
+    <span class="actions">
+      <form hx-post="/vorschlaege/verwerfen" hx-target="find .errors"><input type="hidden" name="id" value="{{ p.ID }}"><button class="btn small" type="submit">Verwerfen</button>{{ errors() }}</form>
+      <form hx-post="/vorschlaege/freigeben" hx-target="find .errors"><input type="hidden" name="id" value="{{ p.ID }}"><button class="btn small primary" type="submit">Freigeben</button>{{ errors() }}</form>
+    </span>
+  </div>
+  {% else %}<div class="empty">Keine offenen Vorschläge. Frag den Agenten rechts, z.B. «Bereite die Quittungen in der Inbox vor».</div>{% endfor %}
+</div>
+{% endblock %}

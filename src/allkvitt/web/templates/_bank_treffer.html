@@ -1,0 +1,10 @@
+{% if hits %}{% for h in hits %}
+<div class="match">
+  <div>{{ h.label }}<div class="small muted">{{ h.grund }} · <span class="num">{{ h.betrag|chf }}</span></div></div>
+  {% if h.pruefen %}<a class="btn small" href="{{ h.pruefen }}">Quittung prüfen →</a>
+  {% else %}<form hx-post="/bank/{{ tid }}/{{ 'abgleichen' if h.art == 'beleg' else 'zuordnen' }}" hx-target="find .errors">
+    <input type="hidden" name="{{ 'beleg' if h.art == 'beleg' else 'nummer' }}" value="{{ h.ziel }}"><input type="hidden" name="karte" value="1">
+    <button class="btn small" type="submit">{{ 'Verknüpfen' if h.art == 'beleg' else 'Zuordnen' }}</button><div class="errors"></div>
+  </form>{% endif %}
+</div>{% endfor %}
+{% else %}<div class="small muted">{% if q %}Nichts gefunden für «{{ q }}».{% else %}Nichts mit genau diesem Betrag offen. Nach Name, Nummer oder einem anderen Betrag suchen (Teilzahlung).{% endif %}</div>{% endif %}

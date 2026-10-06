@@ -188,8 +188,9 @@ def test_ui_receipt_and_external_invoice(book, tmp_path):
                    files=[("dateien", ("quittung.pdf", receipt, "application/pdf")),
                           ("dateien", ("auszug.csv", b"a;b\n1;2\n", "text/csv"))])
         assert r.status_code == 204, r.text
-        page = c.get("/pruefen").text
-        assert 'id="eingang"' in page and "ENT-0001" in page and "Quittung" in page
+        assert r.headers["HX-Redirect"] == "/kreditoren?status=entwurf"
+        page = c.get("/kreditoren?status=entwurf").text
+        assert 'id="entwuerfe"' in page and "ENT-0001" in page and "Quittung" in page
         review = c.get("/eingang/quittung?entwurf=ENT-0001").text
         assert 'value="45.50"' in review and "Bezahlt über Konto" in review
         r = c.post("/eingang/quittung", headers=h, data={"entwurf": "ENT-0001", "zahlung": "konto", "zahlkonto": "1000",
@@ -207,8 +208,9 @@ def test_ui_receipt_and_external_invoice(book, tmp_path):
             "entwurf": did, "kunde": "neu", "c_firma": "Kunde Muster AG", "c_name": "Muster",
             "c_strasse": "Gasse", "c_nr": "3", "c_plz": "3011", "c_ort": "Bern", "betrag": "1500.00",
             "rechnungsnr": "2026-77", "datum": "2026-03-02"})
-        assert r.status_code == 204, r.text
-        detail = c.get(r.headers["HX-Redirect"]).text
+        assert r.status_code == 204 and r.headers["HX-Redirect"] == "/debitoren?status=entwurf", r.text
+        nummer = api.invoice_list(Book(book.root))[0]["nummer"]
+        detail = c.get(f"/debitoren/rechnung/{nummer}").text
         assert "extern: 2026-77" in detail and "Original öffnen" in detail
     b = Book(book.root)
     assert api.bill_drafts(b) == [] and Decimal(api.ledger(b, "1000", 2026)["saldo"]) == Decimal("454.50")
