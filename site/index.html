@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="de-CH" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>allkvitt — Die Buchhaltung, die dein Agent führen kann</title>
+<meta name="description" content="allkvitt ist eine offene Schweizer Buchhaltung, gebaut für die Zusammenarbeit mit KI-Agenten. Dein Agent bereitet vor, die Engine rechnet, du gibst frei. Open Source unter der AGPL.">
+<meta name="theme-color" content="#08090a">
+<meta property="og:title" content="allkvitt — Die Buchhaltung, die dein Agent führen kann">
+<meta property="og:description" content="Offene Schweizer Buchhaltung für Menschen und KI-Agenten. Belege, QR-Rechnungen, Bank, MWST, Lohn — als lesbare Dateien in git.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="de_CH">
+<meta property="og:image" content="img/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/hanken-grotesk-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/hanken-grotesk-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+<script>try { const t = localStorage.getItem("allkvitt-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {} document.documentElement.classList.add("js");</script>
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt</a>
+
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="allkvitt — zum Anfang"><span class="coin" aria-hidden="true">a</span>allkvitt</a>
+    <a class="pill pill-nav" href="#hinweis">v0.8 · Vorschau</a>
+    <nav aria-label="Hauptnavigation">
+      <ul>
+        <li><a href="#agent">Agent</a></li>
+        <li><a href="#produkt">Produkt</a></li>
+        <li><a href="#open-source">Open Source</a></li>
+        <li><a href="#schweiz">Schweiz</a></li>
+        <li><a href="#start">Start</a></li>
+      </ul>
+    </nav>
+    <div class="end">
+      <button class="iconbtn" id="themeBtn" type="button" aria-label="Hell / Dunkel umschalten" title="Hell / Dunkel">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5a6.5 6.5 0 0 1 0 13z" class="fill"/></svg>
+      </button>
+      <a class="btn small light" href="https://github.com/allkvitt-ch/allkvitt">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+        <span class="gh-label">GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============ Hero ============ -->
+<section class="hero" id="top" aria-labelledby="hero-h">
+  <div class="hero-fx" aria-hidden="true"><div class="hero-grid"></div><div class="hero-glow"></div></div>
+  <div class="wrap">
+    <div class="hero-copy">
+      <a class="pill" href="#open-source"><span class="pill-dot" aria-hidden="true"></span>Open Source · AGPL-3.0 · Gebaut für die Schweiz <span aria-hidden="true">→</span></a>
+      <h1 id="hero-h">Die Buchhaltung, <br>die dein <em>Agent</em> führen kann.</h1>
+      <p class="lede">allkvitt ist eine offene Schweizer Buchhaltung, gebaut für die Zusammenarbeit mit KI. <strong>Dein Agent bereitet vor, die Engine rechnet, du gibst frei.</strong> Belege, Rechnungen, Bank, MWST und Lohn an einem Ort.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/allkvitt-ch/allkvitt">Auf GitHub ansehen <span class="arrow" aria-hidden="true">→</span></a>
+        <a class="btn ghost" href="#agent">So arbeitet der Agent</a>
+      </div>
+    </div>
+
+    <div class="hero-stage reveal">
+      <div class="window app-window">
+        <div class="bar"><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><span class="url">allkvitt · Einkauf › Entwürfe · Muster GmbH</span></div>
+        <img class="l" src="img/ui-quittung-light.webp" alt="allkvitt Einkauf: Quittung prüfen. Links der Beleg, rechts die Buchung mit dem Konto, das der Agent gewählt und begründet hat; daneben das Agent-Panel" width="2000" height="1250" fetchpriority="high">
+        <img class="d" src="img/ui-quittung-dark.webp" alt="allkvitt Einkauf: Quittung prüfen. Links der Beleg, rechts die Buchung mit dem Konto, das der Agent gewählt und begründet hat; daneben das Agent-Panel" width="2000" height="1250" fetchpriority="high">
+      </div>
+
+      <figure class="window agent-window" aria-label="Beispiel: Ein Agent bereitet Quittungen vor">
+        <div class="bar"><span class="agent-badge"><i aria-hidden="true"></i>Agent</span><span class="url">Claude Code · allkvitt MCP</span></div>
+        <ol class="agent-log" id="agentLog">
+          <li class="ln prompt"><span class="who">Du</span>Bereite die Quittungen in der Inbox vor.</li>
+          <li class="ln tool"><span class="fn">list_inbox</span><span class="res">3 Dateien</span></li>
+          <li class="ln tool"><span class="fn">create_bill_draft</span><span class="res">3 Quittungen gelesen</span></li>
+          <li class="ln tool"><span class="fn">complete_bill_draft</span><span class="arg">ENT-0001 · 5800</span><span class="num">64.80</span></li>
+          <li class="ln tool"><span class="fn">complete_bill_draft</span><span class="arg">ENT-0002 · 6640</span><span class="num">88.00</span></li>
+          <li class="ln tool"><span class="fn">complete_bill_draft</span><span class="arg">ENT-0003 · 6500</span><span class="num">32.50</span></li>
+          <li class="ln out"><span class="ok" aria-hidden="true">✓</span>3 Entwürfe kontiert, 2 davon mit der Bank abgeglichen. <b>Warten auf deine Freigabe.</b></li>
+        </ol>
+        <div class="agent-foot"><span>Modus «vorschlag»</span><span class="mono">bucht nichts ohne dich</span></div>
+      </figure>
+    </div>
+
+    <div class="works-with" aria-label="Funktioniert mit">
+      <span class="ww-label">Funktioniert mit</span>
+      <ul>
+        <li>Claude&nbsp;Code</li><li>Codex</li><li>opencode</li><li>MCP</li><li>Claude&nbsp;API</li><li>git</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 01 Arbeitsteilung ============ -->
+<section class="sec" id="agent" aria-labelledby="a-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="label"><span>01</span>Arbeitsteilung</p>
+      <h2 id="a-h">Der Agent entscheidet, was gebucht wird.<br><span class="dim">Gerechnet wird nie von ihm.</span></h2>
+      <p class="intro">Sprachmodelle sind gut darin, einen Beleg zu verstehen. Bei Zahlen sollen sie nicht raten. allkvitt trennt deshalb sauber: Jede Rolle macht, was sie am besten kann.</p>
+    </div>
+    <ol class="roles">
+      <li class="role reveal">
+        <div class="role-top"><span class="role-ic agent-ic" aria-hidden="true"></span><span class="role-n">Agent</span></div>
+        <h3>Liest, versteht, schlägt vor.</h3>
+        <p>Er liest Quittungen und Rechnungen, erkennt Lieferanten, wählt Konten und schreibt eine Begründung dazu. Du sprichst mit ihm wie mit einer Fachperson.</p>
+        <code class="role-code">«Welche Rechnungen sind über 30&nbsp;Tage offen?»</code>
+      </li>
+      <li class="role reveal">
+        <div class="role-top"><span class="role-ic engine-ic" aria-hidden="true"></span><span class="role-n">Engine</span></div>
+        <h3>Rechnet und prüft. Jedes Mal.</h3>
+        <p>Salden, Bilanz, MWST, Löhne und QR-Referenzen berechnet deterministischer Code, auf den Rappen. Jede Änderung muss alle Prüfregeln bestehen, sonst wird sie abgelehnt.</p>
+        <code class="role-code">Soll = Haben · Periode gesperrt · Fingerprint ok</code>
+      </li>
+      <li class="role reveal">
+        <div class="role-top"><span class="role-ic you-ic" aria-hidden="true"></span><span class="role-n">Du</span></div>
+        <h3>Behältst das letzte Wort.</h3>
+        <p>Was der Agent vorbereitet, landet zuerst bei dir: Belege als Entwürfe, freie Buchungen als Vorschläge. Du siehst Beleg und Buchung nebeneinander, mit der Begründung des Agenten, und gibst frei.</p>
+        <code class="role-code">Freigeben &amp; nächster</code>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============ 02 Produkt ============ -->
+<section class="sec sec-product" id="produkt" aria-labelledby="u-h">
+  <div class="wrap">
+    <div class="sec-head split reveal">
+      <div>
+        <p class="label"><span>02</span>Produkt</p>
+        <h2 id="u-h">Eine Oberfläche für Menschen.<br><span class="dim">Werkzeuge für Agenten.</span></h2>
+      </div>
+      <p class="intro">Im Browser arbeitest du wie in jeder modernen Buchhaltung. Der Agent sitzt rechts daneben und arbeitet mit denselben Werkzeugen wie du. Was er tut, erscheint sofort auf deinem Bildschirm.</p>
+    </div>
+    <div class="product reveal">
+      <div class="ui-tabs" role="tablist" aria-label="Bereiche der App">
+        <button type="button" role="tab" aria-selected="true" id="tab-uebersicht" aria-controls="panel-uebersicht" data-shot="uebersicht" data-cap="<b>Übersicht.</b> Geld auf dem Konto, Ergebnis, offene Rechnungen und «Was ansteht». Jede Zeile führt dorthin, wo du es erledigst.">Übersicht</button>
+        <button type="button" role="tab" aria-selected="false" id="tab-entwuerfe" aria-controls="panel-entwuerfe" data-shot="entwuerfe" data-cap="<b>Einkauf.</b> Eingelesene Quittungen und Lieferantenrechnungen als Entwürfe. Der Agent hat kontiert und begründet, du prüfst und gibst frei.">Einkauf</button>
+        <button type="button" role="tab" aria-selected="false" id="tab-bank" aria-controls="panel-bank" data-shot="bank" data-cap="<b>Bank.</b> Eine Karte pro offener Bewegung, daneben der passende Vorschlag. Ein Klick auf OK bucht, sichere Vorschläge auch alle auf einmal.">Bank</button>
+        <button type="button" role="tab" aria-selected="false" id="tab-berichte" aria-controls="panel-berichte" data-shot="berichte" data-cap="<b>Berichte.</b> Erfolgsrechnung und Bilanz nach OR-Gliederung für jede Periode, mit Vergleich. Als PDF, Excel oder CSV.">Berichte</button>
+        <button type="button" role="tab" aria-selected="false" id="tab-verlauf" aria-controls="panel-verlauf" data-shot="verlauf" data-cap="<b>Verlauf.</b> Jede Änderung ist ein git-Commit: wer, wann, was. Was der Agent getan hat, ist markiert.">Verlauf</button>
+      </div>
+      <div class="window shot-wrap" id="shotWrap">
+        <div class="bar"><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><span class="url">allkvitt · Muster GmbH · Beispieldaten</span></div>
+        <div class="product-panel" id="panel-uebersicht" role="tabpanel" aria-labelledby="tab-uebersicht" tabindex="0"><h3 class="fallback-title">Übersicht</h3><div class="frames"><img class="l" src="img/ui-uebersicht-light.webp" alt="allkvitt Übersicht: flüssige Mittel, Ergebnis, offene Debitoren, was ansteht, und das Agent-Panel" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-uebersicht-dark.webp" alt="allkvitt Übersicht: flüssige Mittel, Ergebnis, offene Debitoren, was ansteht, und das Agent-Panel" width="2000" height="1250" loading="lazy"></div></div>
+        <div class="product-panel" id="panel-entwuerfe" role="tabpanel" aria-labelledby="tab-entwuerfe" tabindex="0"><h3 class="fallback-title">Einkauf</h3><div class="frames"><img class="l" src="img/ui-entwuerfe-light.webp" alt="allkvitt Einkauf › Entwürfe: drei Quittungen, vom Agenten kontiert, bereit zur Freigabe" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-entwuerfe-dark.webp" alt="allkvitt Einkauf › Entwürfe: drei Quittungen, vom Agenten kontiert, bereit zur Freigabe" width="2000" height="1250" loading="lazy"></div></div>
+        <div class="product-panel" id="panel-bank" role="tabpanel" aria-labelledby="tab-bank" tabindex="0"><h3 class="fallback-title">Bank</h3><div class="frames"><img class="l" src="img/ui-bank-light.webp" alt="allkvitt Bank › Abgleichen: offene Bankbewegungen mit sicheren Vorschlägen und OK-Knopf" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-bank-dark.webp" alt="allkvitt Bank › Abgleichen: offene Bankbewegungen mit sicheren Vorschlägen und OK-Knopf" width="2000" height="1250" loading="lazy"></div></div>
+        <div class="product-panel" id="panel-berichte" role="tabpanel" aria-labelledby="tab-berichte" tabindex="0"><h3 class="fallback-title">Berichte</h3><div class="frames"><img class="l" src="img/ui-berichte-light.webp" alt="allkvitt Buchhaltung › Berichte: Erfolgsrechnung 2026" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-berichte-dark.webp" alt="allkvitt Buchhaltung › Berichte: Erfolgsrechnung 2026" width="2000" height="1250" loading="lazy"></div></div>
+        <div class="product-panel" id="panel-verlauf" role="tabpanel" aria-labelledby="tab-verlauf" tabindex="0"><h3 class="fallback-title">Verlauf</h3><div class="frames"><img class="l" src="img/ui-verlauf-light.webp" alt="allkvitt Verlauf: Commits von Anna Muster und vom Agenten, jeweils markiert" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-verlauf-dark.webp" alt="allkvitt Verlauf: Commits von Anna Muster und vom Agenten, jeweils markiert" width="2000" height="1250" loading="lazy"></div></div>
+      </div>
+      <p class="ui-caption" id="uiCap" aria-live="polite"><b>Übersicht.</b> Geld auf dem Konto, Ergebnis, offene Rechnungen und «Was ansteht». Jede Zeile führt dorthin, wo du es erledigst.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 Open Source ============ -->
+<section class="sec sec-os" id="open-source" aria-labelledby="o-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="label"><span>03</span>Open Source</p>
+      <h2 id="o-h">Deine Bücher sind Text.<br><span class="dim">Für dich, deinen Agenten und deine Treuhand.</span></h2>
+      <p class="intro">Andere Buchhaltungen verstecken deine Zahlen in einer Datenbank. Bei allkvitt liegt jede Buchung als lesbare Datei in einem Ordner, den du besitzt. Jede Änderung ist ein Eintrag im Verlauf. Das ist auch der Grund, warum ein Agent hier so gut arbeiten kann.</p>
+    </div>
+
+    <div class="os-grid">
+      <div class="os-files">
+      <div class="window code-window reveal" aria-label="Beispiel: Journal als Markdown-Datei">
+        <div class="bar"><span class="tab-file">journal/2026/2026-01.md</span></div>
+<pre class="code"><span class="c-h"># Journal Januar 2026</span>
+
+<span class="c-m">| Datum | Beleg | Text | Soll | Haben | Betrag | FW  | Kurs | MWST | Quelle |</span>
+<span class="c-m">| ----- | ----- | ---- | ---- | ----- | -----: | --- | ---- | ---- | ------ |</span>
+| 2026-01-05 | 26-001 | Büromaterial Papeterie | <span class="c-a">6500</span> | <span class="c-a">1020</span>  |  <span class="c-n">45.80</span> |     |      |      |        |
+| 2026-01-20 | R-2026-0003 | Rechnung R-2026-0003 – Beispiel AG | <span class="c-a">1100</span> | <span class="c-a">3400</span>  | <span class="c-n">7680.00</span> |     |      |      | rechnung:R-2026-0003 |
+| 2026-01-31 | 26-002 | Miete Büro Januar | <span class="c-a">6000</span> | <span class="c-a">1020</span>  | <span class="c-n">1800.00</span> |     |      |      |        |</pre>
+      </div>
+
+      <div class="window code-window git-window reveal" aria-label="Beispiel: Verlauf als git log">
+        <div class="bar"><span class="tab-file">git log</span></div>
+<pre class="code"><span class="c-y">6344faf</span> allkvitt: Beleg-Entwurf ENT-0001 ergänzt (Agent: Konto 5800)
+        <span class="c-r">allkvitt Agent (claude-code)</span>
+<span class="c-y">96ebc92</span> allkvitt: Beleg-Entwurf ENT-0001 (Quittung (bezahlt)): Coop Bern Bahnhof
+        <span class="c-m">Anna Muster</span>
+<span class="c-y">1f90203</span> allkvitt: Kontoauszug importiert: 5 neue Bewegungen
+        <span class="c-m">Anna Muster</span></pre>
+      </div>
+      </div>
+
+      <ul class="os-points">
+        <li class="reveal"><h3>Dateien statt Datenbank</h3><p>Journal, Kunden, Rechnungen und Löhne als Markdown und YAML. Lesbar in jedem Editor, auch in zwanzig Jahren und auch ohne allkvitt.</p></li>
+        <li class="reveal"><h3>git als Revisionsspur</h3><p>Jede Änderung ist ein Commit, mit Namen von Mensch oder Agent. Ein ungültiges Buch lässt sich gar nicht erst speichern.</p></li>
+        <li class="reveal"><h3>Unveränderlich, wo es zählt</h3><p>Gesperrte Perioden sind gehasht, ausgestellte Rechnungen und Lohnabrechnungen tragen einen Fingerprint. Nachträgliche Änderungen fallen auf (GeBüV).</p></li>
+        <li class="reveal"><h3>AGPL und erweiterbar</h3><p>Quellcode offen, selbst betreibbar, ohne Abo. Was nicht in den Kern gehört, kommt als Plugin, etwa Revolut, Offerten mit Zeiterfassung oder Anlagen.</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 Schweiz ============ -->
+<section class="sec" id="schweiz" aria-labelledby="s-h">
+  <div class="wrap">
+    <div class="sec-head split reveal">
+      <div>
+        <p class="label"><span>04</span>Für die Schweiz</p>
+        <h2 id="s-h">Schweizer Recht ist eingebaut.<br><span class="dim">Nicht nachgerüstet.</span></h2>
+      </div>
+      <p class="intro">Kontenrahmen KMU, OR-Gliederung, QR-Rechnung, ESTV-Ziffern, Sozialversicherungen. Die Fachlogik stammt aus einer produktiv genutzten Buchhaltung und stimmt gegen echte Zahlen auf den Rappen.</p>
+    </div>
+    <div class="bento">
+      <article class="card c-qr reveal">
+        <span class="card-tag">Rechnungen</span>
+        <h3>QR-Rechnung raus. Zahlung zugeordnet.</h3>
+        <p>Rechnungen mit Swiss QR-Zahlteil, auch in EUR. Zahlungseingänge werden über die Referenz erkannt, Mahnungen in drei Stufen.</p>
+        <div class="qr-art"><img src="img/qr-rechnung.svg" alt="Von allkvitt erzeugter Schweizer QR-Zahlteil" width="744" height="376" loading="lazy"></div>
+      </article>
+      <article class="card c-bank reveal">
+        <span class="card-tag">Bank</span>
+        <h3>Abgleichen mit einem Klick.</h3>
+        <p>Pro Bewegung ein Vorschlag: Kreditor, Debitor, Quittung oder Regel.</p>
+        <div class="match" aria-hidden="true">
+          <div class="m-row"><span>SBB CFF FFS</span><span class="mono">−88.00</span></div>
+          <div class="m-arrow">sicher · gleicher Betrag, Datum ±5 Tage</div>
+          <div class="m-row ok"><span>Quittung ENT-0002 buchen auf 6640</span><span class="m-btn">OK</span></div>
+        </div>
+        <p class="fine-list mono">camt.053 · CSV · Excel · pain.001</p>
+      </article>
+      <article class="card c-mwst reveal">
+        <span class="card-tag">MWST</span>
+        <h3>Abrechnung nach ESTV-Ziffern.</h3>
+        <p>Effektiv oder Saldosteuersatz, Bezugsteuer, Export als eMWST-Datei für das ESTV-Portal.</p>
+        <p class="big-num mono" aria-hidden="true">eCH-0217</p>
+      </article>
+      <article class="card c-lohn reveal">
+        <span class="card-tag">Lohn</span>
+        <h3>Lohnlauf, Quellensteuer, Lohnausweis.</h3>
+        <p>AHV/IV/EO, ALV, UVG, KTG, BVG, FAK und Quellensteuer nach ESTV-Tarifen. Lohnausweis Formular 11.</p>
+      </article>
+      <article class="card c-dossier reveal">
+        <span class="card-tag">Treuhand</span>
+        <h3>Abschluss als ein Dossier.</h3>
+        <p>Jahresrechnung, Journal, Saldenliste und gestempelte Belege als ZIP, mit Lückenverzeichnis und SHA-256-Manifest.</p>
+      </article>
+      <article class="card c-report reveal">
+        <span class="card-tag">Berichte</span>
+        <h3>Wissen, wo du stehst.</h3>
+        <p>Bilanz und Erfolgsrechnung nach OR 959a/b für jede Periode, mit Vorjahr, Budget und Geldfluss. Von der Zahl bis zum Beleg.</p>
+        <div class="bars" aria-hidden="true"><i style="--h:42%"></i><i style="--h:55%"></i><i style="--h:48%"></i><i style="--h:63%"></i><i style="--h:58%"></i><i style="--h:71%"></i><i style="--h:66%"></i><i style="--h:80%"></i><i style="--h:74%"></i><i style="--h:88%" class="hi"></i></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 05 Kontrolle ============ -->
+<section class="sec sec-control" id="kontrolle" aria-labelledby="c-h">
+  <div class="wrap control">
+    <div class="reveal">
+      <p class="label"><span>05</span>Kontrolle</p>
+      <h2 id="c-h">Du bestimmst,<br>wie viel der Agent darf.</h2>
+      <p class="intro">Ein Agent ist nur so gut wie die Leitplanken, in denen er arbeitet. Bei allkvitt sind sie Teil des Systems, nicht ein Versprechen im Prompt.</p>
+      <p class="note">Für KI-Funktionen nutzt du deinen eigenen Zugang: Claude Code, Codex, opencode oder die Claude API. Je nach Anbieter fallen Kosten an und Buchhaltungsdaten werden an dessen Dienst übermittelt. Ohne Agent funktioniert allkvitt vollständig.</p>
+    </div>
+    <div class="modes reveal">
+      <div class="mode active">
+        <div class="mode-head"><span class="radio" aria-hidden="true"></span><h3>Vorschlagsmodus</h3><span class="chip">Standard</span></div>
+        <p>Freie Buchungen des Agenten landen als Vorschlag bei dir. Rechnungen und Lohnläufe darf er erstellen, weil sie aus deinen Angaben deterministisch entstehen.</p>
+      </div>
+      <div class="mode">
+        <div class="mode-head"><span class="radio" aria-hidden="true"></span><h3>Direktmodus</h3></div>
+        <p>Für eingespielte Abläufe darf der Agent selbst buchen. Alle Prüfregeln gelten weiterhin.</p>
+      </div>
+      <ul class="guards">
+        <li><b>Prüfung vor jedem Speichern.</b> Ob Mensch, Agent oder Kommandozeile: Ein Buch, das die Prüfregeln verletzt, lässt sich nicht speichern.</li>
+        <li><b>Sichtbar im Verlauf.</b> Jeder Eintrag zeigt, ob ein Mensch oder welcher Agent ihn gemacht hat.</li>
+        <li><b>Rollen im Team.</b> Auf dem eigenen Server mit Login: lesen, buchhaltung, admin.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Start ============ -->
+<section class="sec" id="start" aria-labelledby="q-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="label"><span>06</span>Loslegen</p>
+      <h2 id="q-h">Früh dabei sein.<br><span class="dim">Mit offenen Karten.</span></h2>
+    </div>
+    <div class="paths">
+      <article class="path reveal">
+        <span class="card-tag">Für Unternehmen</span>
+        <h3>Mit einem Testbuch ausprobieren.</h3>
+        <p>allkvitt läuft auf deinem Rechner oder deinem eigenen Server und wird im Browser bedient. Die Einrichtung braucht heute noch technische Kenntnisse oder jemanden, der sie dir abnimmt.</p>
+        <ul class="checks"><li>Keine Lizenzkosten, kein Abo</li><li>Daten bleiben bei dir</li><li>Export für die Treuhand jederzeit</li></ul>
+        <a class="btn ghost" href="https://github.com/allkvitt-ch/allkvitt/blob/main/README.md">Zur Anleitung <span class="arrow" aria-hidden="true">→</span></a>
+      </article>
+      <article class="path path-dev reveal">
+        <span class="card-tag">Für Entwickler</span>
+        <h3>Vier Zeilen bis zum ersten Buch.</h3>
+        <div class="term">
+          <button class="copy" type="button" data-copy="termCode" aria-label="Befehle kopieren">Kopieren</button>
+<pre id="termCode"><span class="c-m">$</span> git clone https://github.com/allkvitt-ch/allkvitt &amp;&amp; cd allkvitt
+<span class="c-m">$</span> pip install -e ".[ui,mcp,scan]"
+<span class="c-m">$</span> allkvitt init ~/buchhaltung/muster --firma "Muster GmbH"
+<span class="c-m">$</span> claude mcp add allkvitt -- allkvitt --buch ~/buchhaltung/muster mcp</pre>
+        </div>
+        <p class="small">Python 3.11 oder neuer. Codex und opencode werden genauso angebunden. <a href="https://github.com/allkvitt-ch/allkvitt/blob/main/docs/server.md">Betrieb auf dem eigenen Server</a> · <a href="https://github.com/allkvitt-ch/allkvitt/blob/main/docs/plugins.md">Plugins schreiben</a></p>
+        <ul class="stack" aria-label="Schnittstellen"><li>Web-Oberfläche</li><li>CLI mit <code>--json</code></li><li>MCP-Server</li><li>Plugin-API</li><li>Server mit Login</li></ul>
+      </article>
+    </div>
+
+    <aside class="notice reveal" id="hinweis" aria-labelledby="n-h">
+      <span class="pill pill-warn">v0.8 · Vorschau</span>
+      <div>
+        <h3 id="n-h">Ehrlich, wo wir stehen.</h3>
+        <p>allkvitt ist neu und noch nicht in breitem produktivem Einsatz. Prüfe Zahlen und Einstellungen, besonders bei Lohn, MWST und Abschreibungen, und lass den Jahresabschluss von einer Fachperson ansehen. Lohnmeldungen über ELM (Swissdec) sind nicht möglich. Bereitgestellt unter der AGPL, ohne Gewährleistung.</p>
+      </div>
+    </aside>
+
+    <div class="faq reveal">
+      <h3>Häufige Fragen</h3>
+      <div>
+      <details><summary>Brauche ich einen KI-Agenten?</summary><p>Nein. Du kannst alles selbst im Browser erledigen: Belege, Rechnungen, Bankabgleich, Lohn und Abschluss. Der Agent ist eine Abkürzung, keine Voraussetzung.</p></details>
+      <details><summary>Wo liegen meine Daten?</summary><p>In einem Ordner auf deinem Rechner oder Server, versioniert mit git. Du bist für Betrieb und Backups verantwortlich. Nutzt du einen KI-Agenten, hängt die Verarbeitung der Daten, die er liest, vom gewählten Anbieter ab.</p></details>
+      <details><summary>Was kostet allkvitt?</summary><p>Die Software selbst ist kostenlos und quelloffen. Kosten entstehen höchstens für deinen Server und für den KI-Anbieter, falls du einen Agenten nutzt.</p></details>
+      <details><summary>Was heisst Open Source hier konkret?</summary><p>Der Quellcode steht unter der AGPL-3.0. Du kannst ihn einsehen, selbst betreiben und anpassen. Dateiformat, Plugin-Schnittstelle und Werkzeuge für Agenten sind <a href="https://github.com/allkvitt-ch/allkvitt/blob/main/docs/format.md">offen dokumentiert</a>.</p></details>
+      <details><summary>Was kann allkvitt noch nicht?</summary><p>Lohnmeldungen über ELM (Swissdec) erfordern eine Zertifizierung und sind nicht möglich. Als Vorschau gibt es zudem keine Gewährleistung. Teste die Abläufe zuerst mit einem Testbuch.</p></details>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Finale ============ -->
+<section class="finale" aria-labelledby="f-h">
+  <div class="finale-glow" aria-hidden="true"></div>
+  <div class="wrap">
+    <p class="finale-word mono" aria-hidden="true">alles kvitt</p>
+    <h2 id="f-h">Am Ende geht die Rechnung auf.</h2>
+    <p class="intro">«allkvitt» kommt von «alles kvitt»: alles beglichen. Gebaut in der Schweiz, offen für alle, die mitbauen wollen.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/allkvitt-ch/allkvitt">Auf GitHub ansehen <span class="arrow" aria-hidden="true">→</span></a>
+      <a class="btn ghost" href="https://github.com/allkvitt-ch/allkvitt/blob/main/CONTRIBUTING.md">Mitmachen</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="brand" href="#top"><span class="coin" aria-hidden="true">a</span>allkvitt</a>
+      <p class="tagline">Offene Schweizer Buchhaltung für Menschen und Agenten.</p>
+    </div>
+    <div>
+      <h4>Produkt</h4>
+      <ul><li><a href="#agent">Agent</a></li><li><a href="#produkt">Oberfläche</a></li><li><a href="#schweiz">Funktionen</a></li><li><a href="#kontrolle">Kontrolle</a></li></ul>
+    </div>
+    <div>
+      <h4>Dokumentation</h4>
+      <ul>
+        <li><a href="https://github.com/allkvitt-ch/allkvitt/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/allkvitt-ch/allkvitt/blob/main/docs/format.md">Dateiformat</a></li>
+        <li><a href="https://github.com/allkvitt-ch/allkvitt/blob/main/docs/server.md">Server</a></li>
+        <li><a href="https://github.com/allkvitt-ch/allkvitt/blob/main/docs/plugins.md">Plugins</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Projekt</h4>
+      <ul>
+        <li><a href="https://github.com/allkvitt-ch/allkvitt">GitHub</a></li>
+        <li><a href="https://github.com/allkvitt-ch/allkvitt/blob/main/CONTRIBUTING.md">Mitmachen</a></li>
+        <li><a href="https://github.com/allkvitt-ch/allkvitt/blob/main/LICENSE">Lizenz (AGPL-3.0)</a></li>
+      </ul>
+    </div>
+    <p class="footer-mark" aria-hidden="true">allkvitt</p>
+    <div class="fine"><span>allkvitt · AGPL-3.0-or-later · ohne Gewähr</span><span>Gemacht in der Schweiz</span></div>
+  </div>
+</footer>
+
+<script src="main.js" defer></script>
+</body>
+</html>
