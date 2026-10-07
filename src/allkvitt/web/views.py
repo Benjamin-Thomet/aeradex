@@ -282,7 +282,7 @@ def doc_link(quelle: str, book: Book | None = None) -> str | None:
         return f"/debitoren/rechnung/{ref}"
     if kind == "lohn":
         month, _, nr = ref.partition(":")
-        return f"/lohn/abrechnung/{month}/{nr}"
+        return f"/lohn/abrechnung/{month}/{nr}" if nr else f"/lohn?monat={month}"
     if kind == "abschluss":
         return f"/abschluss?jahr={ref}"
     if kind == "bewertung":
@@ -805,6 +805,12 @@ async def qst_importieren(ui: UI, request: Request):
     except ValueError:
         return fail('Ungültiges Tarifjahr')
     return await act(request, api.qst_sync, '/lohn/mitarbeiter', ui.book(), f.get('kanton', ''), year)
+
+
+async def lohnlauf_abschliessen(ui: UI, request: Request):
+    f = await request.form()
+    monat = f.get("monat") or ""
+    return await act(request, api.payroll_close, f"/lohn?monat={monat}", ui.book(), monat)
 
 
 async def lohnlauf(ui: UI, request: Request):
@@ -2049,6 +2055,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/lohn/zahlung/{aktion:str}", h(lohnzahlung), methods=["POST"]),
         Route("/lohn/qst-import", h(qst_importieren), methods=["POST"]),
         Route("/lohn/lauf", h(lohnlauf), methods=["POST"]),
+        Route("/lohn/abschliessen", h(lohnlauf_abschliessen), methods=["POST"]),
         Route("/lohn/abrechnung/{monat:str}/{nr:str}", h(abrechnung)),
         Route("/lohn/abrechnung/{monat:str}/{nr:str}/{aktion:str}", h(abrechnung_aktion), methods=["POST"]),
         Route("/lohn/mitarbeiter", h(mitarbeiter)),

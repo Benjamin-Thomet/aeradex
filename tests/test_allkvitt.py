@@ -181,7 +181,7 @@ def test_payroll_monthly_prorated_with_qst(book):
     api.payslip_close(Book(book.root), "2026-01", "M0001")
     b = Book(book.root)
     assert errors(b) == []
-    assert all(r.quelle == "lohn:2026-01:M0001" for r in b.rows)
+    assert all(r.quelle == "lohn:2026-01" and r.beleg == "L-2026-01" for r in b.rows)
 
 
 def test_payroll_hourly_ferien_included():
@@ -214,6 +214,43 @@ def test_reopen_removes_booking(book):
     api.payslip_reopen(Book(book.root), "2026-02", "M0001")
     b = Book(book.root)
     assert b.rows == [] and errors(b) == []
+
+
+def test_payroll_month_is_one_sammelbuchung(book):
+    api.employee_add(book, "Lea", "Muster", monatslohn=6000)
+    api.employee_add(Book(book.root), "Tom", "Test", monatslohn=4000)
+    api.payroll_run(Book(book.root), "2026-02")
+    res = api.payroll_close(Book(book.root), "2026-02")
+    b = Book(book.root)
+    assert res["beleg"] == "L-2026-02" and errors(b) == []
+    assert {r.beleg for r in b.rows} == {"L-2026-02"}
+    assert not any("Lea" in r.text or "Tom" in r.text for r in b.rows)       # no individual salaries
+    wages = sum(r.betrag for r in b.rows if r.soll == "5000")
+    assert wages == Decimal("10000.00")                                       # gross of both, one line per pair
+    assert len([r for r in b.rows if r.soll == "5000" and r.haben == "1020"]) == 1
+    slips = [api.payslip_show(b, "2026-02", nr) for nr in ("M0001", "M0002")]
+    net = sum(Decimal(s["werte"]["nettolohn"]) for s in slips)
+    assert sum(r.betrag for r in b.rows if r.haben == "1020") == net
+    assert all((book.root / "lohn" / "2026" / "02" / f"{nr}.pdf").exists() for nr in ("M0001", "M0002"))
+    # Reopening one payslip leaves the other in the (rebuilt) Sammelbuchung.
+    api.payslip_reopen(Book(book.root), "2026-02", "M0002")
+    b = Book(book.root)
+    assert errors(b) == [] and sum(r.betrag for r in b.rows if r.soll == "5000") == Decimal("6000.00")
+    with pytest.raises(BookError):
+        api.payroll_close(Book(book.root), "2026-03")                         # nothing to close
+
+
+def test_payroll_legacy_per_payslip_booking_still_valid(book):
+    api.employee_add(book, "Tom", "Test", monatslohn=5000)
+    api.payroll_run(Book(book.root), "2026-02")
+    api.payroll_close(Book(book.root), "2026-02")
+    b = Book(book.root)
+    slip = payroll.load_payslip(b, 2026, 2, "M0001")
+    b.remove_rows(lambda r: r.quelle == "lohn:2026-02")
+    b.add_rows(payroll.booking_rows(slip, payroll.config(b)))               # as booked before v0.9
+    assert errors(Book(book.root)) == []
+    api.payslip_reopen(Book(book.root), "2026-02", "M0001")                  # converts the month
+    assert Book(book.root).rows == [] and errors(Book(book.root)) == []
 
 
 def test_lohnausweis(book):

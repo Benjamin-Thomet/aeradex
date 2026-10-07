@@ -853,13 +853,24 @@ def payslip(monat: str, mitarbeiter: str) -> dict:
 
 
 def close_payslip(monat: str, mitarbeiter: str) -> dict:
-    """Lohnabrechnung abschliessen: friert Werte ein, verbucht sie, erzeugt PDF.
+    """Einzelne Lohnabrechnung abschliessen: friert Werte ein, erzeugt PDF und erneuert die
+    Sammelbuchung des Monats. Für den ganzen Lohnlauf close_payroll verwenden.
 
     Args:
         monat: JJJJ-MM.
         mitarbeiter: z.B. "M0001".
     """
     return _call(api.payslip_close, monat, mitarbeiter)
+
+
+def close_payroll(monat: str) -> dict:
+    """Lohnlauf abschliessen: alle Entwürfe des Monats einfrieren, PDFs erzeugen und als
+    eine Sammelbuchung (Beleg L-JJJJ-MM) verbuchen — keine Einzelbuchung pro Mitarbeiter.
+
+    Args:
+        monat: JJJJ-MM.
+    """
+    return _call(api.payroll_close, monat)
 
 
 def lohnausweis(jahr: int, mitarbeiter: str) -> dict:
@@ -996,7 +1007,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
-          book_bank_transaction, employees, payroll_run, payroll_payment_export, qst_sync, payslip, close_payslip, lohnausweis,
+          book_bank_transaction, employees, payroll_run, payroll_payment_export, qst_sync, payslip, close_payroll, close_payslip, lohnausweis,
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
           closing_documents, mwst_details,
           period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year]

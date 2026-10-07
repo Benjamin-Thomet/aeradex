@@ -196,22 +196,31 @@ def run(book: Book) -> list[Issue]:
         slips = []
         add("fehler", "lohn", str(exc))
     known = set()
+    months = defaultdict(list)
     for meta in slips:
-        where = book.rel(meta["_pfad"])
-        quelle = f"lohn:{meta['jahr']}-{int(meta['monat']):02d}:{meta['mitarbeiter']}"
-        known.add(quelle)
-        actual = owned.get(quelle, [])
-        if meta.get("status") == "abgeschlossen":
-            if not payroll.payslip_fingerprint_ok(meta):
-                add("fehler", where, "abgeschlossene Lohnabrechnung wurde verändert (Fingerprint) — "
-                    "mit `allkvitt payslip reopen` öffnen statt von Hand ändern")
-            expected = payroll.booking_rows(meta, cfg) if cfg.get("buchen", True) else []
-            if Counter(map(_key, expected)) != Counter(map(_key, actual)):
-                add("fehler", where, "Lohnbuchung im Journal passt nicht zur Abrechnung")
+        months[(int(meta["jahr"]), int(meta["monat"]))].append(meta)
+        if meta.get("status") == "abgeschlossen" and not payroll.payslip_fingerprint_ok(meta):
+            add("fehler", book.rel(meta["_pfad"]), "abgeschlossene Lohnabrechnung wurde verändert (Fingerprint) — "
+                "mit `allkvitt payslip reopen` öffnen statt von Hand ändern")
+        if meta.get("status") != "abgeschlossen":
+            add("hinweis", book.rel(meta["_pfad"]), "Lohnabrechnung ist noch ein Entwurf")
+    for (year, month), group in months.items():
+        src = payroll.month_source(year, month)
+        known.add(src)
+        known.update(f"{src}:{m['mitarbeiter']}" for m in group)
+        legacy = [q for q in owned if q.startswith(src + ":")]
+        where = book.rel(group[0]["_pfad"].parent)
+        if not cfg.get("buchen", True):
+            expected, actual = [], owned.get(src, []) + [r for q in legacy for r in owned[q]]
+        elif legacy and not owned.get(src):
+            # booked per payslip before the monthly Sammelbuchung: still valid as it stands
+            expected = [r for m in group if m.get("status") == "abgeschlossen" for r in payroll.booking_rows(m, cfg)]
+            actual = [r for q in legacy for r in owned[q]]
         else:
-            if actual:
-                add("fehler", where, "Entwurf hat Buchungen im Journal")
-            add("hinweis", where, "Lohnabrechnung ist noch ein Entwurf")
+            expected = payroll.month_rows(group, cfg, year, month)
+            actual = owned.get(src, []) + [r for q in legacy for r in owned[q]]
+        if Counter(map(_key, expected)) != Counter(map(_key, actual)):
+            add("fehler", where, f"Lohnbuchung {month:02d}/{year} im Journal passt nicht zu den abgeschlossenen Abrechnungen")
     plugin_sources = plugins.sources(book)
     for quelle, group in owned.items():
         if quelle.startswith("lohn:") and quelle not in known:

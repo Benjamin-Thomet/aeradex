@@ -50,7 +50,7 @@ def test_salary_with_expenses_is_reconciled_on_import(book, tmp_path):
     assert paid > 120
     import_(book, tmp_path, [(entry(f"{paid:.2f}", "DBIT", "2026-02-27", party="Lea Muster"), f"-{paid:.2f}")])
     tx = tx_by_amount(book, f"-{paid:.2f}")
-    assert tx["Status"] == "abgeglichen" and tx["Beleg"] == "L-2026-02-M0001"
+    assert tx["Status"] == "abgeglichen" and tx["Beleg"] == "L-2026-02"
 
 
 def test_suggestions_and_one_click(book, tmp_path):

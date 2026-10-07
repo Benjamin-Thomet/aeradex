@@ -9,7 +9,7 @@
   <div class="actions">
     {% if pdf %}<a class="btn" href="/datei/{{ pdf|urlq }}" target="_blank">PDF</a>{% endif %}
     <a class="btn" href="/lohn/lohnkonto/{{ y }}/{{ emp.nummer }}">Lohnkonto {{ y }}</a>
-    {% if closed %}<form hx-post="/lohn/abrechnung/{{ monat }}/{{ emp.nummer }}/oeffnen" hx-target="find .errors" hx-confirm="Abrechnung wieder öffnen? Die Buchung wird entfernt."><button class="btn" type="submit">Wieder öffnen</button>{{ errors() }}</form>
+    {% if closed %}<form hx-post="/lohn/abrechnung/{{ monat }}/{{ emp.nummer }}/oeffnen" hx-target="find .errors" hx-confirm="Abrechnung wieder öffnen? Sie wird aus der Sammelbuchung des Monats entfernt."><button class="btn" type="submit">Wieder öffnen</button>{{ errors() }}</form>
     {% else %}<form hx-post="/lohn/abrechnung/{{ monat }}/{{ emp.nummer }}/abschliessen" hx-target="find .errors" {% if warnings %}hx-confirm="{{ warnings|join('\n') }}\n\nTrotzdem abschliessen?"{% endif %}><button class="btn primary" type="submit">Abschliessen und buchen</button>{{ errors() }}</form>{% endif %}
   </div>
 </div>

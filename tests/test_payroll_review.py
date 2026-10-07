@@ -97,8 +97,9 @@ def test_download_and_book_scoped_import(book, monkeypatch):
     with ZipFile(archive, 'w') as z:
         z.writestr('tar26bs.txt', records())
     urls = []
-    def fetch(url, timeout):
-        urls.append(url)
+    def fetch(request, timeout):
+        assert request.get_header('User-agent', '').startswith('allkvitt/')   # ESTV blocks Python-urllib
+        urls.append(request.full_url)
         return io.BytesIO(archive.getvalue())
     monkeypatch.setattr(qst_estv, 'urlopen', fetch)
     api.qst_sync(book, 'BS', 2026)

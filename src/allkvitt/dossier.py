@@ -259,8 +259,8 @@ def belege(k: Kontext) -> list[Beleg]:
             art, hinweis = "lohn", "Lohnabrechnung"
             ym, _, emp = quelle.partition(":")[2].partition(":")
             y, m = ym.split("-")
-            slip = book.root / "lohn" / y / m / f"{emp}.pdf"
-            files = [slip] if slip.exists() else []
+            folder = book.root / "lohn" / y / m
+            files = sorted(folder.glob(f"{emp or 'M*'}.pdf"))     # Sammelbuchung: every payslip of the month
         elif not files and nr in bank_refs:
             t = bank_refs[nr]
             art = "bank"

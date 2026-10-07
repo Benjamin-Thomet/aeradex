@@ -203,9 +203,10 @@ def build_parser() -> argparse.ArgumentParser:
               "qst_gesamtpensum"):
         c.add_argument(f"--{f.replace('_', '-')}", dest=f)
     for name in ("show", "close", "reopen"):
-        c = ps.add_parser(name)
+        c = ps.add_parser(name, help="ohne Mitarbeiter: alle Entwürfe des Monats, eine Sammelbuchung"
+                          if name == "close" else None)
         c.add_argument("monat")
-        c.add_argument("mitarbeiter")
+        c.add_argument("mitarbeiter", nargs="?" if name == "close" else None)
     c = ps.add_parser("payment-export", help="Bankdatei pain.001 erstellen")
     c.add_argument("monat")
     c.add_argument("ausfuehrung")
@@ -749,6 +750,8 @@ def dispatch(a, book_path: Path | None):
         if a.sub == "show":
             return api.payslip_show(b, a.monat, a.mitarbeiter)
         if a.sub == "close":
+            if not a.mitarbeiter:
+                return api.payroll_close(b, a.monat)
             return api.payslip_close(b, a.monat, a.mitarbeiter)
         if a.sub == "reopen":
             return api.payslip_reopen(b, a.monat, a.mitarbeiter)

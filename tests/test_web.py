@@ -175,9 +175,10 @@ def test_payroll_inputs_close_reopen(client, root):
     assert "QST-Eingabe fehlt" not in page
     ok(post(client, f"{to}/abschliessen"))
     assert (root / "lohn" / "2026" / "03" / "M0002.pdf").exists()
-    assert any(r.quelle == "lohn:2026-03:M0002" for r in Book(root).rows)
+    assert any(r.quelle == "lohn:2026-03" and r.beleg == "L-2026-03" for r in Book(root).rows)
+    assert not any(r.quelle.startswith("lohn:2026-03:") for r in Book(root).rows)
     ok(post(client, f"{to}/oeffnen"))
-    assert not any(r.quelle == "lohn:2026-03:M0002" for r in Book(root).rows)
+    assert not any(r.quelle.startswith("lohn:2026-03") for r in Book(root).rows)
     assert errors(root) == []
 
 
@@ -534,3 +535,15 @@ def test_employee_can_clear_flat_withholding_rate(client, root):
     ok(post(client, '/lohn/mitarbeiter/M0001', {'vorname': 'Lea', 'nachname': 'Muster',
                                               'lohnart': 'monat', 'qst_code': '', 'qst_satz_pct': ''}))
     assert payroll.employee(Book(root), 'M0001')['qst_satz'] == 0
+
+
+def test_payroll_close_whole_month(client, root):
+    page = client.get("/lohn?monat=2026-03").text
+    assert "Lohnlauf März abschliessen" in page
+    ok(post(client, "/lohn/abrechnung/2026-03/M0002/eingaben", {"stunden": "40", "qst_satzbestimmend": "3000",
+                                                                "korrektur": "", "korrektur_text": ""}))
+    ok(post(client, "/lohn/abschliessen", {"monat": "2026-03"}))
+    rows = [r for r in Book(root).rows if r.quelle.startswith("lohn:2026-03")]
+    assert rows and {r.beleg for r in rows} == {"L-2026-03"} and all("(2 MA)" in r.text for r in rows)
+    assert errors(root) == []
+    assert "Sammelbuchung" in client.get("/lohn?monat=2026-03").text

@@ -45,7 +45,7 @@ Die Kreditkarte ist ein Passivkonto; Einkäufe danach wie Bankbewegungen kontier
 
 **Zahlungseingang**: `allkvitt invoice match --betrag 1500 --text "<Bankzeile>"` → `allkvitt invoice pay R-2026-0001 --datum …`
 
-**Lohnlauf**: `allkvitt payroll run 2026-01` → prüfen (`payroll show`) → `allkvitt payroll close 2026-01 M0001`.
+**Lohnlauf**: `allkvitt payroll run 2026-01` → prüfen (`payroll show`) → `allkvitt payroll close 2026-01` (alle Entwürfe, eine Sammelbuchung L-2026-01; Einzellöhne stehen nur auf den Abrechnungen, nicht im Journal).
 
 **Abschluss**: `allkvitt report --jahr 2026 --pdf`, Gewinnverwendung `allkvitt allocation set 2026 --dividende … --reserve …`,
 nach der GV `allkvitt allocation book 2026 --datum …`, Periode sperren `allkvitt lock 2026-12-31`.

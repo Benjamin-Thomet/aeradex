@@ -6,8 +6,9 @@ Files:
     lohn/<JJJJ>/<MM>/M0001.md        one payslip per employee and month
 
 A payslip is a draft until it is closed. Closing freezes every figure,
-including the employer contributions, writes a fingerprint and books it;
-reopening removes the booking again (only while the month is not locked).
+including the employer contributions, and writes a fingerprint. The journal gets
+one Sammelbuchung per month (Beleg L-JJJJ-MM) over all closed payslips; closing
+or reopening a payslip rebuilds it (only while the month is not locked).
 """
 from __future__ import annotations
 
@@ -458,15 +459,10 @@ def run(book: Book, year: int, month: int, nr: str | None = None, inputs: dict |
     return [(meta, _save(book, emp, meta)) for emp, meta in out]
 
 
-def booking_rows(meta: dict, cfg: dict) -> list[Row]:
-    """The journal rows a closed payslip owns."""
+def _lines(meta: dict, cfg: dict) -> list[tuple[str, str, Decimal, str]]:
+    """Signed (soll, haben, amount, label) lines of one closed payslip."""
     k = cfg["konten"]
     w, ag = meta["werte"], meta.get("ag") or {}
-    year, month, nr = int(meta["jahr"]), int(meta["monat"]), meta["mitarbeiter"]
-    d = date(year, month, calendar.monthrange(year, month)[1])
-    beleg = f"L-{year}-{month:02d}-{nr}"
-    quelle = f"lohn:{year}-{month:02d}:{nr}"
-    desc = f"Lohn {meta.get('name') or nr} {month:02d}/{year}"
     lines = [
         (k["lohnaufwand"], k["auszahlung"], D(w["nettolohn"]) - D(w["kinderzulagen"]), "Auszahlung"),
         (k["kinderzulagen"], k["auszahlung"], D(w["kinderzulagen"]), "Kinderzulagen"),
@@ -483,22 +479,71 @@ def booking_rows(meta: dict, cfg: dict) -> list[Row]:
     for code in AG_ORDER:
         expense, payable = cfg["ag_konten"][code]
         lines.append((str(expense), str(payable), D(ag.get(code)), f"AG {AG_LABEL[code]}"))
+    return [(str(s), str(h), money(a), label) for s, h, a, label in lines]
+
+
+def _rows(lines, d: date, beleg: str, desc: str, quelle: str) -> list[Row]:
     rows = []
     for soll, haben, amount, label in lines:
-        amount = money(amount)
         if not amount:
             continue
         if amount < 0:
             soll, haben, amount = haben, soll, -amount
-        rows.append(Row(d, beleg, f"{desc} · {label}", str(soll), str(haben), amount, quelle))
+        rows.append(Row(d, beleg, f"{desc} · {label}", soll, haben, amount, quelle))
     return rows
 
 
-def close(book: Book, year: int, month: int, nr: str) -> tuple[dict, list[Path]]:
-    meta = load_payslip(book, year, month, nr)
-    if meta.get("status") == "abgeschlossen":
-        raise BookError(f"Lohnabrechnung {nr} {month:02d}/{year} ist bereits abgeschlossen")
+def month_end(year: int, month: int) -> date:
+    return date(year, month, calendar.monthrange(year, month)[1])
+
+
+def month_source(year: int, month: int) -> str:
+    return f"lohn:{year}-{month:02d}"
+
+
+def booking_rows(meta: dict, cfg: dict) -> list[Row]:
+    """Per-payslip rows: how payroll was booked before the monthly Sammelbuchung (legacy books)."""
+    year, month, nr = int(meta["jahr"]), int(meta["monat"]), meta["mitarbeiter"]
+    return _rows(_lines(meta, cfg), month_end(year, month), f"L-{year}-{month:02d}-{nr}",
+                 f"Lohn {meta.get('name') or nr} {month:02d}/{year}", f"{month_source(year, month)}:{nr}")
+
+
+def month_rows(slips: list[dict], cfg: dict, year: int, month: int) -> list[Row]:
+    """One Sammelbuchung for all closed payslips of the month: the journal shows totals per
+    account pair, never individual salaries. Beleg L-JJJJ-MM; its net effect on the bank
+    account equals the batch debit of the salary payment file."""
+    totals: dict[tuple[str, str, str], Decimal] = {}
+    for meta in slips:
+        if meta.get("status") != "abgeschlossen":
+            continue
+        for soll, haben, amount, label in _lines(meta, cfg):
+            totals[(soll, haben, label)] = totals.get((soll, haben, label), ZERO) + amount
+    count = sum(1 for m in slips if m.get("status") == "abgeschlossen")
+    lines = [(s, h, a, label) for (s, h, label), a in totals.items()]
+    return _rows(lines, month_end(year, month), f"L-{year}-{month:02d}",
+                 f"Löhne {month:02d}/{year} ({count} MA)", month_source(year, month))
+
+
+def _month_slips(book: Book, year: int, month: int) -> list[dict]:
+    return [p for p in payslips(book, year) if int(p["monat"]) == month]
+
+
+def _rebook(book: Book, year: int, month: int) -> list[Path]:
+    """Replace the month's payroll booking (including per-payslip rows of older books) by one
+    Sammelbuchung over every closed payslip."""
     cfg = config(book)
+    ensure_open(book, month_end(year, month))
+    src = month_source(year, month)
+    touched = book.remove_rows(lambda r: r.quelle == src or r.quelle.startswith(src + ":"))
+    rows = month_rows(_month_slips(book, year, month), cfg, year, month) if cfg.get("buchen", True) else []
+    if rows:
+        touched += post(book, rows)
+    return touched
+
+
+def _freeze(book: Book, cfg: dict, meta: dict) -> dict:
+    """Recalculate and freeze a draft in memory; returns the employee. The caller saves it."""
+    year, month, nr = int(meta["jahr"]), int(meta["monat"]), meta["mitarbeiter"]
     emp = employee(book, nr)
     # Recalculate once more so the frozen figures match the current inputs.
     meta["werte"] = calculate(emp, cfg, year, month, meta.get("eingaben") or {}, _tariff(book, emp, year))
@@ -509,13 +554,28 @@ def close(book: Book, year: int, month: int, nr: str) -> tuple[dict, list[Path]]
     meta["status"] = "abgeschlossen"
     meta["abgeschlossen_am"] = date.today().isoformat()
     meta["fingerprint"] = _fingerprint(_numeric(meta))
-    touched = []
-    if cfg.get("buchen", True):
-        rows = booking_rows(meta, cfg)
-        ensure_open(book, rows[0].datum if rows else date(year, month, 1))
-        touched = post(book, rows)
-    touched.append(_save(book, emp, meta))
-    return meta, touched
+    return emp
+
+
+def close(book: Book, year: int, month: int, nr: str) -> tuple[dict, list[Path]]:
+    meta = load_payslip(book, year, month, nr)
+    if meta.get("status") == "abgeschlossen":
+        raise BookError(f"Lohnabrechnung {nr} {month:02d}/{year} ist bereits abgeschlossen")
+    ensure_open(book, month_end(year, month))
+    path = _save(book, _freeze(book, config(book), meta), meta)
+    return meta, _rebook(book, year, month) + [path]
+
+
+def close_month(book: Book, year: int, month: int) -> tuple[list[dict], list[Path]]:
+    """Close every draft of the month at once and book them as one Sammelbuchung."""
+    drafts = [m for m in _month_slips(book, year, month) if m.get("status") != "abgeschlossen"]
+    if not drafts:
+        raise BookError(f"Keine offenen Lohnabrechnungen {month:02d}/{year} — zuerst den Lohnlauf rechnen")
+    ensure_open(book, month_end(year, month))
+    cfg = config(book)
+    frozen = [(_freeze(book, cfg, meta), meta) for meta in drafts]   # validate all before writing
+    paths = [_save(book, emp, meta) for emp, meta in frozen]
+    return drafts, _rebook(book, year, month) + paths
 
 
 def reopen(book: Book, year: int, month: int, nr: str) -> tuple[dict, list[Path]]:
@@ -525,14 +585,12 @@ def reopen(book: Book, year: int, month: int, nr: str) -> tuple[dict, list[Path]
     meta = load_payslip(book, year, month, nr)
     if meta.get("status") != "abgeschlossen":
         raise BookError(f"Lohnabrechnung {nr} {month:02d}/{year} ist nicht abgeschlossen")
-    ensure_open(book, date(year, month, calendar.monthrange(year, month)[1]))
-    quelle = f"lohn:{year}-{month:02d}:{nr}"
-    touched = book.remove_rows(lambda r: r.quelle == quelle)
+    ensure_open(book, month_end(year, month))
     meta["status"] = "entwurf"
     for key in ("ag", "fingerprint", "abgeschlossen_am"):
         meta.pop(key, None)
-    touched.append(_save(book, employee(book, nr), meta))
-    return meta, touched
+    path = _save(book, employee(book, nr), meta)
+    return meta, _rebook(book, year, month) + [path]
 
 
 def lohnkonto(book: Book, year: int, nr: str) -> dict:

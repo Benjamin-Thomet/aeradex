@@ -417,6 +417,20 @@ def payslip_close(book: Book, monat: str, mitarbeiter: str) -> dict:
                  pdf=book.rel(path))
 
 
+def payroll_close(book: Book, monat: str) -> dict:
+    """Close every draft payslip of the month and book them as one Sammelbuchung."""
+    _guard(book)
+    y, m = _ym(monat)
+    slips, touched = payroll.close_month(book, y, m)
+    for meta in slips:
+        path = payroll.payslip_path(book, y, m, meta["mitarbeiter"]).with_suffix(".pdf")
+        path.write_bytes(pdf.payslip_pdf(book, meta, payroll.employee(book, meta["mitarbeiter"])))
+        touched.append(path)
+    total = sum((payroll.D(s["werte"]["nettolohn"]) for s in slips), payroll.ZERO)
+    return _done(book, f"Lohnlauf {m:02d}/{y}: {len(slips)} Abrechnung(en) abgeschlossen, Sammelbuchung "
+                 f"L-{y}-{m:02d} verbucht (netto {total:.2f})", touched, beleg=f"L-{y}-{m:02d}")
+
+
 def payslip_reopen(book: Book, monat: str, mitarbeiter: str) -> dict:
     _guard(book)
     y, m = _ym(monat)
@@ -822,7 +836,7 @@ from .storage import transactional as _locked
 
 WRITES = ("add_account", "post_entry", "post_split", "reverse_entry", "propose", "approve", "reject",
           "customer_add", "invoice_create", "invoice_void", "invoice_pay", "invoice_credit", "employee_add",
-          "payroll_run", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
+          "payroll_run", "payroll_close", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
           "allocation_book", "lock", "unlock", "customer_update", "employee_update", "account_update",
           "settings_update", "payroll_config_update", "anhang_save")
 for _name in WRITES:

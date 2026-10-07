@@ -3,7 +3,7 @@
 {% block title %}Lohn {{ m }}/{{ y }}{% endblock %}
 {% block main %}
 <div class="topbar">
-  <div><h1>Lohn {{ MONTHS[m] }} {{ y }}</h1><div class="sub">Entwürfe rechnen jederzeit neu; abgeschlossene Abrechnungen sind eingefroren und verbucht.</div></div>
+  <div><h1>Lohn {{ MONTHS[m] }} {{ y }}</h1><div class="sub">Rechnen → prüfen → Lohnlauf abschliessen (eine Sammelbuchung pro Monat) → Bankdatei.</div></div>
   <div class="actions">
     <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for year in years|reverse %}<option value="{{ year }}" {{ 'selected' if year == y }}>{{ year }}</option>{% endfor %}</select></form>
     <form method="get"><select class="input" name="monat" onchange="this.form.submit()" aria-label="Monat">{% for mo in months|reverse %}<option value="{{ mo }}" {{ 'selected' if mo == monat }}>{{ MONTHS[mo[5:]|int] }} {{ mo[:4] }}</option>{% endfor %}</select></form>
@@ -31,7 +31,6 @@
         <td class="right"><span class="rowactions">
           <a class="btn small" href="/lohn/lohnkonto/{{ y }}/{{ e.nummer }}">Lohnkonto / Lohnausweis</a>
           {% if s %}<a class="btn small" href="/lohn/abrechnung/{{ monat }}/{{ e.nummer }}">Öffnen</a>
-            {% if s.status != 'abgeschlossen' %}<form hx-post="/lohn/abrechnung/{{ monat }}/{{ e.nummer }}/abschliessen" hx-target="find .errors" {% if r.warnings %}hx-confirm="{{ r.warnings|join('\n') }}\n\nTrotzdem abschliessen?"{% endif %}><button class="btn small primary" type="submit">Abschliessen</button>{{ errors() }}</form>{% endif %}
           {% else %}<form hx-post="/lohn/lauf" hx-target="find .errors"><input type="hidden" name="monat" value="{{ monat }}"><input type="hidden" name="mitarbeiter" value="{{ e.nummer }}"><button class="btn small" type="submit">Rechnen</button>{{ errors() }}</form>{% endif %}
         </span></td>
       </tr>
@@ -39,6 +38,11 @@
     </tbody>
     <tfoot><tr><td colspan="3">Total {{ MONTHS[m] }}</td><td class="right num">{{ totals.bruttolohn|chf }}</td><td class="right num">{{ totals.total_abzuege|minus }}</td><td class="right num total">{{ totals.nettolohn|chf }}</td><td></td></tr></tfoot>
   </table></div>
+  {% set drafts = rows|selectattr('slip')|selectattr('slip.status', 'ne', 'abgeschlossen')|list %}
+  {% set warn = [] %}{% for r in drafts %}{% for w in r.warnings %}{% set _ = warn.append(r.emp.vorname ~ ' ' ~ r.emp.nachname ~ ': ' ~ w) %}{% endfor %}{% endfor %}
+  {% if drafts %}<div class="formfoot"><span class="small muted">Abschliessen friert {{ drafts|length }} Entwurf/Entwürfe ein, erstellt die Lohnabrechnungen (PDF) und bucht den Monat als eine Sammelbuchung L-{{ monat }} — ohne Einzellöhne im Journal.</span>
+    <form hx-post="/lohn/abschliessen" hx-target="find .errors" hx-confirm="{% if warn %}{{ warn|join('\n') }}\n\n{% endif %}Lohnlauf {{ MONTHS[m] }} {{ y }} abschliessen und verbuchen?"><input type="hidden" name="monat" value="{{ monat }}"><button class="btn primary" type="submit">Lohnlauf {{ MONTHS[m] }} abschliessen</button>{{ errors() }}</form></div>
+  {% elif rows|selectattr('slip')|list %}<div class="formfoot"><span class="small muted">Abgeschlossen und als Sammelbuchung <a class="link" href="/journal?jahr={{ y }}&monat=alle&q=L-{{ monat }}">L-{{ monat }}</a> verbucht. Korrekturen: Abrechnung öffnen → «wieder öffnen».</span></div>{% endif %}
   {% else %}<div class="empty">Keine Mitarbeitenden mit Anstellung oder Abrechnung in diesem Monat. <a class="link" href="/lohn/mitarbeiter">Mitarbeitende anzeigen</a></div>{% endif %}
 </div>
 <div class="panel body">
