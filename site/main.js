@@ -1,4 +1,4 @@
-// allkvitt landing page: progressive enhancement, no tracking or autoplay of media.
+// aeradex landing page: progressive enhancement, no tracking or autoplay of media.
 (() => {
   'use strict';
   const root = document.documentElement;
@@ -15,7 +15,7 @@
   };
   themeButton.addEventListener('click', () => {
     root.dataset.theme = isDark() ? 'light' : 'dark';
-    try { localStorage.setItem('allkvitt-theme', root.dataset.theme); } catch (_) { /* Storage may be unavailable. */ }
+    try { localStorage.setItem('aeradex-theme', root.dataset.theme); } catch (_) { /* Storage may be unavailable. */ }
     updateThemeLabel();
   });
   updateThemeLabel();
