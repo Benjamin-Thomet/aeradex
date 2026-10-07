@@ -559,3 +559,17 @@ def test_journal_account_filter_accepts_datalist_choice_and_searches_year(client
         assert all(b in page for b in belege)
     page = client.get(f"/journal?jahr={year}").text
     assert 'name="monat" value="alle"' in page                 # a new filter searches the whole year
+
+
+def test_journal_edit_in_place(client, root):
+    b = Book(root)
+    lock = b.settings.sperre_bis
+    r = next(r for r in b.rows if not r.quelle and not r.waehrung and not (lock and r.datum <= lock)
+             and len([x for x in b.rows if x.beleg == r.beleg]) == 1)
+    page = client.get(f"/journal?jahr={r.datum.year}&monat=alle").text
+    assert f'aria-label="Beleg {r.beleg} bearbeiten"' in page and "/journal/aendern" in page
+    ok(post(client, "/journal/aendern", {"beleg": r.beleg, "datum": r.datum.isoformat(), "text": "Korrigiert",
+                                         "z_soll": f"{r.soll}  Name aus Liste", "z_haben": r.haben,
+                                         "z_betrag": f"{r.betrag:.2f}", "z_text": "", "z_mwst": r.mwst}))
+    assert [x.text for x in Book(root).rows if x.beleg == r.beleg] == ["Korrigiert"]
+    assert errors(root) == []

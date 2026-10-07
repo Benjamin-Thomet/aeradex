@@ -264,6 +264,19 @@ def post_split(book: Book, datum, text: str, zeilen: list[dict], beleg: str = ""
     return _done(book, f"Beleg {ref} gebucht (Sammelbuchung, {len(rows)} Zeilen): {text}", touched, buchungen=rows)
 
 
+def amend_entry(book: Book, beleg: str, datum, text: str, zeilen: list[dict]) -> dict:
+    """Correct a manual Beleg in place (same number, receipt stays). The commit message records
+    the previous rows, so the change is traceable in the Verlauf."""
+    _guard(book)
+    old, new, touched = journal.amend(book, beleg, datum, text, zeilen)
+    def show(rows):
+        return "; ".join(f"{r.soll or '–'} an {r.haben or '–'} {r.betrag:.2f}{' ' + r.mwst if r.mwst else ''}"
+                         for r in rows)
+    before = f"{old[0].datum.isoformat()} «{old[0].text}» {show(old)}"
+    after = f"{new[0].datum.isoformat()} «{new[0].text}» {show(new)}"
+    return _done(book, f"Beleg {beleg} geändert: {after} (vorher: {before})", touched, buchungen=new)
+
+
 def reverse_entry(book: Book, beleg: str, datum=None, text: str = "") -> dict:
     _guard(book)
     rows, touched = journal.reverse(book, beleg, datum, text)

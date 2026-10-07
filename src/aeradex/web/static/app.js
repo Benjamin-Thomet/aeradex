@@ -39,6 +39,21 @@
         $$('tr[data-of="' + tr.dataset.group + '"]').forEach(r => { r.hidden = !open; });
       });
     });
+    // Edit a manual Beleg in place: ✎ or double-click opens the form under the row, Esc closes it.
+    const openEdit = id => {
+      const row = document.getElementById(id); if (!row) return;
+      row.hidden = false;
+      const first = $("input[name=text]", row); if (first) { first.focus(); first.select(); }
+    };
+    $$("[data-editopen]", root).forEach(b => b.addEventListener("click", () => openEdit(b.dataset.editopen)));
+    $$("tr[data-edit]", root).forEach(tr => tr.addEventListener("dblclick", e => {
+      if (e.target.closest("a, button, form, input, details")) return;
+      openEdit(tr.dataset.edit);
+    }));
+    $$("[data-editclose]", root).forEach(b => b.addEventListener("click", () => { document.getElementById(b.dataset.editclose).hidden = true; }));
+    $$("tr.editrow", root).forEach(row => row.addEventListener("keydown", e => {
+      if (e.key === "Escape") { row.hidden = true; e.stopPropagation(); }
+    }));
     $$("[data-addrow]", root).forEach(btn => btn.addEventListener("click", () => {
       const list = $(btn.dataset.addrow);
       const tpl = $("template", list.parentElement) || $(btn.dataset.template);

@@ -41,8 +41,9 @@ def next_beleg(book: Book, year: int, extra: set[str] | None = None) -> str:
     return f"{prefix}{highest + 1:03d}"
 
 
-def validate_rows(book: Book, rows: list[Row]) -> None:
-    """Refuse rows that `check` would reject, before they reach the file."""
+def validate_rows(book: Book, rows: list[Row], replacing: str = "") -> None:
+    """Refuse rows that `check` would reject, before they reach the file. `replacing` is a Beleg
+    whose rows these replace (an edit), so its number counts as free."""
     belege: dict[str, list[Row]] = {}
     for r in rows:
         ensure_open(book, r.datum)
@@ -59,7 +60,7 @@ def validate_rows(book: Book, rows: list[Row]) -> None:
             from .mwst import code
             code(r.mwst)
         belege.setdefault(r.beleg, []).append(r)
-    existing = {r.beleg for r in book.rows}
+    existing = {r.beleg for r in book.rows} - {replacing}
     for beleg, group in belege.items():
         if not beleg:
             raise BookError("Jede Buchung braucht eine Belegnummer")
@@ -192,6 +193,92 @@ def reverse(book: Book, beleg: str, datum=None, text: str = "") -> tuple[list[Ro
                 haben=r.soll, betrag=r.betrag, quelle="", mwst=r.mwst,
                 waehrung=r.waehrung, fw=r.fw, kurs=r.kurs) for r in original]
     return rows, post(book, rows)
+
+
+# ---------- Editing a manual Beleg ----------
+
+def edit_lines(book: Book, rows: list[Row]) -> list[dict]:
+    """The lines an edit form shows for a Beleg: one gross line with its MWST code when the rows are
+    exactly what a simple booking produces, otherwise one line per row."""
+    from .mwst import split
+    keys = sorted((r.soll, r.haben, r.betrag, r.mwst) for r in rows)
+    first = rows[0]
+    for code in sorted({r.mwst for r in rows if r.mwst}) + [""]:
+        for soll in {r.soll for r in rows if r.soll}:
+            for haben in {r.haben for r in rows if r.haben}:
+                for betrag in {r.betrag for r in rows}:
+                    probe = Row(first.datum, first.beleg, first.text, soll, haben, betrag)
+                    try:
+                        got = split(book, probe, code)
+                    except BookError:
+                        continue
+                    if sorted((r.soll, r.haben, r.betrag, r.mwst) for r in got) == keys:
+                        return [{"soll": soll, "haben": haben, "betrag": betrag, "mwst": code, "text": ""}]
+    return [{"soll": r.soll, "haben": r.haben, "betrag": r.betrag, "mwst": r.mwst,
+             "text": "" if r.text == first.text else r.text} for r in rows]
+
+
+def _bank_effect(rows: list[Row], konto: str) -> Decimal:
+    return sum((r.betrag if r.soll == konto else -r.betrag for r in rows if konto in (r.soll, r.haben)), ZERO)
+
+
+def edit_problem(book: Book, beleg: str) -> str | None:
+    """Why a Beleg cannot be edited in place, or None."""
+    rows = [r for r in book.rows if r.beleg == beleg]
+    if not rows:
+        return f"Beleg {beleg} nicht gefunden"
+    if any(r.quelle for r in rows):
+        return f"Beleg {beleg} gehört zu {rows[0].quelle} — dort ändern"
+    if any(r.waehrung for r in rows):
+        return f"Beleg {beleg} ist in Fremdwährung — stornieren und neu buchen"
+    return lock_problem(book, rows[0].datum)
+
+
+def amend(book: Book, beleg: str, datum, text: str, zeilen: list[dict]) -> tuple[list[Row], list[Row], list[Path]]:
+    """Replace a manual Beleg by corrected rows under the same number (receipt files stay attached).
+    One line with Soll and Haben is a simple booking (MWST split from the gross); several lines are
+    taken as they are. Refused in locked periods, for document-owned rows, when a booked MWST
+    Abrechnung covers the old or new rows, and when a reconciled bank movement would no longer match.
+    Returns (old rows, new rows, touched files); git keeps the previous version."""
+    from . import bank, mwst
+    problem = edit_problem(book, beleg)
+    if problem:
+        raise BookError(problem)
+    old = [r for r in book.rows if r.beleg == beleg]
+    d = parse_date(datum, "datum")
+    if d.year != old[0].datum.year:
+        raise BookError(f"Beleg {beleg}: das Datum muss im Jahr {old[0].datum.year} bleiben — sonst stornieren und neu buchen")
+    lines = [z for z in zeilen if str(z.get("betrag") or "").strip() or z.get("soll") or z.get("haben")]
+    if not lines:
+        raise BookError("Mindestens eine Zeile mit Konto und Betrag erfassen")
+    text = (text or "").strip()
+    if not text:
+        raise BookError("Text fehlt")
+    if len(lines) == 1 and lines[0].get("soll") and lines[0].get("haben"):
+        z = lines[0]
+        row = Row(d, beleg, text, str(z["soll"]).strip(), str(z["haben"]).strip(), parse_amount(z.get("betrag"), "betrag"))
+        new = mwst.split(book, row, str(z.get("mwst") or "").strip().upper())
+    else:
+        new = [Row(d, beleg, str(z.get("text") or "").strip() or text, str(z.get("soll") or "").strip(),
+                   str(z.get("haben") or "").strip(), parse_amount(z.get("betrag"), "betrag"),
+                   mwst=str(z.get("mwst") or "").strip().upper()) for z in lines]
+    validate_rows(book, new, replacing=beleg)
+    for r in old + new:
+        if not r.mwst:
+            continue
+        for label in mwst.periods(book, r.datum.year):
+            start, end, label = mwst.resolve(label)
+            if start <= r.datum <= end and mwst.load(book, label) is not None:
+                raise BookError(f"Die MWST-Abrechnung {label} ist bereits verbucht — Beleg {beleg} mit Storno korrigieren")
+    for tx in bank.transactions(book):
+        if tx.get("Beleg") == beleg and tx.get("Status") in ("gebucht", "abgeglichen"):
+            konto = tx["Konto"]
+            if _bank_effect(old, konto) != _bank_effect(new, konto):
+                raise BookError(f"Beleg {beleg} ist mit der Bankbewegung vom {tx['Datum']} abgeglichen — "
+                                f"Betrag auf {konto} muss gleich bleiben")
+    touched = book.remove_rows(lambda r: r.beleg == beleg)
+    touched += book.add_rows(new)
+    return old, new, touched
 
 
 # ---------- Proposals (agent → human) ----------

@@ -267,6 +267,9 @@ def journal_groups(book: Book, year: int, month: int | None, konto: str, quelle:
             "total": sum((r.betrag for r in group if r.soll), ZERO),
             "receipts": receipts, "locked": bool(lock and first.datum <= lock),
             "doc": doc_link(first.quelle, book),
+            "edit": (journal.edit_lines(book, group)
+                     if not first.quelle and not (lock and first.datum <= lock) and not any(r.waehrung for r in group)
+                     else None),
         })
     return out
 
@@ -288,6 +291,16 @@ def doc_link(quelle: str, book: Book | None = None) -> str | None:
     if kind == "bewertung":
         return f"/abschluss?jahr={ref[:4]}&stichtag={ref}"
     return None
+
+
+async def journal_aendern(ui: UI, request: Request):
+    f = await request.form()
+    zeilen = [{"soll": acct(s), "haben": acct(h), "betrag": b, "text": t, "mwst": m}
+              for s, h, b, t, m in zip(f.getlist("z_soll"), f.getlist("z_haben"), f.getlist("z_betrag"),
+                                       f.getlist("z_text"), f.getlist("z_mwst") or [""] * len(f.getlist("z_soll")))]
+    back = request.headers.get("hx-current-url") or "/journal"
+    return await act(request, api.amend_entry, back, ui.book(), f.get("beleg", ""), f.get("datum"),
+                     f.get("text", ""), zeilen)
 
 
 async def journal_page(ui: UI, request: Request):
@@ -1992,6 +2005,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/journal", h(journal_page)),
         Route("/journal/buchen", h(journal_buchen), methods=["POST"]),
         Route("/journal/storno", h(journal_storno), methods=["POST"]),
+        Route("/journal/aendern", h(journal_aendern), methods=["POST"]),
         Route("/journal/beleg", h(journal_beleg), methods=["POST"]),
         Route("/konten", h(konten)),
         Route("/kurs", h(kurs)),

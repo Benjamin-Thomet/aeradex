@@ -100,7 +100,8 @@
       {% set total = namespace(v=0) %}
       {% for g in groups %}{% set total.v = total.v + g.total %}
         {% set multi = g.rows|length > 1 %}
-        <tr class="row {{ 'group' if multi }}" data-group="g{{ loop.index }}">
+        {% set gi = loop.index %}
+        <tr class="row {{ 'group' if multi }}" data-group="g{{ gi }}"{% if g.edit %} data-edit="e{{ gi }}" title="Doppelklick: bearbeiten"{% endif %}>
           <td class="num">{{ g.datum|datum("%d.%m.") }}</td>
           <td><span class="beleg">{{ g.beleg }}</span></td>
           <td>{% if multi %}<span class="caret">▸</span> {% endif %}{{ g.text }}{% if multi %} <span class="small muted">· {{ g.rows|length }} Zeilen</span>{% endif %}
@@ -112,9 +113,10 @@
           {{ acc(g.soll, names) }}{{ acc(g.haben, names) }}
           <td class="right num">{{ g.total|chf }}</td>
           <td class="src">{% if g.doc %}<a class="pill lock" href="{{ g.doc }}">🔒 {{ g.kind|capitalize }}</a>{% elif g.quelle %}<span class="pill lock">🔒 {{ g.kind|capitalize }}</span>{% elif g.locked %}<span class="pill lock">🔒 gesperrt</span>{% else %}manuell{% endif %}</td>
-          <td class="right">
+          <td class="right" style="white-space:nowrap">
+            {% if g.edit %}<button class="btn small ghost" type="button" data-editopen="e{{ gi }}" title="Bearbeiten" aria-label="Beleg {{ g.beleg }} bearbeiten">✎</button>{% endif %}
             {% if g.kind == 'manuell' and not g.locked %}
-            <details class="drawer"><summary class="btn small ghost" title="Aktionen">⋯</summary>
+            <details class="drawer" style="display:inline-block"><summary class="btn small ghost" title="Aktionen">⋯</summary>
               <div class="panel" style="position:absolute;right:40px;z-index:3;padding:12px;display:flex;flex-direction:column;gap:10px;width:300px;text-align:left;box-shadow:var(--shadow)">
                 <form hx-post="/journal/storno" hx-target="find .errors" hx-confirm="Beleg {{ g.beleg }} mit einer Gegenbuchung stornieren?">
                   <input type="hidden" name="beleg" value="{{ g.beleg }}">
@@ -131,12 +133,32 @@
             {% endif %}
           </td>
         </tr>
-        {% if multi %}{% set gi = loop.index %}{% for r in g.rows %}
+        {% if multi %}{% for r in g.rows %}
         <tr class="sub" data-of="g{{ gi }}" hidden>
           <td></td><td></td><td>{{ r.text.split(" · ")[-1] if " · " in r.text else r.text }}{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}{% if r.waehrung %} <span class="pill muted" title="Kurs {{ r.kurs }}">{{ r.waehrung }} {{ r.fw|chf }}</span>{% endif %}</td>
           {{ acc(r.soll, names) }}{{ acc(r.haben, names) }}<td class="right num">{{ r.betrag|chf }}</td><td></td><td></td>
         </tr>
         {% endfor %}{% endif %}
+        {% if g.edit %}
+        <tr class="editrow" id="e{{ gi }}" hidden><td colspan="8">
+          <form class="editform" hx-post="/journal/aendern" hx-target="find .errors">
+            <input type="hidden" name="beleg" value="{{ g.beleg }}">
+            <div class="form four">
+              <div class="field"><label>Datum</label><input class="input num" type="date" name="datum" value="{{ g.datum.isoformat() }}" required></div>
+              <div class="field" style="grid-column: span 3"><label>Text</label><input class="input" name="text" value="{{ g.rows[0].text }}" required></div>
+            </div>
+            <div class="splitrow poshead"><span>Soll</span><span>Haben</span><span class="right">Betrag{{ ' (brutto bei MWST-Code)' if vat.methode != 'keine' and g.edit|length == 1 }}</span><span>Zeilentext (optional)</span>{% if vat.methode != 'keine' %}<span>MWST</span>{% endif %}<span></span></div>
+            <div class="splitrows" id="er{{ gi }}">
+              {% for z in g.edit %}<div class="splitrow"><input class="input" name="z_soll" list="konten" value="{{ z.soll }}" aria-label="Soll"><input class="input" name="z_haben" list="konten" value="{{ z.haben }}" aria-label="Haben"><input class="input num" name="z_betrag" inputmode="decimal" value="{{ '%.2f'|format(z.betrag) }}" aria-label="Betrag"><input class="input" name="z_text" value="{{ z.text }}" aria-label="Zeilentext">{% if vat.methode != 'keine' %}{{ mwst_select("z_mwst", vat, vat_codes, label=false, selected=z.mwst) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Zeile entfernen">✕</button></div>{% endfor %}
+            </div>
+            <template><div class="splitrow"><input class="input" name="z_soll" list="konten" aria-label="Soll"><input class="input" name="z_haben" list="konten" aria-label="Haben"><input class="input num" name="z_betrag" inputmode="decimal" aria-label="Betrag"><input class="input" name="z_text" aria-label="Zeilentext">{% if vat.methode != 'keine' %}{{ mwst_select("z_mwst", vat, vat_codes, label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Zeile entfernen">✕</button></div></template>
+            <button class="btn small" type="button" data-addrow="#er{{ gi }}" style="margin-top:6px">+ Zeile</button>
+            {{ errors() }}
+            <div class="formfoot"><span class="small muted">Beleg {{ g.beleg }} wird ersetzt, die Beleg-Datei bleibt angehängt. Eine Zeile mit Soll und Haben = einfache Buchung; mehrere Zeilen = Sammelbuchung. Die vorherige Fassung bleibt im Verlauf.</span>
+              <span class="actions"><button class="btn ghost" type="button" data-editclose="e{{ gi }}">Abbrechen</button><button class="btn primary" type="submit">Speichern</button></span></div>
+          </form>
+        </td></tr>
+        {% endif %}
       {% endfor %}
       </tbody>
       <tfoot><tr><td colspan="5">Total {{ MONTHS[month] if month else "Jahr " ~ year }} · {{ groups|length }} Belege</td><td class="right num total">{{ total.v|chf }}</td><td colspan="2"></td></tr></tfoot>
