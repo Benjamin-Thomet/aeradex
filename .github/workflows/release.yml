@@ -11,7 +11,7 @@ on:
         description: "Welches Paket veröffentlichen"
         required: true
         type: choice
-        options: [allkvitt, allkvitt-anlagen, allkvitt-revolut, allkvitt-kontenplan-verein]
+        options: [aeradex, aeradex-anlagen, aeradex-revolut, aeradex-kontenplan-verein]
 
 permissions:
   contents: read
@@ -27,7 +27,7 @@ jobs:
       - name: Ordner des Pakets
         id: pfad
         run: |
-          if [ "${{ inputs.paket }}" = "allkvitt" ]; then echo "dir=." >> "$GITHUB_OUTPUT"; else echo "dir=plugins/${{ inputs.paket }}" >> "$GITHUB_OUTPUT"; fi
+          if [ "${{ inputs.paket }}" = "aeradex" ]; then echo "dir=." >> "$GITHUB_OUTPUT"; else echo "dir=plugins/${{ inputs.paket }}" >> "$GITHUB_OUTPUT"; fi
       - run: pip install build
       - run: python -m build --outdir dist "${{ steps.pfad.outputs.dir }}"
       - uses: actions/upload-artifact@v4

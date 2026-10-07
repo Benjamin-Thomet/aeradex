@@ -5,9 +5,9 @@ from decimal import Decimal
 
 import pytest
 
-from allkvitt import api, fx, invoices
-from allkvitt.book import Book, BookError
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api, fx, invoices
+from aeradex.book import Book, BookError
+from aeradex.testing import assert_clean, make_book
 from camt_sample import entry, statement
 
 IBAN = "CH9300762011623852957"
@@ -111,7 +111,7 @@ def test_external_eur_invoice(book):
 def test_ui_eur_invoice_and_payment(book):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
     app = create_app(book.root, token="tok")
     with TestClient(app) as c:
         c.get("/?t=tok", follow_redirects=False)

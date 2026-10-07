@@ -4,9 +4,9 @@ from decimal import Decimal
 
 import pytest
 
-from allkvitt import api, kreditoren, reports
-from allkvitt.book import Book
-from allkvitt.testing import make_book
+from aeradex import api, kreditoren, reports
+from aeradex.book import Book
+from aeradex.testing import make_book
 
 D = Decimal
 
@@ -37,7 +37,7 @@ def test_open_payables_per_stichtag(book):
 def test_pages_and_pdfs(book):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
     app = create_app(book.root, token="tok")
     with TestClient(app) as c:
         c.get("/?t=tok", follow_redirects=False)
@@ -59,7 +59,7 @@ def test_pages_and_pdfs(book):
 def test_pdf_text_uses_stichtag(book):
     from pypdf import PdfReader
     import io
-    from allkvitt import pdf
+    from aeradex import pdf
     data = pdf.payables_pdf(book, kreditoren.open_payables(book, date(2026, 2, 28)))
     text = PdfReader(io.BytesIO(data)).pages[0].extract_text()
     assert "per 28.02.2026" in text and "A-1" in text and "A-2" not in text

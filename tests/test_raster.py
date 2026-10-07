@@ -6,9 +6,9 @@ from decimal import Decimal
 
 import pytest
 
-from allkvitt import api
-from allkvitt.book import Book, BookError
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api
+from aeradex.book import Book, BookError
+from aeradex.testing import assert_clean, make_book
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def test_batch_is_all_or_nothing(book):
 def test_grid_view_parses_like_excel(book):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
     api.settings_update(book, mwst={"methode": "effektiv"})
     app = create_app(book.root, token="tok")
     with TestClient(app) as c:
@@ -63,7 +63,7 @@ def test_grid_view_parses_like_excel(book):
 def test_grid_needs_a_first_date(book):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
     app = create_app(book.root, token="tok")
     with TestClient(app) as c:
         c.get("/?t=tok", follow_redirects=False)

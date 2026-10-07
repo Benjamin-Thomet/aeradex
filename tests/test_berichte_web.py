@@ -2,9 +2,9 @@ from decimal import Decimal
 
 import pytest
 
-from allkvitt import api, budget
-from allkvitt.book import Book
-from allkvitt.testing import make_book
+from aeradex import api, budget
+from aeradex.book import Book
+from aeradex.testing import make_book
 
 pytest.importorskip("starlette")
 
@@ -12,7 +12,7 @@ pytest.importorskip("starlette")
 @pytest.fixture
 def client(tmp_path):
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
     b = make_book(tmp_path, eroeffnung={"1020": 20000, "2800": -20000})
     for m in (1, 2, 3):
         api.post_entry(Book(b.root), f"2026-{m:02d}-05", "1020", "3400", 5000 + m * 100, "Umsatz")

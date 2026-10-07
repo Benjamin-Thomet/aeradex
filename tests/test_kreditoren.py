@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from allkvitt import api, check, kreditoren
-from allkvitt.book import Book, BookError
+from aeradex import api, check, kreditoren
+from aeradex.book import Book, BookError
 
 D = Decimal
 NS = {"p": "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09"}
@@ -107,13 +107,13 @@ def test_void_and_tamper(book):
 
 
 def test_pain001_validates_against_official_schema(book):
-    """Set ALLKVITT_SPS_XSD to SIX's pain.001.001.09.ch.03.xsd (SPS download centre) to run."""
+    """Set AERADEX_SPS_XSD to SIX's pain.001.001.09.ch.03.xsd (SPS download centre) to run."""
     import os
-    xsd = os.environ.get("ALLKVITT_SPS_XSD")
+    xsd = os.environ.get("AERADEX_SPS_XSD")
     if not xsd or not Path(xsd).exists():
-        pytest.skip("ALLKVITT_SPS_XSD nicht gesetzt")
+        pytest.skip("AERADEX_SPS_XSD nicht gesetzt")
     from lxml import etree
-    from allkvitt import qrbill_ch as qr
+    from aeradex import qrbill_ch as qr
     api.supplier_add(book, name="Papeterie Muster AG", strasse="Marktgasse", nr="14", plz="3011", ort="Bern",
                      iban="CH4431999123000889012", konto="6500")
     api.supplier_add(Book(book.root), name="Swisscom", strasse="Weg", nr="6", plz="3048", ort="Worblaufen",

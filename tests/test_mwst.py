@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from allkvitt import api, check, mwst
-from allkvitt.book import Book, BookError
+from aeradex import api, check, mwst
+from aeradex.book import Book, BookError
 
 D = Decimal
 
@@ -28,7 +28,7 @@ def errors(root: Path) -> list[str]:
 
 
 def balance(book_root: Path, nr: str) -> Decimal:
-    from allkvitt.ledger import BalanceEngine
+    from aeradex.ledger import BalanceEngine
     return BalanceEngine(Book(book_root)).balance(nr, 2026)
 
 
@@ -109,7 +109,7 @@ def test_emwst_export(book):
     assert "<eCH-0217:uid>CHE123456789</eCH-0217:uid>" in xml
     assert re.search(r"<eCH-0217:payableTax>(.*?)<", xml).group(1) == "149.92"     # 1950.83 × 8.1 % − 8.10
     import os
-    xsd = os.environ.get("ALLKVITT_ECH0217_XSD")          # eCH-0217-2-0-0.xsd with its imports, mirrored locally
+    xsd = os.environ.get("AERADEX_ECH0217_XSD")          # eCH-0217-2-0-0.xsd with its imports, mirrored locally
     if xsd and Path(xsd).exists():
         from lxml import etree
         schema = etree.XMLSchema(etree.parse(xsd))
@@ -155,7 +155,7 @@ def test_herkunft_saldo_and_pdf(book):
     assert "Saldosteuersatz" in g["hinweis"]
     import io
     from pypdf import PdfReader
-    from allkvitt import pdf
+    from aeradex import pdf
     data = pdf.mwst_pdf(b, mwst.report(b, "2026-S1"), h)
     text = "".join(p.extract_text() for p in PdfReader(io.BytesIO(data)).pages)
     assert "Herkunft der Zahlen 2026-S1" in text and "R-2026-0001" in text and "Ziffer 322" in text

@@ -3,9 +3,9 @@ from decimal import Decimal
 
 import pytest
 
-from allkvitt import api, budget, reports, statements
-from allkvitt.book import Book, BookError
-from allkvitt.testing import make_book
+from aeradex import api, budget, reports, statements
+from aeradex.book import Book, BookError
+from aeradex.testing import make_book
 
 D = Decimal
 

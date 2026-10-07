@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from allkvitt import gitlog
+from aeradex import gitlog
 
 
 def git(root, *args):
@@ -12,7 +12,7 @@ def git(root, *args):
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
-    monkeypatch.delenv("ALLKVITT_NO_COMMIT", raising=False)
+    monkeypatch.delenv("AERADEX_NO_COMMIT", raising=False)
     git(tmp_path, "init", "-q")
     git(tmp_path, "config", "user.name", "Test")
     git(tmp_path, "config", "user.email", "test@example.org")

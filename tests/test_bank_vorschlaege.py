@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from allkvitt import api, bank, erfassung
-from allkvitt.book import Book, BookError
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api, bank, erfassung
+from aeradex.book import Book, BookError
+from aeradex.testing import assert_clean, make_book
 from camt_sample import entry, statement
 
 IBAN = "CH9300762011623852957"
@@ -143,7 +143,7 @@ def test_agent_proposal_needs_individual_approval(book, tmp_path):
 def test_bank_suggestion_forms(book, tmp_path):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
 
     import_(book, tmp_path, [
         (entry("450.00", "CRDT", "2026-02-21", party="Peter Privat"), "450.00"),

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeradex-anlagen"
+version = "0.1.0"
+description = "Anlagenbuchhaltung mit Abschreibungen und Anlagenspiegel — Plugin für aeradex"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+dependencies = ["aeradex>=0.8"]
+
+[project.entry-points."aeradex.plugins"]
+anlagen = "aeradex_anlagen"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aeradex_anlagen = ["templates/*.html"]

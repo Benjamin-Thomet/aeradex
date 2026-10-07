@@ -8,9 +8,9 @@ from zipfile import ZipFile
 
 import pytest
 
-from allkvitt import api, payroll, qst, qst_estv
-from allkvitt.book import Book, BookError
-from test_allkvitt import book
+from aeradex import api, payroll, qst, qst_estv
+from aeradex.book import Book, BookError
+from test_aeradex import book
 
 
 def employee(**kw):
@@ -98,7 +98,7 @@ def test_download_and_book_scoped_import(book, monkeypatch):
         z.writestr('tar26bs.txt', records())
     urls = []
     def fetch(request, timeout):
-        assert request.get_header('User-agent', '').startswith('allkvitt/')   # ESTV blocks Python-urllib
+        assert request.get_header('User-agent', '').startswith('aeradex/')   # ESTV blocks Python-urllib
         urls.append(request.full_url)
         return io.BytesIO(archive.getvalue())
     monkeypatch.setattr(qst_estv, 'urlopen', fetch)

@@ -91,10 +91,10 @@ ist damit noch keine umfassend geprüfte Schweizer Lohnsoftware.
 CLI:
 
 ```sh
-allkvitt payroll qst-sync BS 2026
-allkvitt payroll qst-sync ALLE 2026
-allkvitt payroll payment-export 2026-10 2026-10-25
-allkvitt payroll payment-cancel 2026-10
+aeradex payroll qst-sync BS 2026
+aeradex payroll qst-sync ALLE 2026
+aeradex payroll payment-export 2026-10 2026-10-25
+aeradex payroll payment-cancel 2026-10
 ```
 
 ## Fachliche Quellen

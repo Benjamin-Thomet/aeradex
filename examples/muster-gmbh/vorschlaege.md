@@ -1,6 +1,6 @@
 # Buchungsvorschläge
 
-Vom Agenten vorgeschlagen, noch nicht gebucht. Freigeben mit `allkvitt approve <ID>`, verwerfen mit `allkvitt reject <ID>`.
+Vom Agenten vorgeschlagen, noch nicht gebucht. Freigeben mit `aeradex approve <ID>`, verwerfen mit `aeradex reject <ID>`.
 
 | ID    | Datum      | Beleg  | Text          | Soll | Haben | Betrag | MWST | Begründung                             | Datei |
 | ----- | ---------- | ------ | ------------- | ---- | ----- | -----: | ---- | -------------------------------------- | ----- |

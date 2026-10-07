@@ -3,9 +3,9 @@
 set -e
 cd "$(dirname "$0")"
 rm -rf muster-gmbh
-export ALLKVITT_NO_COMMIT=1
-b() { allkvitt --buch muster-gmbh "$@" >/dev/null; }
-allkvitt init muster-gmbh --firma "Muster GmbH" --jahr 2026 --strasse Bahnhofstrasse --nr 1 --plz 3000 \
+export AERADEX_NO_COMMIT=1
+b() { aeradex --buch muster-gmbh "$@" >/dev/null; }
+aeradex init muster-gmbh --firma "Muster GmbH" --jahr 2026 --strasse Bahnhofstrasse --nr 1 --plz 3000 \
   --ort Bern --iban "CH93 0076 2011 6238 5295 7" --uid CHE-123.456.789 --ohne-git >/dev/null
 python3 - <<'PY'
 p = "muster-gmbh/kontenplan.yaml"
@@ -45,4 +45,4 @@ b payroll run 2026-03
 b propose --datum 2026-03-10 --soll 6510 --haben 1020 --betrag 59.00 --text "Swisscom März" \
   --begruendung "Telefon/Internet-Rechnung, Lastschrift"
 printf 'Papeterie Muster\nDatum: 12.03.2026\nDruckerpapier A4, 5 Pakete\nTotal CHF 32.50\nbar bezahlt\n' > muster-gmbh/inbox/quittung-papeterie.txt
-allkvitt --buch muster-gmbh check
+aeradex --buch muster-gmbh check

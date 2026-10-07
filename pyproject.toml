@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "allkvitt"
+name = "aeradex"
 version = "0.8.0"
 description = "Swiss bookkeeping your agent can run — agent-first open-source accounting and payroll for Switzerland."
 readme = "README.md"
@@ -34,13 +34,13 @@ excel = ["openpyxl>=3.1"]
 dev = ["pytest>=8", "lxml>=5"]
 
 [project.scripts]
-allkvitt = "allkvitt.cli:main"
+aeradex = "aeradex.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-allkvitt = ["data/**/*", "web/templates/*", "web/static/*", "web/static/fonts/*"]
+aeradex = ["data/**/*", "web/templates/*", "web/static/*", "web/static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "plugins"]

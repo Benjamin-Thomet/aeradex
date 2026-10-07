@@ -1,4 +1,4 @@
-"""Belegeingang beyond supplier bills: receipts (with bank matching) and invoices issued outside allkvitt."""
+"""Belegeingang beyond supplier bills: receipts (with bank matching) and invoices issued outside aeradex."""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from allkvitt import api, bank, erfassung, invoices
-from allkvitt.book import Book, BookError
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api, bank, erfassung, invoices
+from aeradex.book import Book, BookError
+from aeradex.testing import assert_clean, make_book
 from camt_sample import entry, statement
 
 IBAN = "CH9300762011623852957"
@@ -154,10 +154,10 @@ def test_external_invoice_with_vat(book):
 
 
 def test_agent_reclassifies_and_sets_payment_account(book, monkeypatch):
-    from allkvitt import tools
+    from aeradex import tools
     pdf(book.root / "inbox" / "q.pdf", RECEIPT)
     d = api.bill_draft_create(Book(book.root), "inbox/q.pdf")["entwurf"]
-    monkeypatch.setenv("ALLKVITT_BUCH", str(book.root))
+    monkeypatch.setenv("AERADEX_BUCH", str(book.root))
     assert tools.complete_bill_draft(d["id"], "6500", "Büromaterial, privat bezahlt", zahlkonto="2800")["ok"]
     assert erfassung.draft(Book(book.root), d["id"])["zahlung"]["konto"] == "2800"
     assert tools.complete_bill_draft(d["id"], "6500", "doch offene Rechnung", art="kreditor")["ok"]
@@ -165,7 +165,7 @@ def test_agent_reclassifies_and_sets_payment_account(book, monkeypatch):
 
 
 def test_legacy_draft_folder_is_still_read(book):
-    from allkvitt.files import write_yaml
+    from aeradex.files import write_yaml
     (book.root / "inbox" / "a.pdf").write_bytes(b"%PDF-1.4")
     write_yaml(book.root / "kreditoren" / "entwuerfe" / "ENT-0001.yaml",
                {"id": "ENT-0001", "datei": "inbox/a.pdf", "status": "unsicher", "felder": {}})
@@ -176,7 +176,7 @@ def test_legacy_draft_folder_is_still_read(book):
 def test_ui_receipt_and_external_invoice(book, tmp_path):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
     api.settings_update(book, kreditoren={"agent_automatisch": False})
     receipt = pdf(tmp_path / "quittung.pdf", RECEIPT).read_bytes()
     own = pdf(tmp_path / "eigene.pdf", OWN_INVOICE).read_bytes()

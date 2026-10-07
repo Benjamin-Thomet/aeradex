@@ -1,15 +1,15 @@
-# allkvitt auf einem Server betreiben
+# aeradex auf einem Server betreiben
 
-`allkvitt ui` ist für den eigenen Rechner gedacht (ein Benutzer, Zugangsschlüssel im Link).
-`allkvitt serve` ist der Mehrbenutzer-Betrieb mit Login: für einen eigenen Server, erreichbar über HTTPS.
+`aeradex ui` ist für den eigenen Rechner gedacht (ein Benutzer, Zugangsschlüssel im Link).
+`aeradex serve` ist der Mehrbenutzer-Betrieb mit Login: für einen eigenen Server, erreichbar über HTTPS.
 
 ## Grundsätze
 
 - **Ein Buch pro Instanz.** Für mehrere Mandanten mehrere Instanzen auf verschiedenen Ports bzw. Subdomains
   (z.B. `muster.buchhaltung.example.ch`), je mit eigenem Buch und eigener Benutzerliste.
-- **HTTPS macht der Reverse Proxy** (Caddy oder nginx); allkvitt selbst hört nur auf `127.0.0.1`.
+- **HTTPS macht der Reverse Proxy** (Caddy oder nginx); aeradex selbst hört nur auf `127.0.0.1`.
 - **Benutzer liegen nicht im Buch.** `users.yaml` und `secret` stehen im Konfigurationsverzeichnis
-  (Standard `~/.config/allkvitt`, sonst `--config DIR` bzw. `$ALLKVITT_CONFIG`), Dateirechte 600.
+  (Standard `~/.config/aeradex`, sonst `--config DIR` bzw. `$AERADEX_CONFIG`), Dateirechte 600.
 - **Jede Änderung trägt den Namen der angemeldeten Person** im git-Verlauf; Änderungen des Agenten sind als Agent markiert.
 
 ## Rollen
@@ -23,35 +23,35 @@
 ## Einrichten
 
 ```bash
-# als eigener Systembenutzer, z.B. "allkvitt"
-python3 -m venv ~/venv && ~/venv/bin/pip install "allkvitt[ui,scan] @ git+https://github.com/…/allkvitt"
-git clone <repo-des-buchs> ~/buecher/muster       # oder: allkvitt init ~/buecher/muster --firma …
-~/venv/bin/allkvitt user add anna --rolle admin --anzeige "Anna Muster"
-~/venv/bin/allkvitt user add treuhand --rolle lesen --anzeige "Treuhand Muster"
-~/venv/bin/allkvitt --buch ~/buecher/muster serve --port 8080 --https
+# als eigener Systembenutzer, z.B. "aeradex"
+python3 -m venv ~/venv && ~/venv/bin/pip install "aeradex[ui,scan] @ git+https://github.com/…/aeradex"
+git clone <repo-des-buchs> ~/buecher/muster       # oder: aeradex init ~/buecher/muster --firma …
+~/venv/bin/aeradex user add anna --rolle admin --anzeige "Anna Muster"
+~/venv/bin/aeradex user add treuhand --rolle lesen --anzeige "Treuhand Muster"
+~/venv/bin/aeradex --buch ~/buecher/muster serve --port 8080 --https
 ```
 
-Weitere Befehle: `allkvitt user list`, `allkvitt user passwort NAME` (beendet bestehende Anmeldungen),
-`allkvitt user remove NAME`. Nach 5 Fehlversuchen ist ein Benutzer bzw. eine Adresse 5 Minuten gesperrt.
+Weitere Befehle: `aeradex user list`, `aeradex user passwort NAME` (beendet bestehende Anmeldungen),
+`aeradex user remove NAME`. Nach 5 Fehlversuchen ist ein Benutzer bzw. eine Adresse 5 Minuten gesperrt.
 
 ### systemd
 
-`/etc/systemd/system/allkvitt-muster.service`:
+`/etc/systemd/system/aeradex-muster.service`:
 
 ```ini
 [Unit]
-Description=allkvitt Buchhaltung Muster GmbH
+Description=aeradex Buchhaltung Muster GmbH
 After=network.target
 
 [Service]
-User=allkvitt
-WorkingDirectory=/home/allkvitt/buecher/muster
-Environment=ALLKVITT_CONFIG=/home/allkvitt/.config/allkvitt-muster
-ExecStart=/home/allkvitt/venv/bin/allkvitt --buch /home/allkvitt/buecher/muster serve --port 8080 --https
+User=aeradex
+WorkingDirectory=/home/aeradex/buecher/muster
+Environment=AERADEX_CONFIG=/home/aeradex/.config/aeradex-muster
+ExecStart=/home/aeradex/venv/bin/aeradex --buch /home/aeradex/buecher/muster serve --port 8080 --https
 Restart=on-failure
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/home/allkvitt/buecher/muster /home/allkvitt/.config/allkvitt-muster
+ReadWritePaths=/home/aeradex/buecher/muster /home/aeradex/.config/aeradex-muster
 
 [Install]
 WantedBy=multi-user.target
@@ -59,16 +59,16 @@ WantedBy=multi-user.target
 
 ### Monatsbericht automatisch (Timer)
 
-`/etc/systemd/system/allkvitt-muster-monatsbericht.service` und `.timer` — am 5. jedes Monats der Bericht des
-Vormonats, per E-Mail an `mail.an` aus `allkvitt.yaml`:
+`/etc/systemd/system/aeradex-muster-monatsbericht.service` und `.timer` — am 5. jedes Monats der Bericht des
+Vormonats, per E-Mail an `mail.an` aus `aeradex.yaml`:
 
 ```ini
 # .service
 [Service]
 Type=oneshot
-User=allkvitt
-Environment=ALLKVITT_SMTP_PASSWORD=…
-ExecStart=/home/allkvitt/venv/bin/allkvitt --buch /home/allkvitt/buecher/muster bericht monat --mail
+User=aeradex
+Environment=AERADEX_SMTP_PASSWORD=…
+ExecStart=/home/aeradex/venv/bin/aeradex --buch /home/aeradex/buecher/muster bericht monat --mail
 
 # .timer
 [Timer]
@@ -78,7 +78,7 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-Ohne systemd genügt cron: `0 6 5 * * allkvitt --buch … bericht monat --mail`. Das Passwort steht nie im Buch.
+Ohne systemd genügt cron: `0 6 5 * * aeradex --buch … bericht monat --mail`. Das Passwort steht nie im Buch.
 
 ### Caddy (HTTPS automatisch)
 

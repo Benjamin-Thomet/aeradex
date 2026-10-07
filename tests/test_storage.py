@@ -8,11 +8,11 @@ import sys
 
 import pytest
 
-from allkvitt import api, check, storage
-from allkvitt.book import Book, BookError
-from allkvitt.files import (FormatError, MdTable, atomic_write, parse_table, read_yaml,
+from aeradex import api, check, storage
+from aeradex.book import Book, BookError
+from aeradex.files import (FormatError, MdTable, atomic_write, parse_table, read_yaml,
                            read_frontmatter, render_table, write_yaml)
-from allkvitt.testing import make_book
+from aeradex.testing import make_book
 
 
 def test_decimal_yaml_and_frontmatter(tmp_path):
@@ -81,8 +81,8 @@ def test_invalid_plugin_write_preserves_uncommitted_files(tmp_path):
     before = storage._state(book.root)
     def corrupt(b):
         (b.root / 'notes.md').write_text('plugin edits')
-        write_yaml(b.root / 'allkvitt.yaml', {'firma': ''})
-        return [b.root / 'notes.md', b.root / 'allkvitt.yaml']
+        write_yaml(b.root / 'aeradex.yaml', {'firma': ''})
+        return [b.root / 'notes.md', b.root / 'aeradex.yaml']
     with pytest.raises(BookError):
         api.write(book, 'bad plugin', corrupt)
     assert storage._state(book.root) == before
@@ -131,7 +131,7 @@ def test_external_edit_during_preparation_survives(tmp_path):
 
 def test_account_extensions_and_format_upgrade(tmp_path):
     book = make_book(tmp_path)
-    config = book.root / 'allkvitt.yaml'
+    config = book.root / 'aeradex.yaml'
     data = read_yaml(config)
     data.pop('format_version', None)
     write_yaml(config, data)
@@ -159,8 +159,8 @@ def test_recovery_after_process_killed_mid_publication(tmp_path):
     script = '''
 import os, sys
 from pathlib import Path
-from allkvitt import api, storage
-from allkvitt.book import Book
+from aeradex import api, storage
+from aeradex.book import Book
 root = Path(sys.argv[1])
 original = storage.atomic_write
 count = 0
@@ -176,13 +176,13 @@ api.post_entry(Book(root), '2026-01-05', '6500', '1020', '45.80', 'crash')
 '''
     result = subprocess.run([sys.executable, '-c', script, str(book.root)])
     assert result.returncode == 77
-    assert (book.root / '.allkvitt/transaction/manifest.json').exists()
+    assert (book.root / '.aeradex/transaction/manifest.json').exists()
     api.status(Book(book.root))
     assert storage._state(book.root) == before
 
 
 def test_git_failure_restores_index_and_book(tmp_path, monkeypatch):
-    from allkvitt import gitlog
+    from aeradex import gitlog
     book = make_book(tmp_path)
     if not gitlog.is_repo(book.root):
         gitlog.init_repo(book.root)
@@ -210,8 +210,8 @@ def test_recovery_keeps_commit_after_process_killed(tmp_path):
     script = '''
 import os, sys
 from pathlib import Path
-from allkvitt import api, storage
-from allkvitt.book import Book
+from aeradex import api, storage
+from aeradex.book import Book
 root = Path(sys.argv[1])
 original = storage.atomic_write_text
 def crash(path, data):
@@ -227,7 +227,7 @@ api.post_entry(Book(root), '2026-01-05', '6500', '1020', '45.80', 'committed', i
     assert len(Book(book.root).rows) == 1
     replay = api.post_entry(Book(book.root), '2026-01-05', '6500', '1020', '45.80', 'committed', idempotency_key='crash-key')
     assert replay['wiederholt'] and replay['commit']
-    assert not (book.root / '.allkvitt/transaction').exists()
+    assert not (book.root / '.aeradex/transaction').exists()
 
 
 def test_reader_waits_for_writer(tmp_path):
@@ -254,9 +254,9 @@ def test_reader_waits_for_writer(tmp_path):
 
 
 def test_agent_tools_retry_and_proposal_permission(tmp_path, monkeypatch):
-    from allkvitt import tools
+    from aeradex import tools
     book = make_book(tmp_path)
-    monkeypatch.setenv('ALLKVITT_BUCH', str(book.root))
+    monkeypatch.setenv('AERADEX_BUCH', str(book.root))
     args = ('2026-01-05', '6500', '1020', '45.80', 'Test')
     assert not tools.book_entry(*args, idempotency_key='denied')['ok']
     rev = tools.status()['revision']
@@ -271,7 +271,7 @@ def test_recovery_preserves_external_conflict(tmp_path):
     book = make_book(tmp_path)
     p = book.root / 'note.md'
     p.write_text('old')
-    folder = book.root / '.allkvitt/transaction'
+    folder = book.root / '.aeradex/transaction'
     backup = folder / 'before/note.md'
     atomic_write(backup, b'old')
     manifest = {'version': 1, 'id': 'test', 'phase': 'prepared', 'head': None, 'repo': False,
@@ -302,8 +302,8 @@ def test_parallel_processes_serialize_and_deduplicate(tmp_path, same_key):
     script = '''
 import json, sys
 from pathlib import Path
-from allkvitt import api
-from allkvitt.book import Book
+from aeradex import api
+from aeradex.book import Book
 result = api.post_entry(Book(Path(sys.argv[1])), '2026-01-05', '6500', '1020', '45.80',
                         'parallel', idempotency_key=sys.argv[2])
 print(json.dumps(result))
@@ -327,25 +327,25 @@ print(json.dumps(result))
 
 
 def test_transaction_keeps_generated_files_out_of_git(tmp_path):
-    from allkvitt import gitlog
+    from aeradex import gitlog
     book = make_book(tmp_path, git=True)
     def generate(b):
         note = b.root / 'note.md'
         note.write_text('User document')
-        cache = b.root / '.allkvitt/erfassung/ocr.txt'
+        cache = b.root / '.aeradex/erfassung/ocr.txt'
         cache.parent.mkdir(parents=True)
         cache.write_text('OCR cache')
         return [note]
     result = api.write(book, 'document with cache', generate)
     assert result['commit']
-    assert (book.root / '.allkvitt/erfassung/ocr.txt').read_text() == 'OCR cache'
+    assert (book.root / '.aeradex/erfassung/ocr.txt').read_text() == 'OCR cache'
     tracked = gitlog._git(book.root, 'ls-files').stdout.splitlines()
     assert 'note.md' in tracked
-    assert '.allkvitt/erfassung/ocr.txt' not in tracked
+    assert '.aeradex/erfassung/ocr.txt' not in tracked
 
 
 def test_receipt_move_commits_old_inbox_path_without_unrelated_edits(tmp_path):
-    from allkvitt import gitlog
+    from aeradex import gitlog
     book = make_book(tmp_path, git=True)
     note = book.root / 'note.md'
     note.write_text('original')

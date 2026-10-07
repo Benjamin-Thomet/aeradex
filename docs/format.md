@@ -1,10 +1,10 @@
-# Dateiformat eines allkvitt-Buchs
+# Dateiformat eines aeradex-Buchs
 
 Alle Dateien sind UTF-8. Beträge stehen in Dateien immer ohne Tausendertrennzeichen mit Punkt und zwei Nachkommastellen (`1234.50`); beim Einlesen werden `1'234.50` und `1234.5` ebenfalls akzeptiert. Datum: `JJJJ-MM-TT`.
 
 Details zu Transaktionen, Wiederherstellung, Formatversionen und Agenten-Wiederholungen: [Textspeicher](storage.md).
 
-## allkvitt.yaml
+## aeradex.yaml
 
 ```yaml
 format_version: 1            # ohne Feld: altes Format, Migration beim nächsten erfolgreichen Schreiben
@@ -17,7 +17,7 @@ qr_referenz_praefix: ''
 waehrung: CHF
 zahlungsfrist_tage: 30
 erstes_jahr: 2026             # Eröffnungssalden im Kontenplan gelten für dieses Jahr
-sperre_bis: null              # nur über `allkvitt lock` / `allkvitt unlock` ändern
+sperre_bis: null              # nur über `aeradex lock` / `aeradex unlock` ändern
 agent_modus: vorschlag        # vorschlag | direkt
 konten:                       # Systemkonten
   bank: '1020'
@@ -31,7 +31,7 @@ konten:                       # Systemkonten
 plugins: [revolut]          # optional: Plugins, die dieses Buch braucht (siehe docs/plugins.md)
 ```
 
-Steht ein Plugin unter `plugins:`, das nicht installiert ist, meldet `allkvitt check` einen Fehler — Buchungen, die
+Steht ein Plugin unter `plugins:`, das nicht installiert ist, meldet `aeradex check` einen Fehler — Buchungen, die
 dem Plugin gehören, könnten sonst nicht geprüft werden. Plugin-Einstellungen stehen unter dem Plugin-Namen
 (z.B. `revolut: {konten: {CHF: "1022"}}`).
 
@@ -55,7 +55,7 @@ konten:
 - `abschluss`: Eigenkapitalkonto, in das der Saldo bei der Eröffnung des Folgejahres übergeht, z.B. bei der
   Einzelfirma `{nr: "2850", name: Privat, klasse: passiv, abschluss: "2800"}`. Das Konto beginnt jedes Jahr bei null.
 
-Vorlagen (`allkvitt init --rechtsform …` wählt die passende, `--kontenplan` übersteuert): `kmu` für AG und GmbH,
+Vorlagen (`aeradex init --rechtsform …` wählt die passende, `--kontenplan` übersteuert): `kmu` für AG und GmbH,
 `einzelfirma` (Eigenkapital 2800, Privat 2850, Privat AHV 2851, Privat Steuern 2852; Ergebnis direkt ins
 Eigenkapital, keine Gewinnverwendung) und `verein` (Vereinsvermögen, Fonds, Mitgliederbeiträge).
 
@@ -88,19 +88,19 @@ Eigenkapital, keine Gewinnverwendung) und `verein` (Vereinsvermögen, Fonds, Mit
 ## Fremdwährungen: Kurse und Bewertung
 
 Kurse sind die Tageskurse des BAZG (dieselben, die die ESTV für die MWST verwendet):
-`https://www.backend-rates.bazg.admin.ch/api/xmldaily?d=JJJJMMTT`. Ohne Kurs bucht allkvitt zum Kurs des
+`https://www.backend-rates.bazg.admin.ch/api/xmldaily?d=JJJJMMTT`. Ohne Kurs bucht aeradex zum Kurs des
 Buchungsdatums (Wochenende/Feiertag: letzter publizierter Tag); abgerufene Tabellen liegen unter
-`.allkvitt/kurse/JJJJ-MM-TT.yaml`. Vorschläge des Agenten halten den Kurs beim Vorschlagen fest.
+`.aeradex/kurse/JJJJ-MM-TT.yaml`. Vorschläge des Agenten halten den Kurs beim Vorschlagen fest.
 
-Per Stichtag (meist 31.12.) bewertet `allkvitt bewertung 2026-12-31 --buchen` (bzw. Abschluss → Fremdwährungen)
+Per Stichtag (meist 31.12.) bewertet `aeradex bewertung 2026-12-31 --buchen` (bzw. Abschluss → Fremdwährungen)
 jedes Fremdwährungskonto zum BAZG-Kurs dieses Tages: Saldo FW × Kurs gegen den CHF-Buchwert, die Differenz geht auf
-Kursgewinn (6952) bzw. Kursverlust (6942) (`konten.kursgewinn`/`kursverlust` in allkvitt.yaml). Die Bewertung liegt
+Kursgewinn (6952) bzw. Kursverlust (6942) (`konten.kursgewinn`/`kursverlust` in aeradex.yaml). Die Bewertung liegt
 unter `bewertung/JJJJ-MM-TT.yaml` und gehört ihren Journalzeilen (`Quelle bewertung:…`, FW 0.00, Kurs des Stichtags).
 `check` meldet Jahre mit Fremdwährungskonten ohne Bewertung per 31.12.
 
 ## MWST
 
-`allkvitt.yaml`:
+`aeradex.yaml`:
 
 ```yaml
 mwst:
@@ -124,21 +124,21 @@ Bezugsteuer: die Aufwandzeile trägt den Code (Bemessungsgrundlage), dazu die ge
 `konten.bezugsteuer` (Standard: Umsatzsteuerkonto) und — effektive Methode — ihr Abzug als Vorsteuer; bei der
 Saldosteuersatzmethode ist die Steuer Aufwand auf demselben Konto.
 
-Gebucht wird brutto mit Code; bei der effektiven Methode spaltet allkvitt die Steuer ab (Netto- und Steuerzeile tragen beide den Code). Bei der Saldosteuersatzmethode bleibt der Umsatz brutto und die Saldosteuer wird mit der Abrechnung gebucht. Gebuchte Abrechnungen liegen unter `mwst/<Periode>.yaml` und gehören ihren Journalzeilen (`Quelle mwst:2026-Q1`).
+Gebucht wird brutto mit Code; bei der effektiven Methode spaltet aeradex die Steuer ab (Netto- und Steuerzeile tragen beide den Code). Bei der Saldosteuersatzmethode bleibt der Umsatz brutto und die Saldosteuer wird mit der Abrechnung gebucht. Gebuchte Abrechnungen liegen unter `mwst/<Periode>.yaml` und gehören ihren Journalzeilen (`Quelle mwst:2026-Q1`).
 
 Bei `vereinnahmt` bleiben Rechnungen und Kreditoren im Hauptbuch am Belegdatum; die MWST-Abrechnung
-berücksichtigt sie anteilig am Zahlungsdatum. `allkvitt mwst abstimmung <Jahr> --pdf` vergleicht die
+berücksichtigt sie anteilig am Zahlungsdatum. `aeradex mwst abstimmung <Jahr> --pdf` vergleicht die
 Buchhaltung mit den gebuchten Abrechnungen und legt das PDF unter `berichte/` ab.
 
 Die Abgrenzung der Steuer auf offenen Posten liegt unter `mwst/abgrenzung/<Jahr>.yaml`; sie besitzt
 die Zeilen mit `Quelle mwst:abgrenzung-<Jahr>` (31.12. und Rückbuchung 1.1.). Die Konten
 `mwst.konten.umsatzsteuer_offen` (Standard 2209) und `mwst.konten.vorsteuer_offen` (Standard 1172)
-werden beim ersten Buchen angelegt, wenn sie fehlen. `allkvitt check` prüft die gespeicherten Zeilen
+werden beim ersten Buchen angelegt, wenn sie fehlen. `aeradex check` prüft die gespeicherten Zeilen
 und meldet nachträglich geänderte offene Posten.
 
 ## vorschlaege.md
 
-Gleiche Tabelle plus `ID` und `Begründung`. `allkvitt approve V-001` verschiebt die Zeile ins Journal.
+Gleiche Tabelle plus `ID` und `Begründung`. `aeradex approve V-001` verschiebt die Zeile ins Journal.
 
 ## kunden/K0001-name.md
 
@@ -161,8 +161,8 @@ Frontmatter mit `nummer, kunde, an` (Adress-Snapshot), `datum, faellig, waehrung
 Rechnungen in Fremdwährung (CHF oder EUR für den QR-Zahlteil) tragen `waehrung` und `kurs`; ihre Journalzeilen
 sind in CHF mit FW und Kurs, Zahlungen gleichen den Buchwert aus (Differenz auf Kursgewinn/-verlust).
 
-Rechnungen, die ausserhalb von allkvitt erstellt wurden, tragen `extern: {rechnungsnr: …}` und `datei` (das Original
-unter belege/); sie haben eine eigene allkvitt-Nummer und werden sonst wie alle Rechnungen behandelt.
+Rechnungen, die ausserhalb von aeradex erstellt wurden, tragen `extern: {rechnungsnr: …}` und `datei` (das Original
+unter belege/); sie haben eine eigene aeradex-Nummer und werden sonst wie alle Rechnungen behandelt.
 
 ## personal/M0001-name.md
 
@@ -195,7 +195,7 @@ aktiv: true
 
 ## lohn/JJJJ/MM/M0001.md
 
-Frontmatter: `mitarbeiter, name, jahr, monat, status (entwurf|abgeschlossen), eingaben{stunden, bvg, kinderzulagen, korrektur, korrektur_text, qst_satzbestimmend, qst_gesamtpensum}, werte{…}`, nach Abschluss zusätzlich `ag{…}` und `fingerprint`. Der Text darunter wird erzeugt. Eingaben ändert man im Entwurf und rechnet mit `allkvitt payroll run` neu.
+Frontmatter: `mitarbeiter, name, jahr, monat, status (entwurf|abgeschlossen), eingaben{stunden, bvg, kinderzulagen, korrektur, korrektur_text, qst_satzbestimmend, qst_gesamtpensum}, werte{…}`, nach Abschluss zusätzlich `ag{…}` und `fingerprint`. Der Text darunter wird erzeugt. Eingaben ändert man im Entwurf und rechnet mit `aeradex payroll run` neu.
 
 ## Jev (optional)
 
@@ -217,7 +217,7 @@ Rechnung). Quittungen tragen `zahlung`: `{art: bank, bank: <ID>}` (offene Bankbe
 `begruendung`, wenn der Agent kontiert hat), `hinweise`, `konflikt` (Name auf der Rechnung ≠ Inhaber der IBAN) und
 `status`: `bereit`, `unsicher` (Konto fehlt), `agent` (Agent arbeitet), `konflikt`, `unvollstaendig`.
 Entwürfe besitzen keine Journalzeilen; beim Erfassen wird der Entwurf im selben Commit entfernt.
-Der erkannte Text liegt unter `.allkvitt/erfassung/ENT-NNNN.txt` (nicht im git). In allkvitt.yaml schaltet
+Der erkannte Text liegt unter `.aeradex/erfassung/ENT-NNNN.txt` (nicht im git). In aeradex.yaml schaltet
 `kreditoren: {agent_automatisch: false}` die automatische Übergabe an den Agenten aus.
 
 ## kreditoren/JJJJ/E-JJJJ-NNNN.md
@@ -237,7 +237,7 @@ Offene Fremdwährungs-Kreditoren stehen in `bewertung/<datum>.yaml` unter `kredi
 ## zahlungen/
 
 Zahlungsdateien `JJJJ-MM-TT-xxxxxx.xml` (ISO 20022 pain.001.001.09, Swiss Payment Standards) zum Hochladen im E-Banking.
-Eine QR-IBAN kann nicht belastet werden; dann `zahlungs_iban` in `allkvitt.yaml` setzen.
+Eine QR-IBAN kann nicht belastet werden; dann `zahlungs_iban` in `aeradex.yaml` setzen.
 
 ## bank/
 
@@ -245,7 +245,7 @@ Eine QR-IBAN kann nicht belastet werden; dann `zahlungs_iban` in `allkvitt.yaml`
 `bank/<JJJJ>.md`: eine Zeile pro Bankbewegung: `ID | Datum | Konto | Betrag | Gegenpartei | Referenz | Text | Status | Beleg | Auszug | Hinweis`
 (`Hinweis`: z.B. unsicherer Jev-Vorschlag),
 Status `gebucht`, `abgeglichen`, `offen`, `ignoriert`. `Beleg` verweist auf die Journalbuchung. Zuordnung IBAN → Konto in
-`allkvitt.yaml` unter `bankkonten: {CH…: "1020"}` (Standard: die eigene IBAN → Bankkonto).
+`aeradex.yaml` unter `bankkonten: {CH…: "1020"}` (Standard: die eigene IBAN → Bankkonto).
 
 ## bank/formate/<name>.yaml
 
@@ -266,7 +266,7 @@ konto: "1020"               # optional, wenn die Datei keine zugeordnete IBAN en
 ```
 
 Weitere Felder: `gegenpartei`, `referenz`, `id` (Transaktions-ID), `waehrung` (Spalte), `dezimal: ","`,
-`trennzeichen`, `iban`. Ohne `id` erkennt allkvitt doppelt importierte Bewegungen an Datum, Betrag und Text.
+`trennzeichen`, `iban`. Ohne `id` erkennt aeradex doppelt importierte Bewegungen an Datum, Betrag und Text.
 
 ## bank/karten/<hash>.yaml
 
@@ -276,11 +276,11 @@ wie auf der Abrechnung: Belastungen positiv, Zahlungen negativ). Importiert wird
 `saldo_neu` und jeder Betrag im Text der PDF steht; bei einer gescannten PDF ohne Text nach Kontrolle
 `bestaetigt: true` setzen.
 
-## .allkvitt/locks.yaml
+## .aeradex/locks.yaml
 
 `bis`, Hash pro gesperrtem Monat, `verlauf` aller Sperren und Entsperrungen (mit Grund).
 
-## .allkvitt/belegnummern.yaml
+## .aeradex/belegnummern.yaml
 
 ```yaml
 hinweis: Höchste je vergebene Belegnummer pro Jahr. …
@@ -289,15 +289,15 @@ letzte:
 ```
 
 Die laufende Belegnummer `JJ-NNN` ist eins höher als die höchste Nummer im Journal, in offenen Vorschlägen und in
-dieser Datei. allkvitt führt die Datei beim Buchen und beim Verwerfen eines Vorschlags nach; so wird eine Nummer nie
+dieser Datei. aeradex führt die Datei beim Buchen und beim Verwerfen eines Vorschlags nach; so wird eine Nummer nie
 zweimal vergeben, auch wenn ihre Buchung wieder entfernt wurde. Belegdateien heissen `belege/JJJJ/<Belegnummer> <Name>`;
-der Belegordner (`allkvitt dossier`) stempelt jede Seite mit dieser Nummer und listet fehlende Nummern der Serien
+der Belegordner (`aeradex dossier`) stempelt jede Seite mit dieser Nummer und listet fehlende Nummern der Serien
 `JJ-NNN`, `R-JJJJ-NNNN` und `E-JJJJ-NNNN` mit Grund im Lückenverzeichnis.
 
 ## budget/JJJJ.yaml
 
 Budget pro Erfolgskonto; Beträge natürlich (Ertrag und Aufwand positiv). Ein Jahresbetrag wird gleichmässig auf die
-Monate verteilt (Rappenrest im Dezember), sonst zwölf Monatswerte. `allkvitt check` meldet unbekannte Konten,
+Monate verteilt (Rappenrest im Dezember), sonst zwölf Monatswerte. `aeradex check` meldet unbekannte Konten,
 Bilanzkonten und eine Summe der Monate, die nicht zu `jahr` passt.
 
 ```yaml
@@ -322,31 +322,31 @@ der Text ist der Body. Passt der Fingerabdruck nicht mehr zu den aktuellen Zahle
 Erzeugte Berichte (Monatsbericht, Exporte) landen wie die Abschlussunterlagen in `berichte/` — nicht in git, jederzeit
 neu erzeugbar; jeder trägt den git-Commit seines Stands.
 
-## Abschlussunterlagen (`allkvitt dossier`)
+## Abschlussunterlagen (`aeradex dossier`)
 
 ZIP `<Firma> Abschluss <JJJJ>.zip` mit einem Ordner gleichen Namens; Dateien beginnen mit der Nummer ihres Teils
 (`00 Inhalt.pdf`, `01 Jahresrechnung 2026.pdf`, `03 Journal 2026.csv`, `05 Belege/26-001 quittung.pdf` …).
 CSV: Semikolon, UTF-8 mit BOM, Datum ISO, Beträge mit Punkt ohne Tausendertrenner. `manifest.json`:
 
 ```json
-{"format": "allkvitt-abschluss", "version": 1, "allkvitt": "0.8.0", "firma": "…", "jahr": 2026,
+{"format": "aeradex-abschluss", "version": 1, "aeradex": "0.8.0", "firma": "…", "jahr": 2026,
  "erstellt": "…", "gesperrt_bis": "2026-12-31", "entwurf": false, "commit": "<git HEAD>",
  "uncommittete_aenderungen": false, "pruefung": {"fehler": 0, "warnungen": 0},
  "luecken": [{"beleg": "26-007", "art": "verworfen", "grund": "…"}],
  "dateien": {"00 Inhalt.pdf": "<sha256>", "…": "…"}}
 ```
 
-Plugins steuern weitere Teile über den Hook `allkvitt_dossier_teile` bei (siehe docs/plugins.md).
+Plugins steuern weitere Teile über den Hook `aeradex_dossier_teile` bei (siehe docs/plugins.md).
 
-## .allkvitt-Datei (Buch weitergeben)
+## .aeradex-Datei (Buch weitergeben)
 
 Ein ZIP-Container:
 
 | Eintrag           | Inhalt |
 | ----------------- | ------ |
-| `mimetype`        | `application/vnd.allkvitt+zip`, erster Eintrag, unkomprimiert |
-| `manifest.json`   | `format: allkvitt-buch`, `version: 1`, allkvitt-Version, Firma, UID, Rechtsform, Jahre, Sperre, Plugins, Zeitpunkt, git-Commit, `uncommittete_aenderungen`, `mit_inbox`, `historie` (SHA-256 des Bundles), `dateien` (Pfad → SHA-256) |
-| `buch/…`          | alle Dateien des Buchs wie auf der Festplatte, ohne `.git/`, `berichte/` und `.allkvitt/write.lock` |
+| `mimetype`        | `application/vnd.aeradex+zip`, erster Eintrag, unkomprimiert |
+| `manifest.json`   | `format: aeradex-buch`, `version: 1`, aeradex-Version, Firma, UID, Rechtsform, Jahre, Sperre, Plugins, Zeitpunkt, git-Commit, `uncommittete_aenderungen`, `mit_inbox`, `historie` (SHA-256 des Bundles), `dateien` (Pfad → SHA-256) |
+| `buch/…`          | alle Dateien des Buchs wie auf der Festplatte, ohne `.git/`, `berichte/` und `.aeradex/write.lock` |
 | `historie.bundle` | `git bundle --all`: der vollständige Änderungsverlauf (optional) |
 
 Verschlüsselt (`--passwort`) enthält die Datei nur `mimetype`, ein `manifest.json` mit `verschluesselt: true` und den
@@ -355,13 +355,13 @@ Inhalt (ohne `mimetype`) als ZIP, verschlüsselt. Firma und Dateinamen sind dann
 
 Import: Zielordner muss neu oder leer sein. Geprüft werden Formatversion, jeder Pfad (nur relativ, kein `..`, nichts
 in `.git/`, keine Links), jede Prüfsumme und die Vollständigkeit gegenüber dem Manifest. Mit Verlauf wird das Bundle
-geklont; was der Absender nicht committet hatte, wird als eigener Commit festgehalten. Danach `allkvitt check`.
+geklont; was der Absender nicht committet hatte, wird als eigener Commit festgehalten. Danach `aeradex check`.
 
 ## mahnungen/R-JJJJ-NNNN.yaml
 
 Die Mahnungen einer Rechnung: `mahnungen: [{stufe, bezeichnung, datum, frist, offen, pdf}]`, die PDFs daneben
 (`R-JJJJ-NNNN-M1.pdf` …). Mahnungen besitzen keine Journalzeilen. Einstellungen: `mahnwesen: {frist_tage: 10,
-texte: {1: …, 2: …, 3: …}}` in allkvitt.yaml (Platzhalter `{frist}`, `{vorher}`, `{nummer}`).
+texte: {1: …, 2: …, 3: …}}` in aeradex.yaml (Platzhalter `{frist}`, `{vorher}`, `{nummer}`).
 
 ## bank/regeln.yaml
 

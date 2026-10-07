@@ -10,10 +10,10 @@ import pytest
 pytest.importorskip("starlette")
 from starlette.testclient import TestClient  # noqa: E402
 
-from allkvitt import api, bank  # noqa: E402
-from allkvitt.book import Book  # noqa: E402
-from allkvitt.testing import assert_clean, make_book  # noqa: E402
-from allkvitt.web.app import create_app  # noqa: E402
+from aeradex import api, bank  # noqa: E402
+from aeradex.book import Book  # noqa: E402
+from aeradex.testing import assert_clean, make_book  # noqa: E402
+from aeradex.web.app import create_app  # noqa: E402
 from camt_sample import entry, statement  # noqa: E402
 from test_eingang import RECEIPT, pdf  # noqa: E402
 

@@ -10,9 +10,9 @@ import pytest
 pytest.importorskip("starlette")
 from starlette.testclient import TestClient  # noqa: E402
 
-from allkvitt import check, gitlog  # noqa: E402
-from allkvitt.book import Book  # noqa: E402
-from allkvitt.web.app import create_app  # noqa: E402
+from aeradex import check, gitlog  # noqa: E402
+from aeradex.book import Book  # noqa: E402
+from aeradex.web.app import create_app  # noqa: E402
 
 DEMO = Path(__file__).resolve().parent.parent / "examples" / "muster-gmbh"
 
@@ -70,7 +70,7 @@ def test_every_page_renders(client):
 def test_balance_chart_preserves_opening_on_january_first():
     from datetime import date
     from decimal import Decimal
-    from allkvitt.web.views import _balance_chart
+    from aeradex.web.views import _balance_chart
 
     chart = _balance_chart({"eroeffnung": Decimal("1000"), "zeilen": [
         {"datum": date(2025, 1, 1), "saldo": Decimal("750")},
@@ -196,7 +196,7 @@ def test_payroll_year_picker_shows_uncomputed_months(client):
 
 def test_lohnausweis_readiness_and_year_status(client, root):
     from lxml import html
-    from allkvitt import api
+    from aeradex import api
     api.employee_add(Book(root), "Mia", "Jahresabschluss", monatslohn=5000, eintritt="2026-10-15")
     api.employee_update(Book(root), "M0003", austritt="2026-11-10", aktiv=False)
     # Inactive today must still be visible for missing historical months of employment.
@@ -272,7 +272,7 @@ def test_inbox_upload(client, root):
 
 def test_ui_and_cli_writes_are_one_history(client, root):
     """A write from another process (CLI/agent) lands in the same history and the UI sees it."""
-    from allkvitt import api
+    from aeradex import api
     api.post_entry(Book(root), "2026-03-25", "6500", "1020", "5", "von der Kommandozeile")
     assert "von der Kommandozeile" in client.get("/journal?monat=3").text
 
@@ -305,7 +305,7 @@ def test_mwst_screens_and_booking(client, root):
 
 
 def test_kreditoren_from_inbox_qr_to_payment(client, root, tmp_path):
-    from allkvitt import api as core
+    from aeradex import api as core
     sup = tmp_path / "lieferant"
     core.init_book(sup, "Papeterie Muster AG", 2026, strasse="Marktgasse", nr="14", plz="3011", ort="Bern",
                    iban="CH44 3199 9123 0008 8901 2", git=False)
@@ -353,7 +353,7 @@ def test_bank_screen_import_and_book(client, root):
 
 @pytest.fixture
 def server(root, tmp_path):
-    from allkvitt.web.auth import UserStore
+    from aeradex.web.auth import UserStore
     cfg = tmp_path / "cfg"
     store = UserStore(cfg)
     store.add("anna", "geheim-genug-1", "admin", "Anna Admin")
@@ -409,7 +409,7 @@ def test_login_throttle_and_password_change_ends_sessions(server):
 
 
 def test_foreign_currency_screens(client, root, monkeypatch):
-    from allkvitt import fx
+    from aeradex import fx
     page = (b'<wechselkurse><datum>x</datum><devise code="eur"><waehrung>1 EUR</waehrung>'
             b'<kurs>0.95</kurs></devise></wechselkurse>')
     monkeypatch.setattr(fx, "_get", lambda url: page)
@@ -443,10 +443,10 @@ def test_unterlagen_downloads(client, root):
 
 def test_buch_export(client, root, tmp_path):
     r = client.post("/einstellungen/buch-export", data={"historie": "1", "inbox": "1"}, headers={"X-CSRF": client.csrf})
-    assert r.status_code == 200 and r.headers["content-type"] == "application/vnd.allkvitt+zip"
-    (tmp_path / "x.allkvitt").write_bytes(r.content)
-    from allkvitt import austausch
-    assert austausch.inspect(tmp_path / "x.allkvitt")["firma"] == "Muster GmbH"
+    assert r.status_code == 200 and r.headers["content-type"] == "application/vnd.aeradex+zip"
+    (tmp_path / "x.aeradex").write_bytes(r.content)
+    from aeradex import austausch
+    assert austausch.inspect(tmp_path / "x.aeradex")["firma"] == "Muster GmbH"
     r = client.post("/einstellungen/buch-export", data={"passwort": "a", "passwort2": "b"},
                     headers={"X-CSRF": client.csrf})
     assert r.status_code == 400
@@ -454,7 +454,7 @@ def test_buch_export(client, root, tmp_path):
 
 
 def test_top_navigation():
-    from allkvitt.web.app import navigation
+    from aeradex.web.app import navigation
     counts = {"todo": 9, "bank": 7, "entwuerfe": 0, "einkauf": 2, "verkauf": 0, "vorschlaege": 1}
     pages = [{"url": "/p/leistungen/leistungen", "label": "Leistungen", "bereich": "debitoren"},
              {"url": "/p/leistungen/offerten", "label": "Offerten", "bereich": "leistungen"},
@@ -507,14 +507,14 @@ def test_top_navigation_renders(client):
 
 
 def test_salary_bank_file_download(client, root):
-    from allkvitt import api
+    from aeradex import api
     for nr in ('M0001', 'M0002'):
         api.employee_update(Book(root), nr, iban='CH9300762011623852957', ort='Bern', land='CH')
         ok(post(client, f'/lohn/abrechnung/2026-03/{nr}/abschliessen'))
     ok(post(client, '/lohn/zahlung/erstellen', {'monat': '2026-03', 'datum': '2026-03-25'}))
     page = client.get('/lohn?monat=2026-03')
     assert 'Bankdatei herunterladen' in page.text
-    from allkvitt.payroll_payments import active
+    from aeradex.payroll_payments import active
     info = active(Book(root), 2026, 3)
     r = client.get('/datei/' + info['datei'])
     assert r.status_code == 200 and b'pain.001.001.09' in r.content
@@ -522,7 +522,7 @@ def test_salary_bank_file_download(client, root):
 
 
 def test_estv_import_ui(client, root, monkeypatch):
-    from allkvitt import qst_estv
+    from aeradex import qst_estv
     from test_payroll_review import records
     monkeypatch.setattr(qst_estv, 'download', lambda k, y: qst_estv.parse(records(k, y), k, y, 'fixture'))
     ok(post(client, '/lohn/qst-import', {'kanton': 'ZH', 'jahr': '2026'}))
@@ -530,7 +530,7 @@ def test_estv_import_ui(client, root, monkeypatch):
 
 
 def test_employee_can_clear_flat_withholding_rate(client, root):
-    from allkvitt import api, payroll
+    from aeradex import api, payroll
     api.employee_update(Book(root), 'M0001', qst=None, qst_satz='0.05')
     ok(post(client, '/lohn/mitarbeiter/M0001', {'vorname': 'Lea', 'nachname': 'Muster',
                                               'lohnart': 'monat', 'qst_code': '', 'qst_satz_pct': ''}))
@@ -547,3 +547,15 @@ def test_payroll_close_whole_month(client, root):
     assert rows and {r.beleg for r in rows} == {"L-2026-03"} and all("(2 MA)" in r.text for r in rows)
     assert errors(root) == []
     assert "Sammelbuchung" in client.get("/lohn?monat=2026-03").text
+
+
+def test_journal_account_filter_accepts_datalist_choice_and_searches_year(client, root):
+    rows = [r for r in Book(root).rows if "1020" in (r.soll, r.haben)]
+    assert rows
+    belege = {r.beleg for r in rows}
+    year = rows[0].datum.year
+    for value in ("1020", "1020  Bank"):                       # typed, or picked from the account list
+        page = client.get(f"/journal?jahr={year}&monat=alle&konto={value}").text
+        assert all(b in page for b in belege)
+    page = client.get(f"/journal?jahr={year}").text
+    assert 'name="monat" value="alle"' in page                 # a new filter searches the whole year

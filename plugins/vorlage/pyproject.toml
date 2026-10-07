@@ -1,24 +1,24 @@
-# Vorlage für ein allkvitt-Plugin. Kopieren, dann überall «beispiel» durch den eigenen Namen ersetzen:
-#   cp -r plugins/vorlage ../allkvitt-meinplugin && cd ../allkvitt-meinplugin
-#   grep -rl beispiel . | xargs sed -i 's/beispiel/meinplugin/g' && mv src/allkvitt_beispiel src/allkvitt_meinplugin
+# Vorlage für ein aeradex-Plugin. Kopieren, dann überall «beispiel» durch den eigenen Namen ersetzen:
+#   cp -r plugins/vorlage ../aeradex-meinplugin && cd ../aeradex-meinplugin
+#   grep -rl beispiel . | xargs sed -i 's/beispiel/meinplugin/g' && mv src/aeradex_beispiel src/aeradex_meinplugin
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "allkvitt-beispiel"
+name = "aeradex-beispiel"
 version = "0.1.0"
-description = "Beispiel-Plugin für allkvitt"
+description = "Beispiel-Plugin für aeradex"
 license = "AGPL-3.0-or-later"     # oder eine mit der AGPL verträgliche Lizenz
 requires-python = ">=3.11"
-dependencies = ["allkvitt>=0.6"]
+dependencies = ["aeradex>=0.6"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 
-# Der Name links ist der Plugin-Name im Buch: allkvitt plugins ein beispiel
-[project.entry-points."allkvitt.plugins"]
-beispiel = "allkvitt_beispiel"
+# Der Name links ist der Plugin-Name im Buch: aeradex plugins ein beispiel
+[project.entry-points."aeradex.plugins"]
+beispiel = "aeradex_beispiel"
 
 [tool.setuptools.packages.find]
 where = ["src"]

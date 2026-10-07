@@ -5,9 +5,9 @@ from decimal import Decimal
 
 import pytest
 
-from allkvitt import api, mahnungen
-from allkvitt.book import Book, BookError
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api, mahnungen
+from aeradex.book import Book, BookError
+from aeradex.testing import assert_clean, make_book
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def test_not_due_and_paid_invoices_are_refused(book):
 def test_reminder_page_and_detail(book):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
     app = create_app(book.root, token="tok")
     with TestClient(app) as c:
         c.get("/?t=tok", follow_redirects=False)

@@ -7,12 +7,12 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
-from allkvitt import api, journal
-from allkvitt.book import Row
-from allkvitt.files import parse_date, read_yaml, write_yaml
-from allkvitt.plugins import BankFormat, Command, Finding, Source, hookimpl
+from aeradex import api, journal
+from aeradex.book import Row
+from aeradex.files import parse_date, read_yaml, write_yaml
+from aeradex.plugins import BankFormat, Command, Finding, Source, hookimpl
 
-ALLKVITT_PLUGIN_API = 1
+AERADEX_PLUGIN_API = 1
 HERE = Path(__file__).parent
 
 
@@ -37,12 +37,12 @@ def record(book, von: str, betrag: str, datum: str):
 
 
 @hookimpl
-def allkvitt_sources():
+def aeradex_sources():
     return [Source("spende", "Spende", _rows, link=lambda ref: f"/spenden/{ref}")]
 
 
 @hookimpl
-def allkvitt_check(book, rows):
+def aeradex_check(book, rows):
     big = [r for r in rows if r.quelle.startswith("spende:") and r.betrag > 10000]
     return [Finding("hinweis", r.where, "Grossspende: Spendenbestätigung prüfen") for r in big]
 
@@ -63,12 +63,12 @@ def _parse(data, book):
 
 
 @hookimpl
-def allkvitt_bank_formats():
+def aeradex_bank_formats():
     return [BankFormat("testcsv", "Test-CSV", (".csv",), _detect, _parse)]
 
 
 @hookimpl
-def allkvitt_kontenplaene():
+def aeradex_kontenplaene():
     return {"testplan": HERE / "testplan.yaml"}
 
 
@@ -80,17 +80,17 @@ def spende_erfassen(von: str, betrag: str, datum: str) -> dict:
         betrag: Betrag in CHF.
         datum: JJJJ-MM-TT.
     """
-    from allkvitt.tools import call
+    from aeradex.tools import call
     return call(api.write, f"Spende von {von}", record, von, betrag, datum)
 
 
 @hookimpl
-def allkvitt_tools():
+def aeradex_tools():
     return [spende_erfassen]
 
 
 @hookimpl
-def allkvitt_instructions():
+def aeradex_instructions():
     return "- Spenden: spende_erfassen (nie als freie Buchung)."
 
 
@@ -101,6 +101,6 @@ def _setup(parser):
 
 
 @hookimpl
-def allkvitt_commands():
+def aeradex_commands():
     return [Command("spende", "Spende erfassen", lambda book, a: api.write(book, f"Spende von {a.von}", record,
                                                                           a.von, a.betrag, a.datum), _setup)]

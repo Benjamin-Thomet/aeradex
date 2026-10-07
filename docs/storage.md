@@ -5,7 +5,7 @@ Berichte sind daraus ableitbar. Ein Datenbankserver ist nicht erforderlich.
 
 ## Dateiformat
 
-Neue Bücher tragen `format_version: 1` in `allkvitt.yaml`. Bücher ohne Versionsfeld
+Neue Bücher tragen `format_version: 1` in `aeradex.yaml`. Bücher ohne Versionsfeld
 werden als Version 0 gelesen. Beim nächsten erfolgreichen API-Schreibvorgang wird
 Version 1 innerhalb derselben Transaktion eingetragen; die Datenstruktur bleibt
 unverändert. Unbekannte Versionen werden zurückgewiesen. Weitere Migrationen gehören
@@ -30,7 +30,7 @@ explizite Felder oder Markdown-Text.
 Die mit `api._locked` registrierten Schreiboperationen benutzen `storage.transactional`:
 
 1. Lokale Buchsperre übernehmen, unterbrochene Veröffentlichung wiederherstellen.
-2. Dateien in eine private Arbeitskopie unter `.allkvitt/transaction/work/` kopieren.
+2. Dateien in eine private Arbeitskopie unter `.aeradex/transaction/work/` kopieren.
 3. Operation und Prüfungen in dieser Kopie ausführen.
 4. Inhalt des Originalbuchs vergleichen: externe Änderungen führen zum Abbruch.
 5. Änderungen und Sicherungen in einem dauerhaften Manifest festhalten.
@@ -77,7 +77,7 @@ result = api.post_entry(
 ```
 
 Alle transaktionalen API-Operationen akzeptieren die beiden optionalen Schlüssel.
-Der gespeicherte Wiederholungsbeleg liegt unter `.allkvitt/requests/<sha256>.json`
+Der gespeicherte Wiederholungsbeleg liegt unter `.aeradex/requests/<sha256>.json`
 und wird zusammen mit den Nutzdaten veröffentlicht. Derselbe Schlüssel und dieselben
 Parameter liefern das gespeicherte Ergebnis (`wiederholt: true`); andere Parameter
 zum gleichen Schlüssel sind ein Fehler. Die Wiederholung wird vor der Revisionsprüfung

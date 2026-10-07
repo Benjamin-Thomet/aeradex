@@ -3,9 +3,9 @@ from decimal import Decimal
 
 import pytest
 
-from allkvitt import api, berichte, check, reports
-from allkvitt.book import Book, BookError
-from allkvitt.testing import make_book
+from aeradex import api, berichte, check, reports
+from aeradex.book import Book, BookError
+from aeradex.testing import make_book
 
 D = Decimal
 
@@ -86,7 +86,7 @@ def test_monthly_package_and_mail(book, monkeypatch):
 
     import smtplib
     monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
-    monkeypatch.setenv("ALLKVITT_SMTP_PASSWORD", "geheim")
+    monkeypatch.setenv("AERADEX_SMTP_PASSWORD", "geheim")
     with pytest.raises(BookError, match="nicht eingerichtet"):
         api.monthly_report(book, "2026-03", mail=True)
     b = Book(book.root)
@@ -135,7 +135,7 @@ def test_dossier_has_cash_flow_and_kpis(book):
 
 def test_agent_comment_with_fake_backend(book, monkeypatch):
     pytest.importorskip("starlette")
-    from allkvitt.web import chat
+    from aeradex.web import chat
     prompts = []
 
     class FakeAgent:

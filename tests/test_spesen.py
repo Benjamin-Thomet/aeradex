@@ -5,9 +5,9 @@ from decimal import Decimal
 
 import pytest
 
-from allkvitt import api, erfassung, lohnausweis, payroll, spesen
-from allkvitt.book import Book, BookError
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api, erfassung, lohnausweis, payroll, spesen
+from aeradex.book import Book, BookError
+from aeradex.testing import assert_clean, make_book
 
 
 @pytest.fixture

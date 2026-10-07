@@ -1,13 +1,13 @@
-# Mitmachen bei allkvitt
+# Mitmachen bei aeradex
 
-Willkommen! allkvitt ist Open Source (AGPL-3.0-or-later) und soll von der Community getragen werden.
+Willkommen! aeradex ist Open Source (AGPL-3.0-or-later) und soll von der Community getragen werden.
 *English contributions are welcome too — code and comments are in English, user-facing text is Swiss German.*
 
 ## Wege, beizutragen
 
 - **Ein Plugin bauen** — der schnellste Weg, ohne auf ein Release zu warten: [docs/plugins.md](docs/plugins.md),
   Ideen in [PLUGINS.md](PLUGINS.md).
-- **Fehler melden** — am besten mit einem minimalen Buch (`allkvitt init` in einem Temp-Ordner) und den Befehlen,
+- **Fehler melden** — am besten mit einem minimalen Buch (`aeradex init` in einem Temp-Ordner) und den Befehlen,
   die zum Fehler führen. Keine echten Buchhaltungsdaten in Issues hochladen.
 - **Fachwissen** — Sätze, Ziffern, Formulare und Wegleitungen ändern sich. Hinweise mit Quelle (ESTV, BSV,
   Kanton) sind so wertvoll wie Code.
@@ -30,8 +30,8 @@ Jeder Commit trägt ein `Signed-off-by` nach dem [Developer Certificate of Origi
 git commit -s -m "Revolut: Gebühren als eigene Bewegung"
 ```
 
-Damit bestätigst du, dass du den Beitrag unter der Lizenz von allkvitt einbringen darfst. Es gibt keinen
-CLA: das Urheberrecht bleibt bei dir, allkvitt bleibt dadurch für alle frei.
+Damit bestätigst du, dass du den Beitrag unter der Lizenz von aeradex einbringen darfst. Es gibt keinen
+CLA: das Urheberrecht bleibt bei dir, aeradex bleibt dadurch für alle frei.
 
 ## Verhalten
 

@@ -8,20 +8,20 @@ from pathlib import Path
 
 import pytest
 
-from allkvitt import check, marktplatz, plugins
-from allkvitt.book import Book, BookError
-from allkvitt.testing import make_book, plugin
+from aeradex import check, marktplatz, plugins
+from aeradex.book import Book, BookError
+from aeradex.testing import make_book, plugin
 
 
 PLUGIN_CODE = '''"""Testplugin für den Katalog."""
-from allkvitt.plugins import Finding, hookimpl
+from aeradex.plugins import Finding, hookimpl
 
-ALLKVITT_PLUGIN_API = 1
+AERADEX_PLUGIN_API = 1
 __version__ = "1.0.0"
 
 
 @hookimpl
-def allkvitt_check(book, rows):
+def aeradex_check(book, rows):
     return []
 '''
 
@@ -35,9 +35,9 @@ def katalog(tmp_path, monkeypatch):
     module = importlib.import_module("kat_testplugin")
     path = tmp_path / "katalog.json"
     path.write_text(json.dumps({"version": 1, "plugins": [
-        {"name": "testplug", "paket": "allkvitt-testplug", "version": "1.0.0", "beschreibung": "x", "hooks": ["check"],
+        {"name": "testplug", "paket": "aeradex-testplug", "version": "1.0.0", "beschreibung": "x", "hooks": ["check"],
          "status": "ungeprüft"}]}))
-    monkeypatch.setenv("ALLKVITT_PLUGIN_KATALOG", str(path))
+    monkeypatch.setenv("AERADEX_PLUGIN_KATALOG", str(path))
     with plugin("testplug", module):
         yield path, pkg
     sys.modules.pop("kat_testplugin", None)
@@ -68,21 +68,21 @@ def test_install_needs_review_or_explicit_consent(katalog, monkeypatch):
     with pytest.raises(BookError, match="nicht geprüft"):
         marktplatz.install("testplug")
     marktplatz.install("testplug", ungeprueft_ok=True)
-    assert calls[0][-1] == "allkvitt-testplug==1.0.0" and calls[0][1:4] == ["-m", "pip", "install"]
+    assert calls[0][-1] == "aeradex-testplug==1.0.0" and calls[0][1:4] == ["-m", "pip", "install"]
     with pytest.raises(BookError, match="nicht im Katalog"):
         marktplatz.install("gibtsnicht", True)
 
 
 def test_catalog_over_https_is_cached(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("ALLKVITT_PLUGIN_KATALOG", "https://example.org/katalog.json")
-    data = json.dumps({"version": 1, "plugins": [{"name": "a", "paket": "allkvitt-a"}]}).encode()
+    monkeypatch.setenv("AERADEX_PLUGIN_KATALOG", "https://example.org/katalog.json")
+    data = json.dumps({"version": 1, "plugins": [{"name": "a", "paket": "aeradex-a"}]}).encode()
     assert marktplatz.load(fetch=lambda url: data)["plugins"][0]["name"] == "a"
 
     def offline(url):
         raise OSError("offline")
     assert marktplatz.load(fetch=offline)["plugins"][0]["name"] == "a"               # from the cache
-    monkeypatch.setenv("ALLKVITT_PLUGIN_KATALOG", "http://example.org/k.json")
+    monkeypatch.setenv("AERADEX_PLUGIN_KATALOG", "http://example.org/k.json")
     with pytest.raises(BookError, match="https"):
         marktplatz.load()
 
@@ -96,7 +96,7 @@ def test_bundled_catalog_lists_the_examples_unreviewed():
 def test_settings_page_shows_catalog_and_installs_locally(tmp_path, katalog, monkeypatch):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
     book = make_book(tmp_path / "b")
     installed = []
     monkeypatch.setattr(marktplatz, "install", lambda name, ok=False: installed.append((name, ok)) or "")

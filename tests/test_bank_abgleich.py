@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from allkvitt import api, bank
-from allkvitt.book import Book
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api, bank
+from aeradex.book import Book
+from aeradex.testing import assert_clean, make_book
 from camt_sample import entry, statement
 
 IBAN = "CH9300762011623852957"
@@ -78,7 +78,7 @@ def test_search_for_money_out_offers_bills_not_invoices(book, tmp_path):
 
 
 def test_receipt_without_account_points_to_review(book, tmp_path):
-    from allkvitt import erfassung
+    from aeradex import erfassung
     (book.root / "inbox" / "coop.txt").write_text("Coop Bern\n20.02.2026\nTotal CHF 64.80\n", encoding="utf-8")
     d = api.bill_draft_create(Book(book.root), "inbox/coop.txt", "quittung")["entwurf"]
     api.bill_draft_update(Book(book.root), d["id"], "Hand", name="Coop", betrag="64.80", datum="2026-02-20")

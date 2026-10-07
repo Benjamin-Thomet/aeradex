@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from allkvitt import api, erfassung, jev, kreditoren
-from allkvitt.book import Book, BookError
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api, erfassung, jev, kreditoren
+from aeradex.book import Book, BookError
+from aeradex.testing import assert_clean, make_book
 
 INVOICE = [
     "Druckerei Beispiel AG",
@@ -129,10 +129,10 @@ def test_jev_confident_and_unsure(book, monkeypatch):
 
 def test_agent_completes_draft_through_its_tool(book, monkeypatch):
     """The agent run is simulated: it calls complete_bill_draft like the MCP tool would."""
-    from allkvitt import tools
+    from aeradex import tools
     text_pdf(book.root / "inbox" / "c.pdf")
     d = api.bill_draft_create(book, "inbox/c.pdf")["entwurf"]
-    monkeypatch.setenv("ALLKVITT_BUCH", str(book.root))
+    monkeypatch.setenv("AERADEX_BUCH", str(book.root))
 
     class FakeAgent:
         def __init__(self, root):
@@ -145,7 +145,7 @@ def test_agent_completes_draft_through_its_tool(book, monkeypatch):
             assert res["ok"], res
             events.put({"type": "text", "text": "Konto 6600 gesetzt."})
 
-    from allkvitt.web import chat
+    from aeradex.web import chat
     monkeypatch.setattr(chat, "backend", lambda preferred=None: "api")
     monkeypatch.setitem(chat.AGENTS, "api", FakeAgent)
     out = api.bill_draft_agent(Book(book.root), d["id"])
@@ -159,7 +159,7 @@ def test_agent_cannot_redirect_a_qr_payment(book):
     meta = {"id": "ENT-0001", "datei": "inbox/x.pdf", "status": "unsicher",
             "felder": {"iban": {"wert": "CH4431999123000889012", "quelle": "QR"}, "betrag": {"wert": "10.00", "quelle": "QR"}}}
     (book.root / "inbox" / "x.pdf").write_bytes(b"%PDF-1.4")
-    from allkvitt.files import write_yaml
+    from aeradex.files import write_yaml
     write_yaml(erfassung.folder(book) / "ENT-0001.yaml", meta)
     api.bill_draft_update(Book(book.root), "ENT-0001", "Agent", "6500", iban="CH5604835012345678009")
     d = erfassung.draft(Book(book.root), "ENT-0001")
@@ -190,8 +190,8 @@ def test_qr_bill_draft_then_booking_closes_draft(book, tmp_path):
 def test_ui_upload_review_and_book(tmp_path, monkeypatch):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web import views
-    from allkvitt.web.app import create_app
+    from aeradex.web import views
+    from aeradex.web.app import create_app
     book = make_book(tmp_path, eroeffnung={"1020": 5000, "2800": -5000})
     api.settings_update(book, kreditoren={"agent_automatisch": False})
     pdf = text_pdf(tmp_path / "druckerei.pdf")
@@ -246,10 +246,10 @@ def test_foreign_currency_is_detected():
 
 
 def test_agent_splits_a_draft(book, monkeypatch):
-    from allkvitt import tools
+    from aeradex import tools
     text_pdf(book.root / "inbox" / "s.pdf")
     d = api.bill_draft_create(book, "inbox/s.pdf")["entwurf"]
-    monkeypatch.setenv("ALLKVITT_BUCH", str(book.root))
+    monkeypatch.setenv("AERADEX_BUCH", str(book.root))
     res = tools.complete_bill_draft(d["id"], "6600", "Flyer Werbung, Rest Büromaterial",
                                     aufteilung=[{"konto": "6600", "betrag": "400.00"},
                                                 {"konto": "6500", "betrag": "86.45", "text": "Papier"}])
@@ -268,7 +268,7 @@ def test_foreign_iban_address_and_confirmed_fields(book, monkeypatch):
     f = erfassung.parse_text(text)
     assert f["iban"] == "DE89370400440532013000" and f["land"] == "DE"
     assert (f["plz"], f["ort"]) == ("10117", "Berlin")
-    from allkvitt.files import write_yaml
+    from aeradex.files import write_yaml
     (book.root / "inbox" / "x.pdf").write_bytes(b"%PDF-1.4")
     write_yaml(erfassung.folder(book) / "ENT-0001.yaml", {"id": "ENT-0001", "datei": "inbox/x.pdf", "status": "unsicher",
                "felder": {"waehrung": {"wert": "EUR", "quelle": "Text"}}})

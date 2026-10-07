@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from allkvitt import api, check, fx, kreditoren as kred
-from allkvitt.book import Book, BookError
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api, check, fx, kreditoren as kred
+from aeradex.book import Book, BookError
+from aeradex.testing import assert_clean, make_book
 
 DE_IBAN = "DE89370400440532013000"
 DAILY = {"20260302": "0.95", "20260415": "0.96", "20260630": "0.92", "20260710": "0.94"}
@@ -166,7 +166,7 @@ def test_pain001_one_block_per_currency(book, tmp_path):
     assert api.ledger(b, "1025", 2026)["saldo_fw"] == "-1000.00"
     assert_clean(b)
     import os
-    xsd = os.environ.get("ALLKVITT_SPS_XSD")
+    xsd = os.environ.get("AERADEX_SPS_XSD")
     if xsd and Path(xsd).exists():
         from lxml import etree
         etree.XMLSchema(etree.parse(xsd)).assertValid(etree.fromstring(xml.encode()))
@@ -175,7 +175,7 @@ def test_pain001_one_block_per_currency(book, tmp_path):
 def test_ui_foreign_split_bill_and_payment(book):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from allkvitt.web.app import create_app
+    from aeradex.web.app import create_app
     app = create_app(book.root, token="tok")
     with TestClient(app) as c:
         c.get("/?t=tok", follow_redirects=False)

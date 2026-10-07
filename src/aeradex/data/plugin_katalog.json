@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "hinweis": "Katalog der aeradex-Plugins. «geprüft» vergibt ein Maintainer mit `aeradex plugins pruefen`; der festgehaltene Fingerabdruck (sha256) muss zum installierten Code passen.",
+  "plugins": [
+    {
+      "name": "anlagen",
+      "paket": "aeradex-anlagen",
+      "version": "0.1.0",
+      "beschreibung": "Anlagenbuchhaltung: Abschreibungen (linear/degressiv, ESTV-Höchstsätze), Abgänge, Anlagenspiegel — mit eigener Seite.",
+      "autor": "aeradex",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "",
+      "repo_pfad": "plugins/aeradex-anlagen",
+      "aeradex": ">=0.8",
+      "art": "code",
+      "hooks": ["check", "commands", "instructions", "pages", "sources", "tools"],
+      "status": "ungeprüft"
+    },
+    {
+      "name": "leistungen",
+      "paket": "aeradex-leistungen",
+      "version": "0.1.0",
+      "beschreibung": "Offerten, Zeiterfassung, Produkte und Projekte; offene Leistungen filtern und als QR-Rechnung verrechnen, Stundenkontrolle Soll/Ist — mit eigenen Seiten.",
+      "autor": "aeradex",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "",
+      "repo_pfad": "plugins/aeradex-leistungen",
+      "aeradex": ">=0.8",
+      "art": "code",
+      "hooks": ["check", "commands", "instructions", "pages", "tools"],
+      "status": "ungeprüft"
+    },
+    {
+      "name": "revolut",
+      "paket": "aeradex-revolut",
+      "version": "0.1.0",
+      "beschreibung": "Revolut-Kontoauszüge (CSV, Business und Privat) für den Bankimport.",
+      "autor": "aeradex",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "",
+      "repo_pfad": "plugins/aeradex-revolut",
+      "aeradex": ">=0.6",
+      "art": "code",
+      "hooks": ["bank_formats", "check", "commands", "instructions"],
+      "status": "ungeprüft"
+    }
+  ]
+}

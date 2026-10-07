@@ -5,9 +5,9 @@ from decimal import Decimal
 
 import pytest
 
-from allkvitt import api, check
-from allkvitt.book import Book, BookError
-from allkvitt.testing import assert_clean, make_book
+from aeradex import api, check
+from aeradex.book import Book, BookError
+from aeradex.testing import assert_clean, make_book
 
 
 def test_dividend_with_verrechnungssteuer(tmp_path):

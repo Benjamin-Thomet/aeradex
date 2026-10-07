@@ -14,8 +14,8 @@ import pytest
 from pypdf import PdfReader
 from reportlab.pdfgen import canvas
 
-from allkvitt import api, check, dossier, gitlog
-from allkvitt.book import Book, BookError
+from aeradex import api, check, dossier, gitlog
+from aeradex.book import Book, BookError
 
 STAMP = re.compile(r"Beleg (\S+) · (\d\d\.\d\d\.\d{4}) · CHF")
 

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from allkvitt import api, check, mwst
-from allkvitt.book import Book, BookError
-from allkvitt.ledger import BalanceEngine
+from aeradex import api, check, mwst
+from aeradex.book import Book, BookError
+from aeradex.ledger import BalanceEngine
 
 D = Decimal
 
