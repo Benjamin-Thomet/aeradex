@@ -343,7 +343,7 @@ def matching_rule(book: Book, tx: dict) -> dict | None:
     for r in rules(book):
         if r.get("aktiv") is False:
             continue
-        if r.get("gegenpartei") and str(r["gegenpartei"]).lower() not in (tx.get("Gegenpartei") or "").lower():
+        if r.get("gegenpartei") and str(r["gegenpartei"]).lower() not in party(tx).lower():
             continue
         if r.get("text") and str(r["text"]).lower() not in (tx.get("Text") or "").lower():
             continue
@@ -408,10 +408,10 @@ def rule_from_transaction(book: Book, tid: str, mit_betrag: bool = False) -> tup
                     if tx["Konto"] in (r.soll, r.haben) and r.soll and r.haben), None)
     if not counter:
         raise BookError(f"Beleg {tx['Beleg']} hat kein eindeutiges Gegenkonto")
-    if not (tx.get("Gegenpartei") or "").strip():
+    if not party(tx):
         raise BookError("Die Bewegung hat keine Gegenpartei — Regel von Hand mit einem Text anlegen")
     amount = parse_amount(tx["Betrag"])
-    return add_rule(book, counter, gegenpartei=tx["Gegenpartei"].strip(), betrag=abs(amount) if mit_betrag else None,
+    return add_rule(book, counter, gegenpartei=party(tx), betrag=abs(amount) if mit_betrag else None,
                     richtung="belastung" if amount < 0 else "gutschrift", mwst=rows[0].mwst if rows else "",
                     buchungstext=rows[0].text if rows else "")
 
@@ -511,6 +511,41 @@ def ignore(book: Book, tid: str, grund: str) -> list[Path]:
     return _set(book, tid, Status="ignoriert", Text=f"{tx['Text']} [ignoriert: {grund.strip()}]"[:240])
 
 
+# ---------- counterparty: from its own column, or read from the booking text ----------
+
+_PARTY_PREFIX = re.compile(
+    r"^(?:(?:Dauerauftrag|Kartenzahlung|Karte|E-Banking[- ](?:Vergütung|Auftrag)|Vergütung|Gutschrift|Zahlung|"
+    r"Einzahlung|Lastschrift|LSV\+?|Debit Direct|TWINT|eBill|Belastung|Überweisung|Auftrag)\b[:\s]*)+", re.I)
+_PARTY_CUT = re.compile(r",|;|\s(?:Mitteilung|Referenz|QR-Referenz|Kurs|Police|RE|Rechnung|Rg\.?)\b"
+                        r"|\s(?:CHF|EUR|USD|GBP)\s+\d", re.I)
+_PARTY_DATE = re.compile(r"(?:januar|februar|märz|maerz|april|mai|juni|juli|august|september|oktober|november|"
+                         r"dezember|\d{1,2}\.\d{1,2}\.\d{2,4}|\d{4}|\d{1,2}/\d{4})", re.I)
+_PARTY_FORM = re.compile(r"(?:AG|GmbH|SA|S\.A\.|Sàrl|Sagl|KG|KlG|Genossenschaft|Inc\.?|Ltd\.?|LLC)", re.I)
+
+
+def counterparty_from_text(text: str) -> str:
+    """The counterparty inside a booking text, for statements without a column for it (many CSV exports):
+    'E-Banking Vergütung TechShop Bern AG, Bern, Mitteilung: RE 88' → 'TechShop Bern AG'. Months and
+    years are dropped, so the same payee is the same name every month ('Dauerauftrag MIETE AUGUST 2026
+    Immobilien Aare AG' → 'Immobilien Aare AG'). A guess: used for matching, never stored."""
+    t = _PARTY_PREFIX.sub("", (text or "").strip())
+    cut = _PARTY_CUT.search(t)
+    words = [w for w in (t[:cut.start()] if cut else t).split() if not _PARTY_DATE.fullmatch(w)]
+    for i, w in enumerate(words):
+        if i and _PARTY_FORM.fullmatch(w):
+            name = words[max(0, i - 3):i]
+            if not name[-1].isupper():               # 'MIETE Immobilien Aare' → 'Immobilien Aare'
+                while len(name) > 1 and name[0].isupper():
+                    name = name[1:]
+            return " ".join(name + [w])
+    return " ".join(words[:4])
+
+
+def party(tx: dict) -> str:
+    """Counterparty of a movement: the statement's own, else read from the text."""
+    return (tx.get("Gegenpartei") or "").strip() or counterparty_from_text(tx.get("Text") or "")
+
+
 # ---------- suggestions: what an open movement probably is (one click to take it) ----------
 
 _LEGAL = re.compile(r"\b(ag|gmbh|sa|sàrl|sarl|ltd|inc|schweiz|suisse|svizzera)\b")
@@ -587,7 +622,7 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
     for tx in txs:
         amount = parse_amount(tx["Betrag"])
         when = date.fromisoformat(tx["Datum"])
-        party, text = tx.get("Gegenpartei") or "", tx.get("Text") or ""
+        who, text = party(tx), tx.get("Text") or ""
         konto = tx["Konto"]
         cur = account_currency(book, konto) or "CHF"
         found: list[dict] = []
@@ -600,11 +635,11 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
             hits = [(s, m) for s, m in open_inv if s["waehrung"] == cur and s["offen"] == amount]
             number_hits = [s["nummer"] for s, _ in hits if s["nummer"] in text.upper()]
             name_hits = [s["nummer"] for s, m in hits if _name_in(
-                party, *(str(v) for k, v in (m.get("an") or {}).items() if k in ("name", "zusatz", "firma")))]
+                who, *(str(v) for k, v in (m.get("an") or {}).items() if k in ("name", "zusatz", "firma")))]
             decisive = number_hits or name_hits
             for s, m in hits:
                 names = [str(v) for k, v in (m.get("an") or {}).items() if k in ("name", "zusatz", "firma")]
-                by_name = _name_in(party, *names) or s["nummer"] in text.upper()
+                by_name = _name_in(who, *names) or s["nummer"] in text.upper()
                 found.append({"art": "rechnung", "ziel": s["nummer"],
                               "sicher": decisive == [s["nummer"]],
                               "label": f"Rechnung {s['nummer']} · {s['name']} begleichen",
@@ -613,7 +648,7 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
             bill_hits = []
             for s, m in open_bills:
                 by_nr = bool(s["rechnungsnr"] and s["rechnungsnr"].upper() in text.upper())
-                by_name = _name_in(party, s["name"] or "") or by_nr
+                by_name = _name_in(who, s["name"] or "") or by_nr
                 same = s["waehrung"] == cur and s["offen"] == -amount
                 if same or (by_name and s["waehrung"] != cur and kred.amount_fits(book, m, s, -amount, konto)):
                     bill_hits.append((s, same, by_name, by_nr))
@@ -643,7 +678,7 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
                         or abs((r_date - when).days) > 5:
                     continue
                 ready = bool((d.get("konto") or {}).get("wert") or (d.get("positionen") or {}).get("zeilen"))
-                by_name = _name_in(erfassung.value(d, "name"), party, text)
+                by_name = _name_in(erfassung.value(d, "name"), who, text)
                 found.append({"art": "quittung", "ziel": d["id"], "sicher": ready and by_name,
                               **({} if ready else {"pruefen": f"/eingang/quittung?entwurf={d['id']}"}),
                               "label": f"Quittung {d['id']} · {erfassung.value(d, 'name') or d['datei']} buchen"
@@ -664,7 +699,7 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
                           "label": f"Regel {rule['id']} «{rule.get('name') or rule.get('gegenpartei') or rule.get('text')}»:"
                                    f" auf {rule['konto']} {name} buchen",
                           "grund": "wiederkehrende Bewegung, Regel erkennt sie"})
-        key = party or text
+        key = who or text
         if not matched and rule is None and key:
             if konto not in history:
                 history[konto] = _history(book, konto)
@@ -681,8 +716,8 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
                               "grund": f"«{key}» wurde {counts[best]}× so gebucht"
                                        + ("" if len(counts) == 1 else f" (auch {', '.join(c for c in counts if c != best)})")})
             else:
-                sup = next((s for s in sups.values() if party and s.get("konto")
-                            and _name_in(party, str(s.get("name", "")))), None)
+                sup = next((s for s in sups.values() if who and s.get("konto")
+                            and _name_in(who, str(s.get("name", "")))), None)
                 if sup is not None and amount < 0:
                     k = str(sup["konto"])
                     found.append({"art": "konto", "ziel": k, "mwst": str(sup.get("mwst") or ""), "sicher": False,

@@ -31,7 +31,7 @@
       <th class="right">Zu dekl.</th><th class="right">Deklariert</th><th class="right">Diff.</th></tr></thead>
     <tbody>
     {% for z in rep.zeilen %}
-      <tr class="{{ 'zw' if z.ziffer in ('299', '399', '479') else 'row' }}"><td><span class="num">{{ z.ziffer[:3] }}</span> {{ z.label }}</td>
+      <tr class="{{ 'zw' if z.ziffer in ('299', '399', '479') else 'row' }}"><td><span class="num">{{ z.nummer }}</span> {{ z.label }}</td>
         <td class="right num">{{ z.buchhaltung|chf(true) }}</td>
         {% if cash %}<td class="right num">{{ z.offen_anfang|chf(true) }}</td><td class="right num">{{ z.offen_ende|chf(true) }}</td>{% endif %}
         <td class="right num">{{ z.soll|chf(true) }}</td><td class="right num">{{ z.deklariert|chf(true) }}</td>

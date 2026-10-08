@@ -158,6 +158,6 @@ def test_herkunft_saldo_and_pdf(book):
     from aeradex import pdf
     data = pdf.mwst_pdf(b, mwst.report(b, "2026-S1"), h)
     text = "".join(p.extract_text() for p in PdfReader(io.BytesIO(data)).pages)
-    assert "Herkunft der Zahlen 2026-S1" in text and "R-2026-0001" in text and "Ziffer 322" in text
+    assert "Herkunft der Zahlen 2026-S1" in text and "R-2026-0001" in text and "Ziffer 323" in text and "Saldosteuersatzmethode" in text
     res = api.mwst_details(b, "2026-S1", als_pdf=True)
     assert Path(res["pdf"]).exists() and res["gruppen"][0]["ziffer"] == "322"

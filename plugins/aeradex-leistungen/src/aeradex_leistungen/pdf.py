@@ -10,7 +10,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Spacer, Table
 
 from aeradex.book import Book
-from aeradex.pdf import ADDRESS_TOP, SIDE, TOP, P, _doc, _grid, _letterhead, chf, d
+from aeradex.pdf import SIDE, P, _doc, _grid, chf, d, letter_head
 
 from . import daten
 
@@ -32,11 +32,7 @@ def _info(rows: list[tuple[str, str]]) -> Table:
 
 
 def _head(book: Book, meta: dict, title: str, width: float) -> list:
-    story = [_letterhead(book, width), Spacer(1, max(0, ADDRESS_TOP - TOP - 22 * mm))]
-    story.append(Table([[None, [P(l) for l in _address(meta)]]], colWidths=[width * 0.55, width * 0.45],
-                       style=[("LEFTPADDING", (0, 0), (-1, -1), 0)]))
-    story += [Spacer(1, 14 * mm), P(title, "title")]
-    return story
+    return [*letter_head(book, width, _address(meta)), P(title, "title")]
 
 
 def quote_pdf(book: Book, meta: dict) -> bytes:
@@ -71,7 +67,7 @@ def quote_pdf(book: Book, meta: dict) -> bytes:
     story += [Spacer(1, 6 * mm),
               P(s.get("offerte_gruss") or "Wir freuen uns auf Ihren Auftrag und stehen für Fragen gerne zur Verfügung.")]
     buf = io.BytesIO()
-    _doc(buf, f"Offerte {meta['nummer']}", s.firma, label=f"Offerte {meta['nummer']}").build(story)
+    _doc(buf, f"Offerte {meta['nummer']}", s.firma, label=f"Offerte {meta['nummer']}", head=False).build(story)
     return buf.getvalue()
 
 
@@ -96,5 +92,5 @@ def rapport_pdf(book: Book, invoice: dict, items: list[dict]) -> bytes:
                        total_rows=[len(data) - 1], right_cols=(3, 4, 5), zebra=True))
     story += [Spacer(1, 3 * mm), P("Beträge exkl. MWST.", "small")]
     buf = io.BytesIO()
-    _doc(buf, f"Leistungsrapport {invoice['nummer']}", s.firma, label=f"Leistungsrapport {invoice['nummer']}").build(story)
+    _doc(buf, f"Leistungsrapport {invoice['nummer']}", s.firma, label=f"Leistungsrapport {invoice['nummer']}", head=False).build(story)
     return buf.getvalue()

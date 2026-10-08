@@ -1771,7 +1771,8 @@ async def mwst_page(ui: UI, request: Request):
     else:
         lines = ZIFFERN + ZIFFERN_EFFEKTIV
     return ui.render(request, "mwst.html", book=book, cfg=cfg, rep=rep, year=year, periods=periods,
-                     overview=overview, lines=lines, codes=mwst.CODES, herkunft=herkunft)
+                     overview=overview, lines=lines, codes=mwst.CODES, herkunft=herkunft,
+                     period_label=mwst.period_label)
 
 
 async def mwst_buchen(ui: UI, request: Request):

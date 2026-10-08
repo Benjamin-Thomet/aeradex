@@ -140,6 +140,11 @@ def _chart(spec: dict, width: float):
     chart.categoryAxis.categoryNames = [str(l)[:12] for l in spec["labels"]]
     chart.categoryAxis.labels.fontSize = 7
     chart.valueAxis.labels.fontSize = 7
+    chart.categoryAxis.labels.fontName = chart.valueAxis.labels.fontName = "Helvetica"
+    chart.categoryAxis.labels.fillColor = chart.valueAxis.labels.fillColor = colors.HexColor("#78716c")
+    chart.categoryAxis.strokeColor = chart.valueAxis.strokeColor = colors.HexColor("#d6d3d1")
+    chart.valueAxis.visibleGrid = True
+    chart.valueAxis.gridStrokeColor = colors.HexColor("#ececea")
     chart.valueAxis.labelTextFormat = lambda v: f"{v:,.0f}".replace(",", "'")
     palette = [colors.HexColor("#2f6f8f"), colors.HexColor("#c47a2c"), colors.HexColor("#6b8f3a")]
     for i in range(len(chart.data)):
@@ -149,7 +154,8 @@ def _chart(spec: dict, width: float):
     d.add(chart)
     x = 40
     for i, s in enumerate(spec["reihen"]):
-        d.add(String(x, height - 10, f"■ {s['name']}", fontSize=8.5, fillColor=palette[i % len(palette)]))
+        d.add(String(x, height - 10, f"■ {s['name']}", fontName="Helvetica", fontSize=8.5,
+                     fillColor=palette[i % len(palette)]))
         x += 110
     return d
 
@@ -180,10 +186,11 @@ def pdf(book: Book, items: list[dict], titel: str = "", detail: bool = False) ->
         header, rows, styles = table(rep, detail)
         cols = value_columns(rep)
         units = _units(rep, detail)
-        body, totals = [], []
+        body, totals, heads = [], [], []
         for i, (row, style) in enumerate(zip(rows, styles)):
             if style == "kopf":
                 body.append([row[0]] + [""] * len(cols))
+                heads.append(i)
             else:
                 body.append([row[0]] + [fmt(v, units[i], c["art"]) for v, c in zip(row[1:], cols)])
             if style in ("zwischentotal", "total"):
@@ -193,7 +200,8 @@ def pdf(book: Book, items: list[dict], titel: str = "", detail: bool = False) ->
         rest = (1 - first) / max(n_cols, 1)
         head = [header[0]] + [Paragraph(escape(h), head_style) for h in header[1:]]   # long labels wrap
         blocks.append(("table", head, body, [first] + [rest] * n_cols,
-                       {"right": tuple(range(1, n_cols + 1)), "totals": tuple(totals), "wrap": (0,)}))
+                       {"right": tuple(range(1, n_cols + 1)), "totals": tuple(totals), "heads": tuple(heads),
+                        "wrap": (0,)}))
         chart = _chart(rep.get("diagramm"), width)
         if chart is not None:
             blocks.append(("flowable", chart))

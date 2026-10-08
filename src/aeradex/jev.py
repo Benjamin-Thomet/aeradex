@@ -110,7 +110,7 @@ def history(book: Book, counterparty: str, limit: int = 5) -> list[dict]:
         by_beleg.setdefault(r.beleg, []).append(r)
     out = []
     for t in reversed(bank.transactions(book)):
-        if t.get("Status") == "gebucht" and t.get("Gegenpartei", "").strip().lower() == name and t.get("Beleg") in by_beleg:
+        if t.get("Status") == "gebucht" and bank.party(t).lower() == name and t.get("Beleg") in by_beleg:
             for r in by_beleg[t["Beleg"]]:
                 counter = r.haben if r.soll == t["Konto"] else r.soll
                 if counter and counter != t["Konto"]:
@@ -142,7 +142,9 @@ def _employee_names(book: Book) -> set[str]:
 
 
 def suggest_one(book: Book, tx: dict, cfg: dict) -> dict:
+    from . import bank
     amount = parse_amount(tx["Betrag"])
+    who = bank.party(tx)
     credit = amount > 0
     options = candidate_accounts(book, credit, tx["Konto"])
     state = {
@@ -150,9 +152,9 @@ def suggest_one(book: Book, tx: dict, cfg: dict) -> dict:
         "bewegung": {"datum": tx["Datum"], "betrag_chf": f"{abs(amount):.2f}",
                      "richtung": "Gutschrift: Geld kommt auf das Bankkonto" if credit else
                                  "Belastung: Geld geht vom Bankkonto weg",
-                     "gegenpartei": tx.get("Gegenpartei", ""), "mitteilung": tx.get("Text", ""),
+                     "gegenpartei": who, "mitteilung": tx.get("Text", ""),
                      "referenz": tx.get("Referenz", "")},
-        "fruehere_buchungen_gleiche_gegenpartei": history(book, tx.get("Gegenpartei", "")),
+        "fruehere_buchungen_gleiche_gegenpartei": history(book, who),
     }
     questions = {"gegenkonto": {
         "type": "choice",
@@ -225,11 +227,16 @@ def suggest_bank(book: Book, ids: list[str] | None = None, schwelle: float | Non
     proposed_banks = {p.get("Bank") for p in api.proposals(book)}
     todo = [t for t in bank.transactions(book) if t["Status"] == "offen" and (not ids or t["ID"] in ids)
             and t["ID"] not in proposed_banks]
-    skipped = [t["ID"] for t in todo if t.get("Gegenpartei", "").strip().lower() in employees]
+    skipped = [t["ID"] for t in todo if bank.party(t).lower() in employees]
     todo = [t for t in todo if t["ID"] not in skipped]
+    # Jev only gets what nothing else explains: a movement with an open invoice/bill, a receipt, a rule or a
+    # document waiting in the Eingang is booked from that document — a proposal would book it twice.
+    waiting = _explained(book, todo)
+    todo = [t for t in todo if t["ID"] not in waiting]
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(lambda t: _safe(suggest_one, book, t, cfg), todo))
-    summary = {"vorgeschlagen": [], "unsicher": [], "fehler": [], "uebersprungen": skipped}
+    summary = {"vorgeschlagen": [], "unsicher": [], "fehler": [], "uebersprungen": skipped,
+               "zugeordnet": waiting}
     hints = {}
     for tx, res in zip(todo, results):
         if "fehler" in res:
@@ -254,6 +261,37 @@ def suggest_bank(book: Book, ids: list[str] | None = None, schwelle: float | Non
     for tid, hint in hints.items():
         touched += bank._set(book, tid, Hinweis=hint)
     return {**summary, "_touched": touched}
+
+
+def _explained(book: Book, txs: list[dict]) -> dict[str, str]:
+    """Movements already explained by something in the book, with the reason: a matching invoice, supplier
+    bill, receipt, rule or booking (bank suggestions), or a draft in the Eingang with the same amount."""
+    from . import bank, erfassung
+    if not txs:
+        return {}
+    out = {}
+    for tid, found in bank.suggestions(book, [t["ID"] for t in txs]).items():
+        hit = next((f for f in found if f["art"] in ("rechnung", "kreditor", "quittung", "regel", "beleg")), None)
+        if hit:
+            out[tid] = hit["label"]
+    drafts = []
+    for d in erfassung.drafts(book).values():
+        try:
+            amount = Decimal(str(erfassung.value(d, "betrag"))).quantize(Decimal("0.01"))
+        except Exception:
+            continue
+        sign = 1 if d.get("art") == "debitor" else -1
+        drafts.append((sign * amount, (erfassung.value(d, "waehrung") or "CHF").upper(), d))
+    for t in txs:
+        if t["ID"] in out:
+            continue
+        amount = parse_amount(t["Betrag"])
+        cur = bank.account_currency(book, t["Konto"]) or "CHF"
+        d = next((d for a, c, d in drafts if a == amount and c == cur
+                  and (d.get("zahlung") or {}).get("bank") in (None, "", t["ID"])), None)
+        if d is not None:
+            out[t["ID"]] = f"Entwurf {d['id']} im Eingang ({erfassung.value(d, 'name') or d.get('datei', '')})"
+    return out
 
 
 def _safe(fn, *args):

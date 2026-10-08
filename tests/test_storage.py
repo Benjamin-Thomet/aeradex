@@ -253,6 +253,22 @@ def test_reader_waits_for_writer(tmp_path):
     assert finished.is_set() and not errors
 
 
+def test_agent_calls_do_not_hold_the_lock(tmp_path, monkeypatch):
+    # The agent's tools run in another process (MCP server) and need the book lock: a call that waits on
+    # the agent must not hold it, or both wait forever.
+    from aeradex import bankformat
+    book = make_book(tmp_path)
+    (book.root / "inbox" / "auszug.csv").write_text("Datum;Text;Betrag\n01.08.2026;Test;-5.00\n")
+    script = "import sys; from aeradex import api; from aeradex.book import Book; " \
+             "api.bank_file_preview(Book(sys.argv[1]), 'inbox/auszug.csv')"
+    def agent(root, prompt):
+        subprocess.run([sys.executable, "-c", script, str(root)], check=True, timeout=10)
+        return "fertig"
+    monkeypatch.setattr(bankformat, "run_agent", agent)
+    with pytest.raises(BookError, match="kein passendes Format"):
+        api.bank_format_learn(Book(book.root), "inbox/auszug.csv")
+
+
 def test_agent_tools_retry_and_proposal_permission(tmp_path, monkeypatch):
     from aeradex import tools
     book = make_book(tmp_path)

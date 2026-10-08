@@ -360,11 +360,19 @@ def consistent_read(fn):
     return wrapper
 
 
+def unlocked(fn):
+    """Keep a public API call out of the read lock: it waits on an agent, whose own tool calls (another
+    process, e.g. the MCP server) need the lock. Its reads and writes lock on their own."""
+    fn._storage_unlocked = True
+    return fn
+
+
 def install_read_locks(namespace):
     """Public book API calls share the writer lock, including nested calls."""
     for name, fn in list(namespace.items()):
         if name.startswith("_") or not inspect.isfunction(fn) or fn.__module__ != namespace["__name__"]:
             continue
         params = list(inspect.signature(fn).parameters)
-        if params and params[0] == "book" and not getattr(fn, "_storage_write", False):
+        if (params and params[0] == "book" and not getattr(fn, "_storage_write", False)
+                and not getattr(fn, "_storage_unlocked", False)):
             namespace[name] = consistent_read(fn)

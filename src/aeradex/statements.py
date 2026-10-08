@@ -292,13 +292,17 @@ def profit_allocation(book: Book, year: int, engine: BalanceEngine | None = None
 
 # ---------- Anhang ----------
 
+RECHTSFORM_LANG = {"gmbh": "Gesellschaft mit beschränkter Haftung", "ag": "Aktiengesellschaft",
+                   "einzelfirma": "Einzelunternehmen", "genossenschaft": "Genossenschaft", "verein": "Verein"}
+
+
 def default_anhang(book: Book, year: int) -> str:
     s = book.settings
     rechtsform = s.get("rechtsform") or "GmbH"
     ort = s.adresse.get("ort") or ""
     return (
         "## Firma, Rechtsform und Sitz\n"
-        f"{s.firma}, {rechtsform}, mit Sitz in {ort}.\n\n"
+        f"{s.firma}, {RECHTSFORM_LANG.get(rechtsform.strip().lower(), rechtsform)}, mit Sitz in {ort}.\n\n"
         "## Grundlagen der Rechnungslegung\n"
         "Die vorliegende Jahresrechnung wurde gemäss den Bestimmungen über die kaufmännische "
         "Buchführung und Rechnungslegung des Schweizerischen Obligationenrechts "

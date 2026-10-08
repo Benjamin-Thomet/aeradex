@@ -1149,6 +1149,7 @@ def bank_suggest(book: Book, ids: list[str] | None = None, schwelle: float | Non
     res = jev.suggest_bank(book, ids, schwelle)
     touched = res.pop("_touched")
     msg = (f"Jev: {len(res['vorgeschlagen'])} Vorschläge, {len(res['unsicher'])} unsicher (nur Hinweis)"
+           + (f", {len(res['zugeordnet'])} nicht gefragt (Beleg oder Zuordnung vorhanden)" if res["zugeordnet"] else "")
            + (f", {len(res['uebersprungen'])} übersprungen (Mitarbeitende)" if res["uebersprungen"] else "")
            + (f", {len(res['fehler'])} Fehler" if res["fehler"] else ""))
     if touched:
@@ -1759,6 +1760,9 @@ def qst_sync(book: Book, kanton: str, jahr: int) -> dict:
     return _done(book, f"ESTV-Quellensteuertarife {jahr}: {', '.join(cantons)} importiert", paths)
 
 
-# Readers share the publication lock so each API call sees a consistent book.
-from .storage import install_read_locks as _install_read_locks
+# Readers share the publication lock so each API call sees a consistent book — except the calls that wait
+# on an agent (or OCR): the agent's tools run in another process and would wait for the lock forever.
+from .storage import install_read_locks as _install_read_locks, unlocked as _unlocked
+for _name in ("bank_format_learn", "card_statement_read", "bill_draft_create", "bill_draft_agent"):
+    globals()[_name] = _unlocked(globals()[_name])
 _install_read_locks(globals())

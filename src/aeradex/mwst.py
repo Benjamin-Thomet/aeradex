@@ -49,7 +49,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-from .book import Book, BookError, Row
+from .book import MONTHS_DE, Book, BookError, Row
 from .files import CENT, read_yaml, write_yaml
 
 ZERO = Decimal("0")
@@ -86,6 +86,16 @@ DEFAULT_KONTEN = {"vorsteuer": "1170", "vorsteuer_inv": "1171", "umsatzsteuer": 
 ABGRENZUNG_KONTEN = {"umsatzsteuer_offen": ("MWST auf offenen Debitoren (vereinnahmte Entgelte)", "passiv"),
                      "vorsteuer_offen": ("Vorsteuer auf offenen Kreditoren (vereinnahmte Entgelte)", "aktiv")}
 BEZUG_ZIFFERN = {"81": "382", "26": "383"}
+# Internal keys are per rate (and stored in the fingerprints of booked Abrechnungen); the ESTV form since
+# 1.1.2024 has one line per period instead: Bezugsteuer 383 (ab 1.1.2024, 382 = bis 31.12.2023) and the
+# Saldosteuersatz on 323 (322 = bis 31.12.2023). Shown numbers go through formular_nr.
+FORMULAR_NR = {"382": "383", "383": "383", "322": "323"}
+
+
+def formular_nr(key: str) -> str:
+    """The Ziffer on the ESTV form for an internal key ('382' → '383', '322_steuer' → '323')."""
+    nr = key.split("_")[0]
+    return FORMULAR_NR.get(nr, nr)
 
 
 def config(book: Book) -> dict:
@@ -192,6 +202,17 @@ def resolve(periode: str) -> tuple[date, date, str]:
         y = int(p)
         return date(y, 1, 1), date(y, 12, 31), str(y)
     raise BookError(f"Periode '{periode}': erwartet z.B. 2026-Q1, 2026-S2 oder 2026")
+
+
+def period_label(periode: str) -> str:
+    """'2026-Q2' → '2. Quartal (April – Juni 2026)'."""
+    start, end, label = resolve(periode)
+    span = f"{MONTHS_DE[start.month]} – {MONTHS_DE[end.month]} {end.year}"
+    if "-Q" in label:
+        return f"{label[-1]}. Quartal ({span})"
+    if "-S" in label:
+        return f"{label[-1]}. Semester ({span})"
+    return f"Jahr {label}"
 
 
 def periods(book: Book, year: int) -> list[str]:
@@ -374,11 +395,86 @@ def report(book: Book, periode: str) -> dict:
             "veraendert": bool(saved and saved.get("fingerprint") != fingerprint(ziffern))}
 
 
+# ---------- the ESTV form (0550 effektive Methode / 0535 Saldosteuersatz, Stand 2024) ----------
+
+FORM_UMSATZ = [
+    ("200", "Total der vereinbarten bzw. vereinnahmten Entgelte, inkl. optierte Leistungen, Entgelte aus "
+            "Übertragungen im Meldeverfahren sowie aus Leistungen im Ausland (weltweiter Umsatz)", "betrag"),
+    ("205", "In Ziffer 200 enthaltene Entgelte aus von der Steuer ausgenommenen Leistungen (Art. 21), für "
+            "welche nach Art. 22 optiert wird", "info"),
+    ("220", "Von der Steuer befreite Leistungen (u.a. Exporte, Art. 23), von der Steuer befreite Leistungen an "
+            "begünstigte Einrichtungen und Personen (Art. 107 Abs. 1 Bst. a)", "abzug"),
+    ("221", "Leistungen im Ausland (Ort der Leistung im Ausland)", "abzug"),
+    ("225", "Übertragung im Meldeverfahren (Art. 38, bitte zusätzlich Form. 764 einreichen)", "abzug"),
+    ("230", "Von der Steuer ausgenommene Inlandleistungen (Art. 21), für die nicht nach Art. 22 optiert wird", "abzug"),
+    ("235", "Entgeltsminderungen wie Skonti, Rabatte usw.", "abzug"),
+    ("280", "Diverses (z.B. Wert des Bodens, Ankaufspreise Margenbesteuerung)", "abzug"),
+    ("289", "Abzüge Total Ziff. 220 bis 280", "total"),
+    ("299", "Steuerbarer Gesamtumsatz (Ziff. 200 abzüglich Ziff. 289)", "total"),
+]
+FORM_VORSTEUER = [
+    ("400", "Vorsteuer auf Material- und Dienstleistungsaufwand", "betrag"),
+    ("405", "Vorsteuer auf Investitionen und übrigem Betriebsaufwand", "betrag"),
+    ("410", "Einlageentsteuerung (Art. 32, bitte detaillierte Aufstellung beilegen)", "betrag"),
+    ("415", "Vorsteuerkorrekturen: gemischte Verwendung (Art. 30), Eigenverbrauch (Art. 31)", "abzug"),
+    ("420", "Vorsteuerkürzungen: Nicht-Entgelte wie Subventionen, Tourismusabgaben (Art. 33 Abs. 2)", "abzug"),
+    ("479", "Total Ziff. 400 bis 420", "total"),
+]
+FORM_MITTELFLUESSE = [
+    ("900", "Subventionen, durch Kurvereine eingenommene Tourismusabgaben, Entsorgungs- und "
+            "Wasserwerkbeiträge (Bst. a–c)", "info"),
+    ("910", "Spenden, Dividenden, Schadenersatz usw. (Bst. d–l)", "info"),
+]
+# Ziffern aeradex does not derive from the books: left empty, filled in by hand in the ePortal if they apply.
+FORM_VON_HAND = {"205", "221", "225", "235", "280", "333", "410", "415", "420", "470", "900", "910"}
+
+
+def formular(rep: dict) -> dict:
+    """The Abrechnung laid out like the ESTV form: sections with the official Ziffern and wording.
+    Each line: nr, label, art (betrag/abzug/total/info/satz), satz, entgelt, steuer, von_hand."""
+    z = rep["ziffern"]
+    get = lambda key: Decimal(str(z.get(key) or 0))  # noqa: E731
+
+    def line(nr, label, art, entgelt=None, steuer=None, satz=""):
+        return {"nr": nr, "label": label, "art": art, "satz": satz, "entgelt": entgelt, "steuer": steuer,
+                "von_hand": nr in FORM_VON_HAND}
+
+    umsatz = [line(nr, label, art, None if nr in FORM_VON_HAND else get(nr)) for nr, label, art in FORM_UMSATZ]
+    bezug = (get("382") + get("383"), get("382_steuer") + get("383_steuer"))
+    if rep["methode"] == "saldo":
+        rate = Decimal(str(rep.get("saldosteuersatz") or 0))
+        steuer = [line("323", "Leistungen zum Saldosteuersatz 1", "satz", get("322"), get("322_steuer"), f"{rate:.2f} %"),
+                  line("333", "Leistungen zum Saldosteuersatz 2", "satz"),
+                  line("383", "Bezugsteuer", "satz", *bezug),
+                  line("399", "Total geschuldete Steuer (Ziff. 323 bis 383)", "total", steuer=get("399")),
+                  line("470", "Steueranrechnung (bitte Belege beilegen)", "abzug")]
+        vorsteuer = []
+    else:
+        steuer = [line("303", "Normalsatz", "satz", get("303"), get("303_steuer"), "8.1 %"),
+                  line("313", "Reduzierter Satz", "satz", get("313"), get("313_steuer"), "2.6 %"),
+                  line("343", "Beherbergungssatz", "satz", get("343"), get("343_steuer"), "3.8 %"),
+                  line("383", "Bezugsteuer", "satz", *bezug),
+                  line("399", "Total geschuldete Steuer (Ziff. 303 bis 383)", "total", steuer=get("399"))]
+        vorsteuer = [line(nr, label, art, steuer=None if nr in FORM_VON_HAND else get(nr))
+                     for nr, label, art in FORM_VORSTEUER]
+    pay = Decimal(str(rep["zahllast"]))
+    ergebnis = (line("500", "Zu bezahlender Betrag", "total", steuer=pay) if pay >= 0
+                else line("510", "Guthaben der steuerpflichtigen Person", "total", steuer=-pay))
+    sections = [{"titel": "I. Umsatz", "spalten": ["Leistungen CHF"], "zeilen": umsatz},
+                {"titel": "II. Steuerberechnung", "spalten": ["Satz", "Leistungen CHF ab 01.01.2024", "Steuer CHF"],
+                 "zeilen": steuer + vorsteuer + [ergebnis]},
+                {"titel": "III. Andere Mittelflüsse (Art. 18 Abs. 2)", "spalten": ["CHF"],
+                 "zeilen": [line(nr, label, art) for nr, label, art in FORM_MITTELFLUESSE]}]
+    return {"methode": rep["methode"], "periode": rep["periode"], "von": rep["von"], "bis": rep["bis"],
+            "abrechnungsart": rep["abrechnungsart"], "abschnitte": sections, "ergebnis": ergebnis,
+            "titel": "Saldosteuersatzmethode" if rep["methode"] == "saldo" else "Effektive Abrechnungsmethode"}
+
+
 ZIFFER_LABEL = {
     "220": "Steuerbefreite Leistungen (Exporte u.a.)", "230": "Von der Steuer ausgenommene Leistungen",
     "303": "Leistungen zum Normalsatz 8.1 %", "313": "Leistungen zum reduzierten Satz 2.6 %",
     "343": "Leistungen zum Beherbergungssatz 3.8 %", "322": "Leistungen zum Saldosteuersatz",
-    "382": "Bezugsteuer 8.1 %", "383": "Bezugsteuer 2.6 %",
+    "382": "Bezugsteuer zu 8.1 %", "383": "Bezugsteuer zu 2.6 %",
     "400": "Vorsteuer auf Material- und Dienstleistungsaufwand",
     "405": "Vorsteuer auf Investitionen und übrigem Betriebsaufwand",
 }
@@ -410,7 +506,7 @@ def herkunft(book: Book, periode: str) -> dict:
     groups: dict[str, dict] = {}
     for item in _contributions(book, rows, start, end):
         nr = _ziffer_of(cfg["methode"], item)
-        g = groups.setdefault(nr, {"ziffer": nr, "label": ZIFFER_LABEL.get(nr, nr), "zeilen": [],
+        g = groups.setdefault(nr, {"ziffer": nr, "nummer": formular_nr(nr), "label": ZIFFER_LABEL.get(nr, nr), "zeilen": [],
                                    "entgelt": ZERO, "steuer": ZERO})
         r = item["row"]
         g["zeilen"].append({"datum": r.datum, "beleg": r.beleg, "text": r.text, "konto": item["konto"],
@@ -720,7 +816,7 @@ def abstimmung(book: Book, year: int) -> dict:
 
     zeilen, ok = [], True
     for key, label in lines:
-        z = {"ziffer": key, "label": label, "buchhaltung": buch.get(key, ZERO), "soll": soll.get(key, ZERO),
+        z = {"ziffer": key, "nummer": formular_nr(key), "label": label, "buchhaltung": buch.get(key, ZERO), "soll": soll.get(key, ZERO),
              "deklariert": deklariert.get(key, ZERO)}
         if cash:
             z["offen_anfang"], z["offen_ende"] = offen_a.get(key, ZERO), offen_e.get(key, ZERO)

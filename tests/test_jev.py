@@ -85,3 +85,68 @@ def test_api_errors_are_reported_per_transaction(book, monkeypatch):
     monkeypatch.setattr(jev, "_post", broken)
     res = api.bank_suggest(Book(book.root))["jev"]
     assert res["fehler"] and not res["vorgeschlagen"]
+
+
+@pytest.mark.parametrize("text, name", [
+    ("E-Banking Vergütung TechShop Bern AG, Bern, Mitteilung: RE 88123456", "TechShop Bern AG"),
+    ("Dauerauftrag MIETE AUGUST 2026 Immobilien Aare AG, Thun", "Immobilien Aare AG"),
+    ("Kartenzahlung NOTEWAVE INC. SAN FRANCISCO USD 10.00 Kurs 0.8950", "NOTEWAVE INC."),
+    ("Kartenzahlung MARKT BAERN AG BERN", "MARKT BAERN AG"),
+    ("LSV Alpina Versicherung AG Police 44.881.203 Betriebshaftpflicht", "Alpina Versicherung AG"),
+    ("Gutschrift Bäckerei Frei, Steffisburg, Mitteilung: RE 2026-040", "Bäckerei Frei"),
+    ("Kontoführungsgebühr August 2026", "Kontoführungsgebühr"),
+])
+def test_counterparty_read_from_booking_text(text, name):
+    from aeradex import bank
+    assert bank.counterparty_from_text(text) == name
+    assert bank.party({"Gegenpartei": "", "Text": text}) == name
+    assert bank.party({"Gegenpartei": "Eigene Spalte AG", "Text": text}) == "Eigene Spalte AG"
+
+
+@pytest.fixture
+def csv_book(tmp_path: Path, monkeypatch) -> Book:
+    """Statements without a counterparty column (as many CSV exports): the name is only in the text."""
+    root = tmp_path / "buch"
+    api.init_book(root, "Test GmbH", 2026, strasse="Weg", nr="1", plz="3000", ort="Bern", iban=IBAN)
+    data = statement(IBAN, "1000.00", [
+        (entry("324.00", "DBIT", "2026-02-20", ustrd="E-Banking Vergütung Hostpunkt GmbH, Rapperswil, Mitteilung: RE 1",
+               acct_ref="H1"), "-324.00"),
+        (entry("324.00", "DBIT", "2026-03-20", ustrd="E-Banking Vergütung Hostpunkt GmbH, Rapperswil, Mitteilung: RE 2",
+               acct_ref="H2"), "-324.00"),
+        (entry("89.00", "DBIT", "2026-03-25", ustrd="E-Banking Vergütung Swisstel AG, Bern, Mitteilung: RE 4471",
+               acct_ref="S1"), "-89.00"),
+    ], "2026-02-01", "2026-03-31")
+    (root / "inbox" / "a.xml").write_bytes(data)
+    api.bank_import(Book(root), "inbox/a.xml")
+    feb = [t for t in api.bank_list(Book(root), "offen") if t["Datum"] == "2026-02-20"][0]
+    assert not feb["Gegenpartei"]
+    api.bank_book(Book(root), feb["ID"], "6570", "Hostpunkt Februar")
+    api.settings_update(Book(root), jev={"aktiv": True, "schwelle": 0.7})
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    return Book(root)
+
+
+def test_history_and_rules_work_without_counterparty_column(csv_book, monkeypatch):
+    calls = []
+    monkeypatch.setattr(jev, "_post", fake_api(calls, {
+        "Hostpunkt GmbH": ("6570", {"6570": 0.9}, 0.9), "Swisstel AG": ("6510", {"6510": 0.9}, 0.9)}))
+    api.bank_suggest(Book(csv_book.root))
+    hostpunkt = [c for c in calls if c["state"]["bewegung"]["gegenpartei"] == "Hostpunkt GmbH"][0]
+    assert hostpunkt["state"]["fruehere_buchungen_gleiche_gegenpartei"][0]["konto"] == "6570"
+    # «Immer so buchen» from a movement whose name is only in the text
+    feb = [t for t in api.bank_list(Book(csv_book.root)) if t["Datum"] == "2026-02-20"][0]
+    rule = api.bank_rule_from(Book(csv_book.root), feb["ID"])
+    assert "Hostpunkt GmbH" in str(rule)
+
+
+def test_movements_with_a_document_are_not_sent_to_jev(csv_book, monkeypatch):
+    (csv_book.root / "inbox" / "swisstel.txt").write_text(
+        "Swisstel AG\nBern\nRechnung 4471\nDatum: 01.03.2026\nTotal CHF 89.00\n")
+    api.bill_draft_create(Book(csv_book.root), "inbox/swisstel.txt", "kreditor")
+    calls = []
+    monkeypatch.setattr(jev, "_post", fake_api(calls, {"Hostpunkt GmbH": ("6570", {"6570": 0.9}, 0.9)}))
+    res = api.bank_suggest(Book(csv_book.root))
+    assert {c["state"]["bewegung"]["gegenpartei"] for c in calls} == {"Hostpunkt GmbH"}
+    swisstel = [t for t in api.bank_list(Book(csv_book.root)) if "Swisstel" in t["Text"]][0]
+    assert "im Eingang" in res["jev"]["zugeordnet"][swisstel["ID"]]
+    assert "nicht gefragt" in res["meldung"]

@@ -84,7 +84,10 @@ def commit(root: Path, message: str, paths: list[Path] | None = None) -> str | N
         if to_stage:
             _git(root, "add", "-A", "--", *to_stage)
     else:
-        _git(root, "add", "-A", "--", ".", ":(exclude).aeradex/transaction", ":(exclude).aeradex/write.lock", ":(exclude)**/.aeradex-tmp-*")
+        # The [n]/[k] globs keep git (2.55+) from treating the excludes as naming an ignored file, which
+        # it rejects ("paths are ignored by one of your .gitignore files") whenever write.lock exists.
+        _git(root, "add", "-A", "--", ".", ":(exclude).aeradex/transactio[n]/", ":(exclude).aeradex/write.loc[k]",
+             ":(exclude)**/.aeradex-tmp-*")
     scope = ["--", *rel] if rel is not None else []
     if _git(root, "diff", "--cached", "--quiet", *scope, check=False).returncode == 0:
         return None
