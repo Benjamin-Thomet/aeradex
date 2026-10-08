@@ -13,6 +13,7 @@ import hashlib
 import inspect
 import json
 import os
+import stat
 import shutil
 import threading
 import uuid
@@ -22,6 +23,8 @@ from pathlib import Path
 from .files import atomic_write, atomic_write_text, fsync_directory, FormatError
 
 _RUNTIME = ".aeradex/transaction"
+# Local runtime state of this installation (a running timer …): neither part of the book nor in git.
+LOCAL = ".aeradex/lokal"
 _active = contextvars.ContextVar("aeradex_transaction", default=None)
 _held = threading.local()
 _mutex = threading.RLock()
@@ -29,32 +32,51 @@ _mutex = threading.RLock()
 
 def internal(rel: str) -> bool:
     return (rel == ".git" or rel.startswith(".git/") or rel == ".aeradex/write.lock"
-            or rel == _RUNTIME or rel.startswith(_RUNTIME + "/")
+            or rel == _RUNTIME or rel.startswith(_RUNTIME + "/") or rel == LOCAL or rel.startswith(LOCAL + "/")
             or any(p.startswith(".aeradex-tmp-") or p == "__pycache__" for p in Path(rel).parts))
 
 
 def _files(root):
+    root = Path(root)
+    top = str(root)
     out = {}
-    for base, dirs, names in os.walk(root, followlinks=False):
-        dirs[:] = sorted(d for d in dirs if not internal((Path(base) / d).relative_to(root).as_posix()))
-        for name in sorted(names + [d for d in dirs if (Path(base) / d).is_symlink()]):
-            path = Path(base) / name
-            rel = path.relative_to(root).as_posix()
+    for base, dirs, names in os.walk(top, followlinks=False):
+        prefix = "" if base == top else os.path.relpath(base, top).replace(os.sep, "/") + "/"
+        links = [d for d in dirs if os.path.islink(os.path.join(base, d))]
+        dirs[:] = sorted(d for d in dirs if not internal(prefix + d) and d not in links)
+        for name in sorted(names + links):
+            rel = prefix + name
             if internal(rel):
                 continue
-            if path.is_symlink():
+            full = os.path.join(base, name)
+            if os.path.islink(full):
                 raise FormatError(f"{rel}: symbolische Links im Buch werden nicht unterstützt")
-            out[rel] = path
+            out[rel] = root / rel
     return out
 
 
+# Content hashes by file identity: a write transaction compares the whole book several times; re-reading every
+# file each time made a write cost hundreds of milliseconds. Any write changes ctime (and mostly mtime/size/inode),
+# so a changed file is always hashed again.
+_HASHES: dict[tuple, str] = {}
+
+
 def _hash(path):
-    if not path.exists():
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
         return None
-    if path.is_symlink() or not path.is_file():
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
         raise FormatError(f"{path}: erwartet eine reguläre Datei")
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+    key = (str(path), st.st_mtime_ns, st.st_ctime_ns, st.st_size, st.st_ino)
+    digest = _HASHES.get(key)
+    if digest is None:
+        with open(path, "rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if len(_HASHES) > 50000:
+            _HASHES.clear()
+        _HASHES[key] = digest
+    return digest
 
 
 def _state(root):
@@ -157,6 +179,12 @@ def locked(root):
             finally:
                 _held.roots = roots
                 fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def in_transaction(root) -> bool:
+    """Is `root` the staged copy of a running write transaction (which checks the book itself)?"""
+    tx = _active.get()
+    return bool(tx and Path(root) == tx["work"])
 
 
 def defer_commit(root, message, paths):
@@ -327,7 +355,7 @@ def transactional(fn):
                     wanted == "." or p == wanted or p.startswith(wanted.rstrip("/") + "/")
                     for wanted in tx["commit_paths"])]
                 commit = gitlog.commit(root, message + f"\n\nAeradex-Transaction: {manifest['id']}",
-                                       commit_paths)
+                                       commit_paths, verified=True)        # the staged book was checked above
                 manifest["phase"] = "committed"
                 atomic_write_text(folder / "manifest.json", json.dumps(manifest, ensure_ascii=False))
                 if isinstance(result, dict):

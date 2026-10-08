@@ -1,0 +1,26 @@
+{% from "plugins/leistungen/leistungen/_macros.html" import budget_pill %}
+<div id="vorschau" class="preview" aria-live="polite">
+{% if p %}
+  <span class="tag">{{ 'Material' if p.art == 'Produkt' else ('Stoppuhr' if p.start and p.stunden is none else 'Zeit') }}</span>
+  {% if p.stunden is not none %}<span class="tag strong">{{ p.stunden|qty }} h</span>{% endif %}
+  {% if p.menge is not none %}<span class="tag strong">{{ p.menge|qty }} {{ p.einheit }}</span>{% endif %}
+  <span class="tag{{ ' warn' if p.datum != heute }}">{{ ['Mo','Di','Mi','Do','Fr','Sa','So'][p.datum.weekday()] }} {{ p.datum.strftime('%d.%m.') }}</span>
+  {% if p.wer %}<span class="tag">{{ personen[p.wer].name if p.wer in personen else p.wer }}</span>{% endif %}
+  {% if p.projekt %}<span class="tag ok">{{ p.projekt }} {{ projekte[p.projekt].name if p.projekt in projekte }}</span>{% endif %}
+  {% if p.kunde %}<span class="tag ok">{{ kunden.get(p.kunde, p.kunde) }}</span>{% endif %}
+  {% if p.leistung %}<span class="tag ok">{{ produkte[p.leistung].text }}</span>{% endif %}
+  {% if p.produkt %}<span class="tag ok">{{ produkte[p.produkt].text }}</span>{% endif %}
+  {% if not p.abrechenbar %}<span class="tag">nicht abrechenbar · {{ p.kategorie }}</span>{% endif %}
+  {% if p.text %}<span class="tag">«{{ p.text }}»</span>{% endif %}
+  {% if p.betrag is not none %}<span class="tag strong">CHF {{ p.betrag|chf }}</span><span class="small muted">({{ p.preis|chf }}{{ '/h' if p.art == 'Zeit' }})</span>{% elif p.preis is not none %}<span class="small muted">{{ p.preis|chf }}/h</span>{% endif %}
+  {% if p.budget is not none %}{{ budget_pill(p.budget) }}{% if p.budget >= 80 %} <span class="small" style="color:var(--{{ 'red' if p.budget >= 100 else 'warn' }})">Budget {{ 'überschritten' if p.budget >= 100 else 'bald ausgeschöpft' }}</span>{% endif %}{% endif %}
+  {% for field, options in p.kandidaten.items() %}
+    <span class="small muted">{{ {'kunde': 'Kunde', 'projekt': 'Projekt', 'leistung': 'Leistungsart', 'produkt': 'Produkt', 'wer': 'Person'}[field] }}?</span>
+    {% for nr, name in options %}<button class="tag pick" type="button" data-pick="{{ nr }}">{{ nr }} {{ name }}</button>{% endfor %}
+  {% endfor %}
+  {% if p.fehlt %}<span class="small" style="color:var(--warn)">fehlt: {{ p.fehlt|join(' · ') }}</span>
+  {% elif not p.kandidaten %}<span class="small ok-text">↵ erfassen{{ ' · ▶ startet die Stoppuhr' if p.start and p.stunden is none }}</span>{% endif %}
+{% else %}
+  <span class="small muted">Beispiele: <code>3.5h Fassade spachteln</code> · <code>2:30 P0003 Malerarbeiten</code> · <code>8-12 gestern Beratung Huber</code> · <code>12 l Farbe Huber</code> · <code>1h intern Buchhaltung</code> · <code>start P0003</code></span>
+{% endif %}
+</div>

@@ -20,4 +20,4 @@ leistungen = "aeradex_leistungen"
 where = ["src"]
 
 [tool.setuptools.package-data]
-aeradex_leistungen = ["templates/*.html"]
+aeradex_leistungen = ["templates/*.html", "templates/leistungen/*.html", "data/*.json"]

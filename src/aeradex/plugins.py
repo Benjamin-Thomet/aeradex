@@ -114,6 +114,11 @@ class Page:
     returns its variables. ``actions`` are form posts to ``/p/<plugin>/<slug>/<name>``:
     ``fn(book, form) -> dict`` — write through ``api.write`` so the book is checked and
     committed. A result may carry ``"weiter": "<url>"`` to go elsewhere afterwards.
+
+    ``fragments`` are parts of the page a browser fetches on their own (``GET /p/<plugin>/<slug>/<name>``):
+    ``name → (template, context(book, query))``. An action whose result carries ``"fragment": "<name>"`` (and
+    optionally ``"query": {...}``) answers with that fragment instead of reloading the page — for fast edits
+    (a timer, a grid cell, a quick entry). The result's ``meldung`` is shown as a toast.
     """
     slug: str
     label: str
@@ -121,6 +126,7 @@ class Page:
     context: Callable[[Book, dict], dict] = lambda book, query: {}
     actions: dict[str, Callable[[Book, dict], Any]] = field(default_factory=dict)
     bereich: str = ""
+    fragments: dict[str, tuple[str, Callable[[Book, dict], dict]]] = field(default_factory=dict)
 
 
 @dataclass

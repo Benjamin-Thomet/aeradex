@@ -1,0 +1,141 @@
+{% from "plugins/leistungen/leistungen/_macros.html" import projekt_select, leistung_select, state_pill, budget_pill, hours, kunde_select %}
+{% set A = "/p/leistungen/leistungen/" %}
+<div id="woche" data-fragment data-wer="{{ wer }}" data-woche="{{ woche_start.isoformat() }}">
+{% if not wer %}
+  <div class="panel body"><span class="muted">Noch keine Personen — Mitarbeitende unter Lohn erfassen oder unter Stammdaten eine Person ohne Lohn anlegen.</span></div>
+{% else %}
+  {# ---- the running timer ---- #}
+  {% if stoppuhr %}
+  <div class="panel timerbar">
+    <span class="dot" aria-hidden="true"></span>
+    <strong class="num" data-timer-start="{{ stoppuhr.start }}">{{ '%d:%02d'|format(stoppuhr.minuten // 60, stoppuhr.minuten % 60) }}</strong>
+    <span>{{ stoppuhr.label.titel }}{% if stoppuhr.label.unter %} <span class="muted">· {{ stoppuhr.label.unter }}</span>{% endif %}{% if stoppuhr.text %} · {{ stoppuhr.text }}{% endif %}</span>
+    <span class="small muted">seit {{ stoppuhr.start[11:16] }}{% if cfg.rundung %} · gerundet auf {{ cfg.rundung }} min{% endif %}</span>
+    <span class="actions" style="margin-left:auto">
+      <form hx-post="{{ A }}verwerfen" hx-target="#woche" hx-swap="outerHTML" hx-confirm="Stoppuhr verwerfen? Die Zeit wird nicht erfasst."><input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}"><button class="btn small ghost" type="submit">Verwerfen</button></form>
+      <form hx-post="{{ A }}stop" hx-target="#woche" hx-swap="outerHTML"><input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}"><button class="btn small primary" type="submit" title="Stoppen und erfassen (Taste S)" data-key-stop>■ Stopp</button></form>
+    </span>
+  </div>
+  {% endif %}
+  {% set others = stoppuhren.items()|rejectattr(0, "equalto", wer)|list %}
+  {% if others %}<div class="small muted" style="margin:-6px 0 10px">Läuft auch: {% for nr, t in others %}<a class="link" href="?tab=woche&wer={{ nr }}">{{ personen[nr].name if nr in personen else nr }}</a> seit {{ t.start[11:16] }}{{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
+
+  {# ---- favourites and recently used: one click to repeat ---- #}
+  {% set chips = favoriten + (zuletzt|rejectattr("favorit")|list) %}
+  {% if chips %}
+  <div class="chips">
+    {% for c in chips %}
+    <div class="chip{{ ' fav' if c in favoriten }}" title="{{ c.titel }}{{ ' · ' ~ c.unter if c.unter }}{{ ' · ' ~ c.text if c.text }}">
+      <form hx-post="{{ A }}start" hx-target="#woche" hx-swap="outerHTML" class="inline">
+        <input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}">
+        {% for k in ("kunde", "projekt", "leistung", "text", "kategorie") %}<input type="hidden" name="{{ k }}" value="{{ c[k] }}">{% endfor %}
+        <input type="hidden" name="abrechenbar" value="{{ c.abrechenbar }}">
+        <button class="chipbtn" type="submit" aria-label="Stoppuhr starten: {{ c.titel }}">▶</button>
+      </form>
+      <button class="chiplabel" type="button" data-fill="{{ c.schnell }} " title="In die Schnelleingabe übernehmen">
+        <strong>{{ c.titel }}</strong>{% if c.unter %} <span class="muted">{{ c.unter }}</span>{% endif %}{% if c.text and c.text != c.titel %} · {{ c.text }}{% endif %}</button>
+      <form hx-post="{{ A }}favorit" hx-target="#woche" hx-swap="outerHTML" class="inline">
+        <input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}"><input type="hidden" name="combo" value="{{ c.id }}">
+        <button class="chipbtn star" type="submit" aria-label="{{ 'Favorit entfernen' if c in favoriten else 'Als Favorit merken' }}">{{ '★' if c in favoriten else '☆' }}</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ---- the week as a timesheet ---- #}
+  {% set g = grid %}
+  <div class="panel">
+    <header><h2>Woche {{ g.start.isocalendar()[1] }} <span class="muted small">· {{ g.tage[0]|datum("%d.%m.") }} – {{ g.tage[6]|datum("%d.%m.%Y") }}</span></h2>
+      <span class="actions">
+        <a class="btn small ghost" href="?tab=woche&wer={{ wer }}&woche={{ vorwoche }}" title="Vorherige Woche (Taste ←)" data-key-prev>‹</a>
+        <a class="btn small ghost" href="?tab=woche&wer={{ wer }}" title="Diese Woche (Taste T)" data-key-today>Heute</a>
+        <a class="btn small ghost" href="?tab=woche&wer={{ wer }}&woche={{ naechste }}" title="Nächste Woche (Taste →)" data-key-next>›</a>
+        <a class="btn small ghost" href="?tab=woche&wer={{ wer }}&woche={{ woche_start }}&vorwoche=1" title="Zeilen der Vorwoche leer übernehmen">Zeilen der Vorwoche</a>
+      </span></header>
+    <div class="tablewrap"><table class="ledger weekgrid" data-wer="{{ wer }}" data-woche="{{ woche_start }}">
+      <thead><tr><th>Kunde / Projekt · Leistung</th>{% for d in g.tage %}<th class="right day{{ ' off' if d.weekday() >= 5 or d in g.feiertage }}{{ ' today' if d == heute }}" title="{{ 'Feiertag' if d in g.feiertage }}">{{ ['Mo','Di','Mi','Do','Fr','Sa','So'][loop.index0] }} {{ d.day }}.</th>{% endfor %}<th class="right">Total</th></tr></thead>
+      <tbody>
+      {% for r in g.zeilen %}
+        <tr class="row" data-row="{{ r.dom }}">
+          <td class="rowlabel"><strong>{{ r.titel }}</strong> {% if r.unter %}<span class="small muted">{{ r.unter }}</span>{% endif %} {{ budget_pill(r.budget) }}{% if not r.abrechenbar %} <span class="pill muted">intern</span>{% endif %}</td>
+          {% for c in r.zellen %}
+          <td class="right cell{{ ' off' if c.datum.weekday() >= 5 or c.datum in g.feiertage }}">
+            {% if c.gesperrt %}<span class="num locked" title="{{ 'abgerechnet' if c.ids|length == 1 else c.ids|length ~ ' Einträge — in der Liste ändern' }}">{{ c.stunden|qty }}{{ ' 🔒' if c.ids|length == 1 }}</span>
+            {% else %}<input class="wz num" id="z-{{ r.dom }}-{{ loop.index0 }}" name="stunden" value="{{ hours(c.stunden) }}" inputmode="decimal" autocomplete="off"
+                 aria-label="{{ r.titel }} {{ c.datum|datum }}" data-col="{{ loop.index0 }}"
+                 hx-post="/p/leistungen/leistungen/zelle" hx-trigger="change" hx-target="#woche" hx-swap="outerHTML"
+                 hx-vals='{"wer": "{{ wer }}", "woche": "{{ woche_start }}", "datum": "{{ c.datum }}", "kunde": "{{ r.kunde }}", "projekt": "{{ r.projekt }}", "leistung": "{{ r.leistung }}", "abrechenbar": "{{ r.abrechenbar }}", "kategorie": "{{ r.kategorie }}", "text": {{ r.text|tojson }}}'>{% endif %}
+          </td>
+          {% endfor %}
+          <td class="right num"><strong>{{ r.total|qty }}</strong></td>
+        </tr>
+      {% endfor %}
+        <tr class="addrow" hidden><td colspan="9">
+          <form class="actions" data-addrow-form>
+            <input class="input" name="ziel" list="ziele" placeholder="Projekt oder Kunde …" style="min-width:260px" required>
+            <select class="input" name="leistung"><option value="">— Leistungsart —</option>{% for nr, p in leistungsarten.items() %}<option value="{{ nr }}">{{ p.text }}</option>{% endfor %}</select>
+            <button class="btn small" type="submit">Zeile hinzufügen</button><button class="btn small ghost" type="button" data-addrow-cancel>Abbrechen</button>
+          </form></td></tr>
+      </tbody>
+      <tfoot>
+        <tr><td><button class="btn small ghost" type="button" data-addrow-open title="Taste A">+ Zeile</button> <span class="small muted">Gearbeitet</span></td>{% for v in g.gearbeitet %}<td class="right num">{{ hours(v) }}</td>{% endfor %}<td class="right num"><strong>{{ g.total|qty }}</strong></td></tr>
+        {% if g.abwesend|selectattr("art")|list %}<tr><td class="small muted">Abwesend</td>{% for a in g.abwesend %}<td class="right small" title="{{ a.art or '' }}">{% if a.art %}<span class="pill muted">{{ a.art[:5] }}</span>{% if a.stunden %} {{ a.stunden|qty }}{% endif %}{% endif %}</td>{% endfor %}<td></td></tr>{% endif %}
+        {% if g.saldo is not none %}
+        <tr><td class="small muted">Soll</td>{% for s in g.soll %}<td class="right num small muted">{{ hours(s) }}</td>{% endfor %}<td class="right num small muted">{{ g.total_soll|qty }}</td></tr>
+        <tr class="zw"><td>Saldo Woche</td>{% for i in range(7) %}{% set d = g.ist[i] - (g.soll[i] or 0) %}<td class="right num {{ 'neg' if d < 0 else '' }}">{{ d|qty if (g.ist[i] or g.soll[i]) else '' }}</td>{% endfor %}<td class="right num {{ 'neg' if g.saldo < 0 }}"><strong>{{ g.saldo|qty }}</strong></td></tr>
+        {% endif %}
+      </tfoot>
+    </table></div>
+    <datalist id="ziele">{% for nr, p in projekte.items() if p.status == 'offen' %}<option value="{{ nr }} {{ p.name }}">{% endfor %}{% for nr, n in kunden.items() %}<option value="{{ nr }} {{ n }}">{% endfor %}<option value="intern Intern"></datalist>
+  </div>
+
+  {# ---- the entries of the week ---- #}
+  <div class="panel">
+    <header><h2>Einträge der Woche</h2><span class="hint">Doppelklick bearbeitet · auswählen, um zu verschieben</span></header>
+    {% if eintraege %}
+    <form id="bulk" class="bulkbar" hx-post="{{ A }}verschieben" hx-target="#woche" hx-swap="outerHTML" hidden>
+      <input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}">
+      <strong><span data-bulkcount>0</span> ausgewählt</strong> →
+      {{ projekt_select(projekte, kunden, leer="— Projekt —") }}
+      <select class="input" name="leistung"><option value="__">Leistungsart bleibt</option><option value="">ohne Leistungsart</option>{% for nr, p in leistungsarten.items() %}<option value="{{ nr }}">{{ p.text }}</option>{% endfor %}</select>
+      <label class="check"><input type="checkbox" name="neu_bewerten" value="1" checked> Satz neu bestimmen</label>
+      <button class="btn small primary" type="submit">Verschieben</button>
+    </form>
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th style="width:2em"></th><th>Tag</th><th>Kunde / Projekt</th><th>Leistung</th><th class="right">Menge</th><th class="right">Betrag</th><th>Status</th><th></th></tr></thead>
+      <tbody>{% for e in eintraege %}
+        <tr class="row" data-edit="ed-{{ e.id }}">
+          <td>{% if e.status != 'abgerechnet' %}<input type="checkbox" name="ids" value="{{ e.id }}" form="bulk" data-bulk aria-label="{{ e.id }} auswählen">{% endif %}</td>
+          <td class="num">{{ ['Mo','Di','Mi','Do','Fr','Sa','So'][e.datum.weekday()] }} {{ e.datum|datum("%d.%m.") }}</td>
+          <td>{{ kunden.get(e.kunde, e.kunde) or '—' }}{% if e.projekt %}<br><span class="small muted">{{ e.projekt }} {{ projekte[e.projekt].name if e.projekt in projekte }}</span>{% endif %}</td>
+          <td>{{ e.text }}{% if e.produkt and e.produkt in produkte and e.art == 'Zeit' %} <span class="pill muted">{{ produkte[e.produkt].text }}</span>{% endif %}{% if e.kategorie %} <span class="small muted">({{ e.kategorie }})</span>{% endif %}</td>
+          <td class="right num">{{ e.menge|qty }}{{ ' h' if e.art == 'Zeit' else ' ' ~ (produkte[e.produkt].einheit if e.produkt in produkte else '') }}</td>
+          <td class="right num">{{ e.betrag|chf(true) }}</td>
+          <td>{{ state_pill(e.status) }}{% if e.rechnung and e.status == 'abgerechnet' %} <a class="beleg" href="/debitoren/rechnung/{{ e.rechnung }}">{{ e.rechnung }}</a>{% endif %}</td>
+          <td class="right" style="white-space:nowrap">
+            {% if e.status != 'abgerechnet' %}
+            <form hx-post="{{ A }}kopieren" hx-target="#woche" hx-swap="outerHTML" class="inline"><input type="hidden" name="id" value="{{ e.id }}"><input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}"><input type="hidden" name="datum" value="{{ heute }}"><button class="btn small ghost" type="submit" title="Für heute kopieren">⧉</button></form>
+            <form hx-post="{{ A }}entfernen" hx-target="#woche" hx-swap="outerHTML" hx-confirm="{{ e.id }} löschen?" class="inline"><input type="hidden" name="id" value="{{ e.id }}"><input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}"><button class="btn small ghost" type="submit" title="Löschen">✕</button></form>
+            {% endif %}
+          </td>
+        </tr>
+        {% if e.status != 'abgerechnet' %}
+        <tr class="editrow" id="ed-{{ e.id }}" hidden><td colspan="8">
+          <form class="form four" hx-post="{{ A }}eintrag" hx-target="#woche" hx-swap="outerHTML">
+            <input type="hidden" name="id" value="{{ e.id }}"><input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}">
+            <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ e.datum }}"></div>
+            <div class="field"><label>{{ 'Stunden' if e.art == 'Zeit' else 'Menge' }}</label><input class="input num" name="menge" value="{{ e.menge|qty }}"></div>
+            <div class="field" style="grid-column: span 2"><label>Text</label><input class="input" name="text" value="{{ e.text }}"></div>
+            {% if e.abrechenbar %}<div class="field" style="grid-column: span 2"><label>Projekt</label>{{ projekt_select(projekte, kunden, selected=e.projekt) }}</div>
+            {% if e.art == 'Zeit' %}<div class="field"><label>Leistungsart</label>{{ leistung_select(leistungsarten, selected=e.produkt, leer="— keine —") }}</div>{% endif %}
+            <div class="field"><label>Preis</label><input class="input num" name="preis" value="{{ e.preis if e.preis is not none else '' }}"></div>{% endif %}
+            <div class="field" style="grid-column: span 4"><span class="actions"><button class="btn small ghost" type="button" data-editclose="ed-{{ e.id }}">Abbrechen</button><button class="btn small primary" type="submit">Speichern</button></span></div>
+          </form></td></tr>
+        {% endif %}
+      {% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="body empty">Noch nichts erfasst in dieser Woche — oben eintippen, z.B. <code>3.5h {{ (projekte.values()|selectattr("status", "equalto", "offen")|first or {}).get("name", "Kunde") }} Tätigkeit</code>.</div>{% endif %}
+  </div>
+{% endif %}
+</div>

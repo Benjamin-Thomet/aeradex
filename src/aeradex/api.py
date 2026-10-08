@@ -55,11 +55,15 @@ def _guard(book: Book) -> None:
 
 
 def _done(book: Book, message: str, paths: list[Path], **data) -> dict:
+    from .storage import in_transaction
     book.reload()
-    errors = [i for i in checks.run(book) if i.level == "fehler"]
-    if errors:
-        raise BookError("Änderung hat das Buch ungültig gemacht und wird zurückgewiesen.\n" + "\n".join(map(str, errors)))
-    commit = gitlog.commit(book.root, f"aeradex: {message}", paths)
+    # Inside a write transaction the staged book is checked right after this function returns (storage.py),
+    # before anything is published — checking it here as well only doubled the cost of every write.
+    if not in_transaction(book.root):
+        errors = [i for i in checks.run(book) if i.level == "fehler"]
+        if errors:
+            raise BookError("Änderung hat das Buch ungültig gemacht und wird zurückgewiesen.\n" + "\n".join(map(str, errors)))
+    commit = gitlog.commit(book.root, f"aeradex: {message}", paths, verified=True)   # checked just above
     return jsonable({"ok": True, "meldung": message, "commit": commit,
                      "dateien": sorted({book.rel(p) for p in paths
                                          if Path(p).exists() and Path(p).resolve().is_relative_to(book.root)}),
@@ -107,7 +111,8 @@ def init_book(path: Path, firma: str, jahr: int | None = None, kontenplan: str |
             (root / folder / ".gitkeep").write_text("")
     book = Book(root)
     payroll.write_default_config(book)
-    (root / ".gitignore").write_text("berichte/\n.aeradex/write.lock\n.aeradex/transaction/\n**/.aeradex-tmp-*\n.DS_Store\n__pycache__/\n")
+    (root / ".gitignore").write_text("berichte/\n.aeradex/write.lock\n.aeradex/transaction/\n.aeradex/lokal/\n"
+                                     "**/.aeradex-tmp-*\n.DS_Store\n__pycache__/\n")
     agents = (DATA / "BUCH_AGENTS.md").read_text(encoding="utf-8")
     (root / "AGENTS.md").write_text(agents.replace("{firma}", firma), encoding="utf-8")
     claude = root / "CLAUDE.md"

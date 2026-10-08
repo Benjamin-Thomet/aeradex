@@ -1,0 +1,57 @@
+{% set A = "/p/leistungen/leistungen/" %}
+<div id="kalender" data-fragment>
+{% if not wer %}
+  <div class="panel body muted">Noch keine Personen.</div>
+{% else %}
+  <div class="figures">
+    <div class="figure"><span class="label">Ferienanspruch {{ jahr }}</span><span class="value">{{ ferien.anspruch|qty }}</span><span class="meta">Tage{% if ferien.vortrag %} + {{ ferien.vortrag|qty }} Vortrag{% endif %}</span></div>
+    <div class="figure"><span class="label">Bezogen</span><span class="value">{{ ferien.bezogen|qty }}</span><span class="meta">Tage bis heute</span></div>
+    <div class="figure"><span class="label">Geplant</span><span class="value">{{ ferien.geplant|qty }}</span><span class="meta">Tage</span></div>
+    <div class="figure"><span class="label">Rest</span><span class="value{{ ' neg' if ferien.rest < 0 }}">{{ ferien.rest|qty }}</span><span class="meta">Tage</span></div>
+  </div>
+
+  <div class="panel">
+    <header><h2>{{ person.name }} · {{ jahr }}</h2>
+      <span class="actions">
+        <a class="btn small ghost" href="?tab=abwesenheiten&wer={{ wer }}&jahr={{ jahr - 1 }}">‹ {{ jahr - 1 }}</a>
+        <a class="btn small ghost" href="?tab=abwesenheiten&wer={{ wer }}&jahr={{ jahr + 1 }}">{{ jahr + 1 }} ›</a>
+        <span class="small muted">Feiertage: {{ kanton or 'kein Kanton' }}</span>
+      </span></header>
+    <form class="body" hx-post="{{ A }}abwesenheit" hx-target="#kalender" hx-swap="outerHTML" id="absform">
+      <input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="jahr" value="{{ jahr }}">
+      <div class="form four">
+      <div class="field"><label>Art</label><select class="input" name="art" style="width:100%">{% for a in abwesenheit_arten %}<option>{{ a }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Von</label><input class="input" type="date" name="von" required data-abs-von></div>
+      <div class="field"><label>Bis <span class="muted">(leer = ein Tag)</span></label><input class="input" type="date" name="bis" data-abs-bis></div>
+      <div class="field"><label>&nbsp;</label><span class="actions"><label class="check"><input type="checkbox" name="anteil" value="0.5"> halber Tag</label><button class="btn primary" type="submit">Eintragen</button></span></div>
+      </div>
+      <div class="small muted" style="margin-top:8px">Im Kalender auf den ersten und dann den letzten Tag klicken. Ferien, Krank, Unfall, Militär, Mutter-/Vaterschaft und Weiterbildung zählen als Ist-Zeit; Kompensation baut Überzeit ab; unbezahlt reduziert das Soll.</div>
+    </form>
+    <div class="tablewrap"><table class="yearcal">
+      <thead><tr><th></th>{% for d in range(1, 32) %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for m in monate %}
+        <tr><th>{{ MONTHS[m.monat][:3] }}</th>{% for t in m.tage %}<td class="{{ 'we' if t.wochenende }}{{ ' hol' if t.feiertag }}{{ ' ' ~ t.farbe if t.farbe }}{{ ' half' if t.halb }}{{ ' now' if t.datum == heute }}" data-day="{{ t.datum }}" title="{{ t.datum|datum }}{{ ' · ' ~ t.feiertag if t.feiertag }}{{ ' · ' ~ t.art if t.art }}"></td>{% endfor %}{% for _ in range(31 - m.tage|length) %}<td class="none"></td>{% endfor %}</tr>
+      {% endfor %}</tbody>
+    </table></div>
+    <div class="body calkey small">{% for cls, label in (("ferien", "Ferien"), ("krank", "Krank/Unfall"), ("kompensation", "Kompensation"), ("andere", "Andere"), ("hol", "Feiertag"), ("we", "Wochenende")) %}<span><span class="lg {{ cls }}"></span> {{ label }}</span>{% endfor %}</div>
+  </div>
+
+  <div class="panel">
+    <header><h2>Abwesenheiten {{ jahr }}</h2></header>
+    {% if abwesenheiten %}<div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Art</th><th>Von</th><th>Bis</th><th class="right">Anteil</th><th>Notiz</th><th></th></tr></thead>
+      <tbody>{% for a in abwesenheiten %}<tr class="row"><td>{{ a.art }}</td><td class="num">{{ a.von|datum }}</td><td class="num">{{ a.bis|datum }}</td><td class="right num">{{ 'halb' if a.anteil < 1 else 'ganz' }}</td><td class="small">{{ a.notiz }}</td>
+        <td class="right"><form hx-post="{{ A }}abwesenheit_loeschen" hx-target="#kalender" hx-swap="outerHTML" hx-confirm="{{ a.art }} {{ a.von|datum }} löschen?" class="inline"><input type="hidden" name="id" value="{{ a.id }}"><input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="jahr" value="{{ jahr }}"><button class="btn small ghost" type="submit">✕</button></form></td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<div class="body empty">Keine Abwesenheiten in {{ jahr }}.</div>{% endif %}
+  </div>
+
+  <div class="panel">
+    <header><h2>Team {{ jahr }}</h2><span class="hint">Ferientage</span></header>
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Person</th><th class="right">Anspruch</th><th class="right">Vortrag</th><th class="right">Bezogen</th><th class="right">Geplant</th><th class="right">Rest</th><th></th></tr></thead>
+      <tbody>{% for f in team %}<tr class="row"><td><a class="link" href="?tab=abwesenheiten&wer={{ f.wer }}&jahr={{ jahr }}">{{ f.name }}</a></td><td class="right num">{{ f.anspruch|qty }}</td><td class="right num">{{ f.vortrag|qty }}</td><td class="right num">{{ f.bezogen|qty }}</td><td class="right num">{{ f.geplant|qty }}</td><td class="right num {{ 'neg' if f.rest < 0 }}"><strong>{{ f.rest|qty }}</strong></td>
+        <td class="right"><form hx-post="{{ A }}nachweis" class="inline actions"><input type="hidden" name="wer" value="{{ f.wer }}"><input class="input" type="month" name="monat" value="{{ heute.strftime('%Y-%m') }}" aria-label="Monat"><button class="btn small" type="submit" title="Arbeitszeitnachweis (ArGV 1 Art. 73) als PDF">Nachweis PDF</button></form></td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+{% endif %}
+</div>

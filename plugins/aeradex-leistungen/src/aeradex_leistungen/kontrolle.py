@@ -37,6 +37,17 @@ def workdays(year: int, month: int, holidays: set[date], start: date | None = No
     return n
 
 
+def day_target(p: dict, d: date, holidays: set[date], from_: date | None = None) -> Decimal | None:
+    """Soll hours of one day (None for people without a target: hourly wage or no weekly hours)."""
+    from .abwesenheit import daily_target, workday
+    per_day = daily_target(p)
+    if per_day is None:
+        return None
+    if from_ and d < from_ or not workday(p, d, holidays):
+        return ZERO
+    return per_day.quantize(Decimal("0.01"))
+
+
 def target(p: dict, year: int, month: int, holidays: set[date], from_: date | None = None) -> Decimal | None:
     """Soll hours of the month; `from_` (start of the control) acts like a later Eintritt."""
     if p["stundenlohn"] or not p.get("woche"):
@@ -48,8 +59,9 @@ def target(p: dict, year: int, month: int, holidays: set[date], from_: date | No
 
 def month(book: Book, year: int, month_: int, wer: str = "") -> list[dict]:
     """Per person: Soll, Ist (billable / not, per category), balance of the month and of the year so far."""
+    from . import abwesenheit
     cfg = daten.settings(book)
-    holidays = {parse_date(d) for d in cfg["feiertage"]}
+    holidays = abwesenheit.holidays(book, year)
     from_ = _opt_date(cfg["kontrolle_ab"])
     persons = daten.people(book)
     per: dict[tuple[str, int], dict] = defaultdict(lambda: {"ist": ZERO, "abrechenbar": ZERO,
@@ -68,20 +80,29 @@ def month(book: Book, year: int, month_: int, wer: str = "") -> list[dict]:
         if wer and nr != wer.upper():
             continue
         cur = per.get((nr, month_))
-        if not p["aktiv"] and cur is None:
+        absent = {m: abwesenheit.month_totals(book, p, year, m) for m in range(1, month_ + 1)}
+        if not p["aktiv"] and cur is None and not absent[month_]["arten"]:
             continue
         soll = target(p, year, month_, holidays, from_)
-        ist = cur["ist"] if cur else ZERO
+        if soll is not None:
+            soll -= absent[month_]["soll_weniger"]
+        ist = (cur["ist"] if cur else ZERO) + absent[month_]["ist"]
         saldo_jahr = None
         if soll is not None:
-            saldo_jahr = Decimal(str((p.get("vortrag") or {}).get(year) or 0))
+            vortrag = p.get("vortrag") or {}
+            saldo_jahr = Decimal(str(vortrag.get(year) or vortrag.get(str(year)) or 0))
             for m in range(1, month_ + 1):
-                s = target(p, year, m, holidays, from_) or ZERO
-                saldo_jahr += (per[(nr, m)]["ist"] if (nr, m) in per else ZERO) - s
+                s = (target(p, year, m, holidays, from_) or ZERO) - absent[m]["soll_weniger"]
+                saldo_jahr += (per[(nr, m)]["ist"] if (nr, m) in per else ZERO) + absent[m]["ist"] - s
+        kategorien = dict(cur["kategorien"]) if cur else {}
+        for art, v in absent[month_]["arten"].items():
+            if v["stunden"]:
+                kategorien[art] = kategorien.get(art, ZERO) + v["stunden"]
         out.append({"nummer": nr, "name": p["name"], "soll": soll, "ist": ist,
                     "abrechenbar": cur["abrechenbar"] if cur else ZERO,
                     "quote": (cur["abrechenbar"] / ist * 100).quantize(Decimal("1")) if cur and ist else None,
-                    "kategorien": dict(sorted(cur["kategorien"].items())) if cur else {},
+                    "kategorien": dict(sorted(kategorien.items())),
+                    "abwesenheiten": absent[month_]["arten"],
                     "saldo": ist - soll if soll is not None else None, "saldo_jahr": saldo_jahr,
                     "stundenlohn": p["stundenlohn"], "lohn": p["lohn"]})
     return out

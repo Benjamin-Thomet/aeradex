@@ -7,10 +7,14 @@ git diffs small and makes the lock hashes in `check.py` stable.
 """
 from __future__ import annotations
 
-import re
+import copy
+import hashlib
 import os
+import re
 import stat
 import tempfile
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -120,7 +124,39 @@ def dump_yaml(data) -> str:
     return yaml.dump(data, Dumper=_Dumper, allow_unicode=True, sort_keys=False, width=100)
 
 
+# Parsed YAML by file content: a book has hundreds of small YAML/frontmatter files and every write checks the whole
+# book (twice, on a staged copy) — parsing them again each time dominated the cost of a write. Reading the bytes is
+# cheap, parsing is not; a changed file has other content and is parsed again. Callers get a deep copy.
+_PARSED: "OrderedDict[tuple, object]" = OrderedDict()
+_PARSED_MAX = 8192
+_PARSED_LOCK = threading.Lock()
+
+
+def _cached(path: Path, kind: str, parse):
+    try:
+        raw = Path(path).read_bytes()
+    except OSError:
+        return parse()                       # let the reader report the missing file
+    # keyed by content: the staged copy of a write transaction (new paths, new inodes) hits the cache too
+    key = (kind, len(raw), hashlib.blake2b(raw, digest_size=16).digest())
+    with _PARSED_LOCK:
+        hit = _PARSED.get(key)
+        if hit is not None:
+            _PARSED.move_to_end(key)
+    if hit is None:
+        hit = parse()
+        with _PARSED_LOCK:
+            _PARSED[key] = hit
+            while len(_PARSED) > _PARSED_MAX:
+                _PARSED.popitem(last=False)
+    return copy.deepcopy(hit)
+
+
 def read_yaml(path: Path):
+    return _cached(path, "yaml", lambda: _read_yaml(path))
+
+
+def _read_yaml(path: Path):
     try:
         data = yaml.load(path.read_text(encoding="utf-8"), Loader=_Loader)
         return {} if data is None else data
@@ -138,6 +174,10 @@ _FRONT = re.compile(r"\A---\n(.*?)\n---\n?(.*)\Z", re.DOTALL)
 
 
 def read_frontmatter(path: Path) -> tuple[dict, str]:
+    return _cached(path, "front", lambda: _read_frontmatter(path))
+
+
+def _read_frontmatter(path: Path) -> tuple[dict, str]:
     text = path.read_text(encoding="utf-8")
     match = _FRONT.match(text)
     if not match:

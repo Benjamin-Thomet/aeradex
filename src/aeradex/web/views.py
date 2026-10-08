@@ -1444,6 +1444,30 @@ async def plugin_seite(ui: UI, request: Request):
                      page=page, plugin=request.path_params["plugin"], **(ctx or {}))
 
 
+async def _render_fragment(ui: UI, request: Request, book: Book, page, name: str, query: dict,
+                           meldung: str = "") -> Response:
+    template, context = page.fragments[name]
+    try:
+        ctx = await asyncio.to_thread(context, book, query)
+    except BookError as exc:
+        return fail(str(exc))
+    response = ui.render(request, f"plugins/{request.path_params['plugin']}/{template}", book=book, page=page,
+                         plugin=request.path_params["plugin"], **(ctx or {}))
+    if meldung:
+        response.headers["HX-Trigger"] = json.dumps({"aeradexToast": meldung})
+    return response
+
+
+async def plugin_teil(ui: UI, request: Request):
+    """A fragment of a plugin page (Page.fragments), fetched on its own."""
+    book = ui.book()
+    page = _plugin_page(book, request.path_params["plugin"], request.path_params["slug"])
+    name = request.path_params["teil"]
+    if page is None or name not in page.fragments:
+        return PlainTextResponse("Nicht gefunden", status_code=404)
+    return await _render_fragment(ui, request, book, page, name, dict(request.query_params))
+
+
 async def plugin_aktion(ui: UI, request: Request):
     book = ui.book()
     page = _plugin_page(book, request.path_params["plugin"], request.path_params["slug"])
@@ -1453,8 +1477,15 @@ async def plugin_aktion(ui: UI, request: Request):
     form = await request.form()
     data = {k: (form.getlist(k) if len(form.getlist(k)) > 1 else form.get(k)) for k in form.keys()}
     back = request.headers.get("hx-current-url") or f"/p/{request.path_params['plugin']}/{page.slug}"
-    return await act(request, fn, lambda r: (r.get("weiter") if isinstance(r, dict) and r.get("weiter") else back),
-                     book, data)
+    try:
+        result = await asyncio.to_thread(fn, book, data)
+    except (BookError, FormatError, ValueError, KeyError, RuntimeError) as exc:
+        return fail(str(exc))
+    if isinstance(result, dict) and result.get("fragment") in page.fragments:
+        return await _render_fragment(ui, request, ui.book(), page, result["fragment"], dict(result.get("query") or {}),
+                                      result.get("meldung", ""))
+    message = result.get("meldung", "Gespeichert") if isinstance(result, dict) else "Gespeichert"
+    return done(message, result.get("weiter") if isinstance(result, dict) and result.get("weiter") else back)
 
 
 # ---------- Kreditoren ----------
@@ -2203,6 +2234,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/bank/{id:str}/{aktion:str}", h(bank_aktion), methods=["POST"]),
         Route("/p/{plugin:str}/{slug:str}", h(plugin_seite)),
         Route("/p/{plugin:str}/{slug:str}/{aktion:str}", h(plugin_aktion), methods=["POST"]),
+        Route("/p/{plugin:str}/{slug:str}/{teil:str}", h(plugin_teil)),
         Route("/lohn/spesen", h(spesen_aktion), methods=["POST"]),
         Route("/lohn/spesen/{nr:str}/entfernen", h(spesen_aktion), methods=["POST"]),
         Route("/journal/raster", h(journal_raster), methods=["POST"]),

@@ -68,7 +68,40 @@ def summary(book: Book, bis=None) -> list[dict]:
         s["betrag"] += e["betrag"]
         s["eintraege"] += 1
         s["von"], s["bis"] = min(s["von"], e["datum"]), max(s["bis"], e["datum"])
-    return sorted(per.values(), key=lambda s: (s["kunde"], s["projekt"]))
+        s.setdefault("ids", []).append(e["id"])
+    from . import kontrolle
+    today = date.today()
+    for s in per.values():
+        s["alter_tage"] = (today - s["von"]).days
+        s["budget"] = kontrolle.project(book, s["projekt"]).get("auslastung") if s["projekt"] else None
+    return sorted(per.values(), key=lambda s: (-s["betrag"], s["kunde"], s["projekt"]))
+
+
+def groups(book: Book, bis=None, je: str = "kunde") -> list[dict]:
+    """Open billable work bundled into the invoices «Alle abrechnen» would issue: one per customer, or one per
+    customer and project (`je="projekt"`)."""
+    out: dict[tuple, dict] = {}
+    for s in summary(book, bis):
+        key = (s["kunde"], s["projekt"] if je == "projekt" else "")
+        g = out.setdefault(key, {"kunde": s["kunde"], "kunde_name": s["kunde_name"], "projekt": key[1],
+                                 "projekt_name": s["projekt_name"] if key[1] else "", "ids": [], "betrag": ZERO})
+        g["ids"] += s["ids"]
+        g["betrag"] += s["betrag"]
+    return list(out.values())
+
+
+def bill_all(book: Book, bis=None, je: str = "kunde", datum=None, rapport: bool = True) -> tuple[dict, list[Path]]:
+    """Month end: issue every open invoice at once (see `groups`), each with its Leistungsrapport. One write."""
+    todo = groups(book, bis, je)
+    if not todo:
+        raise BookError("Nichts offen zum Abrechnen")
+    issued, touched = [], []
+    for g in todo:
+        res, paths = bill(book, g["ids"], False, datum, "", None, rapport)
+        issued.append(res)
+        touched += paths
+    total = sum((Decimal(str(r["total"])) for r in issued), ZERO)
+    return {"rechnungen": issued, "anzahl": len(issued), "total": total}, touched
 
 
 def _period(items: list[dict]) -> str:
@@ -90,26 +123,34 @@ def positions(book: Book, items: list[dict], detail: bool = False) -> list[dict]
     def tax(code):
         return {"mwst": code} if taxed and code else {}
 
+    def service(e):
+        """konto and MWST code of the entry's Leistungsart (or the hours account)."""
+        art = prods.get(e.get("produkt") or "", {})
+        return {"konto": art.get("konto") or cfg["konto_stunden"], **tax(art.get("mwst"))}
+
     if detail:
         for e in times:
             who = names.get(e["wer"], e["wer"])
             out.append({"text": f"{e['datum'].strftime('%d.%m.%Y')} {who}: {e['text']}", "menge": e["menge"],
-                        "einheit": "h", "preis": e["preis"], "konto": cfg["konto_stunden"]})
+                        "einheit": "h", "preis": e["preis"], **service(e)})
         for e in goods:
             p = prods.get(e["produkt"], {})
             out.append({"text": f"{e['datum'].strftime('%d.%m.%Y')} {e['text']}", "menge": e["menge"],
                         "einheit": p.get("einheit") or "", "preis": e["preis"],
                         "konto": p.get("konto") or cfg["konto_produkte"], **tax(p.get("mwst"))})
         return out
+    # Hours with a Leistungsart are grouped by it («Malerarbeiten 12.5 h à 95»); hours without one per person,
+    # as always — so invoices issued before Leistungsarten existed still add up the same (mismatches()).
     groups: dict[tuple, list[dict]] = defaultdict(list)
     for e in times:
-        groups[(e["projekt"], e["wer"], e["preis"])].append(e)
-    for (proj, wer, preis), group in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2])):
-        label = f"Arbeit {names.get(wer, wer)}"
+        art = e.get("produkt") or ""
+        groups[(e["projekt"], art, "" if art else e["wer"], e["preis"])].append(e)
+    for (proj, art, wer, preis), group in sorted(groups.items(), key=lambda kv: tuple(str(x) for x in kv[0])):
+        label = prods.get(art, {}).get("text") or art if art else f"Arbeit {names.get(wer, wer)}"
         if proj:
             label += f", {projs.get(proj, {}).get('name', proj)}"
         out.append({"text": f"{label} ({_period(group)})", "menge": sum((e["menge"] for e in group), ZERO),
-                    "einheit": "h", "preis": preis, "konto": cfg["konto_stunden"]})
+                    "einheit": "h", "preis": preis, **service(group[0])})
     goods_groups: dict[tuple, list[dict]] = defaultdict(list)
     for e in goods:
         goods_groups[(e["produkt"], e["preis"])].append(e)

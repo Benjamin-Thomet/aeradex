@@ -58,7 +58,7 @@ def install_hook(root: Path) -> None:
     hook.chmod(0o755)
 
 
-def commit(root: Path, message: str, paths: list[Path] | None = None) -> str | None:
+def commit(root: Path, message: str, paths: list[Path] | None = None, verified: bool = False) -> str | None:
     """Stage `paths` (or everything) and commit. Returns the short hash, or None
     when the book is not a repo, commits are disabled, or nothing changed."""
     from .storage import defer_commit
@@ -87,7 +87,7 @@ def commit(root: Path, message: str, paths: list[Path] | None = None) -> str | N
         # The [n]/[k] globs keep git (2.55+) from treating the excludes as naming an ignored file, which
         # it rejects ("paths are ignored by one of your .gitignore files") whenever write.lock exists.
         _git(root, "add", "-A", "--", ".", ":(exclude).aeradex/transactio[n]/", ":(exclude).aeradex/write.loc[k]",
-             ":(exclude)**/.aeradex-tmp-*")
+             ":(exclude).aeradex/loka[l]/", ":(exclude)**/.aeradex-tmp-*")
     scope = ["--", *rel] if rel is not None else []
     if _git(root, "diff", "--cached", "--quiet", *scope, check=False).returncode == 0:
         return None
@@ -95,7 +95,10 @@ def commit(root: Path, message: str, paths: list[Path] | None = None) -> str | N
     extra = [f"--author={author}"] if author else []
     # --only leaves unrelated staged work in the index for its own commit.
     only = ["--only", "--", *rel] if rel is not None else []
-    result = _git(root, "commit", "-q", *extra, "-m", message, *only, check=False)
+    # `verified`: aeradex has just run the same check in-process on exactly this state, so the pre-commit hook
+    # (a second Python process, ~1 s) is skipped. Commits made by hand outside aeradex still go through the hook.
+    hook = ["--no-verify"] if verified else []
+    result = _git(root, "commit", "-q", *hook, *extra, "-m", message, *only, check=False)
     if result.returncode != 0:
         raise RuntimeError("git commit abgelehnt:\n" + (result.stdout + result.stderr).strip())
     return _git(root, "rev-parse", "--short", "HEAD").stdout.strip()

@@ -29,6 +29,7 @@
     t._timer = setTimeout(() => { t.hidden = true; }, 3200);
   }
   window.aeradexToast = toast;
+  document.addEventListener("aeradexToast", e => toast(e.detail && (e.detail.value || e.detail)));
 
   // ---- expandable Beleg groups and generic toggles ----
   function bindPage(root) {
@@ -212,8 +213,14 @@
 
   // ---- live refresh: the book changed on disk (agent, CLI, git, editor) ----
   let pendingReload = false;
+  // our own writes change the book too: a fragment answer already shows them, so the echo is not reloaded
+  let ownWriteUntil = 0;
+  document.addEventListener("htmx:afterRequest", e => {
+    if (((e.detail.requestConfig || {}).verb || "get") !== "get") ownWriteUntil = Date.now() + 2500;
+  });
   function dirty() { return $$("form[data-dirty]").length > 0 || (document.activeElement && document.activeElement.matches("input, textarea, select")); }
   function refresh() {
+    if (Date.now() < ownWriteUntil) return;
     if (dirty()) { $("#livebar").hidden = false; pendingReload = true; return; }
     htmx.ajax("GET", location.pathname + location.search, { target: "#page", select: "#page", swap: "outerHTML" });
   }

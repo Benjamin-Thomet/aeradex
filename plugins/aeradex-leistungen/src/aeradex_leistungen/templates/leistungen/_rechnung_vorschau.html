@@ -1,0 +1,21 @@
+{% set A = "/p/leistungen/leistungen/" %}
+<div class="drawerbody" data-fragment>
+{% if vorschau_fehler %}<div class="alert error">{{ vorschau_fehler }}</div>
+{% elif vorschau %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Position</th><th class="right">Menge</th><th class="right">Preis</th><th>MWST</th><th class="right">Betrag</th></tr></thead>
+    <tbody>{% for p in vorschau.positionen %}<tr class="row"><td>{{ p.text }}</td><td class="right num">{{ p.menge|qty }} {{ p.einheit }}</td><td class="right num">{{ p.preis|preis }}</td><td>{{ p.mwst or '' }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
+    <tfoot>{% for b in vorschau.mwst %}<tr><td colspan="4">MWST {{ b.code }} auf {{ b.netto|chf }}</td><td class="right num">{{ b.steuer|chf }}</td></tr>{% endfor %}
+      <tr><td colspan="4"><strong>Total CHF</strong></td><td class="right num total"><strong>{{ vorschau.total|chf }}</strong></td></tr></tfoot>
+  </table></div>
+  <form class="actions" style="padding:10px 12px" hx-post="{{ A }}rechnung" hx-target="find .errors" hx-confirm="Rechnung über CHF {{ vorschau.total|chf }} ausstellen und verbuchen?">
+    {% for e in auswahl %}<input type="hidden" name="ids" value="{{ e.id }}">{% endfor %}
+    <input type="hidden" name="detail" value="0"><input type="hidden" name="rapport" value="1">
+    <label class="small muted">Rechnungsdatum <input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></label>
+    <span class="small muted">{{ auswahl|length }} Einträge · mit Leistungsrapport</span>
+    <a class="btn small ghost" href="?tab=abrechnen&kunde={{ kunde }}&projekt={{ projekt }}{{ '&bis=' ~ bis if bis }}">Einzeln auswählen</a>
+    <button class="btn primary" type="submit" style="margin-left:auto">Rechnung ausstellen</button>
+    <div class="errors" style="flex-basis:100%"></div>
+  </form>
+{% else %}<div class="body empty">Nichts offen.</div>{% endif %}
+</div>

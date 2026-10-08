@@ -1,108 +1,82 @@
 {% extends "base.html" %}
 {% from "_macros.html" import errors %}
+{% from "plugins/leistungen/leistungen/_macros.html" import kunde_select, projekt_select, state_pill, budget_pill %}
 {% block title %}Leistungen{% endblock %}
-{% macro kunde_select(name="kunde", selected="", required=false, leer="— Kunde —") %}<select class="input" name="{{ name }}" style="width:100%" {{ 'required' if required }}><option value="">{{ leer }}</option>{% for nr, n in kunden.items() %}<option value="{{ nr }}" {{ 'selected' if nr == selected }}>{{ nr }} {{ n }}</option>{% endfor %}</select>{% endmacro %}
-{% macro projekt_select(name="projekt", selected="") %}<select class="input" name="{{ name }}" style="width:100%"><option value="">— kein Projekt —</option>{% for nr, p in projekte.items() if p.status == 'offen' %}<option value="{{ nr }}" {{ 'selected' if nr == selected }}>{{ nr }} {{ p.name }} ({{ kunden.get(p.kunde, p.kunde) }}{{ ', pauschal' if p.abrechnung == 'pauschal' }})</option>{% endfor %}</select>{% endmacro %}
-{% macro person_select(name="wer", required=true) %}<select class="input" name="{{ name }}" style="width:100%" {{ 'required' if required }}>{% if not required %}<option value="">—</option>{% endif %}{% for nr, p in personen.items() if p.aktiv %}<option value="{{ nr }}">{{ p.name }}{% if p.satz is not none %} · {{ p.satz|chf }}/h{% endif %}</option>{% endfor %}</select>{% endmacro %}
-{% macro state_pill(s) %}{% set m = {"offen": "info", "abgerechnet": "ok", "pauschal": "muted", "intern": "muted"} %}<span class="pill {{ m.get(s, 'muted') }}">{{ s }}</span>{% endmacro %}
 {% block main %}
+{% set A = "/p/leistungen/leistungen/" %}
+{% set wer_q = "&wer=" ~ wer if wer is defined and wer else "" %}
 <div class="topbar">
-  <div><h1>Leistungen</h1><div class="sub">Zeiterfassung, Produkte, Projekte und Abrechnung an Kunden</div></div>
-  <div class="actions"><a class="btn" href="/p/leistungen/offerten">Offerten</a></div>
+  <div><h1>Leistungen</h1><div class="sub">Zeit und Material erfassen, Abwesenheiten, abrechnen</div></div>
+  <div class="actions">
+    {% if tab in ("woche", "abwesenheiten") and personen %}
+    <form method="get" class="actions"><input type="hidden" name="tab" value="{{ tab }}">{% if tab == 'abwesenheiten' %}<input type="hidden" name="jahr" value="{{ jahr }}">{% endif %}
+      <select class="input" name="wer" onchange="this.form.submit()" aria-label="Person" data-person>{% for nr, p in personen.items() if p.aktiv %}<option value="{{ nr }}" {{ 'selected' if nr == wer }}>{{ p.name }}</option>{% endfor %}</select></form>
+    {% endif %}
+    <a class="btn" href="/p/leistungen/offerten">Offerten</a>
+  </div>
 </div>
-<nav class="subnav">{% for key, label in tabs %}<a href="/p/leistungen/leistungen?tab={{ key }}" class="{{ 'on' if key == tab }}">{{ label }}</a>{% endfor %}</nav>
+<nav class="subnav">{% for key, label in tabs %}<a href="/p/leistungen/leistungen?tab={{ key }}{{ wer_q if key in ('woche', 'abwesenheiten') }}" class="{{ 'on' if key == tab }}">{{ label }}</a>{% endfor %}</nav>
 
-{% if tab == "erfassen" %}
-<div class="panel">
-  <header><h2>Arbeitszeit</h2><span class="hint">Satz: Projekt › Kunde › Person — wird beim Erfassen festgehalten</span></header>
-  <form class="body" hx-post="/p/leistungen/leistungen/zeit" hx-target="find .errors">
-    <div class="form four">
-      <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}" required></div>
-      <div class="field"><label>Wer</label>{{ person_select() }}</div>
-      <div class="field"><label>Stunden</label><input class="input num" name="stunden" inputmode="decimal" placeholder="2.5" required></div>
-      <div class="field"><label>Abrechenbar</label><select class="input" name="abrechenbar" style="width:100%"><option value="ja">ja, an Kunde</option><option value="nein">nein (intern, Ferien …)</option></select></div>
-      <div class="field"><label>Kunde</label>{{ kunde_select() }}</div>
-      <div class="field"><label>Projekt</label>{{ projekt_select() }}</div>
-      <div class="field"><label>Kategorie (nicht abrechenbar)</label><select class="input" name="kategorie" style="width:100%">{% for k in cfg.kategorien %}<option>{{ k }}</option>{% endfor %}</select></div>
-      <div class="field"><label>Satz (leer = automatisch)</label><input class="input num" name="satz" placeholder="auto"></div>
-      <div class="field wide"><label>Tätigkeit (erscheint auf der Rechnung)</label><input class="input" name="text" placeholder="z.B. Wände gespachtelt und grundiert"></div>
-    </div>
-    {{ errors() }}<div class="formfoot"><span class="small muted">Kunde fehlt noch? <a class="link" href="?tab=stammdaten#kunde">Kunde anlegen</a></span><button class="btn primary" type="submit">Zeit erfassen</button></div>
-  </form>
-</div>
-<div class="panel">
-  <header><h2>Produkte / Material</h2><span class="hint">Preis: Kundenpreis › Produktpreis</span></header>
-  <form class="body" hx-post="/p/leistungen/leistungen/material" hx-target="find .errors">
-    <div class="form four">
-      <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}" required></div>
-      <div class="field"><label>Produkt</label><select class="input" name="produkt" style="width:100%" required>{% for nr, p in produkte.items() if p.aktiv is not false %}<option value="{{ nr }}">{{ nr }} {{ p.text }} · {{ p.preis|chf }}/{{ p.einheit }}</option>{% endfor %}</select></div>
-      <div class="field"><label>Menge</label><input class="input num" name="menge" inputmode="decimal" required></div>
-      <div class="field"><label>Preis (leer = automatisch)</label><input class="input num" name="preis" placeholder="auto"></div>
-      <div class="field"><label>Kunde</label>{{ kunde_select() }}</div>
-      <div class="field"><label>Projekt</label>{{ projekt_select() }}</div>
-      <div class="field" style="grid-column: span 2"><label>Text (leer = Produktname)</label><input class="input" name="text"></div>
-    </div>
-    {{ errors() }}<div class="formfoot"><span class="small muted">{% if not produkte %}Noch keine Produkte — unter <a class="link" href="?tab=stammdaten">Stammdaten</a> erfassen.{% endif %}</span><button class="btn primary" type="submit">Produkt erfassen</button></div>
-  </form>
-</div>
-<div class="panel">
-  <header><h2>Einträge {{ monat }}</h2>
-    <form class="actions" method="get"><input type="hidden" name="tab" value="erfassen">
-      <input class="input" type="month" name="monat" value="{{ monat }}" onchange="this.form.submit()" aria-label="Monat">
-      <select class="input" name="kunde" onchange="this.form.submit()" aria-label="Kunde"><option value="">alle Kunden</option>{% for nr, n in kunden.items() %}<option value="{{ nr }}" {{ 'selected' if nr == filter_kunde }}>{{ n }}</option>{% endfor %}</select>
-      <select class="input" name="status" onchange="this.form.submit()" aria-label="Status"><option value="">alle</option>{% for s in ("offen", "abgerechnet", "pauschal", "intern") %}<option {{ 'selected' if s == filter_status }}>{{ s }}</option>{% endfor %}</select>
-    </form></header>
-  <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Datum</th><th>Wer</th><th>Kunde / Projekt</th><th>Leistung</th><th class="right">Menge</th><th class="right">Preis</th><th class="right">Betrag</th><th>Status</th><th></th></tr></thead>
-    <tbody>{% for e in eintraege %}
-      <tr class="row"><td class="num">{{ e.datum|datum }}</td><td>{{ personen[e.wer].name if e.wer in personen else e.wer }}</td>
-        <td>{{ kunden.get(e.kunde, e.kunde) }}{% if e.projekt %}<br><span class="small muted">{{ e.projekt }} {{ projekte[e.projekt].name if e.projekt in projekte }}</span>{% endif %}</td>
-        <td>{{ e.text }}{% if e.kategorie %} <span class="small muted">({{ e.kategorie }})</span>{% endif %}</td>
-        <td class="right num">{{ e.menge|qty }}{{ ' h' if e.art == 'Zeit' else ' ' ~ (produkte[e.produkt].einheit if e.produkt in produkte else '') }}</td>
-        <td class="right num">{{ e.preis|chf(true) if e.preis is not none }}</td><td class="right num">{{ e.betrag|chf(true) }}</td>
-        <td>{{ state_pill(e.status) }}{% if e.rechnung and e.status == 'abgerechnet' %} <a class="beleg" href="/debitoren/rechnung/{{ e.rechnung }}">{{ e.rechnung }}</a>{% endif %}</td>
-        <td class="right">{% if e.status != 'abgerechnet' %}<form hx-post="/p/leistungen/leistungen/loeschen" hx-target="find .errors" hx-confirm="{{ e.id }} löschen?" style="display:inline"><input type="hidden" name="id" value="{{ e.id }}"><button class="btn small ghost" type="submit" title="Löschen">✕</button>{{ errors() }}</form>{% endif %}</td></tr>
-    {% else %}<tr><td colspan="9" class="empty">Keine Einträge in diesem Monat.</td></tr>{% endfor %}</tbody>
-  </table></div>
-</div>
+{% if tab == "woche" %}
+{# ---- quick entry: one line, live preview, Enter saves ---- #}
+<form class="panel quick" id="schnellform" hx-post="{{ A }}schnell" hx-target="#woche" hx-swap="outerHTML" autocomplete="off">
+  <input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}">
+  <div class="quickrow">
+    <input class="input quickinput" id="schnell" name="text" placeholder="Was hast du gemacht? z.B. 3.5h Fassade spachteln" aria-label="Schnelleingabe"
+           hx-get="{{ A }}vorschau" hx-trigger="input changed delay:150ms, focus once" hx-target="#vorschau" hx-swap="outerHTML" hx-include="[name=wer]">
+    <button class="btn primary" type="submit" title="Erfassen (Enter)">Erfassen ↵</button>
+    <button class="btn" type="button" data-quick-start title="Stoppuhr mit dieser Eingabe starten">▶ Start</button>
+  </div>
+  {% include "plugins/leistungen/leistungen/_vorschau.html" %}
+  <div class="small muted keys"><kbd>/</kbd> Eingabe · <kbd>↵</kbd> erfassen · <kbd>Esc</kbd> leeren · <kbd>S</kbd> Stoppuhr stoppen · <kbd>←</kbd> <kbd>→</kbd> Woche · <kbd>T</kbd> heute · <kbd>A</kbd> Zeile</div>
+</form>
+{% include "plugins/leistungen/leistungen/_woche.html" %}
+
+{% elif tab == "abwesenheiten" %}
+{% include "plugins/leistungen/leistungen/_kalender.html" %}
 
 {% elif tab == "abrechnen" %}
-<div class="panel">
-  <header><h2>Nicht verrechnet</h2><span class="hint">abrechenbare Stunden und Produkte, ohne Pauschalprojekte</span></header>
-  <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Kunde</th><th>Projekt</th><th>Zeitraum</th><th class="right">Stunden</th><th class="right">Produkte CHF</th><th class="right">Total CHF</th><th></th></tr></thead>
-    <tbody>{% for s in uebersicht %}
-      <tr class="row"><td>{{ s.kunde_name }}</td><td>{{ s.projekt }} {{ s.projekt_name }}</td><td class="num">{{ s.von|datum }} – {{ s.bis|datum }}</td>
-        <td class="right num">{{ s.stunden|qty }}</td><td class="right num">{{ s.produkte|chf(true) }}</td><td class="right num">{{ s.betrag|chf }}</td>
-        <td class="right"><a class="btn small" href="?tab=abrechnen&kunde={{ s.kunde }}&projekt={{ s.projekt }}">Abrechnen</a></td></tr>
-    {% else %}<tr><td colspan="7" class="empty">Alles verrechnet.</td></tr>{% endfor %}</tbody>
-  </table></div>
+<div class="figures">
+  <div class="figure"><span class="label">Bereit zur Rechnung</span><span class="value">{{ total_offen|chf }}</span><span class="meta">{{ karten|length }} Kunde(n)/Projekt(e){{ ' bis ' ~ (bis|datum) if bis }}</span></div>
+</div>
+{% if gruppen %}
+<form class="panel body actions" hx-post="{{ A }}alle_abrechnen" hx-target="find .errors" hx-confirm="{{ gruppen|length }} Rechnung(en) über total CHF {{ total_offen|chf }} ausstellen und verbuchen?">
+  <strong>Monatsende:</strong>
+  <label class="small muted inlinelabel">alles bis <input class="input" type="date" name="bis" value="{{ bis }}"></label>
+  <select class="input" name="je"><option value="kunde" {{ 'selected' if cfg.abrechnen_je == 'kunde' }}>eine Rechnung je Kunde</option><option value="projekt" {{ 'selected' if cfg.abrechnen_je == 'projekt' }}>eine Rechnung je Projekt</option></select>
+  <button class="btn primary" type="submit">Alle abrechnen ({{ gruppen|length }})</button>
+  <span class="small muted">mit Leistungsrapport, Rechnungsdatum heute</span>{{ errors() }}
+</form>
+{% endif %}
+<div class="cards">
+  {% for k in karten %}
+  <div class="panel card">
+    <div class="cardhead"><div><strong>{{ k.kunde_name }}</strong>{% if k.projekt %}<div class="small muted">{{ k.projekt }} {{ k.projekt_name }}</div>{% endif %}</div>
+      <div class="right"><div class="big num">{{ k.betrag|chf }}</div><div class="small muted">{{ k.von|datum("%d.%m.") }} – {{ k.bis|datum("%d.%m.%Y") }}</div></div></div>
+    <div class="cardmeta small">{% if k.stunden %}<span>{{ k.stunden|qty }} h</span>{% endif %}{% if k.produkte %}<span>Material {{ k.produkte|chf }}</span>{% endif %}<span>{{ k.eintraege }} Einträge</span>
+      {% if k.alter_tage > 30 %}<span class="pill warn" title="ältester offener Eintrag">{{ k.alter_tage }} Tage alt</span>{% endif %}{{ budget_pill(k.budget) }}</div>
+    <div class="cardfoot"><button class="btn small primary" type="button" hx-get="{{ A }}rechnung_vorschau?kunde={{ k.kunde }}&projekt={{ k.projekt }}{{ '&bis=' ~ bis if bis }}" hx-target="#rv-{{ loop.index }}" hx-swap="innerHTML">Rechnung erstellen</button></div>
+    <div id="rv-{{ loop.index }}"></div>
+  </div>
+  {% else %}<div class="panel body empty">Alles verrechnet.</div>{% endfor %}
 </div>
 {% if kunde %}
 <div class="panel">
-  <header><h2>Rechnung an {{ kunden.get(kunde, kunde) }}</h2>
+  <header><h2>Einzeln auswählen: {{ kunden.get(kunde, kunde) }}</h2>
     <form class="actions" method="get"><input type="hidden" name="tab" value="abrechnen"><input type="hidden" name="kunde" value="{{ kunde }}">
-      {{ projekt_select("projekt", projekt) }}
+      {{ projekt_select(projekte, kunden, "projekt", projekt) }}
       <input class="input" type="date" name="von" value="{{ von }}" aria-label="von"><input class="input" type="date" name="bis" value="{{ bis }}" aria-label="bis">
       <label class="check"><input type="checkbox" name="detail" value="1" {{ 'checked' if detail }}> eine Position pro Eintrag</label>
       <button class="btn small" type="submit">Filtern</button></form></header>
-  <form class="body" hx-post="/p/leistungen/leistungen/rechnung" hx-target="find .errors" hx-confirm="Rechnung ausstellen und als Debitor verbuchen?">
+  <form class="body" hx-post="{{ A }}rechnung" hx-target="find .errors" hx-confirm="Rechnung ausstellen und als Debitor verbuchen?">
     <div class="tablewrap"><table class="ledger">
       <thead><tr><th></th><th>Datum</th><th>Wer</th><th>Leistung</th><th class="right">Menge</th><th class="right">Preis</th><th class="right">Betrag</th></tr></thead>
       <tbody>{% for e in auswahl %}
         <tr class="row"><td><input type="checkbox" name="ids" value="{{ e.id }}" checked aria-label="{{ e.id }}"></td><td class="num">{{ e.datum|datum }}</td>
           <td>{{ personen[e.wer].name if e.wer in personen else e.wer }}</td><td>{{ e.text }}{% if e.projekt %} <span class="small muted">{{ e.projekt }}</span>{% endif %}</td>
-          <td class="right num">{{ e.menge|qty }}{{ ' h' if e.art == 'Zeit' }}</td><td class="right num">{{ e.preis|chf }}</td><td class="right num">{{ e.betrag|chf }}</td></tr>
+          <td class="right num">{{ e.menge|qty }}{{ ' h' if e.art == 'Zeit' }}</td><td class="right num">{{ e.preis|preis }}</td><td class="right num">{{ e.betrag|chf }}</td></tr>
       {% else %}<tr><td colspan="7" class="empty">Keine offenen Leistungen für diesen Filter.</td></tr>{% endfor %}</tbody>
     </table></div>
-    {% if vorschau %}
-    <h3 class="small muted" style="margin-top:12px">Vorschau (alle angezeigten Einträge)</h3>
-    <div class="tablewrap"><table class="ledger">
-      <thead><tr><th>Position</th><th class="right">Menge</th><th class="right">Preis</th><th>Konto</th><th>MWST</th><th class="right">Betrag</th></tr></thead>
-      <tbody>{% for p in vorschau.positionen %}<tr class="row"><td>{{ p.text }}</td><td class="right num">{{ p.menge|qty }} {{ p.einheit }}</td><td class="right num">{{ p.preis|chf }}</td><td class="acc">{{ p.konto }}</td><td>{{ p.mwst or '' }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
-      <tfoot>{% for b in vorschau.mwst %}<tr><td colspan="5">MWST {{ b.code }} auf {{ b.netto|chf }}</td><td class="right num">{{ b.steuer|chf }}</td></tr>{% endfor %}
-        <tr><td colspan="5">Total</td><td class="right num total">{{ vorschau.total|chf }}</td></tr></tfoot>
-    </table></div>{% endif %}
     {% if vorschau_fehler %}<p class="small" style="color:var(--red)">{{ vorschau_fehler }}</p>{% endif %}
     {% if auswahl %}
     <input type="hidden" name="detail" value="{{ '1' if detail else '0' }}">
@@ -117,55 +91,23 @@
 </div>
 {% endif %}
 
-{% elif tab == "projekte" %}
-<div class="panel">
-  <header><h2>Projekte</h2>
-    <form class="actions" method="get"><input type="hidden" name="tab" value="projekte"><select class="input" name="status" onchange="this.form.submit()" aria-label="Status">{% for s in ("offen", "abgeschlossen", "alle") %}<option {{ 'selected' if s == status }}>{{ s }}</option>{% endfor %}</select></form></header>
-  <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Projekt</th><th>Kunde</th><th>Art</th><th class="right">Stunden / Budget</th><th class="right">Wert</th><th class="right">Kosten</th><th class="right">Verrechnet</th><th class="right">Offen</th><th class="right">DB</th><th></th></tr></thead>
-    <tbody>{% for p in liste %}
-      <tr class="row"><td><span class="beleg">{{ p.nummer }}</span> {{ p.name }}{% if p.offerte %}<br><a class="small link" href="/p/leistungen/offerten?nr={{ p.offerte }}">{{ p.offerte }}</a>{% endif %}</td>
-        <td>{{ kunden.get(p.kunde, p.kunde) }}</td><td>{{ p.abrechnung }}</td>
-        <td class="right num">{{ p.stunden|qty }}{% if p.budget_stunden is not none %} / {{ p.budget_stunden|qty }}{% if p.auslastung is not none %} <span class="pill {{ 'red' if p.auslastung > 100 else ('warn' if p.auslastung > 80 else 'ok') }}">{{ p.auslastung }} %</span>{% endif %}{% endif %}</td>
-        <td class="right num">{{ p.wert|chf(true) }}{% if p.budget_chf is not none %}<br><span class="small muted">Budget {{ p.budget_chf|chf }}</span>{% endif %}</td>
-        <td class="right num">{{ p.kosten|chf(true) }}</td><td class="right num">{{ p.abgerechnet|chf(true) }}</td><td class="right num">{{ p.offen|chf(true) }}</td><td class="right num">{{ p.deckungsbeitrag|chf }}</td>
-        <td class="right"><form hx-post="/p/leistungen/leistungen/projekt_status" hx-target="find .errors" style="display:inline"><input type="hidden" name="nummer" value="{{ p.nummer }}"><input type="hidden" name="status" value="{{ 'abgeschlossen' if p.status == 'offen' else 'offen' }}"><button class="btn small ghost" type="submit">{{ 'Abschliessen' if p.status == 'offen' else 'Wieder öffnen' }}</button>{{ errors() }}</form></td></tr>
-    {% else %}<tr><td colspan="10" class="empty">Keine Projekte.</td></tr>{% endfor %}</tbody>
-  </table></div>
-  <div class="body small muted">Wert = erfasste Leistungen zu Verrechnungssätzen · Kosten = Stunden × Kostensatz · DB = Deckungsbeitrag (pauschal: verrechnet − Kosten).</div>
-</div>
-<div class="panel">
-  <header><h2>Projekt anlegen</h2><span class="hint">aus einer angenommenen Offerte entsteht das Projekt automatisch</span></header>
-  <form class="body" hx-post="/p/leistungen/leistungen/projekt_neu" hx-target="find .errors">
-    <div class="form four">
-      <div class="field" style="grid-column: span 2"><label>Name</label><input class="input" name="name" required></div>
-      <div class="field"><label>Kunde</label>{{ kunde_select(required=true) }}</div>
-      <div class="field"><label>Abrechnung</label><select class="input" name="abrechnung" style="width:100%"><option value="aufwand">nach Aufwand</option><option value="pauschal">pauschal</option></select></div>
-      <div class="field"><label>Budget Stunden</label><input class="input num" name="budget_stunden"></div>
-      <div class="field"><label>Budget CHF</label><input class="input num" name="budget_chf"></div>
-      <div class="field"><label>Stundensatz (leer = Kunde/Person)</label><input class="input num" name="satz"></div>
-    </div>
-    {{ errors() }}<div class="formfoot"><span></span><button class="btn primary" type="submit">Anlegen</button></div>
-  </form>
-</div>
-
-{% elif tab == "kontrolle" %}
+{% elif tab == "auswertung" %}
 <div class="panel">
   <header><h2>Stundenkontrolle {{ monat }}</h2>
-    <form class="actions" method="get"><input type="hidden" name="tab" value="kontrolle"><input class="input" type="month" name="monat" value="{{ monat }}" onchange="this.form.submit()" aria-label="Monat"></form></header>
+    <form class="actions" method="get"><input type="hidden" name="tab" value="auswertung"><input class="input" type="month" name="monat" value="{{ monat }}" onchange="this.form.submit()" aria-label="Monat"></form></header>
   <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Person</th><th class="right">Soll</th><th class="right">Ist</th><th class="right">davon abrechenbar</th><th>nicht abrechenbar</th><th class="right">Saldo Monat</th><th class="right">Saldo Jahr</th><th></th></tr></thead>
+    <thead><tr><th>Person</th><th class="right">Soll</th><th class="right">Ist</th><th class="right">davon abrechenbar</th><th>nicht abrechenbar / abwesend</th><th class="right">Saldo Monat</th><th class="right">Saldo Jahr</th><th></th></tr></thead>
     <tbody>{% for r in zeilen %}
-      <tr class="row"><td><a class="link" href="?tab=kontrolle&monat={{ monat }}&wer={{ r.nummer }}">{{ r.name }}</a>{% if r.stundenlohn %} <span class="pill muted">Stundenlohn</span>{% endif %}</td>
+      <tr class="row"><td><a class="link" href="?tab=auswertung&monat={{ monat }}&wer={{ r.nummer }}">{{ r.name }}</a>{% if r.stundenlohn %} <span class="pill muted">Stundenlohn</span>{% endif %}</td>
         <td class="right num">{{ r.soll|qty if r.soll is not none else '–' }}</td><td class="right num">{{ r.ist|qty }}</td>
         <td class="right num">{{ r.abrechenbar|qty }}{% if r.quote is not none %} <span class="small muted">{{ r.quote }} %</span>{% endif %}</td>
         <td class="small">{% for k, v in r.kategorien.items() %}{{ k }} {{ v|qty }}{{ ', ' if not loop.last }}{% endfor %}</td>
-        <td class="right num">{% if r.saldo is not none %}<span style="color:{{ 'var(--red)' if r.saldo < 0 else 'inherit' }}">{{ r.saldo|qty }}</span>{% else %}–{% endif %}</td>
+        <td class="right num">{% if r.saldo is not none %}<span class="{{ 'neg' if r.saldo < 0 }}">{{ r.saldo|qty }}</span>{% else %}–{% endif %}</td>
         <td class="right num">{{ r.saldo_jahr|qty if r.saldo_jahr is not none else '–' }}</td>
-        <td class="right">{% if r.stundenlohn and r.lohn and r.ist %}<form hx-post="/p/leistungen/leistungen/lohn" hx-target="find .errors" hx-confirm="{{ r.ist|qty }} h in den Lohnlauf {{ monat }} übernehmen?" style="display:inline"><input type="hidden" name="monat" value="{{ monat }}"><input type="hidden" name="wer" value="{{ r.nummer }}"><button class="btn small" type="submit">In Lohnlauf</button>{{ errors() }}</form>{% endif %}</td></tr>
+        <td class="right">{% if r.stundenlohn and r.lohn and r.ist %}<form hx-post="{{ A }}lohn" hx-target="find .errors" hx-confirm="{{ r.ist|qty }} h in den Lohnlauf {{ monat }} übernehmen?" style="display:inline"><input type="hidden" name="monat" value="{{ monat }}"><input type="hidden" name="wer" value="{{ r.nummer }}"><button class="btn small" type="submit">In Lohnlauf</button>{{ errors() }}</form>{% endif %}</td></tr>
     {% else %}<tr><td colspan="8" class="empty">Keine Personen.</td></tr>{% endfor %}</tbody>
   </table></div>
-  <div class="body small muted">Soll = Wochenstunden × Pensum ÷ 5 je Arbeitstag (Mo–Fr ohne Feiertage, ab Eintritt). Ist = alle erfassten Stunden inkl. Ferien, Krankheit, intern.</div>
+  <div class="body small muted">Soll = Wochenstunden × Pensum ÷ 5 je Arbeitstag (Mo–Fr ohne Feiertage des Kantons, ab Eintritt). Ist = erfasste Stunden plus Abwesenheiten (Ferien, Krank …).</div>
 </div>
 {% if jahr %}
 <div class="panel">
@@ -176,22 +118,96 @@
   </table></div>
 </div>
 {% endif %}
+<div class="panel">
+  <header><h2>Projekte</h2>
+    <form class="actions" method="get"><input type="hidden" name="tab" value="auswertung"><select class="input" name="status" onchange="this.form.submit()" aria-label="Status">{% for s in ("offen", "abgeschlossen", "alle") %}<option {{ 'selected' if s == status }}>{{ s }}</option>{% endfor %}</select></form></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Projekt</th><th>Kunde</th><th>Art</th><th class="right">Stunden / Budget</th><th class="right">Wert</th><th class="right">Kosten</th><th class="right">Verrechnet</th><th class="right">Offen</th><th class="right">DB</th><th></th></tr></thead>
+    <tbody>{% for p in liste %}
+      <tr class="row"><td><span class="beleg">{{ p.nummer }}</span> {{ p.name }}{% if p.offerte %}<br><a class="small link" href="/p/leistungen/offerten?nr={{ p.offerte }}">{{ p.offerte }}</a>{% endif %}</td>
+        <td>{{ kunden.get(p.kunde, p.kunde) }}</td><td>{{ p.abrechnung }}</td>
+        <td class="right num">{{ p.stunden|qty }}{% if p.budget_stunden is not none %} / {{ p.budget_stunden|qty }} {{ budget_pill(p.auslastung) }}{% endif %}</td>
+        <td class="right num">{{ p.wert|chf(true) }}{% if p.budget_chf is not none %}<br><span class="small muted">Budget {{ p.budget_chf|chf }}</span>{% endif %}</td>
+        <td class="right num">{{ p.kosten|chf(true) }}</td><td class="right num">{{ p.abgerechnet|chf(true) }}</td><td class="right num">{{ p.offen|chf(true) }}</td><td class="right num">{{ p.deckungsbeitrag|chf }}</td>
+        <td class="right"><form hx-post="{{ A }}projekt_status" hx-target="find .errors" style="display:inline"><input type="hidden" name="nummer" value="{{ p.nummer }}"><input type="hidden" name="status" value="{{ 'abgeschlossen' if p.status == 'offen' else 'offen' }}"><button class="btn small ghost" type="submit">{{ 'Abschliessen' if p.status == 'offen' else 'Wieder öffnen' }}</button>{{ errors() }}</form></td></tr>
+    {% else %}<tr><td colspan="10" class="empty">Keine Projekte.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="body small muted">Wert = erfasste Leistungen zu Verrechnungssätzen · Kosten = Stunden × Kostensatz · DB = Deckungsbeitrag (pauschal: verrechnet − Kosten).</div>
+</div>
+<div class="panel">
+  <header><h2>Projekt anlegen</h2><span class="hint">aus einer angenommenen Offerte entsteht das Projekt automatisch</span></header>
+  <form class="body" hx-post="{{ A }}projekt_neu" hx-target="find .errors">
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label>Name</label><input class="input" name="name" required></div>
+      <div class="field"><label>Kunde</label>{{ kunde_select(kunden, required=true) }}</div>
+      <div class="field"><label>Abrechnung</label><select class="input" name="abrechnung" style="width:100%"><option value="aufwand">nach Aufwand</option><option value="pauschal">pauschal</option></select></div>
+      <div class="field"><label>Budget Stunden</label><input class="input num" name="budget_stunden"></div>
+      <div class="field"><label>Budget CHF</label><input class="input num" name="budget_chf"></div>
+      <div class="field"><label>Stundensatz (leer = Kunde/Leistungsart/Person)</label><input class="input num" name="satz"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span></span><button class="btn primary" type="submit">Anlegen</button></div>
+  </form>
+</div>
 
 {% elif tab == "stammdaten" %}
 <div class="panel">
-  <header><h2>Personen und Sätze</h2><span class="hint">Verrechnungssatz = was der Kunde pro Stunde zahlt · Kostensatz = interne Kosten (Deckungsbeitrag)</span></header>
+  <header><h2>Einstellungen</h2></header>
+  <form class="body form four" hx-post="{{ A }}einstellungen" hx-target="find .errors">
+    <div class="field"><label>Stoppuhr runden auf</label><select class="input" name="rundung" style="width:100%">{% for m in (0, 1, 5, 6, 10, 15, 30) %}<option value="{{ m }}" {{ 'selected' if cfg.rundung == m }}>{{ 'genau (Minute)' if m in (0, 1) else m ~ ' Minuten (aufrunden)' }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Ferientage pro Jahr (100 %)</label><input class="input num" name="ferien_tage" value="{{ cfg.ferien_tage|qty }}"></div>
+    <div class="field"><label>Feiertage des Kantons</label><input class="input" name="feiertage_kanton" value="{{ cfg.feiertage_kanton }}" placeholder="leer = Kanton des Firmensitzes"></div>
+    <div class="field"><label>Abrechnen</label><select class="input" name="abrechnen_je" style="width:100%"><option value="kunde" {{ 'selected' if cfg.abrechnen_je == 'kunde' }}>eine Rechnung je Kunde</option><option value="projekt" {{ 'selected' if cfg.abrechnen_je == 'projekt' }}>eine Rechnung je Projekt</option></select></div>
+    <div class="field" style="grid-column: span 4">{{ errors() }}<div class="formfoot"><span class="small muted">Feiertage: die gesetzlichen des Kantons; zusätzliche oder nicht gehaltene unten anpassen.</span><button class="btn" type="submit">Speichern</button></div></div>
+  </form>
+</div>
+{% for titel, items, einheit_default, hint in (("Leistungsarten", leistungsarten, "h", "Tätigkeiten mit Stundensatz — der Satz gilt, wenn Projekt und Kunde keinen eigenen haben"), ("Material und Produkte", material, "Stk", "Stück, m², Liter, Pauschal …")) %}
+<div class="panel">
+  <header><h2>{{ titel }}</h2><span class="hint">{{ hint }}</span></header>
   <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Person</th><th class="right">Soll/Woche</th><th>Verrechnungssatz</th><th>Kostensatz</th><th></th></tr></thead>
+    <thead><tr><th>Nr.</th><th>Bezeichnung</th><th class="right">Preis</th><th>Konto</th><th>MWST</th><th>Kundenpreise</th><th></th></tr></thead>
+    <tbody>{% for nr, p in items.items() %}
+      <tr class="row"><td class="acc">{{ nr }}</td><td>{{ p.text }}</td><td class="right num">{{ p.preis|preis }} / {{ p.einheit }}</td><td class="acc">{{ p.konto }}</td><td>{{ p.mwst or '' }}</td>
+        <td class="small">{% for k, v in (p.kundenpreise or {}).items() %}{{ kunden.get(k, k) }} {{ v|chf }}{{ ', ' if not loop.last }}{% endfor %}</td>
+        <td class="right"><details class="drawer"><summary class="btn small ghost">⋯</summary>
+          <form class="panel" hx-post="{{ A }}produkt" hx-target="find .errors" style="position:absolute;right:40px;z-index:3;padding:12px;width:300px;text-align:left;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px">
+            <input type="hidden" name="nummer" value="{{ nr }}">
+            <div class="field"><label>Preis</label><input class="input num" name="preis" value="{{ p.preis }}"></div>
+            <div class="field"><label>Kundenpreis für</label>{{ kunde_select(kunden, "kunde", leer="— keinen —") }}</div>
+            <div class="field"><label>Kundenpreis (leer = entfernen)</label><input class="input num" name="kundenpreis"></div>
+            <div class="field"><label>Aktiv</label><select class="input" name="aktiv"><option value="">unverändert</option><option value="ja">ja</option><option value="nein">nein</option></select></div>
+            {{ errors() }}<button class="btn small primary" type="submit">Speichern</button></form></details></td></tr>
+    {% else %}<tr><td colspan="7" class="empty">Noch keine.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <form class="body" hx-post="{{ A }}produkt_neu" hx-target="find .errors">
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label>Bezeichnung</label><input class="input" name="text" required placeholder="{{ 'z.B. Malerarbeiten' if einheit_default == 'h' else 'z.B. Dispersionsfarbe weiss' }}"></div>
+      <div class="field"><label>Preis{{ ' pro Stunde' if einheit_default == 'h' }}</label><input class="input num" name="preis" required></div>
+      <div class="field"><label>Einheit</label><input class="input" name="einheit" value="{{ einheit_default }}"{{ ' readonly' if einheit_default == 'h' }}></div>
+      <div class="field"><label>Ertragskonto (leer = Standard)</label><input class="input" name="konto"></div>
+      <div class="field"><label>MWST-Code (leer = Standard)</label><input class="input" name="mwst" placeholder="U81"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span></span><button class="btn" type="submit">Erfassen</button></div>
+  </form>
+</div>
+{% endfor %}
+<div class="panel">
+  <header><h2>Personen und Sätze</h2><span class="hint">Verrechnungssatz = was der Kunde pro Stunde zahlt (ohne Leistungsart) · Kostensatz = interne Kosten</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Person</th><th class="right">Soll/Woche</th><th>Sätze, Ferien und Vorträge</th></tr></thead>
     <tbody>{% for nr, p in personen.items() %}
       <tr class="row"><td><span class="acc">{{ nr }}</span> {{ p.name }}{% if not p.lohn %} <span class="pill muted">ohne Lohn</span>{% endif %}{% if p.stundenlohn %} <span class="pill muted">Stundenlohn</span>{% endif %}</td>
         <td class="right num">{{ p.woche|qty if p.woche else '–' }}</td>
-        <td colspan="3"><form class="actions" hx-post="/p/leistungen/leistungen/person" hx-target="find .errors"><input type="hidden" name="nummer" value="{{ nr }}">
-          <input class="input num" name="satz" value="{{ p.satz if p.satz is not none else '' }}" placeholder="CHF/h" aria-label="Verrechnungssatz" style="width:110px">
-          <input class="input num" name="kostensatz" value="{{ p.kostensatz if p.kostensatz is not none else '' }}" placeholder="CHF/h" aria-label="Kostensatz" style="width:110px">
+        <td><form class="actions" hx-post="{{ A }}person" hx-target="find .errors"><input type="hidden" name="nummer" value="{{ nr }}">
+          <input class="input num" name="satz" value="{{ p.satz if p.satz is not none else '' }}" placeholder="Satz CHF/h" aria-label="Verrechnungssatz" style="width:100px">
+          <input class="input num" name="kostensatz" value="{{ p.kostensatz if p.kostensatz is not none else '' }}" placeholder="Kosten CHF/h" aria-label="Kostensatz" style="width:100px">
+          <input class="input num" name="ferien_tage" value="{{ p.ferien_tage if p.ferien_tage is not none else '' }}" placeholder="Ferientage" aria-label="Ferientage pro Jahr" style="width:90px">
+          <input class="input num" name="vortrag_jahr" value="{{ today().year }}" aria-label="Vortrag ins Jahr" style="width:70px">
+          <input class="input num" name="vortrag" placeholder="Std.-Vortrag" aria-label="Stundensaldo-Vortrag" style="width:100px">
+          <input class="input num" name="ferien_vortrag" placeholder="Ferien-Vortrag" aria-label="Ferientage-Vortrag" style="width:110px">
           <button class="btn small" type="submit">Speichern</button>{{ errors() }}</form></td></tr>
-    {% else %}<tr><td colspan="5" class="empty">Noch keine Personen — Mitarbeitende unter Lohn erfassen oder unten eine Person ohne Lohn anlegen.</td></tr>{% endfor %}</tbody>
+    {% else %}<tr><td colspan="3" class="empty">Noch keine Personen — Mitarbeitende unter Lohn erfassen oder unten eine Person ohne Lohn anlegen.</td></tr>{% endfor %}</tbody>
   </table></div>
-  <form class="body" hx-post="/p/leistungen/leistungen/person" hx-target="find .errors">
+  <form class="body" hx-post="{{ A }}person" hx-target="find .errors">
     <div class="form four">
       <div class="field"><label>Person ohne Lohn (z.B. Inhaber/in)</label><input class="input" name="name" required></div>
       <div class="field"><label>Verrechnungssatz</label><input class="input num" name="satz"></div>
@@ -201,37 +217,9 @@
     {{ errors() }}<div class="formfoot"><span class="small muted">Mitarbeitende mit Lohn erscheinen automatisch (Lohn → Mitarbeitende).</span><button class="btn" type="submit">Person anlegen</button></div>
   </form>
 </div>
-<div class="panel">
-  <header><h2>Produkte</h2><span class="hint">ein geänderter Preis gilt für neue Einträge</span></header>
-  <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Nr.</th><th>Produkt</th><th class="right">Preis</th><th>Konto</th><th>MWST</th><th>Kundenpreise</th><th></th></tr></thead>
-    <tbody>{% for nr, p in produkte.items() %}
-      <tr class="row"><td class="acc">{{ nr }}</td><td>{{ p.text }}{% if p.aktiv is false %} <span class="pill muted">inaktiv</span>{% endif %}</td><td class="right num">{{ p.preis|chf }} / {{ p.einheit }}</td><td class="acc">{{ p.konto }}</td><td>{{ p.mwst or '' }}</td>
-        <td class="small">{% for k, v in (p.kundenpreise or {}).items() %}{{ kunden.get(k, k) }} {{ v|chf }}{{ ', ' if not loop.last }}{% endfor %}</td>
-        <td class="right"><details class="drawer"><summary class="btn small ghost">⋯</summary>
-          <form class="panel" hx-post="/p/leistungen/leistungen/produkt" hx-target="find .errors" style="position:absolute;right:40px;z-index:3;padding:12px;width:300px;text-align:left;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px">
-            <input type="hidden" name="nummer" value="{{ nr }}">
-            <div class="field"><label>Preis</label><input class="input num" name="preis" value="{{ p.preis }}"></div>
-            <div class="field"><label>Kundenpreis für</label>{{ kunde_select("kunde", leer="— keinen —") }}</div>
-            <div class="field"><label>Kundenpreis (leer = entfernen)</label><input class="input num" name="kundenpreis"></div>
-            <div class="field"><label>Aktiv</label><select class="input" name="aktiv"><option value="">unverändert</option><option value="ja">ja</option><option value="nein">nein</option></select></div>
-            {{ errors() }}<button class="btn small primary" type="submit">Speichern</button></form></details></td></tr>
-    {% else %}<tr><td colspan="7" class="empty">Noch keine Produkte.</td></tr>{% endfor %}</tbody>
-  </table></div>
-  <form class="body" hx-post="/p/leistungen/leistungen/produkt_neu" hx-target="find .errors">
-    <div class="form four">
-      <div class="field" style="grid-column: span 2"><label>Produkt</label><input class="input" name="text" required placeholder="z.B. Dispersionsfarbe weiss"></div>
-      <div class="field"><label>Preis</label><input class="input num" name="preis" required></div>
-      <div class="field"><label>Einheit</label><input class="input" name="einheit" value="Stk"></div>
-      <div class="field"><label>Ertragskonto (leer = {{ cfg.konto_produkte }})</label><input class="input" name="konto"></div>
-      <div class="field"><label>MWST-Code (leer = Standard)</label><input class="input" name="mwst" placeholder="U81"></div>
-    </div>
-    {{ errors() }}<div class="formfoot"><span></span><button class="btn" type="submit">Produkt erfassen</button></div>
-  </form>
-</div>
 <div class="panel" id="kunde">
   <header><h2>Kunde anlegen</h2><span class="hint">derselbe Kundenstamm wie unter Debitoren</span></header>
-  <form class="body" hx-post="/p/leistungen/leistungen/kunde" hx-target="find .errors">
+  <form class="body" hx-post="{{ A }}kunde" hx-target="find .errors">
     <div class="form four">
       <div class="field" style="grid-column: span 2"><label>Firma</label><input class="input" name="firma" placeholder="leer bei Privatpersonen"></div>
       <div class="field" style="grid-column: span 2"><label>Name</label><input class="input" name="name" required></div>
@@ -240,19 +228,223 @@
       <div class="field"><label>PLZ</label><input class="input" name="plz"></div>
       <div class="field"><label>Ort</label><input class="input" name="ort"></div>
       <div class="field"><label>E-Mail</label><input class="input" type="email" name="email"></div>
-      <div class="field"><label>Stundensatz (leer = Satz der Person)</label><input class="input num" name="stundensatz"></div>
+      <div class="field"><label>Stundensatz (leer = Leistungsart/Person)</label><input class="input num" name="stundensatz"></div>
     </div>
     {{ errors() }}<div class="formfoot"><span class="small muted">Ohne Adresse trägt der QR-Einzahlungsschein keine Schuldneradresse.</span><button class="btn" type="submit">Kunde anlegen</button></div>
   </form>
 </div>
 <div class="panel">
-  <header><h2>Stundenkontrolle</h2><span class="hint">Feiertage reduzieren die Sollzeit; ein Datum pro Zeile</span></header>
-  <form class="body" hx-post="/p/leistungen/leistungen/feiertage" hx-target="find .errors">
+  <header><h2>Stundenkontrolle und zusätzliche Feiertage</h2><span class="hint">die gesetzlichen Feiertage des Kantons gelten automatisch; hier zusätzliche (ein Datum pro Zeile)</span></header>
+  <form class="body" hx-post="{{ A }}feiertage" hx-target="find .errors">
     <div class="form four"><div class="field"><label>Kontrolle ab (leer = ab Eintritt bzw. 1. Januar)</label><input class="input" type="date" name="kontrolle_ab" value="{{ cfg.kontrolle_ab }}"></div></div>
-    <label class="small muted" for="feiertage">Feiertage</label>
-    <textarea id="feiertage" class="input" name="feiertage" style="min-height:90px;width:100%" placeholder="2026-12-25">{{ cfg.feiertage|join('\n') }}</textarea>
+    <label class="small muted" for="feiertage">Zusätzliche Feiertage</label>
+    <textarea id="feiertage" class="input" name="feiertage" style="min-height:90px;width:100%" placeholder="2026-12-24">{{ cfg.feiertage|join('\n') }}</textarea>
     {{ errors() }}<div class="formfoot"><span></span><button class="btn" type="submit">Speichern</button></div>
   </form>
 </div>
 {% endif %}
+
+<style>
+  .quick { padding: 12px 14px; margin-bottom: 14px; }
+  .quickrow { display: flex; gap: 8px; }
+  .quickinput { flex: 1; font-size: 17px; padding: 12px 14px; }
+  .preview { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 30px; margin-top: 10px; }
+  .preview .tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--hover); font-size: 13px; border: 1px solid var(--rule); }
+  .preview .tag.ok { border-color: var(--ok); }
+  .preview .tag.warn { border-color: var(--warn); }
+  .preview .tag.strong { font-weight: 600; }
+  .preview .tag.pick { cursor: pointer; border-style: dashed; }
+  .preview .tag.pick:hover { border-color: var(--red); }
+  .ok-text { color: var(--ok); }
+  .inlinelabel { display: inline-flex; align-items: center; gap: 6px; }
+  .keys { margin-top: 8px; }
+  .keys kbd { font-size: 11px; }
+  .timerbar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin-bottom: 12px; border-color: var(--red); }
+  .timerbar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); animation: pulse 1.6s infinite; }
+  .timerbar strong.num { font-size: 20px; font-variant-numeric: tabular-nums; }
+  @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .chip { display: inline-flex; align-items: stretch; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); overflow: hidden; max-width: 100%; }
+  .chip.fav { border-color: var(--warn); }
+  .chip form.inline { display: contents; }
+  .chipbtn { border: 0; background: transparent; color: var(--muted); padding: 0 10px; cursor: pointer; font-size: 13px; }
+  .chipbtn:hover { color: var(--red); background: var(--hover); }
+  .chipbtn.star { color: var(--warn); }
+  .chiplabel { border: 0; background: transparent; color: var(--ink); padding: 6px 4px; cursor: pointer; font-size: 13px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+  .chiplabel:hover { text-decoration: underline; }
+  .weekgrid th.day, .weekgrid td.cell { width: 70px; }
+  .weekgrid th.off, .weekgrid td.off { background: var(--hover); }
+  .weekgrid th.today { color: var(--red); }
+  .weekgrid td.cell { padding: 3px 4px; }
+  .weekgrid input.wz { width: 100%; text-align: right; border: 1px solid transparent; background: transparent; color: var(--ink); padding: 6px 6px; border-radius: 6px; font: inherit; font-variant-numeric: tabular-nums; }
+  .weekgrid input.wz:hover { border-color: var(--rule); }
+  .weekgrid input.wz:focus { outline: none; border-color: var(--red); background: var(--sheet); }
+  .weekgrid .locked { color: var(--muted); padding: 6px; display: inline-block; }
+  .weekgrid .rowlabel { min-width: 220px; }
+  .neg { color: var(--red); }
+  form.inline { display: inline; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; margin-bottom: 14px; }
+  .card { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .cardhead { display: flex; justify-content: space-between; gap: 12px; }
+  .cardhead .big { font-size: 22px; font-weight: 600; }
+  .cardmeta { display: flex; flex-wrap: wrap; gap: 10px; color: var(--muted); align-items: center; }
+  .card .drawerbody { margin: 0 -16px -14px; border-top: 1px solid var(--rule); }
+  .yearcal { border-collapse: collapse; width: 100%; font-size: 11px; }
+  .yearcal th { color: var(--muted); font-weight: 500; padding: 2px; text-align: center; }
+  .yearcal tbody th { text-align: left; padding-right: 8px; }
+  .yearcal td { height: 22px; min-width: 18px; border: 1px solid var(--rule); cursor: pointer; }
+  .yearcal td.we, .lg.we { background: var(--hover); }
+  .yearcal td.hol, .lg.hol { background: repeating-linear-gradient(45deg, var(--hover), var(--hover) 3px, transparent 3px, transparent 6px); }
+  .yearcal td.ferien, .lg.ferien { background: var(--ok); }
+  .yearcal td.krank, .lg.krank { background: var(--red); opacity: .8; }
+  .yearcal td.kompensation, .lg.kompensation { background: var(--info); }
+  .yearcal td.andere, .lg.andere { background: var(--warn); }
+  .yearcal td.half { background-image: linear-gradient(135deg, transparent 50%, var(--sheet) 50%); }
+  .yearcal td.now { outline: 2px solid var(--red); outline-offset: -2px; }
+  .yearcal td.none { border: 0; cursor: default; }
+  .yearcal td.sel { outline: 2px solid var(--ink); outline-offset: -2px; }
+  .panel .calkey { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .lg { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--rule); vertical-align: middle; margin-right: 2px; }
+</style>
+<script>
+(function () {
+  if (window.__leistungen) return; window.__leistungen = true;
+  const $ = (s, r) => (r || document).querySelector(s), $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const typing = () => document.activeElement && document.activeElement.matches("input, textarea, select");
+  const toast = (m, err) => window.aeradexToast && window.aeradexToast(m, err);
+
+  // remember the chosen person
+  try {
+    const sel = $("[data-person]"), url = new URL(location.href);
+    if (sel) {
+      const saved = localStorage.getItem("aeradex-leistungen-wer");
+      if (!url.searchParams.get("wer") && saved && saved !== sel.value && [...sel.options].some(o => o.value === saved)) {
+        url.searchParams.set("wer", saved); location.replace(url); return;
+      }
+      localStorage.setItem("aeradex-leistungen-wer", sel.value);
+    }
+  } catch (x) { /* private mode */ }
+
+  // the running timer ticks; the tab title shows it too
+  const baseTitle = document.title;
+  setInterval(() => {
+    const t = $("[data-timer-start]");
+    if (!t) { document.title = baseTitle; return; }
+    const s = Math.max(0, Math.floor((Date.now() - new Date(t.dataset.timerStart).getTime()) / 1000));
+    const txt = Math.floor(s / 3600) + ":" + String(Math.floor(s / 60) % 60).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    t.textContent = txt; document.title = "▶ " + txt + " · " + baseTitle;
+  }, 1000);
+
+  // a refused fragment action: the message as a toast, the fragment stays
+  document.addEventListener("htmx:beforeSwap", e => {
+    const tgt = e.detail.target;
+    if (tgt && tgt.matches && tgt.matches("[data-fragment]") && /^\s*<div class="alert error"/.test(e.detail.xhr.responseText || "")) {
+      e.detail.shouldSwap = false;
+      const d = document.createElement("div"); d.innerHTML = e.detail.xhr.responseText; toast(d.textContent.trim(), true);
+    }
+  });
+
+  // keep the cursor in the grid across a save: remember the cell that has focus, refocus it after the swap
+  let focusId = null, focusSel = null;
+  document.addEventListener("htmx:beforeRequest", () => {
+    const a = document.activeElement;
+    focusId = a && a.id && a.id.startsWith("z-") ? a.id : null;
+    focusSel = focusId && a.selectionStart !== undefined ? [a.selectionStart, a.selectionEnd] : null;
+  });
+  document.addEventListener("htmx:afterSwap", () => {
+    if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); if (el.select) el.select(); } }
+    bulkUpdate();
+  });
+
+  // quick entry: clear after saving, Esc clears, ▶ starts the timer with the line
+  document.addEventListener("htmx:afterRequest", e => {
+    if (e.detail.elt && e.detail.elt.id === "schnellform" && e.detail.successful && !/alert error/.test(e.detail.xhr.responseText || "")) {
+      const i = $("#schnell"); i.value = ""; htmx.trigger(i, "input"); i.focus();
+    }
+  });
+  document.addEventListener("click", e => {
+    const fill = e.target.closest("[data-fill]");
+    if (fill) { const i = $("#schnell"); i.value = fill.dataset.fill; i.focus(); htmx.trigger(i, "input"); return; }
+    const pick = e.target.closest("[data-pick]");
+    if (pick) { const i = $("#schnell"); i.value = (i.value + " " + pick.dataset.pick).replace(/\s+/g, " ").trim() + " "; i.focus(); htmx.trigger(i, "input"); return; }
+    if (e.target.closest("[data-quick-start]")) {
+      const i = $("#schnell"), f = $("#schnellform");
+      htmx.ajax("POST", "/p/leistungen/leistungen/start", { source: f, target: "#woche", swap: "outerHTML",
+        values: { text: i.value, wer: f.wer.value, woche: f.woche.value } }).then(() => { i.value = ""; htmx.trigger(i, "input"); });
+      return;
+    }
+    if (e.target.closest("[data-addrow-open]")) { const r = $(".addrow"); if (r) { r.hidden = false; $("[name=ziel]", r).focus(); } return; }
+    if (e.target.closest("[data-addrow-cancel]")) { $(".addrow").hidden = true; return; }
+    if (e.target.closest("[data-editclose]")) { document.getElementById(e.target.closest("[data-editclose]").dataset.editclose).hidden = true; return; }
+    const day = e.target.closest(".yearcal td[data-day]");
+    if (day) {
+      const von = $("[data-abs-von]"), bis = $("[data-abs-bis]");
+      if (!von.value || bis.value || day.dataset.day < von.value) { von.value = day.dataset.day; bis.value = ""; }
+      else { bis.value = day.dataset.day; }
+      $$(".yearcal td.sel").forEach(x => x.classList.remove("sel")); day.classList.add("sel");
+    }
+  });
+  document.addEventListener("dblclick", e => {
+    const tr = e.target.closest("tr[data-edit]"); if (!tr || e.target.closest("a, button, input, form")) return;
+    const row = document.getElementById(tr.dataset.edit); if (row) { row.hidden = false; const i = $("input[name=menge]", row); if (i) { i.focus(); i.select(); } }
+  });
+
+  // add a row to the week: it exists as soon as a cell gets hours
+  document.addEventListener("submit", e => {
+    const f = e.target.closest("[data-addrow-form]"); if (!f) return;
+    e.preventDefault();
+    const raw = f.ziel.value.trim(), nr = raw.split(" ")[0].toUpperCase(), grid = $(".weekgrid");
+    const intern = nr === "INTERN";
+    const vals = { wer: grid.dataset.wer, woche: grid.dataset.woche, kunde: /^K/.test(nr) ? nr : "", projekt: /^P\d{4}/.test(nr) ? nr : "",
+                   leistung: f.leistung.value, abrechenbar: intern ? "False" : "True", kategorie: intern ? "Intern" : "", text: "" };
+    if (!intern && !vals.kunde && !vals.projekt) { toast("Projekt oder Kunde aus der Liste wählen", true); return; }
+    const tr = document.createElement("tr"); tr.className = "row";
+    const label = document.createElement("td"); label.className = "rowlabel"; label.innerHTML = "<strong></strong>"; label.firstChild.textContent = raw; tr.appendChild(label);
+    const start = new Date(grid.dataset.woche + "T00:00:00");
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      const td = document.createElement("td"); td.className = "right cell";
+      const inp = document.createElement("input"); inp.className = "wz num"; inp.name = "stunden"; inp.inputMode = "decimal"; inp.dataset.col = i;
+      inp.id = "z-neu-" + i; inp.setAttribute("hx-post", "/p/leistungen/leistungen/zelle"); inp.setAttribute("hx-trigger", "change");
+      inp.setAttribute("hx-target", "#woche"); inp.setAttribute("hx-swap", "outerHTML"); inp.setAttribute("hx-vals", JSON.stringify({ ...vals, datum: iso }));
+      td.appendChild(inp); tr.appendChild(td);
+    }
+    tr.appendChild(document.createElement("td"));
+    $(".addrow").before(tr); htmx.process(tr); $(".addrow").hidden = true; f.reset();
+    const first = $("input", tr); first && first.focus();
+  });
+
+  // grid keyboard: Enter/↓ next row, ↑ previous row, like a spreadsheet
+  document.addEventListener("keydown", e => {
+    const cell = e.target.closest && e.target.closest("input.wz");
+    if (cell && (e.key === "Enter" || e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      const tr = cell.closest("tr"), col = cell.dataset.col;
+      let next = e.key === "ArrowUp" ? tr.previousElementSibling : tr.nextElementSibling;
+      while (next && !$(`input.wz[data-col="${col}"]`, next)) next = e.key === "ArrowUp" ? next.previousElementSibling : next.nextElementSibling;
+      cell.dispatchEvent(new Event("change", { bubbles: true }));
+      if (next) { const n = $(`input.wz[data-col="${col}"]`, next); n.focus(); n.select(); }
+      return;
+    }
+    if (e.key === "Escape" && e.target.id === "schnell") { e.target.value = ""; htmx.trigger(e.target, "input"); return; }
+    if (typing() || e.metaKey || e.ctrlKey || e.altKey) return;
+    const click = sel => { const el = $(sel); if (el) { e.preventDefault(); e.stopPropagation(); el.click(); } };
+    if (e.key === "/" || e.key === "e") { const i = $("#schnell"); if (i) { e.preventDefault(); e.stopPropagation(); i.focus(); } }
+    else if (e.key === "s") click("[data-key-stop]");
+    else if (e.key === "ArrowLeft") click("[data-key-prev]");
+    else if (e.key === "ArrowRight") click("[data-key-next]");
+    else if (e.key === "t") click("[data-key-today]");
+    else if (e.key === "a") click("[data-addrow-open]");
+  }, true);
+
+  // bulk move: the bar appears when entries are selected
+  function bulkUpdate() {
+    const bar = $("#bulk"); if (!bar) return;
+    const n = $$("input[data-bulk]").filter(b => b.checked).length;
+    $("[data-bulkcount]", bar).textContent = n; bar.hidden = n === 0;
+  }
+  document.addEventListener("change", e => { if (e.target.matches("input[data-bulk]")) bulkUpdate(); });
+})();
+</script>
 {% endblock %}

@@ -1,10 +1,33 @@
 # aeradex-leistungen
 
-Offerten, Zeiterfassung, Produkte, Projekte, Stundenkontrolle und Abrechnung an Kunden für
-[aeradex](../../README.md). Abgerechnet wird über die normalen aeradex-Rechnungen (QR-Rechnung, Debitor 1100 an
-Ertrag, MWST) — das Plugin bucht selbst nichts. Oberfläche: Hauptmenüpunkt **Plugins**,
-darunter **Leistungen** (Erfassen, Abrechnen, Projekte, Stundenkontrolle,
-Stammdaten) und **Offerten**. Die erstellten Rechnungen erscheinen unter **Debitoren**.
+Zeit und Material erfassen, Abwesenheiten, Offerten, Projekte und Abrechnung an Kunden für
+[aeradex](../../README.md) — gebaut für das Büro: Tastatur zuerst, eine Zeile statt eines Formulars. Abgerechnet wird
+über die normalen aeradex-Rechnungen (QR-Rechnung, Debitor 1100 an Ertrag, MWST). Oberfläche: **Plugins → Leistungen**
+(Woche, Abrechnen, Abwesenheiten, Auswertung, Stammdaten) und **Offerten**.
+
+**Woche** — Schnelleingabe in einer Zeile mit Live-Vorschau, Enter speichert:
+
+    3.5h Fassade spachteln          2:30 P0003 Malerarbeiten Decke       8-12 gestern Beratung Huber
+    12 l Farbe Huber                1h intern Buchhaltung                start P0003 Spachteln   (▶ Stoppuhr)
+
+Dazu die Stoppuhr (ein Klick, Wechsel stoppt die laufende, Rundung wählbar), «zuletzt verwendet» und Favoriten als
+Chips (▶ starten, Klick übernimmt in die Eingabe), das Wochenraster wie eine Tabelle (Tab/Enter/Pfeile, Soll/Ist und
+Saldo pro Tag, Feiertage des Kantons) und die Einträge der Woche (Doppelklick bearbeitet, mehrere auswählen und auf ein
+anderes Projekt oder eine andere Leistungsart verschieben). Tasten: `/` Eingabe, `S` Stoppuhr stoppen, `←` `→` Woche,
+`T` heute, `A` Zeile.
+
+**Leistungsarten** sind Katalogeinträge mit Einheit h («Malerarbeiten 95/h»): sie tragen den Stundensatz, das Konto
+und den MWST-Code und gruppieren die Rechnung («Malerarbeiten 12.5 h à 95»). Material hat jede andere Einheit
+(Stk, m², l, Pauschal).
+
+**Abwesenheiten** — Jahreskalender pro Person (Ferien, Krank, Unfall, Militär/ZS, Mutter-/Vaterschaft, Weiterbildung,
+Kompensation, unbezahlt; halbe Tage), Ferienkonto (Anspruch pro rata Eintritt/Austritt, Vortrag, bezogen, geplant,
+Rest), Teamübersicht und Arbeitszeitnachweis nach Art. 73 ArGV 1 als PDF. Die gesetzlichen Feiertage kommen aus dem
+Kanton des Firmensitzes (`data/feiertage.json`, erzeugt mit `tools/feiertage.py`), eigene lassen sich ergänzen.
+
+**Abrechnen** — eine Karte pro Kunde/Projekt mit Betrag, Stunden, Material, Alter und Budget-Ampel; «Rechnung
+erstellen» zeigt die Vorschau und stellt mit einem Klick aus (mit Leistungsrapport). Zum Monatsende «Alle abrechnen»:
+eine Rechnung je Kunde oder je Projekt, in einem Schritt.
 
 ```bash
 pip install aeradex-leistungen && aeradex plugins ein leistungen
@@ -17,13 +40,24 @@ aeradex leistungen produkt set --nummer P001 --kunde K0001 --kundenpreis 40
 aeradex leistungen projekt add --kunde K0001 --name "Fassade" --budget-stunden 40 --satz 110
 aeradex leistungen feiertage 2026-12-25 2026-12-26 --ab 2026-10-01
 
-# Erfassen
+# Erfassen — am schnellsten in einer Zeile
+aeradex leistungen schnell 3.5h Fassade spachteln --wer M0001
+aeradex leistungen schnell 12 l Dispersionsfarbe Huber --vorschau          # nur zeigen, was erkannt wird
+aeradex leistungen start P0003 Malerarbeiten Decke --wer M0001             # Stoppuhr
+aeradex leistungen stop --wer M0001
+aeradex leistungen woche --wer M0001
 aeradex leistungen zeit --wer M0001 --stunden 3.5 --kunde K0001 --text "Wände gespachtelt"
 aeradex leistungen zeit --wer M0001 --stunden 8.4 --nicht-abrechenbar --kategorie Ferien
 aeradex leistungen material --kunde K0001 --produkt P001 --menge 12
 
+# Abwesenheiten
+aeradex leistungen abwesenheit --wer M0001 --art Ferien --von 2026-12-21 --bis 2026-12-31
+aeradex leistungen ferien --wer M0001 --jahr 2026
+aeradex leistungen nachweis --wer M0001 --monat 2026-10                   # Arbeitszeitnachweis PDF
+
 # Abrechnen
 aeradex leistungen abrechnen                                 # Übersicht: was ist offen, je Kunde/Projekt
+aeradex leistungen abrechnen --alle --bis 2026-10-31         # alles auf einmal, eine Rechnung je Kunde
 aeradex leistungen abrechnen --kunde K0001 --vorschau
 aeradex leistungen abrechnen --kunde K0001 --bis 2026-10-31  # Rechnung + Leistungsrapport (PDF)
 
@@ -46,7 +80,8 @@ Budget gegen Ist und Deckungsbeitrag.
 
 ## Wie es rechnet
 
-- **Stundensatz**, beim Erfassen festgehalten: angegeben › Projekt › Kunde (`stundensatz`) › Person. Der Lohn
+- **Stundensatz**, beim Erfassen festgehalten: angegeben › Projekt › Kundenpreis der Leistungsart › Kunde
+  (`stundensatz`) › Leistungsart › Person. Der Lohn
   (`stundenlohn` im Personal) ist etwas anderes und bleibt unberührt; der **Kostensatz** dient nur dem
   Deckungsbeitrag.
 - **Produktpreis**: Kundenpreis › Produktpreis. Ein neuer Preis gilt für neue Einträge.

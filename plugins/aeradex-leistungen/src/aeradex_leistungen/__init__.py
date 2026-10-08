@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 from aeradex import api
 from aeradex.book import BookError
 from aeradex.files import FormatError
 from aeradex.plugins import Command, Finding, hookimpl
 
-from . import abrechnung, daten, kontrolle, offerten
+from . import abrechnung, abwesenheit, daten, kontrolle, offerten, schnell, stoppuhr, woche
 
 AERADEX_PLUGIN_API = 1
 __version__ = "0.1.0"
@@ -103,6 +104,49 @@ def record_material(datum: str, kunde: str, produkt: str, menge: str, projekt: s
     return _w(f"Produkt {produkt} erfasst", daten.add_material, datum, kunde, produkt, menge, projekt, None, text)
 
 
+def quick_entry(text: str, wer: str = "", datum: str = "") -> dict:
+    """Zeit oder Material in einer Zeile erfassen, wie in der Schnelleingabe der Oberfläche, z.B.
+    "3.5h Fassade spachteln", "2:30 P0003 Malerarbeiten Decke", "12 l Dispersionsfarbe Huber", "1h intern Buchhaltung".
+    Ist etwas unklar (zwei Kunden passen), wird nichts gebucht und die Kandidaten kommen zurück.
+
+    Args:
+        text: die Zeile.
+        wer: Personennummer (M0001, X01); leer = erste aktive Person.
+        datum: Bezugsdatum JJJJ-MM-TT für «gestern», «mo» usw.; leer = heute.
+    """
+    from aeradex.tools import call
+
+    def run(b):
+        p = schnell.parse(b, text, wer, date.fromisoformat(datum) if datum else None)
+        if p["kandidaten"] or p["fehlt"]:
+            return api.jsonable({"ok": False, "fehlt": p["fehlt"], "kandidaten": p["kandidaten"], "erkannt": {
+                k: p[k] for k in ("art", "datum", "stunden", "menge", "kunde", "projekt", "leistung", "produkt", "text")}})
+        return api.write(b, f"Schnell erfasst: {text}", schnell.save, text, wer,
+                         date.fromisoformat(datum) if datum else None)
+    return call(run)
+
+
+def record_absence(wer: str, art: str, von: str, bis: str = "", halber_tag: bool = False, notiz: str = "") -> dict:
+    """Abwesenheit eintragen (Ferien, Krank, Unfall, Militär/ZS, Mutterschaft/Vaterschaft, Weiterbildung,
+    Kompensation, Unbezahlt). Zählt als Ist-Zeit an Arbeitstagen (ausser Kompensation, Unbezahlt).
+
+    Args:
+        wer: Personennummer.
+        art: siehe oben.
+        von: JJJJ-MM-TT.
+        bis: JJJJ-MM-TT; leer = ein Tag.
+        halber_tag: true = je Tag ein halber.
+        notiz: optional.
+    """
+    return _w(f"Abwesenheit {art} {von}", abwesenheit.add, wer, art, von, bis or None, "0.5" if halber_tag else 1, notiz)
+
+
+def holiday_balance(wer: str, jahr: int) -> dict:
+    """Ferienkonto einer Person: Anspruch, Vortrag, bezogen, geplant, Rest (Tage)."""
+    from aeradex.tools import call
+    return call(lambda b: api.jsonable(abwesenheit.holiday_account(b, wer, jahr)))
+
+
 def services_master_data() -> dict:
     """Stammdaten der Leistungen: Personen mit Sätzen, Produkte mit Preisen, offene Projekte, Kategorien."""
     from aeradex.tools import call
@@ -186,14 +230,15 @@ def project_status(projekt: str) -> dict:
 
 @hookimpl
 def aeradex_tools():
-    return [record_time, record_material, services_master_data, open_services, billing_preview, draft_quote,
-            hours_control, project_status]
+    return [record_time, record_material, quick_entry, record_absence, holiday_balance, services_master_data,
+            open_services, billing_preview, draft_quote, hours_control, project_status]
 
 
 @hookimpl
 def aeradex_instructions():
-    return ("- Leistungen (Plugin leistungen): Arbeitszeit mit record_time, Material mit record_material erfassen "
-            "(Nummern aus services_master_data). Offene Leistungen: open_services, Rechnungsvorschau: billing_preview — "
+    return ("- Leistungen (Plugin leistungen): am schnellsten mit quick_entry («3.5h Fassade spachteln»), sonst "
+            "Arbeitszeit mit record_time, Material mit record_material (Nummern aus services_master_data). Abwesenheiten "
+            "mit record_absence, Ferienkonto mit holiday_balance. Offene Leistungen: open_services, Rechnungsvorschau: billing_preview — "
             "Rechnungen stellt ein Mensch aus. Offerten nur als Entwurf (draft_quote). Stundenkontrolle: hours_control, "
             "Projekte: project_status.")
 
@@ -262,6 +307,12 @@ def _run(book, a):
         items = abrechnung.select(book, a.kunde, a.projekt, a.von, a.bis, status="" if a.status == "alle" else a.status)
         return api.jsonable([{k: v for k, v in e.items() if not k.startswith("_")} for e in items])
     if b == "abrechnen":
+        if a.alle:
+            je = a.je or daten.settings(book)["abrechnen_je"]
+            if a.vorschau:
+                return api.jsonable(abrechnung.groups(book, a.bis, je))
+            return w(book, f"Leistungen abgerechnet bis {a.bis or 'heute'}", abrechnung.bill_all, a.bis, je, a.datum,
+                     not a.ohne_rapport)
         if not a.kunde and not a.ids:
             return api.jsonable(abrechnung.summary(book, a.bis))
         ids = _ids(a.ids) or [e["id"] for e in abrechnung.select(book, a.kunde, a.projekt, a.von, a.bis)]
@@ -288,6 +339,41 @@ def _run(book, a):
     if b == "lohn":
         y, m = (int(x) for x in a.monat.split("-"))
         return w(book, f"Stunden {m:02d}/{y} in den Lohnlauf übernommen", kontrolle.transfer_to_payroll, y, m, a.wer)
+    if b == "schnell":
+        line = " ".join(a.text)
+        if a.vorschau:
+            return api.jsonable({k: v for k, v in schnell.parse(book, line, a.wer).items() if k != "eingabe"})
+        return w(book, f"Schnell erfasst: {line}", schnell.save, line, a.wer)
+    if b == "start":
+        line = " ".join(a.text)
+        p = schnell.parse(book, line, a.wer)
+        if p["kandidaten"]:
+            raise BookError("Nicht eindeutig: " + str(p["kandidaten"]))
+        return api.jsonable(stoppuhr.start(book, p["wer"], p["kunde"], p["projekt"], p["leistung"], p["text"],
+                                           p["abrechenbar"], p["kategorie"]))
+    if b == "stop":
+        return api.jsonable(stoppuhr.stop(book, a.wer, a.text or None))
+    if b == "stoppuhr":
+        return api.jsonable(stoppuhr.running(book))
+    if b == "woche":
+        start = date.fromisoformat(a.woche) if a.woche else date.today()
+        g = woche.grid(book, a.wer, start)
+        return api.jsonable({"start": g["start"], "zeilen": [{"titel": r["titel"], "unter": r["unter"],
+                             "stunden": [c["stunden"] for c in r["zellen"]], "total": r["total"]} for r in g["zeilen"]],
+                             "gearbeitet": g["gearbeitet"], "soll": g["soll"], "saldo": g["saldo"]})
+    if b == "abwesenheit":
+        if a.loeschen:
+            return w(book, f"Abwesenheit {a.loeschen} gelöscht", abwesenheit.delete, a.loeschen)
+        if not a.art:
+            return api.jsonable([x for x in abwesenheit.items(book) if not a.wer or x["wer"] == a.wer.upper()])
+        return w(book, f"Abwesenheit {a.art} {a.von}", abwesenheit.add, a.wer, a.art, a.von, a.bis, a.anteil, a.notiz)
+    if b == "ferien":
+        return api.jsonable(abwesenheit.holiday_account(book, a.wer, a.jahr or date.today().year))
+    if b == "nachweis":
+        y, m = (int(x) for x in a.monat.split("-"))
+        target = Path(a.pdf or f"Arbeitszeitnachweis {a.wer} {y}-{m:02d}.pdf")
+        target.write_bytes(abwesenheit.time_record_pdf(book, a.wer, y, m))
+        return {"ok": True, "pdf": str(target)}
     raise BookError("Bereich fehlt — aeradex leistungen -h")
 
 
@@ -357,6 +443,8 @@ def _setup(p):
             s.add_argument("--datum")
             s.add_argument("--text", default="")
             s.add_argument("--ohne-rapport", dest="ohne_rapport", action="store_true")
+            s.add_argument("--alle", action="store_true", help="alles Offene auf einmal: eine Rechnung je Kunde (--je projekt: je Projekt)")
+            s.add_argument("--je", default="", choices=["", "kunde", "projekt"])
     s = sub.add_parser("offerte", help="Offerten: list | create | status | rechnung")
     s.add_argument("aktion", choices=["list", "create", "status", "rechnung"])
     s.add_argument("--nummer", default="")
@@ -379,6 +467,35 @@ def _setup(p):
     s = sub.add_parser("lohn", help="Stunden der Stundenlöhner in den Lohnlauf übernehmen")
     s.add_argument("--monat", required=True)
     s.add_argument("--wer", default="")
+    s = sub.add_parser("schnell", help='eine Zeile erfassen, z.B. "3.5h Fassade spachteln"')
+    s.add_argument("text", nargs="+")
+    s.add_argument("--wer", default="")
+    s.add_argument("--vorschau", action="store_true", help="nur zeigen, was erkannt wird")
+    s = sub.add_parser("start", help='Stoppuhr starten, z.B. start P0003 Malerarbeiten')
+    s.add_argument("text", nargs="*")
+    s.add_argument("--wer", default="")
+    s = sub.add_parser("stop", help="Stoppuhr stoppen und erfassen")
+    s.add_argument("--wer", required=True)
+    s.add_argument("--text", default="")
+    sub.add_parser("stoppuhr", help="laufende Stoppuhren")
+    s = sub.add_parser("woche", help="Wochenübersicht einer Person")
+    s.add_argument("--wer", required=True)
+    s.add_argument("--woche", default="", help="ein Tag der Woche, JJJJ-MM-TT")
+    s = sub.add_parser("abwesenheit", help="Abwesenheiten anzeigen, eintragen (--art) oder löschen (--loeschen ID)")
+    s.add_argument("--wer", default="")
+    s.add_argument("--art", default="", help=", ".join(abwesenheit.ARTEN))
+    s.add_argument("--von")
+    s.add_argument("--bis")
+    s.add_argument("--anteil", default="1", help="1 oder 0.5")
+    s.add_argument("--notiz", default="")
+    s.add_argument("--loeschen", default="")
+    s = sub.add_parser("ferien", help="Ferienkonto einer Person")
+    s.add_argument("--wer", required=True)
+    s.add_argument("--jahr", type=int)
+    s = sub.add_parser("nachweis", help="Arbeitszeitnachweis (ArGV 1 Art. 73) als PDF")
+    s.add_argument("--wer", required=True)
+    s.add_argument("--monat", required=True)
+    s.add_argument("--pdf", default="")
 
 
 @hookimpl

@@ -190,7 +190,9 @@ def test_hours_control(book):
     assert row["soll"] == Decimal("176.40")                # 21 working days × 8.4 h
     assert row["ist"] == Decimal("16.8") and row["abrechenbar"] == Decimal("8.4") and row["quote"] == 50
     assert row["saldo"] == Decimal("-159.60")
-    jan_sep = sum(kontrolle.target(daten.person(Book(book.root), "M0001"), 2026, m, set()) for m in range(1, 10))
+    from aeradex_leistungen import abwesenheit           # the canton's public holidays lower the target too
+    hols = abwesenheit.holidays(Book(book.root), 2026)
+    jan_sep = sum(kontrolle.target(daten.person(Book(book.root), "M0001"), 2026, m, hols) for m in range(1, 10))
     assert row["saldo_jahr"] == -jan_sep - Decimal("159.60")
     W(book, daten.set_holidays, None, "2026-10-01")             # control starts in October
     row = next(r for r in kontrolle.month(Book(book.root), 2026, 10) if r["nummer"] == "M0001")

@@ -60,6 +60,12 @@ def settings(book: Book) -> dict:
         "konto_produkte": str(raw.get("konto_produkte") or ("3200" if "3200" in book.accounts else ertrag)),
         "gueltig_tage": int(raw.get("gueltig_tage") or 30),
         "kontrolle_ab": str(raw.get("kontrolle_ab") or ""),
+        "rundung": int(raw.get("rundung") or 0),                 # minutes the timer rounds up to (0 = exact)
+        "ferien_tage": Decimal(str(raw.get("ferien_tage") or 20)),   # per year at full employment (OR 329a: ≥ 20)
+        "feiertage_kanton": str(raw.get("feiertage_kanton") or ""),
+        "feiertage_ohne": [str(d) for d in raw.get("feiertage_ohne") or []],     # canton holidays not observed
+        "favoriten": {str(k): list(v or []) for k, v in (raw.get("favoriten") or {}).items()},
+        "abrechnen_je": str(raw.get("abrechnen_je") or "kunde"),  # one invoice per customer or per project
     }
 
 
@@ -85,7 +91,8 @@ def people(book: Book) -> dict[str, dict]:
                    "woche": (Decimal(str(emp.get("vollzeit_stunden_woche") or 0))
                              * Decimal(str(emp.get("pensum") or 100)) / 100),
                    "eintritt": emp.get("eintritt"), "austritt": emp.get("austritt"),
-                   "vortrag": own.get("vortrag") or {}}
+                   "vortrag": own.get("vortrag") or {}, "ferien_tage": own.get("ferien_tage"),
+                   "ferien_vortrag": own.get("ferien_vortrag") or {}}
     for nr, own in cfg["personen"].items():
         if nr in out:
             continue
@@ -95,7 +102,8 @@ def people(book: Book) -> dict[str, dict]:
                    "kostensatz": money(own["kostensatz"]) if own.get("kostensatz") not in (None, "") else None,
                    "woche": Decimal(str(own["soll_woche"])) if own.get("soll_woche") not in (None, "") else None,
                    "eintritt": own.get("eintritt"), "austritt": own.get("austritt"),
-                   "vortrag": own.get("vortrag") or {}}
+                   "vortrag": own.get("vortrag") or {}, "ferien_tage": own.get("ferien_tage"),
+                   "ferien_vortrag": own.get("ferien_vortrag") or {}}
     return out
 
 
@@ -107,8 +115,11 @@ def person(book: Book, nr: str) -> dict:
 
 
 def set_person(book: Book, nummer: str = "", satz=None, kostensatz=None, name: str = "", soll_woche=None,
-               vortrag_jahr: int | None = None, vortrag=None) -> tuple[dict, list[Path]]:
-    """Set the rates of an employee (M0001) — or create/update a person without payroll (name, no number)."""
+               vortrag_jahr: int | None = None, vortrag=None, ferien_tage=None, ferien_jahr: int | None = None,
+               ferien_vortrag=None) -> tuple[dict, list[Path]]:
+    """Set the rates of an employee (M0001) — or create/update a person without payroll (name, no number).
+    Also: holiday days per year (`ferien_tage`, else the general setting) and the carry-over of hours (`vortrag`)
+    and holiday days (`ferien_vortrag`) into a year."""
     cfg = settings(book)
     employees = payroll.employees(book)
     nr = str(nummer or "").strip().upper()
@@ -132,7 +143,43 @@ def set_person(book: Book, nummer: str = "", satz=None, kostensatz=None, name: s
         entry["soll_woche"] = Decimal(str(soll_woche))
     if vortrag_jahr and vortrag not in (None, ""):
         entry.setdefault("vortrag", {})[int(vortrag_jahr)] = Decimal(str(vortrag))
+    if ferien_tage not in (None, ""):
+        days = Decimal(str(ferien_tage).replace(",", "."))
+        if not 0 <= days <= 60:
+            raise BookError("Ferientage: 0 bis 60")
+        entry["ferien_tage"] = days
+    if ferien_jahr and ferien_vortrag not in (None, ""):
+        entry.setdefault("ferien_vortrag", {})[int(ferien_jahr)] = Decimal(str(ferien_vortrag).replace(",", "."))
     return {"nummer": nr, **entry}, [save_settings(book, cfg)]
+
+
+def set_options(book: Book, rundung=None, ferien_tage=None, feiertage_kanton=None, abrechnen_je=None,
+                feiertage_ohne: list | None = None) -> tuple[dict, list[Path]]:
+    """Timer rounding (minutes, rounded up), holiday days per year, the holiday canton ('' = from the company seat,
+    'keiner' = none), one invoice per customer or project, canton holidays that are not observed."""
+    from aeradex.qst_estv import CANTONS
+    cfg = settings(book)
+    if rundung not in (None, ""):
+        if int(rundung) not in (0, 1, 5, 6, 10, 15, 30):
+            raise BookError("Rundung: 0, 1, 5, 6, 10, 15 oder 30 Minuten")
+        cfg["rundung"] = int(rundung)
+    if ferien_tage not in (None, ""):
+        days = Decimal(str(ferien_tage).replace(",", "."))
+        if not 20 <= days <= 60:
+            raise BookError("Ferientage: mindestens 20 (OR 329a), höchstens 60")
+        cfg["ferien_tage"] = days
+    if feiertage_kanton is not None:
+        k = str(feiertage_kanton).strip().upper()
+        if k and k != "KEINER" and k not in CANTONS:
+            raise BookError(f"Kanton {k} unbekannt")
+        cfg["feiertage_kanton"] = "keiner" if k == "KEINER" else k
+    if abrechnen_je not in (None, ""):
+        if abrechnen_je not in ("kunde", "projekt"):
+            raise BookError("Abrechnen je Kunde oder Projekt")
+        cfg["abrechnen_je"] = abrechnen_je
+    if feiertage_ohne is not None:
+        cfg["feiertage_ohne"] = sorted({parse_date(d, "feiertag").isoformat() for d in feiertage_ohne if str(d).strip()})
+    return {k: cfg[k] for k in ("rundung", "ferien_tage", "feiertage_kanton", "abrechnen_je")}, [save_settings(book, cfg)]
 
 
 def set_holidays(book: Book, feiertage: list | None = None, kontrolle_ab=None) -> tuple[dict, list[Path]]:
@@ -162,6 +209,23 @@ def product(book: Book, nr: str) -> dict:
     if found is None:
         raise BookError(f"Produkt {nr} nicht gefunden")
     return found
+
+
+HOUR_UNITS = {"h", "std", "std.", "stunde", "stunden"}
+
+
+def is_service(p: dict) -> bool:
+    """A catalog item sold by the hour is a Leistungsart (Malerarbeiten, Beratung …): it carries the rate of
+    time entries; everything else (Stk, m², l, Pauschal) is material."""
+    return str(p.get("einheit") or "").strip().lower() in HOUR_UNITS
+
+
+def services(book: Book) -> dict[str, dict]:
+    return {k: p for k, p in products(book).items() if is_service(p) and p.get("aktiv", True) is not False}
+
+
+def materials(book: Book) -> dict[str, dict]:
+    return {k: p for k, p in products(book).items() if not is_service(p) and p.get("aktiv", True) is not False}
 
 
 def _save_products(book: Book, items: dict) -> Path:
@@ -321,10 +385,20 @@ def _cells(e: dict) -> dict:
             "Kategorie": e.get("kategorie", ""), "Rechnung": e.get("rechnung", "")}
 
 
+_CACHE: dict[Path, tuple[tuple[int, int], list[dict]]] = {}
+
+
 def entries(book: Book) -> list[dict]:
+    """Every entry; each month file is parsed once and kept until it changes (mtime and size)."""
     out = []
     for path in entry_files(book):
-        out += [_parse(cells, path) for cells in read_table(path).rows]
+        st = path.stat()
+        key = (st.st_mtime_ns, st.st_size)
+        cached = _CACHE.get(path)
+        if cached is None or cached[0] != key:
+            cached = (key, [_parse(cells, path) for cells in read_table(path).rows])
+            _CACHE[path] = cached
+        out += [dict(e) for e in cached[1]]
     return out
 
 
@@ -390,9 +464,10 @@ def _resolve_customer(book: Book, kunde: str, projekt: str) -> tuple[str, str]:
 
 
 def add_time(book: Book, datum, wer: str, stunden, text: str, kunde: str = "", projekt: str = "",
-             abrechenbar: bool = True, kategorie: str = "", satz=None) -> tuple[dict, list[Path]]:
-    """Record hours. Billable hours need a customer (or project) and get the rate fixed now:
-    given > project > customer (`stundensatz`) > person. Not billable: a category (Intern, Ferien …)."""
+             abrechenbar: bool = True, kategorie: str = "", satz=None, leistung: str = "") -> tuple[dict, list[Path]]:
+    """Record hours. Billable hours need a customer (or project) and get the rate fixed now (saetze.py):
+    given > project > the customer's price of the Leistungsart > customer > Leistungsart > person.
+    Not billable: a category (Intern, Ferien …)."""
     from .saetze import hourly_rate
     d = parse_date(datum, "datum")
     p = person(book, wer)
@@ -400,10 +475,17 @@ def add_time(book: Book, datum, wer: str, stunden, text: str, kunde: str = "", p
     if hours <= 0 or hours > 24:
         raise BookError("Stunden: mehr als 0 und höchstens 24")
     kunde, projekt = _resolve_customer(book, kunde, projekt)
+    leistung = str(leistung or "").strip().upper()
+    if leistung:
+        art = product(book, leistung)
+        if not is_service(art):
+            raise BookError(f"{leistung} ist Material, keine Leistungsart (Einheit h)")
+        text = str(text or "").strip() or art["text"]
     if abrechenbar:
         if not kunde:
             raise BookError("Abrechenbare Stunden brauchen einen Kunden oder ein Projekt")
-        rate = money(parse_amount(satz, "satz")) if satz not in (None, "") else hourly_rate(book, p["nummer"], kunde, projekt)
+        rate = (money(parse_amount(satz, "satz")) if satz not in (None, "")
+                else hourly_rate(book, p["nummer"], kunde, projekt, leistung))
         kategorie = ""
     else:
         rate = None
@@ -413,7 +495,7 @@ def add_time(book: Book, datum, wer: str, stunden, text: str, kunde: str = "", p
     if not str(text or "").strip() and abrechenbar:
         raise BookError("Text fehlt (erscheint auf der Rechnung)")
     return _add(book, {"datum": d, "art": "Zeit", "wer": p["nummer"], "kunde": kunde, "projekt": projekt,
-                       "produkt": "", "menge": hours, "preis": rate, "text": str(text or "").strip(),
+                       "produkt": leistung, "menge": hours, "preis": rate, "text": str(text or "").strip(),
                        "abrechenbar": bool(abrechenbar), "kategorie": kategorie, "rechnung": ""})
 
 
@@ -473,7 +555,8 @@ def delete_entry(book: Book, eid: str) -> tuple[dict, list[Path]]:
 
 
 def update_entry(book: Book, eid: str, **fields) -> tuple[dict, list[Path]]:
-    """Change an entry that is not billed yet (datum, menge, preis, text, abrechenbar, kategorie, kunde, projekt)."""
+    """Change an entry that is not billed yet (datum, menge, preis, text, abrechenbar, kategorie, kunde, projekt,
+    leistung). `neu_bewerten`: determine the hourly rate again (after moving to another project or Leistungsart)."""
     e = entry(book, eid)
     _editable(book, e)
     old_path = e["_datei"]
@@ -488,6 +571,13 @@ def update_entry(book: Book, eid: str, **fields) -> tuple[dict, list[Path]]:
     if "kunde" in fields or "projekt" in fields:
         e["kunde"], e["projekt"] = _resolve_customer(book, fields.get("kunde", e["kunde"]),
                                                      fields.get("projekt", e["projekt"]))
+    if e["art"] == "Zeit" and fields.get("leistung") is not None:
+        nr = str(fields["leistung"]).strip().upper()
+        if nr and not is_service(product(book, nr)):
+            raise BookError(f"{nr} ist Material, keine Leistungsart (Einheit h)")
+        e["produkt"] = nr
+    if fields.get("neu_bewerten") and e["art"] == "Zeit" and e["abrechenbar"] and fields.get("preis") in (None, ""):
+        e["preis"] = None                    # determined again below from project, customer, Leistungsart, person
     if fields.get("abrechenbar") is not None:
         e["abrechenbar"] = bool(fields["abrechenbar"])
         if not e["abrechenbar"]:
@@ -501,7 +591,7 @@ def update_entry(book: Book, eid: str, **fields) -> tuple[dict, list[Path]]:
             raise BookError("Abrechenbare Einträge brauchen einen Kunden")
         if e["preis"] is None:
             from .saetze import hourly_rate
-            e["preis"] = hourly_rate(book, e["wer"], e["kunde"], e["projekt"])
+            e["preis"] = hourly_rate(book, e["wer"], e["kunde"], e["projekt"], e["produkt"] if e["art"] == "Zeit" else "")
     elif e["art"] == "Zeit":
         e["preis"] = None
     new_path = month_path(book, e["datum"])
