@@ -308,6 +308,22 @@ def recode(book: Book, belege: list[str], konto_alt: str = "", konto_neu: str = 
                  uebersprungen=[{"beleg": i["beleg"], "grund": i["problem"]} for i in skipped])
 
 
+def year_open(book: Book, jahr: int | None = None) -> dict:
+    """Open the next business year before its first booking; balances carry over by themselves."""
+    from . import jahreswechsel
+    _guard(book)
+    year, touched = jahreswechsel.open_year(book, jahr)
+    return _done(book, f"Geschäftsjahr {year} eröffnet", touched, jahr=year,
+                 checkliste=jahreswechsel.checklist(book, year))
+
+
+def year_checklist(book: Book, jahr: int) -> dict:
+    """What the change from jahr-1 to jahr still needs (prior year locked, Gewinnverwendung, MWST, Lohn …)."""
+    from . import jahreswechsel
+    return jsonable({"jahr": jahr, "naechstes": jahreswechsel.next_year(book),
+                     "checkliste": jahreswechsel.checklist(book, jahr)})
+
+
 def reverse_entry(book: Book, beleg: str, datum=None, text: str = "") -> dict:
     _guard(book)
     rows, touched = journal.reverse(book, beleg, datum, text)
@@ -892,7 +908,7 @@ def invoice_preview(book: Book, positionen: list[dict]) -> dict:
 from .storage import transactional as _locked
 
 
-WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "reverse_entry", "propose", "approve", "reject",
+WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "year_open", "reverse_entry", "propose", "approve", "reject",
           "customer_add", "invoice_create", "invoice_void", "invoice_pay", "invoice_credit", "employee_add",
           "payroll_run", "payroll_close", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
           "allocation_book", "lock", "unlock", "customer_update", "employee_update", "account_update",

@@ -22,8 +22,22 @@
   <div class="actions">
     <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in years|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
     <a class="btn primary" href="/pdf/jahresrechnung?jahr={{ year }}" target="_blank">Jahresrechnung PDF</a>
+    {% if year == years|max and kann_eroeffnen %}<form hx-post="/abschluss/jahr-eroeffnen" hx-target="find .errors" hx-confirm="Geschäftsjahr {{ naechstes_jahr }} eröffnen? Die Salden per 31.12.{{ year }} werden vorgetragen; {{ year }} bleibt bearbeitbar, bis du es sperrst.">
+      <button class="btn" type="submit" title="Das nächste Geschäftsjahr anlegen, auch vor der ersten Buchung">Neues Geschäftsjahr {{ naechstes_jahr }}</button>{{ errors() }}</form>{% endif %}
   </div>
 </div>
+{% if jahreswechsel %}
+<div class="panel" style="margin-bottom:16px">
+  <header><h2>Jahreswechsel {{ year - 1 }} → {{ year }}</h2><span class="hint">{{ jahreswechsel|selectattr("status", "equalto", "offen")|list|length }} offen</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <tbody>{% for i in jahreswechsel %}
+      <tr class="row"><td style="width:110px">{% if i.status == "ok" %}<span class="pill ok">erledigt</span>{% elif i.status == "offen" %}<span class="pill warn">offen</span>{% else %}<span class="pill info">prüfen</span>{% endif %}</td>
+        <td><strong>{{ i.titel }}</strong><div class="small muted">{{ i.text }}</div></td>
+        <td class="right">{% if i.link %}<a class="btn small ghost" href="{{ i.link }}">Öffnen</a>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
 {% if st.differenz|float %}<div class="alert error">Bilanzdifferenz {{ st.differenz|chf }}: Aktiven und Passiven stimmen nicht überein. aeradex check zeigt die Ursache.</div>{% endif %}
 <div class="figures">
   <div class="figure"><span class="label">Total Aktiven</span><span class="value">{{ st.total_aktiven|chf }}</span></div>

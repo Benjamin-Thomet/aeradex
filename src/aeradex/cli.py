@@ -461,6 +461,8 @@ def build_parser() -> argparse.ArgumentParser:
     c = ms.add_parser("abgrenzung", help="vereinnahmte Entgelte: Steuer auf offenen Posten per 31.12. abgrenzen")
     c.add_argument("jahr", type=int)
     c.add_argument("--neu", action="store_true", help="bestehende Abgrenzung neu berechnen")
+    s = sub.add_parser("jahr-eroeffnen", help="nächstes Geschäftsjahr eröffnen (Salden werden vorgetragen)")
+    s.add_argument("jahr", type=int, nargs="?", help="Standard: das Jahr nach dem letzten")
     s = sub.add_parser("lock", help="Periode sperren (unveränderlich)")
     s.add_argument("bis")
     s = sub.add_parser("unlock", help="Sperre zurücknehmen (mit Grund)")
@@ -929,6 +931,8 @@ def dispatch(a, book_path: Path | None):
         if a.sub == "abgrenzung":
             return api.mwst_abgrenzung(book(), a.jahr, a.neu)
         return api.mwst_book(book(), a.periode)
+    if c == "jahr-eroeffnen":
+        return api.year_open(book(), a.jahr)
     if c == "lock":
         return api.lock(book(), a.bis)
     if c == "unlock":

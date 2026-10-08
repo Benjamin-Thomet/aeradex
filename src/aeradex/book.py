@@ -245,6 +245,8 @@ class Book:
     def years(self) -> list[int]:
         found = {r.datum.year for r in self.rows}
         found.add(self.settings.erstes_jahr)
+        if self.settings.get("geschaeftsjahr_offen_bis"):          # opened before its first booking
+            found.add(int(self.settings.get("geschaeftsjahr_offen_bis")))
         first = self.settings.erstes_jahr
         return list(range(first, max(found) + 1))
 

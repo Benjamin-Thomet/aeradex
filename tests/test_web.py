@@ -593,3 +593,13 @@ def test_journal_filter_select_preview_and_recode(client, root):
 
     r = post(client, "/journal/umbuchen/vorschau", {"beleg": ["26-001"], "konto_alt": "", "konto_neu": "6570"})
     assert "Konto von" in r.text
+
+
+def test_open_next_business_year_from_abschluss(client, root):
+    page = client.get("/abschluss?jahr=2026").text
+    assert "Neues Geschäftsjahr 2027" in page
+    assert ok(post(client, "/abschluss/jahr-eroeffnen", {"jahr": "2026"})) == "/abschluss?jahr=2027"
+    page = client.get("/abschluss?jahr=2027").text
+    assert "Jahreswechsel 2026 → 2027" in page and "Eröffnungsbilanz per 01.01.2027" in page
+    assert "<option selected>2027</option>" in client.get("/journal?jahr=2027").text
+    assert "Geschäftsjahr 2027 eröffnet" in last_commit(root) and errors(root) == []

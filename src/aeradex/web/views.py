@@ -16,7 +16,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from .. import api, check as checks, invoices, journal, payroll, statements
+from .. import api, check as checks, invoices, jahreswechsel, journal, payroll, statements
 from ..book import Book, BookError
 from ..files import FormatError, parse_amount, parse_date
 from ..ledger import BalanceEngine, account_ledger, movements, resolve_period, trial_balance
@@ -1050,7 +1050,9 @@ async def abschluss(ui: UI, request: Request):
                      anhang=statements.anhang(book, year), verlauf=list(reversed(verlauf))[:5],
                      gv_date=date(year + 1, 6, 30).isoformat(), fx=fx_view,
                      div=(read_yaml(statements.dividend_path(book, year)) if statements.dividend_path(book, year).exists()
-                          else None))
+                          else None),
+                     jahreswechsel=jahreswechsel.checklist(book, year), naechstes_jahr=jahreswechsel.next_year(book),
+                     kann_eroeffnen=jahreswechsel.next_year(book) <= date.today().year + 1)
 
 
 async def abschluss_aktion(ui: UI, request: Request):
@@ -1069,6 +1071,9 @@ async def abschluss_aktion(ui: UI, request: Request):
         return await act(request, api.dividend_pay, to, book, year, f.get("datum") or None, f.get("konto") or "")
     if aktion == "anhang":
         return await act(request, api.anhang_save, to, book, year, f.get("text", ""))
+    if aktion == "jahr-eroeffnen":
+        neu = jahreswechsel.next_year(book)
+        return await act(request, api.year_open, f"/abschluss?jahr={neu}", book, neu)
     if aktion == "sperre":
         return await act(request, api.lock, to, book, f.get("bis"))
     if aktion == "entsperren":
