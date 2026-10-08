@@ -110,3 +110,22 @@ def test_settings_page_shows_catalog_and_installs_locally(tmp_path, katalog, mon
         assert r.status_code == 204, r.text
         assert installed == [("testplug", True)]
         assert "Jetzt neu starten" in c.get("/einstellungen").text
+
+
+@pytest.mark.parametrize("argv0", ["/usr/bin/aeradex", "/repo/src/aeradex/__main__.py"])
+def test_restart_runs_aeradex_as_module(argv0, monkeypatch):
+    """The restart after an install must work for `aeradex ui` and `python -m aeradex ui` alike."""
+    import os
+    import threading
+
+    from aeradex.web import app
+
+    calls = []
+    monkeypatch.setattr(sys, "argv", [argv0, "--buch", "muster", "ui", "--port", "8790"])
+    monkeypatch.setattr(os, "execv", lambda exe, args: calls.append((exe, args)))
+    monkeypatch.setattr(threading, "Timer", lambda delay, fn: type("T", (), {"start": staticmethod(fn)}))
+    monkeypatch.delenv("AERADEX_UI_TOKEN", raising=False)
+    app.restart_later(type("UI", (), {"token": "tok"})())
+    assert calls == [(sys.executable, [sys.executable, "-m", "aeradex", "--buch", "muster", "ui", "--port", "8790"])]
+    assert os.environ.pop("AERADEX_UI_TOKEN") == "tok"
+    os.environ.pop("AERADEX_UI_RESTART", None)

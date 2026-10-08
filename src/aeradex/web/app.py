@@ -114,7 +114,7 @@ class _PluginTemplates(BaseLoader):
 def make_env() -> Environment:
     env = Environment(loader=ChoiceLoader([FileSystemLoader(HERE / "templates"), _PluginTemplates()]),
                       autoescape=select_autoescape(["html"]), trim_blocks=True, lstrip_blocks=True)
-    env.filters.update(chf=chf, minus=minus, qty=qty, datum=datum, pct=pct, neg=neg, urlq=lambda v: quote(str(v)))
+    env.filters.update(chf=chf, preis=lambda v: __import__("aeradex.pdf", fromlist=["price"]).price(v), minus=minus, qty=qty, datum=datum, pct=pct, neg=neg, urlq=lambda v: quote(str(v)))
     static = HERE / "static"
     stamp = hashlib.sha1("".join(f"{p.name}{p.stat().st_mtime_ns}" for p in sorted(static.glob("*.*"))).encode()).hexdigest()[:8]
     env.globals.update(MONTHS=MONTHS_DE, today=date.today, asset=stamp)
@@ -416,9 +416,19 @@ def serve_file(ui: UI):
         media = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if media.startswith("text/") or target.suffix in (".md", ".yaml", ".yml"):
             media = "text/plain; charset=utf-8"
-        return FileResponse(target, media_type=media,
-                            headers={"Content-Disposition": f'inline; filename="{quote(target.name)}"'})
+        # Files come from outside (uploads, inbox): only passive formats open in the browser. Anything that can
+        # carry script (SVG, XML/XHTML, HTML …) is a download, and nothing may be sniffed into something else.
+        inline = media in INLINE_MEDIA
+        headers = {"Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{quote(target.name)}"',
+                   "X-Content-Type-Options": "nosniff"}
+        if media != "application/pdf":            # a sandbox would block the browser's own PDF viewer
+            headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+        return FileResponse(target, media_type=media if inline else "application/octet-stream", headers=headers)
     return handler
+
+
+INLINE_MEDIA = {"application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/tiff",
+                "text/plain; charset=utf-8"}
 
 
 def events(ui: UI):
@@ -531,7 +541,9 @@ def restart_later(ui: "UI", delay: float = 0.8) -> None:
     def go():
         os.environ["AERADEX_UI_TOKEN"] = ui.token
         os.environ["AERADEX_UI_RESTART"] = "1"
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        # Re-run as a module: sys.argv[0] may be the `aeradex` script or, with `python -m aeradex`,
+        # the path of __main__.py, which cannot be executed on its own (relative imports).
+        os.execv(sys.executable, [sys.executable, "-m", "aeradex", *sys.argv[1:]])
     threading.Timer(delay, go).start()
 
 
