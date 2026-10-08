@@ -32,6 +32,7 @@ scan = ["zxing-cpp>=2.2", "pypdfium2>=4.0", "pillow>=10"]
 crypt = ["cryptography>=42"]
 excel = ["openpyxl>=3.1"]
 dev = ["pytest>=8", "lxml>=5"]
+all = ["aeradex[ui,mcp,scan,crypt,excel]"]
 
 [project.urls]
 Homepage = "https://aeradex.ch"

@@ -7,7 +7,7 @@ eigenes Plugin per Pull Request dort eintragen, ein Maintainer prüft es (siehe 
 | Plugin | Art | Was es tut | Stand |
 |---|---|---|---|
 | [aeradex-anlagen](plugins/aeradex-anlagen) | Dokumente, Seite | Anlagenbuchhaltung: Abschreibungen, Abgänge, Anlagenspiegel | ungeprüft |
-| [aeradex-leistungen](plugins/aeradex-leistungen) | Seiten, Werkzeuge | Offerten, Zeiterfassung, Produkte, Projekte, Stundenkontrolle, Abrechnung an Kunden | ungeprüft |
+| [aeradex-leistungen](plugins/aeradex-leistungen) | Seiten, Werkzeuge | Zeit und Material (Schnellerfassung, Stoppuhr, Wochenraster), Ferien und Überzeit mit kantonalen Feiertagen, Arbeitszeitnachweis, Offerten, Projekte, Abrechnung als QR-Rechnung | ungeprüft |
 | [aeradex-revolut](plugins/aeradex-revolut) | Bankformat | Revolut-Kontoauszüge (CSV, Business und Privat) | ungeprüft, mit echtem Export zu prüfen |
 
 ## Gesucht

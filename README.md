@@ -70,8 +70,30 @@ Demofirma aus `examples/muster-gmbh`; GitHub zeigt sie hell oder dunkel, passend
 
 ## Schnellstart
 
+### Voraussetzungen
+
+| | |
+|---|---|
+| **Nötig** | Python 3.11 oder neuer, git. Linux oder macOS; unter Windows über WSL (aeradex sperrt Schreibzugriffe mit `fcntl`). |
+| **Scans und Handyfotos** | [Tesseract](https://tesseract-ocr.github.io/) mit Deutsch, Französisch und Italienisch. PDFs mit Textebene und QR-Rechnungen liest aeradex auch ohne. |
+| **Optional** | Ein Agent (Claude Code, Codex, opencode oder `ANTHROPIC_API_KEY`), [Jev](#optional-jev-typesafe-für-schnelle-kontierung) für Bankbewegungen, SMTP für den Versand von Berichten. |
+
 ```bash
-pip install -e ".[ui,mcp,scan]"  # Python ≥ 3.11
+# Tesseract (nur für Scans und Fotos)
+brew install tesseract tesseract-lang                                       # macOS
+sudo apt install tesseract-ocr tesseract-ocr-deu tesseract-ocr-fra tesseract-ocr-ita   # Debian/Ubuntu/WSL
+sudo pacman -S tesseract tesseract-data-deu tesseract-data-fra tesseract-data-ita      # Arch
+```
+
+Die Python-Pakete installiert pip. Die Extras einzeln: `ui` (Oberfläche und eingebauter Agent), `mcp` (MCP-Server),
+`scan` (QR-Codes und PDF-Seiten lesen, ohne poppler oder zbar), `excel` (Excel-Import und -Export), `crypt`
+(verschlüsselter Export); `all` nimmt alle.
+
+### Erstes Buch
+
+```bash
+git clone https://github.com/Benjamin-Thomet/aeradex && cd aeradex
+pip install -e ".[all]"
 
 aeradex init ~/buchhaltung/muster --firma "Muster GmbH" --jahr 2026 \
   --strasse Bahnhofstrasse --nr 1 --plz 3000 --ort Bern \
@@ -116,7 +138,10 @@ Rechts sitzt der **Agent** (Claude): «Bereite die Quittungen in der Inbox vor»
 claude mcp add aeradex -- aeradex --buch <buch> mcp
 codex mcp add aeradex -- aeradex --buch <buch> mcp
 opencode mcp add aeradex      # oder in opencode.json unter "mcp"
-``` Ändert ein Agent oder das CLI das Buch, aktualisiert sich die offene Seite selbst.
+```
+
+Ändert ein Agent oder das CLI das Buch, aktualisiert sich die offene Seite selbst, ausser du tippst gerade etwas, das
+noch nicht gespeichert ist.
 
 Tastatur: `N` neue Buchung, `/` Suche, `A` Agent, `⌘/Ctrl+Enter` Formular absenden.
 
@@ -221,8 +246,7 @@ Ausgelesen wird in Stufen — QR-Zahlteil, Textebene des PDFs, Tesseract-OCR fü
 ebenso: bekannter Lieferant → Jev (falls eingeschaltet und sicher) → Agent (Claude Code, Codex, opencode oder API,
 wie im Seitenpanel). Jedes Feld zeigt seine Quelle. Nennt die Rechnung einen anderen Namen als der Inhaber der IBAN,
 ordnet aeradex nicht zu und warnt; eine IBAN aus dem QR-Zahlteil kann auch der Agent nicht ändern. Gebucht wird
-erst, wenn ein Mensch den Entwurf prüft. OCR braucht Tesseract mit Sprachdaten (Arch:
-`pacman -S tesseract tesseract-data-deu tesseract-data-fra tesseract-data-ita`, Debian: `apt install tesseract-ocr-deu …`).
+erst, wenn ein Mensch den Entwurf prüft. OCR braucht Tesseract mit Sprachdaten (siehe [Voraussetzungen](#voraussetzungen)).
 
 ### Bank (camt.053, CSV, Excel, Kreditkarte)
 ```bash
@@ -462,7 +486,8 @@ v0.8: Finanzbuchhaltung, MWST mit Bezugsteuer und eMWST-Export (eCH-0217), Banki
 Fremdwährungskonten) mit automatischem Abgleich und Bankregeln, Fremdwährungen mit BAZG-Tageskursen und
 Stichtagsbewertung, Belegeingang mit OCR und Agent (Quittungen, Lieferantenrechnungen, extern erstellte Rechnungen),
 Debitoren mit QR-Rechnung (CHF/EUR) und Mahnwesen, Kreditoren mit QR-Scan und pain.001 (auch Fremdwährung),
-Dividende mit Verrechnungssteuer, Lohn mit Spesen, Anlagenbuchhaltung (Plugin), Plugin-System mit eigenen Seiten, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit
+Dividende mit Verrechnungssteuer, Lohn mit Spesen, Anlagenbuchhaltung (Plugin), Zeit- und Materialerfassung mit
+Abwesenheiten und Abrechnung an Kunden (Plugin), Plugin-System mit eigenen Seiten, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit
 eingebautem Agenten, lokal oder als Server mit Login.
 
 Als Nächstes:
