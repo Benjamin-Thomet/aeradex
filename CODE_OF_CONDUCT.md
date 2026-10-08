@@ -7,4 +7,4 @@ Kurz: Wir begegnen allen respektvoll und freundlich, unabhängig von Herkunft, G
 Erfahrung, Behinderung oder Weltanschauung. Belästigung, herabsetzende Kommentare und das Veröffentlichen
 privater Informationen anderer werden nicht geduldet.
 
-Verstösse melden an die Maintainer: KONTAKTADRESSE (vor der Veröffentlichung eintragen). Meldungen werden vertraulich behandelt.
+Verstösse melden an die Maintainer: [info@aeradex.ch](mailto:info@aeradex.ch). Meldungen werden vertraulich behandelt.

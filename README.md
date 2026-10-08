@@ -1,7 +1,33 @@
-# aeradex
+<p align="center"><img src="docs/screenshots/logo.svg" width="72" alt="aeradex"></p>
 
-**Swiss bookkeeping your agent can run.**
-Die erste agentenorientierte Open-Source-Buchhaltung für die Schweiz: Finanzbuchhaltung, Lohnbuchhaltung und QR-Rechnungen, gespeichert als lesbare Textdateien in git, bedient von dir oder von einem LLM-Agenten.
+<h1 align="center">aeradex</h1>
+
+<p align="center"><strong>Swiss bookkeeping your agent can run.</strong><br>
+Die erste agentenorientierte Open-Source-Buchhaltung für die Schweiz: Finanzbuchhaltung, Lohnbuchhaltung und
+QR-Rechnungen, gespeichert als lesbare Textdateien in git, bedient von dir oder von einem LLM-Agenten.</p>
+
+<p align="center">
+  <a href="https://aeradex.ch"><img alt="Website" src="https://img.shields.io/badge/website-aeradex.ch-c8102e"></a>
+  <a href="https://github.com/benjaminthomet/aeradex/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/benjaminthomet/aeradex/actions/workflows/tests.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="Lizenz AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue"></a>
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
+  <img alt="Status: Vorschau" src="https://img.shields.io/badge/status-Vorschau-orange">
+</p>
+
+<p align="center">
+  <a href="https://aeradex.ch">Website</a> ·
+  <a href="#schnellstart">Schnellstart</a> ·
+  <a href="#so-sieht-es-aus">Screenshots</a> ·
+  <a href="docs/format.md">Dateiformat</a> ·
+  <a href="docs/plugins.md">Plugins</a> ·
+  <a href="CONTRIBUTING.md">Mitmachen</a> ·
+  <a href="#english-summary">English summary</a>
+</p>
+
+<p align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-quittung-dark.webp">
+  <img src="docs/screenshots/ui-quittung-light.webp" width="900" alt="aeradex Einkauf: Quittung prüfen. Links der Beleg, rechts die Buchung mit dem Konto, das der Agent gewählt und begründet hat; daneben das Agent-Panel">
+</picture></p>
 
 > *aeradex*: von lat. *aera*, den einzelnen Posten einer Rechnung, und *index*, dem Verzeichnis.
 > «Si aera singula probasti, summam, quae ex his confecta sit, non probare?» (Cicero): Wer jeden Posten
@@ -29,6 +55,18 @@ aeradex dreht das um:
 | **Unveränderlichkeit, wo das Gesetz sie verlangt** | Gesperrte Perioden sind gehasht, ausgestellte Rechnungen und abgeschlossene Lohnabrechnungen tragen einen Fingerprint. Jede nachträgliche Änderung fällt auf (GeBüV). |
 | **Mensch im Loop** | Im Standardmodus darf ein Agent freie Buchungen nur *vorschlagen*; du gibst sie mit `aeradex approve` frei. |
 | **Schweizer Recht eingebaut** | KMU-Kontenrahmen, Bilanz und Erfolgsrechnung nach OR 959a/959b, Anhang, Gewinnverwendung, MWST (effektiv und Saldosteuersatz, Abrechnung nach ESTV-Ziffern), Swiss QR-Bill (QRR/SCOR), AHV/IV/EO/ALV/UVG/KTG/BVG/FAK, Quellensteuer-Tarife nach KS 45, Lohnausweis Formular 11. |
+
+## So sieht es aus
+
+Die Oberfläche läuft lokal im Browser (`aeradex ui`) oder auf dem eigenen Server mit Login. Alle Bilder zeigen die
+Demofirma aus `examples/muster-gmbh`; GitHub zeigt sie hell oder dunkel, passend zu deinem Theme.
+
+<table>
+<tr><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-uebersicht-dark.webp"><img src="docs/screenshots/ui-uebersicht-light.webp" alt="aeradex Übersicht"></picture><br><strong>Übersicht</strong><br><sub>Flüssige Mittel, Ergebnis, offene Debitoren und «Was ansteht»: jede Zeile führt dorthin, wo du es erledigst. Rechts das Agent-Panel.</sub></td><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-entwuerfe-dark.webp"><img src="docs/screenshots/ui-entwuerfe-light.webp" alt="aeradex Einkauf › Entwürfe"></picture><br><strong>Einkauf › Entwürfe</strong><br><sub>Hochgeladene Quittungen und Lieferantenrechnungen, vom Agenten kontiert und begründet, bereit zur Freigabe.</sub></td></tr>
+<tr><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-rechnung-dark.webp"><img src="docs/screenshots/ui-rechnung-light.webp" alt="aeradex Verkauf › Neue Rechnung"></picture><br><strong>Verkauf › Neue Rechnung</strong><br><sub>Positionen, MWST und Total live gerechnet; das PDF trägt den Swiss-QR-Zahlteil.</sub></td><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-bank-dark.webp"><img src="docs/screenshots/ui-bank-light.webp" alt="aeradex Bank › Abgleichen"></picture><br><strong>Bank › Abgleichen</strong><br><sub>Eine Karte pro offener Bewegung mit dem passenden Kreditor, Debitor oder der Bankregel: ein Klick auf OK.</sub></td></tr>
+<tr><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-lohn-dark.webp"><img src="docs/screenshots/ui-lohn-light.webp" alt="aeradex Lohn"></picture><br><strong>Lohn</strong><br><sub>Lohnabrechnung mit AHV/IV/EO, ALV, NBU, KTG, BVG und Quellensteuer; Lohnausweis Formular 11.</sub></td><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-mwst-dark.webp"><img src="docs/screenshots/ui-mwst-light.webp" alt="aeradex Buchhaltung › MWST"></picture><br><strong>Buchhaltung › MWST</strong><br><sub>Abrechnung pro Quartal nach ESTV-Ziffern, Herkunft jeder Zahl, PDF im Aufbau des Formulars und eMWST-Datei.</sub></td></tr>
+<tr><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-berichte-dark.webp"><img src="docs/screenshots/ui-berichte-light.webp" alt="aeradex Buchhaltung › Berichte"></picture><br><strong>Buchhaltung › Berichte</strong><br><sub>Erfolgsrechnung, Bilanz, Geldfluss und Kennzahlen für jede Periode, mit Vorjahr oder Budget.</sub></td><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-verlauf-dark.webp"><img src="docs/screenshots/ui-verlauf-light.webp" alt="aeradex Verlauf"></picture><br><strong>Verlauf</strong><br><sub>Jede Änderung ein git-Commit, Mensch oder Agent jeweils markiert.</sub></td></tr>
+</table>
 
 ## Schnellstart
 

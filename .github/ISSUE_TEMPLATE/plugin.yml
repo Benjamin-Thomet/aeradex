@@ -1,0 +1,24 @@
+name: Plugin für den Katalog
+description: Ein Plugin in den Katalog aufnehmen lassen
+labels: ["plugin"]
+body:
+  - type: input
+    id: paket
+    attributes:
+      label: Paketname (PyPI)
+      placeholder: aeradex-meinebank
+    validations:
+      required: true
+  - type: input
+    id: quelle
+    attributes:
+      label: Quellcode (Repository-URL)
+    validations:
+      required: true
+  - type: textarea
+    id: was
+    attributes:
+      label: Was das Plugin kann und welche Rechte es braucht
+      description: Siehe docs/plugins.md (Rechte, Hooks). Der Code wird vor dem Status «geprüft» gelesen und getestet.
+    validations:
+      required: true

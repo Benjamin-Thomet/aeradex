@@ -1,0 +1,34 @@
+name: Fehler melden
+description: Etwas rechnet, prüft oder zeigt falsch an
+labels: ["fehler"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Keine echten Buchhaltungs- oder Lohndaten hochladen.** Am besten ein Testbuch mit `aeradex init` in einem
+        Temp-Ordner anlegen und die Befehle angeben, die zum Fehler führen. Sicherheitslücken bitte vertraulich melden
+        (siehe SECURITY.md).
+  - type: textarea
+    id: was
+    attributes:
+      label: Was passiert, und was hättest du erwartet?
+    validations:
+      required: true
+  - type: textarea
+    id: schritte
+    attributes:
+      label: So lässt es sich nachstellen
+      description: Befehle (CLI) oder Klickfolge (Oberfläche), mit einem Testbuch.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Ausgabe von `pip show aeradex` (Version) bzw. der Commit, auf dem du arbeitest
+  - type: textarea
+    id: quelle
+    attributes:
+      label: Fachliche Quelle (falls es um Sätze, Ziffern, Formulare geht)
+      description: z.B. ESTV-Wegleitung, KS 45, AHV-Merkblatt — mit Link
