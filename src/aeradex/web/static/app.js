@@ -214,21 +214,40 @@
   // ---- live refresh: the book changed on disk (agent, CLI, git, editor) ----
   let pendingReload = false;
   // our own writes change the book too: a fragment answer already shows them, so the echo is not reloaded
-  let ownWriteUntil = 0;
+  let ownWriteUntil = 0, inFlight = 0;
+  const isWrite = e => ((e.detail.requestConfig || {}).verb || "get") !== "get";
+  document.addEventListener("htmx:beforeRequest", e => { if (isWrite(e)) inFlight++; });
   document.addEventListener("htmx:afterRequest", e => {
-    if (((e.detail.requestConfig || {}).verb || "get") !== "get") ownWriteUntil = Date.now() + 2500;
+    if (!isWrite(e)) return;
+    inFlight = Math.max(0, inFlight - 1);
+    ownWriteUntil = Date.now() + 2500;
+    // uploaded files are in the book now; the picker no longer holds anything unsaved
+    if (e.detail.successful && e.detail.elt) $$("input[type=file]", e.detail.elt.closest("form") || e.detail.elt).forEach(i => { i.value = ""; });
   });
-  function dirty() { return $$("form[data-dirty]").length > 0 || (document.activeElement && document.activeElement.matches("input, textarea, select")); }
-  function refresh() {
-    if (Date.now() < ownWriteUntil) return;
-    if (dirty()) { $("#livebar").hidden = false; pendingReload = true; return; }
-    htmx.ajax("GET", location.pathname + location.search, { target: "#page", select: "#page", swap: "outerHTML" });
+  // only typed, unsaved text blocks a refresh; a focused file picker, checkbox or untouched field does not
+  function typing() {
+    const el = document.activeElement;
+    if (!el || !el.matches("textarea, select, input:not([type=file]):not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]):not([type=hidden])")) return false;
+    if (el.tagName === "SELECT") return [...el.options].some(o => o.selected !== o.defaultSelected);
+    return el.value !== el.defaultValue;
   }
+  function dirty() { return $$("form[data-dirty]").length > 0 || $$("#page input[type=file]").some(i => i.files && i.files.length) || typing(); }
+  function refresh() {
+    if (inFlight || Date.now() < ownWriteUntil) return;
+    if (dirty()) { $("#livebar").hidden = false; pendingReload = true; return; }
+    pendingReload = false; $("#livebar").hidden = true;
+    const el = document.activeElement, focusId = el && el.id;
+    htmx.ajax("GET", location.pathname + location.search, { target: "#page", select: "#page", swap: "outerHTML" })
+      .then(() => { const f = focusId && document.getElementById(focusId); if (f && f !== document.activeElement) f.focus({ preventScroll: true }); });
+  }
+  // a refresh held back for typed text happens as soon as that text is saved or the field is left
+  const retry = () => { if (pendingReload) setTimeout(() => { if (pendingReload && !dirty()) refresh(); }, 50); };
+  document.addEventListener("focusout", retry);
+  document.addEventListener("htmx:afterSettle", retry);
   function bindLive() {
     if (!window.EventSource) return;
-    let first = true;
     const es = new EventSource("/events");
-    es.addEventListener("changed", () => { if (first) { first = false; } refresh(); });
+    es.addEventListener("changed", refresh);
     $("#reloadBtn").onclick = () => location.reload();
   }
 
