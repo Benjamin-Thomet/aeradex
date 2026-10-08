@@ -10,7 +10,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Spacer, Table
 
 from aeradex.book import Book
-from aeradex.pdf import SIDE, P, _doc, _grid, chf, d, letter_head
+from aeradex.pdf import SIDE, P, _doc, _grid, chf, d, letter_head, price as core_price
 
 from . import daten
 
@@ -49,7 +49,7 @@ def quote_pdf(book: Book, meta: dict) -> bytes:
     data = [["Position", "Menge", "Preis", f"Betrag {cur}"]]
     for p in meta["positionen"]:
         menge = f"{Decimal(str(p['menge'])).normalize():f} {p.get('einheit') or ''}".strip()
-        data.append([P(p["text"], "cell"), menge, chf(p["preis"]), chf(p["betrag"])])
+        data.append([P(p["text"], "cell"), menge, core_price(p["preis"]), chf(p["betrag"])])
     sums = []
     if meta.get("mwst"):
         data.append(["Total exkl. MWST", "", "", chf(meta.get("netto"))])

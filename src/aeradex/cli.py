@@ -190,9 +190,11 @@ def build_parser() -> argparse.ArgumentParser:
     for f in ("monatslohn", "pensum", "stundenlohn", "standard_stunden", "bvg_betrag", "kinderzulagen",
               "ferienzuschlag_satz", "qst_satz"):
         c.add_argument(f"--{f.replace('_', '-')}", dest=f)
-    c.add_argument("--qst-code", help="z.B. A0N (mit --qst-kanton/--qst-jahr)")
-    c.add_argument("--qst-kanton")
-    c.add_argument("--qst-jahr", type=int)
+    c.add_argument("--aufenthalt", choices=["CH", "C", "B", "L", "G", "andere"],
+                   help="Aufenthaltsstatus: bestimmt die Quellensteuerpflicht (B/L/G/andere oder Wohnsitz im Ausland)")
+    c.add_argument("--land", help="Wohnsitzland (ISO, Standard CH)")
+    c.add_argument("--qst-code", help="Tarifcode, z.B. A0N; der Kanton folgt aus dem Wohnort")
+    c.add_argument("--qst-kanton", help="nur abweichend, z.B. bei Wochenaufenthalt")
 
     s = sub.add_parser("payroll", help="Lohnlauf")
     ps = s.add_subparsers(dest="sub", required=True)
@@ -730,10 +732,11 @@ def dispatch(a, book_path: Path | None):
             return api.employee_list(book())
         fields = {k: getattr(a, k) for k in ("strasse", "nr", "plz", "ort", "ahv_nr", "geburtsdatum", "eintritt",
                                              "lohnart", "monatslohn", "pensum", "stundenlohn", "standard_stunden",
-                                             "bvg_betrag", "kinderzulagen", "ferienzuschlag_satz", "qst_satz")
+                                             "bvg_betrag", "kinderzulagen", "ferienzuschlag_satz", "qst_satz",
+                                             "aufenthalt", "land")
                   if getattr(a, k) not in (None, "")}
         if a.qst_code:
-            fields["qst"] = {"kanton": a.qst_kanton, "jahr": a.qst_jahr, "code": a.qst_code.upper()}
+            fields["qst"] = {"code": a.qst_code.upper(), "kanton": a.qst_kanton or ""}
         return api.employee_add(book(), a.vorname, a.nachname, **fields)
     if c == "payroll":
         b = book()

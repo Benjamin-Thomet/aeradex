@@ -894,7 +894,7 @@ async def qst_importieren(ui: UI, request: Request):
         year = int(f.get('jahr', ''))
     except ValueError:
         return fail('Ungültiges Tarifjahr')
-    return await act(request, api.qst_sync, '/lohn/mitarbeiter', ui.book(), f.get('kanton', ''), year)
+    return await act(request, api.qst_sync, '/einstellungen#qst-tarife', ui.book(), f.get('kanton', ''), year)
 
 
 async def lohnlauf_abschliessen(ui: UI, request: Request):
@@ -945,18 +945,80 @@ async def abrechnung_aktion(ui: UI, request: Request):
     return fail("Unbekannte Aktion")
 
 
+def qst_info(book: Book, emp: dict) -> dict:
+    """Liability, canton and tariff of an employee as the pay run will see them (list and status box)."""
+    pflichtig, grund = payroll.qst_pflichtig(emp)
+    info = {"pflichtig": pflichtig, "grund": grund, "tarif": ((emp.get("qst") or {}).get("code") or ""),
+            "kanton": "", "kanton_grund": "", "fehler": ""}
+    if not pflichtig:
+        return info
+    if Decimal(str(emp.get("qst_satz") or 0)) and not info["tarif"]:
+        info["tarif"] = f"vereinfacht {Decimal(str(emp['qst_satz'])) * 100:g} %"
+        return info
+    try:
+        info["kanton"], info["kanton_grund"] = payroll.qst_kanton(book, emp)
+    except BookError as exc:
+        info["fehler"] = str(exc)
+    if not info["tarif"]:
+        info["fehler"] = info["fehler"] or "Tarif fehlt"
+    return info
+
+
 async def mitarbeiter(ui: UI, request: Request):
     book = ui.book()
     year = int(request.query_params.get("jahr") or date.today().year)
-    from .. import qst, qst_estv
-    imported = [(p.stem[:2], int(p.stem[3:])) for p in (book.root / 'lohn' / 'qst_tarife').glob('??-????.json')]
-    return ui.render(request, "mitarbeiter.html", book=book, emps=payroll.employees(book),
+    from .. import qst_estv
+    emps = payroll.employees(book)
+    return ui.render(request, "mitarbeiter.html", book=book, emps=emps,
                      edit=request.query_params.get("edit"), neu=request.query_params.get("neu"),
-                     tarife=sorted(set(qst.available() + imported)), kantone=qst_estv.CANTONS,
+                     qst_info={nr: qst_info(book, e) for nr, e in emps.items()},
+                     aufenthalt=payroll.AUFENTHALT, tarife=payroll.QST_TARIFE, kantone=qst_estv.CANTONS,
                      year=year, years=payroll_years(book, year))
 
 
+def _qst_from_form(f) -> tuple[dict | None, str]:
+    """The tariff code from Tarif + Kinder + Kirchensteuer, and the canton override."""
+    tarif = (f.get("qst_tarif") or "").strip().upper()
+    kanton = (f.get("qst_kanton") or "").strip().upper()
+    if not tarif:
+        return None, kanton
+    code = f"{tarif}{(f.get('qst_kinder') or '0').strip()}{'Y' if f.get('qst_kirche') == '1' else 'N'}"
+    return {"code": code, **({"kanton": kanton} if kanton else {})}, kanton
+
+
+async def qst_status(ui: UI, request: Request):
+    """The live box in the Quellensteuer tab: liable or not and why, the canton and where it comes from."""
+    from markupsafe import escape
+    qp = request.query_params
+    book = ui.book()
+    try:
+        q, _ = _qst_from_form(qp)
+        rate = (qp.get("qst_satz_pct") or "").strip()
+        emp = {"vorname": qp.get("vorname", ""), "nachname": qp.get("nachname", ""),
+               "adresse": {"plz": qp.get("plz", ""), "ort": qp.get("ort", ""), "land": qp.get("land", "CH")},
+               "aufenthalt": qp.get("aufenthalt", ""), "qst_pflicht": qp.get("qst_pflicht", "auto"),
+               "qst": q or ({"kanton": qp.get("qst_kanton").upper()} if qp.get("qst_kanton") else None),
+               # the core parser: rejects NaN/Infinity and junk like the save would
+               "qst_satz": parse_amount(rate, "Satz vereinfachtes Verfahren") / 100 if rate else Decimal(0)}
+        payroll.check_qst_fields(emp)
+        info = qst_info(book, emp)
+    except (BookError, FormatError, InvalidOperation, ValueError) as exc:
+        return HTMLResponse(f'<div class="qstline warn">{escape(str(exc))}</div>')
+    if not info["pflichtig"]:
+        text = f"<strong>Nicht quellensteuerpflichtig</strong> · {escape(info['grund'])}"
+        return HTMLResponse(f'<div class="qstline ok">{text}</div>')
+    parts = [f"<strong>Quellensteuerpflichtig</strong> · {escape(info['grund'])}"]
+    if info["kanton"]:
+        parts.append(f"Kanton <strong>{escape(info['kanton'])}</strong> — {escape(info['kanton_grund'])}")
+    if info["tarif"]:
+        parts.append(f"Tarif {escape(info['tarif'])}")
+    if info["fehler"]:
+        parts.append(f'<span class="pill red">{escape(info["fehler"])}</span>')
+    return HTMLResponse(f'<div class="qstline info">{" · ".join(parts)}</div>')
+
+
 EMP_TEXT = ("vorname", "nachname", "strasse", "nr", "plz", "ort", "ahv_nr", "geburtsdatum", "eintritt", "austritt", "lohnart", "iban", "land")
+# the Quellensteuer fields are read in mitarbeiter_speichern (_qst_from_form)
 EMP_NUM = ("monatslohn", "pensum", "stundenlohn", "standard_stunden", "vollzeit_stunden_woche", "bvg_betrag",
            "ag_bvg_betrag", "kinderzulagen", "qst_satz")
 
@@ -972,13 +1034,13 @@ async def mitarbeiter_speichern(ui: UI, request: Request):
         fields["ferienzuschlag_satz"] = str(parse_amount(f.get("ferienzuschlag")) / 100)
     fields["qst_satz"] = str(parse_amount(f.get("qst_satz_pct")) / 100) if (f.get("qst_satz_pct") or "").strip() else "0"
     fields["ferien_inbegriffen"] = f.get("ferien_inbegriffen") == "1"
-    code = (f.get("qst_code") or "").strip().upper()
-    if code:
+    fields["aufenthalt"] = (f.get("aufenthalt") or "").strip()
+    fields["qst_pflicht"] = (f.get("qst_pflicht") or "auto").strip()
+    fields["qst"], kanton = _qst_from_form(f)
+    if fields["qst"]:
         fields["qst_satz"] = "0"
-        kanton, _, jahr = (f.get("qst_tabelle") or "").partition("-")
-        fields["qst"] = {"kanton": kanton, "jahr": int(jahr or 0), "code": code}
-    else:
-        fields["qst"] = None
+    elif kanton:
+        return fail("Kanton abweichend nur zusammen mit einem Tarif erfassen")
     nr = request.path_params.get("nr")
     book = ui.book()
     if nr:
@@ -1941,7 +2003,9 @@ async def einstellungen(ui: UI, request: Request):
                      jev=__import__("aeradex.jev", fromlist=["config"]).config(book),
                      backends=__import__("aeradex.web.chat", fromlist=["BACKENDS"]).BACKENDS,
                      plugin_rows=api.plugin_list(book), katalog=_katalog(book), server_mode=ui.auth_dir is not None,
-                     neustart=bool(getattr(ui, "neustart_noetig", False)))
+                     neustart=bool(getattr(ui, "neustart_noetig", False)),
+                     kantone=__import__("aeradex.qst_estv", fromlist=["CANTONS"]).CANTONS,
+                     qst_geladen=sorted(p.stem.replace("-", " ") for p in (book.root / "lohn" / "qst_tarife").glob("??-????.json")))
 
 
 async def einstellungen_speichern(ui: UI, request: Request):
@@ -2160,6 +2224,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/lohn/abrechnung/{monat:str}/{nr:str}", h(abrechnung)),
         Route("/lohn/abrechnung/{monat:str}/{nr:str}/{aktion:str}", h(abrechnung_aktion), methods=["POST"]),
         Route("/lohn/mitarbeiter", h(mitarbeiter)),
+        Route("/lohn/qst-status", h(qst_status)),
         Route("/lohn/mitarbeiter/neu", h(mitarbeiter_speichern), methods=["POST"]),
         Route("/lohn/mitarbeiter/{nr:str}", h(mitarbeiter_speichern), methods=["POST"]),
         Route("/lohn/lohnkonto/{jahr:int}/{nr:str}", h(lohnkonto)),

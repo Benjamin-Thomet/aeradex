@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import shutil
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from .book import PROPOSAL_COLUMNS, Book, BookError, Row
@@ -102,7 +102,7 @@ def book_entry(book: Book, datum, soll: str, haben: str, betrag, text: str,
     return row, post(book, rows, attachment)
 
 
-def convert(book: Book, rows: list[Row], waehrung: str = "", kurs=None) -> list[Row]:
+def convert(book: Book, rows: list[Row], waehrung: str = "", kurs=None, rounding=ROUND_HALF_UP) -> list[Row]:
     """Rows whose amounts are in `waehrung` → CHF at `kurs` (default: BAZG rate of the
     booking date). Every row keeps its foreign amount and the rate (journal columns FW,
     Kurs). Without a currency, refuse rows that touch a foreign-currency account."""
@@ -121,7 +121,7 @@ def convert(book: Book, rows: list[Row], waehrung: str = "", kurs=None) -> list[
         raise BookError("Kurs muss positiv sein")
     for r in rows:
         r.waehrung, r.fw, r.kurs = waehrung, r.betrag, rate
-        r.betrag = (r.betrag * rate).quantize(Decimal("0.01"))
+        r.betrag = (r.betrag * rate).quantize(Decimal("0.01"), rounding=rounding)   # half-up, like every amount
     _rebalance(book, rows)
     return rows
 

@@ -157,7 +157,10 @@ def test_payment_missing_iban_and_tampering(book):
         api.payroll_payment_export(book, '2026-03', '2026-03-25')
 
 
-def test_payroll_failure_leaves_no_partial_run(book):
+def test_payroll_failure_leaves_no_partial_run(book, monkeypatch):
+    def offline(canton, year):
+        raise BookError('ESTV-Tarife konnten nicht geladen werden: offline')
+    monkeypatch.setattr(qst_estv, 'download', offline)
     api.employee_add(book, 'Good', 'Employee', monatslohn=5000)
     api.employee_add(book, 'Bad', 'Tariff', monatslohn=5000, qst={'kanton':'ZH','jahr':2026,'code':'A0N'})
     with pytest.raises(BookError):

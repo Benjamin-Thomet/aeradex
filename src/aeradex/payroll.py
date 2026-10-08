@@ -135,6 +135,7 @@ def add_employee(book: Book, vorname: str, nachname: str, **fields) -> tuple[dic
             "ferien_inbegriffen": fields.pop("ferien_inbegriffen", False),
             "bvg_betrag": fields.pop("bvg_betrag", 0), "ag_bvg_betrag": fields.pop("ag_bvg_betrag", 0),
             "kinderzulagen": fields.pop("kinderzulagen", 0),
+            "aufenthalt": fields.pop("aufenthalt", ""), "qst_pflicht": fields.pop("qst_pflicht", "auto"),
             "qst": fields.pop("qst", None), "qst_satz": fields.pop("qst_satz", 0),
             "iban": fields.pop("iban", ""), "aktiv": True}
     if fields:
@@ -145,8 +146,9 @@ def add_employee(book: Book, vorname: str, nachname: str, **fields) -> tuple[dic
     for key in ("monatslohn", "pensum", "stundenlohn", "standard_stunden", "vollzeit_stunden_woche",
                 "ferienzuschlag_satz", "bvg_betrag", "ag_bvg_betrag", "kinderzulagen", "qst_satz"):
         meta[key] = Decimal(str(meta[key] or 0))
-    if meta["qst"]:
-        qst.parse_code(meta["qst"].get("code", ""))
+    meta["qst"] = normalize_qst(meta["qst"])
+    check_qst_fields(meta)
+    check_dates(meta)
     meta["ferien_inbegriffen"] = bool(meta["ferien_inbegriffen"])
     path = book.root / "personal" / f"{number}-{slug(vorname + ' ' + nachname)}.md"
     write_frontmatter(path, meta, "Notizen zum Arbeitsverhältnis.")
@@ -155,6 +157,107 @@ def add_employee(book: Book, vorname: str, nachname: str, **fields) -> tuple[dic
 
 def is_hourly(emp: dict) -> bool:
     return (emp.get("lohnart") or "monat") == "stunde"
+
+
+# ---------- Quellensteuer: liability and canton from the facts ----------
+
+AUFENTHALT = {"CH": "Schweizer/in", "C": "Niederlassung C", "B": "Aufenthalt B", "L": "Kurzaufenthalt L",
+              "G": "Grenzgänger/in G", "andere": "andere Bewilligung"}
+# Tariffs an employer applies in payroll (QStV Art. 1). D (AHV refund), E (simplified procedure: the flat
+# rate), G/Q/V (replacement income not paid by the employer) are left out.
+QST_TARIFE = {"A": "alleinstehend", "B": "verheiratet, Alleinverdiener", "C": "verheiratet, Doppelverdiener",
+              "H": "alleinstehend mit Kindern im Haushalt",
+              "L": "Grenzgänger Deutschland (wie A)", "M": "Grenzgänger Deutschland (wie B)",
+              "N": "Grenzgänger Deutschland (wie C)", "P": "Grenzgänger Deutschland (wie H)",
+              "R": "Grenzgänger Italien, nur TI (wie A)", "S": "Grenzgänger Italien, nur TI (wie B)",
+              "T": "Grenzgänger Italien, nur TI (wie C)", "U": "Grenzgänger Italien, nur TI (wie H)",
+              "F": "Grenzgänger Italien, Abkommen 1974"}
+
+
+def normalize_qst(value) -> dict | None:
+    """{code, kanton?} — kanton only as an override (Wochenaufenthalt); an older {kanton, jahr, code} keeps its
+    canton as the override, the year comes from the pay run."""
+    if not value or not (value.get("code") or "").strip():
+        return None
+    out = {"code": str(value["code"]).strip().upper()}
+    if (value.get("kanton") or "").strip():
+        out["kanton"] = str(value["kanton"]).strip().upper()
+    return out
+
+
+def check_qst_fields(emp: dict) -> None:
+    from .qst_estv import CANTONS
+    if emp.get("aufenthalt") not in (None, "", *AUFENTHALT):
+        raise BookError(f"Aufenthalt: {', '.join(AUFENTHALT)}")
+    if emp.get("qst_pflicht") not in (None, "", "auto", "ja", "nein"):
+        raise BookError("Quellensteuerpflicht: auto, ja oder nein")
+    t = emp.get("qst") or {}
+    if t.get("code"):
+        qst.parse_code(t["code"])
+    if t.get("kanton") and t["kanton"] not in CANTONS:
+        raise BookError(f"Unbekannter Kanton {t['kanton']}")
+
+
+def qst_pflichtig(emp: dict) -> tuple[bool, str]:
+    """Is the employee subject to Quellensteuer, and why. The override wins; otherwise residence abroad or a
+    permit other than C makes them liable (Art. 83/91 DBG). Older records without a permit stay as entered."""
+    choice = emp.get("qst_pflicht") or "auto"
+    if choice == "ja":
+        return True, "manuell: pflichtig"
+    if choice == "nein":
+        return False, "manuell: nicht pflichtig"
+    land = ((emp.get("adresse") or {}).get("land") or "CH").upper()
+    status = emp.get("aufenthalt") or ""
+    if land != "CH":
+        return True, f"Wohnsitz im Ausland ({land})"
+    if status in ("CH", "C"):
+        return False, AUFENTHALT[status]
+    if status:
+        return True, AUFENTHALT.get(status, status)
+    legacy = bool(emp.get("qst") or D(emp.get("qst_satz")))
+    return legacy, "wie erfasst (Aufenthalt fehlt)"
+
+
+def qst_kanton(book: Book, emp: dict) -> tuple[str, str]:
+    """The canton entitled to the tax, and why: an override (Wochenaufenthalt), the canton of residence, or —
+    living abroad — the canton of the employer's seat."""
+    from . import plz
+    t = emp.get("qst") or {}
+    if t.get("kanton"):
+        return t["kanton"], "abweichend erfasst"
+    a = emp.get("adresse") or {}
+    if (a.get("land") or "CH").upper() != "CH":
+        firm = book.settings.adresse
+        k = plz.kanton(firm.get("plz"), firm.get("ort"))
+        if not k:
+            raise BookError("Quellensteuer: Kanton des Firmensitzes unbekannt — PLZ/Ort in den Einstellungen prüfen")
+        return k, f"Sitz der Firma ({firm.get('plz', '')} {firm.get('ort', '')}), Wohnsitz im Ausland"
+    k = plz.kanton(a.get("plz"), a.get("ort"))
+    if not k:
+        options = plz.choices(a.get("plz"))
+        hint = f" — PLZ {a.get('plz')} liegt in {' und '.join(options)}" if len(options) > 1 else ""
+        raise BookError(f"Quellensteuer {display_name(emp)}: Wohnkanton aus PLZ/Ort nicht bestimmbar{hint}; "
+                        "Kanton abweichend erfassen")
+    return k, f"Wohnort {a.get('plz', '')} {a.get('ort', '')}".strip()
+
+
+def effective(book: Book, emp: dict, year: int) -> dict:
+    """The employee as the calculation needs it: qst = {kanton, jahr, code} resolved for this pay year, or no
+    Quellensteuer at all when not liable."""
+    e = dict(emp)
+    liable, _ = qst_pflichtig(emp)
+    if not liable:
+        e["qst"], e["qst_satz"] = None, ZERO
+        return e
+    t = normalize_qst(emp.get("qst"))
+    if t:
+        e["qst"] = {"kanton": qst_kanton(book, emp)[0], "jahr": int(year), "code": t["code"]}
+    elif not D(emp.get("qst_satz")):
+        raise BookError(f"{display_name(emp)} ist quellensteuerpflichtig ({qst_pflichtig(emp)[1]}): "
+                        "Tarifcode oder Satz (vereinfachtes Verfahren) erfassen")
+    else:
+        e["qst"] = None
+    return e
 
 
 def uses_tarif(emp: dict) -> bool:
@@ -198,6 +301,19 @@ def quellensteuer_rate(emp: dict, satzbestimmend=None, year=None) -> Decimal:
         raise BookError(str(exc)) from exc
 
 
+def employed_in(emp: dict, year: int, month: int) -> bool:
+    """Does the employment (Eintritt … Austritt) overlap this month?"""
+    first, last = date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
+    start = parse_date(emp["eintritt"]) if emp.get("eintritt") else None
+    end = parse_date(emp["austritt"]) if emp.get("austritt") else None
+    return not ((start and start > last) or (end and end < first))
+
+
+def check_dates(emp: dict) -> None:
+    if emp.get("eintritt") and emp.get("austritt") and parse_date(emp["austritt"]) < parse_date(emp["eintritt"]):
+        raise BookError("Austritt liegt vor dem Eintritt")
+
+
 def calculate(emp: dict, cfg: dict, year: int, month: int, inputs: dict, tariff: dict | None = None) -> dict:
     """All wage, deduction and net amounts for one month.
 
@@ -208,7 +324,11 @@ def calculate(emp: dict, cfg: dict, year: int, month: int, inputs: dict, tariff:
     full_time = money(emp.get("monatslohn"))
     pensum = D(emp.get("pensum") if emp.get("pensum") is not None else 100) / Decimal("100")
     rate = money(emp.get("stundenlohn"))
-    hours = D(inputs.get("stunden") if inputs.get("stunden") is not None else emp.get("standard_stunden"))
+    # Outside the employment period the recurring amounts (standard hours, BVG, allowances) do not apply;
+    # what is entered for the month explicitly still does (e.g. a late correction).
+    employed = employed_in(emp, year, month)
+    standard = emp.get("standard_stunden") if employed else 0
+    hours = D(inputs.get("stunden") if inputs.get("stunden") is not None else standard)
 
     if inputs.get("lohn") is not None:
         wage = money(inputs["lohn"])
@@ -243,8 +363,9 @@ def calculate(emp: dict, cfg: dict, year: int, month: int, inputs: dict, tariff:
         return money(gross * D(r))
 
     ahv, alv, ktg, uvg = pct(an.get("ahv")), pct(an.get("alv")), pct(an.get("ktg")), pct(an.get("uvg"))
-    bvg = money(inputs.get("bvg") if inputs.get("bvg") is not None else emp.get("bvg_betrag"))
-    kz = money(inputs.get("kinderzulagen") if inputs.get("kinderzulagen") is not None else emp.get("kinderzulagen"))
+    bvg = money(inputs.get("bvg") if inputs.get("bvg") is not None else (emp.get("bvg_betrag") if employed else 0))
+    kz = money(inputs.get("kinderzulagen") if inputs.get("kinderzulagen") is not None
+               else (emp.get("kinderzulagen") if employed else 0))
     # KS 45 3.2 / 6.3: family allowances are taxable, although AHV-exempt.
     taxable = money(gross + kz)
     eigen = eigenes_pensum(emp, hours)
@@ -422,8 +543,31 @@ def _with_expenses(book: Book, meta: dict) -> None:
 
 
 def _tariff(book, emp, year):
+    """The ESTV table for an effective employee (see `effective`), or None."""
     from .qst_estv import table
     return table(book, emp['qst']['kanton'], year) if uses_tarif(emp) else None
+
+
+def tariffs_needed(book: Book, year: int, month: int, nr: str | None = None) -> set[str]:
+    """Cantons whose ESTV table for `year` the pay run of this month needs and the book does not have yet —
+    only for payslips the run will (re)calculate: employed that month, not closed."""
+    from .qst_estv import ANNUAL, table
+    targets = [employee(book, nr)] if nr else [e for e in employees(book).values()
+                                               if e.get("aktiv", True) and employed_in(e, year, month)]
+    out = set()
+    for emp in targets:
+        path = payslip_path(book, year, month, emp["nummer"])
+        if path.exists() and read_frontmatter(path)[0].get("status") == "abgeschlossen":
+            continue
+        if not qst_pflichtig(emp)[0] or not normalize_qst(emp.get("qst")):
+            continue
+        try:
+            k = qst_kanton(book, emp)[0]
+        except BookError:
+            continue                      # reported by the run itself
+        if table(book, k, year) is None and k not in ANNUAL and (k, int(year)) not in qst.available():
+            out.add(k)
+    return out
 
 
 def run(book: Book, year: int, month: int, nr: str | None = None, inputs: dict | None = None) -> list[tuple[dict, Path]]:
@@ -434,7 +578,10 @@ def run(book: Book, year: int, month: int, nr: str | None = None, inputs: dict |
         raise BookError("Lohnzahlungsdatei besteht bereits — zuerst zurückziehen")
     cfg = config(book)
     out = []
-    targets = [employee(book, nr)] if nr else [e for e in employees(book).values() if e.get("aktiv", True)]
+    targets = [employee(book, nr)] if nr else [e for e in employees(book).values()
+                                               if e.get("aktiv", True) and employed_in(e, year, month)]
+    if nr and not employed_in(targets[0], year, month) and not payslip_path(book, year, month, nr).exists():
+        raise BookError(f"{display_name(targets[0])} ist im {month:02d}/{year} nicht angestellt (Eintritt/Austritt)")
     for emp in targets:
         path = payslip_path(book, year, month, emp["nummer"])
         if path.exists():
@@ -450,7 +597,8 @@ def run(book: Book, year: int, month: int, nr: str | None = None, inputs: dict |
                                  "korrektur_text": "", "qst_satzbestimmend": None, "qst_gesamtpensum": None}}
         if inputs:
             meta["eingaben"].update({k: v for k, v in inputs.items() if v is not None})
-        meta["werte"] = calculate(emp, cfg, year, month, meta["eingaben"], _tariff(book, emp, year))
+        eff = effective(book, emp, year)
+        meta["werte"] = calculate(eff, cfg, year, month, meta["eingaben"], _tariff(book, eff, year))
         _with_expenses(book, meta)
         meta.pop("ag", None)
         meta.pop("fingerprint", None)
@@ -546,7 +694,8 @@ def _freeze(book: Book, cfg: dict, meta: dict) -> dict:
     year, month, nr = int(meta["jahr"]), int(meta["monat"]), meta["mitarbeiter"]
     emp = employee(book, nr)
     # Recalculate once more so the frozen figures match the current inputs.
-    meta["werte"] = calculate(emp, cfg, year, month, meta.get("eingaben") or {}, _tariff(book, emp, year))
+    eff = effective(book, emp, year)
+    meta["werte"] = calculate(eff, cfg, year, month, meta.get("eingaben") or {}, _tariff(book, eff, year))
     meta.setdefault("eingaben", {})
     _with_expenses(book, meta)
     w = meta["werte"]

@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from .book import Book, BookError, Row
@@ -99,7 +99,7 @@ def preview(book: Book, stichtag, fetch=None) -> list[dict]:
             continue
         fw = fw_balance(book, nr, when)
         kurs = rate(book, a.waehrung, when, fetch)
-        target = (fw * kurs).quantize(CENT)
+        target = (fw * kurs).quantize(CENT, rounding=ROUND_HALF_UP)
         chf = eng.balance_at(nr, when) if when.year in book.years() else a.eroeffnung
         out.append({"konto": nr, "name": a.name, "waehrung": a.waehrung, "fw": fw, "kurs": kurs,
                     "chf_neu": target, "chf_buch": chf, "differenz": target - chf})
@@ -123,7 +123,7 @@ def preview_bills(book: Book, stichtag, fetch=None) -> list[dict]:
         cur = kred.currency(meta)
         kurs = rate(book, cur, when, fetch)
         value = kred.book_value(book, meta, when, paid_rows=rows)
-        target = (open_fw * kurs).quantize(CENT)
+        target = (open_fw * kurs).quantize(CENT, rounding=ROUND_HALF_UP)
         out.append({"nummer": nr, "name": meta.get("name"), "waehrung": cur, "fw": open_fw, "kurs": kurs,
                     "chf_neu": target, "chf_buch": value, "differenz": target - value})
     return out
@@ -144,7 +144,7 @@ def preview_invoices(book: Book, stichtag, fetch=None) -> list[dict]:
             continue
         cur = inv.currency(meta)
         kurs = rate(book, cur, when, fetch)
-        target = (st["offen"] * kurs).quantize(CENT)
+        target = (st["offen"] * kurs).quantize(CENT, rounding=ROUND_HALF_UP)
         out.append({"nummer": nr, "name": st["name"], "waehrung": cur, "fw": st["offen"], "kurs": kurs,
                     "chf_neu": target, "chf_buch": st["offen_chf"], "differenz": target - st["offen_chf"]})
     return out

@@ -87,6 +87,24 @@ def table_path(book, canton, year):
     return book.root / 'lohn' / 'qst_tarife' / f'{canton}-{int(year)}.json'
 
 
+def store(book, table_):
+    """Write a downloaded table into the book; returns its path."""
+    path = table_path(book, table_['kanton'], table_['jahr'])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(table_, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
+    return path
+
+
+def ensure(book, canton, year):
+    """Download the table for canton/year if the book does not have it; returns the path written, or None."""
+    if table(book, canton, year) is not None:
+        return None
+    try:
+        return store(book, download(canton, year))
+    except BookError as exc:
+        raise BookError(f"{exc} — ohne Internet: Einstellungen → Lohn → Quellensteuertarife laden") from None
+
+
 def table(book, canton, year):
     path = table_path(book, canton.upper(), year)
     return json.loads(path.read_text()) if path.exists() else None

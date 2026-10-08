@@ -70,6 +70,15 @@ def chf(value, blank_zero: bool = False) -> str:
     return f"{v:,.2f}".replace(",", "'")
 
 
+def price(value) -> str:
+    """A unit price: like chf, with up to four decimals where the price has them (0.335)."""
+    v = Decimal(str(value or 0))
+    if v == v.quantize(Decimal("0.01")):
+        return chf(v)
+    whole, _, frac = f"{v:.4f}".rstrip("0").partition(".")
+    return f"{int(whole):,}".replace(",", "'") + "." + frac
+
+
 def d(value) -> str:
     return parse_date(value).strftime("%d.%m.%Y") if value else ""
 
@@ -237,7 +246,7 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
         data = [["Position", "Menge", "Preis", f"Betrag {meta.get('waehrung', 'CHF')}"]]
         for p in meta["positionen"]:
             menge = f"{Decimal(str(p['menge'])).normalize():f} {p.get('einheit') or ''}".strip()
-            data.append([P(p["text"], "cell"), menge, chf(p["preis"]), chf(p["betrag"])])
+            data.append([P(p["text"], "cell"), menge, price(p["preis"]), chf(p["betrag"])])
         cur = meta.get('waehrung', 'CHF')
         sums = []
         if meta.get("mwst"):

@@ -92,7 +92,7 @@ def checklist(book: Book, jahr: int) -> list[dict]:
         add("hinweis", f"Lohnsätze {jahr} prüfen",
             "AHV/IV/EO, ALV, UVG, KTG und BVG gelten für alle Jahre gleich — bei Änderungen der Ausgleichskasse oder "
             "der Policen vor dem ersten Lohnlauf anpassen.", "/einstellungen#lohn")
-        if any(e.get("qst") for e in emps):
-            add("hinweis", f"Quellensteuertarife {jahr}", "Die Tarife des neuen Jahres vor dem ersten Lohnlauf laden.",
-                "/lohn")
+        if any(payroll.qst_pflichtig(e)[0] for e in emps):
+            add("hinweis", f"Quellensteuer {jahr}", "Die ESTV-Tarife des neuen Jahres lädt der erste Lohnlauf automatisch; "
+                "Tarifcodes (Zivilstand, Kinder) der Mitarbeitenden prüfen.", "/lohn/mitarbeiter")
     return items

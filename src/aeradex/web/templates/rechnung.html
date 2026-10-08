@@ -13,7 +13,7 @@
     {% if pdf %}<div class="stage"><iframe src="/datei/{{ pdf|urlq }}" title="Rechnung {{ meta.nummer }}"></iframe></div>{% endif %}
     <div class="tablewrap"><table class="ledger">
       <thead><tr><th>Position</th><th class="right">Menge</th><th class="right">Preis</th><th>Konto</th><th class="right">Betrag</th></tr></thead>
-      <tbody>{% for p in meta.positionen %}<tr><td>{{ p.text }}</td><td class="right num">{{ p.menge }} {{ p.einheit }}</td><td class="right num">{{ p.preis|chf }}</td><td class="acc">{{ p.konto }}{% if p.mwst %} <span class="pill muted">{{ p.mwst }}</span>{% endif %}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for p in meta.positionen %}<tr><td>{{ p.text }}</td><td class="right num">{{ p.menge }} {{ p.einheit }}</td><td class="right num">{{ p.preis|preis }}</td><td class="acc">{{ p.konto }}{% if p.mwst %} <span class="pill muted">{{ p.mwst }}</span>{% endif %}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
       <tfoot>
         {% if meta.mwst %}<tr><td colspan="4">Total exkl. MWST</td><td class="right num">{{ meta.netto|chf }}</td></tr>
         {% for b in meta.mwst %}<tr><td colspan="4">{{ b.code }} · MWST {{ b.satz }} % auf {{ b.netto|chf }}</td><td class="right num">{{ b.steuer|chf }}</td></tr>{% endfor %}{% endif %}

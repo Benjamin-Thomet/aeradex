@@ -2,7 +2,10 @@
 the same api path as the CLI (validated, written, checked, committed)."""
 from __future__ import annotations
 
+import io
 import shutil
+import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -14,13 +17,28 @@ from aeradex import check, gitlog  # noqa: E402
 from aeradex.book import Book  # noqa: E402
 from aeradex.web.app import create_app  # noqa: E402
 
-DEMO = Path(__file__).resolve().parent.parent / "examples" / "muster-gmbh"
+REPO = Path(__file__).resolve().parent.parent
+DEMO = REPO / "examples" / "muster-gmbh"
+
+
+def _demo_copy(target: Path) -> None:
+    """The demo book as committed: the folder in the working tree is also an interactive demo that people
+    empty or change while testing, so the tests take it from git when they can."""
+    try:
+        data = subprocess.run(["git", "-C", str(REPO), "archive", "HEAD", "examples/muster-gmbh"],
+                              capture_output=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        shutil.copytree(DEMO, target)
+        return
+    with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+        tar.extractall(target.parent / "_demo", filter="data")
+    shutil.move(str(target.parent / "_demo" / "examples" / "muster-gmbh"), target)
 
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
     target = tmp_path / "buch"
-    shutil.copytree(DEMO, target)
+    _demo_copy(target)
     gitlog.init_repo(target)
     gitlog.commit(target, "Demo-Stand")
     return target
@@ -227,12 +245,15 @@ def test_lohnausweis_readiness_and_year_status(client, root):
 def test_employee_add_and_edit(client, root):
     ok(post(client, "/lohn/mitarbeiter/neu", {"vorname": "Mia", "nachname": "Neu", "lohnart": "monat",
                                                "monatslohn": "5000", "pensum": "60", "eintritt": "2026-04-01",
-                                               "qst_tabelle": "BS-2026", "qst_code": "a0n"}))
+                                               "plz": "4051", "ort": "Basel", "land": "CH", "aufenthalt": "B",
+                                               "qst_tarif": "a", "qst_kinder": "0"}))
+    text = next((root / "personal").glob("M0003-*.md")).read_text()
+    assert "aufenthalt: B" in text and "code: A0N" in text and "jahr:" not in text.split("qst:")[1].split("qst_satz")[0]
     ok(post(client, "/lohn/mitarbeiter/M0003", {"vorname": "Mia", "nachname": "Neu", "lohnart": "monat",
                                                  "monatslohn": "5200", "pensum": "60", "aktiv": "1",
-                                                 "qst_tabelle": "BS-2026", "qst_code": ""}))
+                                                 "plz": "4051", "ort": "Basel", "aufenthalt": "C", "qst_tarif": ""}))
     text = next((root / "personal").glob("M0003-*.md")).read_text()
-    assert "monatslohn: 5200.00" in text and "qst: null" in text
+    assert "monatslohn: 5200.00" in text and "qst: null" in text and "aufenthalt: C" in text
     ok(post(client, "/lohn/lauf", {"monat": "2026-04"}))
     assert (root / "lohn" / "2026" / "04" / "M0003.md").exists()
 
@@ -527,14 +548,14 @@ def test_estv_import_ui(client, root, monkeypatch):
     from test_payroll_review import records
     monkeypatch.setattr(qst_estv, 'download', lambda k, y: qst_estv.parse(records(k, y), k, y, 'fixture'))
     ok(post(client, '/lohn/qst-import', {'kanton': 'ZH', 'jahr': '2026'}))
-    assert 'ZH 2026' in client.get('/lohn/mitarbeiter').text
+    assert 'ZH 2026' in client.get('/einstellungen').text
 
 
 def test_employee_can_clear_flat_withholding_rate(client, root):
     from aeradex import api, payroll
     api.employee_update(Book(root), 'M0001', qst=None, qst_satz='0.05')
     ok(post(client, '/lohn/mitarbeiter/M0001', {'vorname': 'Lea', 'nachname': 'Muster',
-                                              'lohnart': 'monat', 'qst_code': '', 'qst_satz_pct': ''}))
+                                              'lohnart': 'monat', 'qst_tarif': '', 'qst_satz_pct': ''}))
     assert payroll.employee(Book(root), 'M0001')['qst_satz'] == 0
 
 
@@ -603,3 +624,18 @@ def test_open_next_business_year_from_abschluss(client, root):
     assert "Jahreswechsel 2026 → 2027" in page and "Eröffnungsbilanz per 01.01.2027" in page
     assert "<option selected>2027</option>" in client.get("/journal?jahr=2027").text
     assert "Geschäftsjahr 2027 eröffnet" in last_commit(root) and errors(root) == []
+
+
+def test_employee_form_tabs_and_live_qst_status(client, root):
+    page = client.get("/lohn/mitarbeiter?edit=M0001").text
+    for tab in ("Person", "Anstellung &amp; Lohn", "Sozialversicherungen", "Quellensteuer", "Auszahlung"):
+        assert f'role="tab">{tab}</label>' in page
+    assert 'name="qst_tabelle"' not in page and "ESTV-Tarife laden" not in page
+    r = client.get("/lohn/qst-status", params={"plz": "3600", "ort": "Thun", "land": "CH", "aufenthalt": "B",
+                                               "qst_tarif": "A", "qst_kinder": "0"})
+    assert "Quellensteuerpflichtig" in r.text and "Kanton <strong>BE</strong>" in r.text and "3600 Thun" in r.text
+    r = client.get("/lohn/qst-status", params={"plz": "3600", "ort": "Thun", "aufenthalt": "C"})
+    assert "Nicht quellensteuerpflichtig" in r.text
+    r = client.get("/lohn/qst-status", params={"plz": "79539", "ort": "Lörrach", "land": "DE", "aufenthalt": "G",
+                                               "qst_tarif": "L"})
+    assert "Kanton <strong>BE</strong>" in r.text and "Sitz der Firma" in r.text     # demo firm: 3000 Bern

@@ -451,11 +451,16 @@ def _ym(monat: str) -> tuple[int, int]:
 def payroll_run(book: Book, monat: str, mitarbeiter: str | None = None, eingaben: dict | None = None) -> dict:
     _guard(book)
     y, m = _ym(monat)
+    from . import qst_estv
+    loaded = [p for k in sorted(payroll.tariffs_needed(book, y, m, mitarbeiter)) if (p := qst_estv.ensure(book, k, y))]
     results = payroll.run(book, y, m, mitarbeiter, eingaben)
+    tarife = f" (ESTV-Quellensteuertarife {y} geladen: {', '.join(p.stem[:2] for p in loaded)})" if loaded else ""
     if not results:
+        if loaded:
+            return _done(book, f"ESTV-Quellensteuertarife {y} geladen", loaded)
         return {"ok": True, "meldung": "Nichts zu rechnen (alle abgeschlossen oder keine aktiven Mitarbeiter)"}
-    return _done(book, f"Lohnlauf {m:02d}/{y}: {len(results)} Abrechnung(en) berechnet",
-                 [p for _, p in results], abrechnungen=[
+    return _done(book, f"Lohnlauf {m:02d}/{y}: {len(results)} Abrechnung(en) berechnet{tarife}",
+                 [p for _, p in results] + loaded, abrechnungen=[
                      {"mitarbeiter": meta["mitarbeiter"], "name": meta.get("name"), "status": meta["status"],
                       "brutto": meta["werte"]["bruttolohn"], "netto": meta["werte"]["nettolohn"]}
                      for meta, _ in results])
@@ -694,7 +699,8 @@ def employee_update(book: Book, nummer: str, **fields) -> dict:
     nr = nummer
     emp = payroll.employee(book, nr)
     allowed = {"vorname", "nachname", "ahv_nr", "geburtsdatum", "eintritt", "austritt", "lohnart",
-               "ferien_inbegriffen", "qst", "aktiv", "iban", *EMPLOYEE_NUMERIC, *_ADDRESS_KEYS}
+               "ferien_inbegriffen", "qst", "aktiv", "iban", "aufenthalt", "qst_pflicht",
+               *EMPLOYEE_NUMERIC, *_ADDRESS_KEYS}
     unknown = set(fields) - allowed
     if unknown:
         raise BookError(f"Unbekannte Felder: {', '.join(sorted(unknown))}")
@@ -703,13 +709,10 @@ def employee_update(book: Book, nummer: str, **fields) -> dict:
     for key in ("geburtsdatum", "eintritt", "austritt"):
         if key in fields:
             fields[key] = parse_date(fields[key], key).isoformat() if fields[key] else None
-    if "qst" in fields and fields["qst"]:
-        q = fields["qst"]
-        from . import qst as qstmod
-        qstmod.parse_code(q.get("code", ""))
-        fields["qst"] = {"kanton": str(q["kanton"]).upper(), "jahr": int(q["jahr"]), "code": q["code"].upper()}
-    if "qst" in fields and not fields["qst"]:
-        fields["qst"] = None
+    if "qst" in fields:
+        fields["qst"] = payroll.normalize_qst(fields["qst"])
+    payroll.check_qst_fields({**emp, **fields})
+    payroll.check_dates({**emp, **fields})
     meta = _update_record(emp["_pfad"], fields, numeric=EMPLOYEE_NUMERIC, nullable=("qst", "austritt"))
     return _done(book, f"Mitarbeiter {nr} geändert", [emp["_pfad"]], mitarbeiter=meta)
 
@@ -1812,12 +1815,7 @@ def qst_sync(book: Book, kanton: str, jahr: int) -> dict:
     _guard(book)
     cantons = qst_estv.CANTONS if kanton.upper() == 'ALLE' else [kanton.upper()]
     tables = [qst_estv.download(k, jahr) for k in cantons]
-    paths = []
-    for table in tables:
-        path = qst_estv.table_path(book, table['kanton'], jahr)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(table, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
-        paths.append(path)
+    paths = [qst_estv.store(book, t) for t in tables]
     return _done(book, f"ESTV-Quellensteuertarife {jahr}: {', '.join(cantons)} importiert", paths)
 
 

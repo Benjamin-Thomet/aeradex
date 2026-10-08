@@ -10,7 +10,7 @@ import hashlib
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 from pathlib import Path
 
 from . import invoices as inv
@@ -263,7 +263,11 @@ def run(book: Book) -> list[Issue]:
         if not kred.bill_fingerprint_ok(meta):
             add("fehler", where, "Kreditor wurde nach der Erfassung verändert (Fingerprint) — stornieren und neu erfassen")
         expected = kred.booking_rows(book, meta) if meta.get("status") != "storniert" else []
-        if Counter(map(_key, expected)) != Counter(map(_key, owned.get(f"kreditor:{nr}", []))):
+        mine = Counter(map(_key, owned.get(f"kreditor:{nr}", [])))
+        if Counter(map(_key, expected)) != mine and kred.is_foreign(meta) and meta.get("status") != "storniert":
+            # bills converted before the rounding fix (Oct 2026) were rounded half-even on exact half cents
+            expected = kred.booking_rows(book, meta, rounding=ROUND_HALF_EVEN)
+        if Counter(map(_key, expected)) != mine:
             add("fehler", where, "Journalbuchung passt nicht zum Kreditor")
         konto_k = str(meta.get("kreditorenkonto") or kred.KREDITOREN)
         paid_rows = [r for r in owned.get(f"kzahlung:{nr}", []) if r.soll == konto_k]

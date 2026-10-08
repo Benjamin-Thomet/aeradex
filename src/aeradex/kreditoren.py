@@ -260,7 +260,7 @@ def positions(meta: dict) -> list[dict]:
              "mwst": str(meta.get("mwst") or "").upper(), "text": ""}]
 
 
-def booking_rows(book: Book, meta: dict) -> list[Row]:
+def booking_rows(book: Book, meta: dict, rounding=ROUND_HALF_UP) -> list[Row]:
     """The journal rows an entered bill owns: Aufwand (+ Vorsteuer) an Kreditoren, per position,
     in CHF (a foreign bill at its rate, the foreign amount kept on every row)."""
     from .journal import convert
@@ -275,7 +275,7 @@ def booking_rows(book: Book, meta: dict) -> list[Row]:
     for r in rows:
         r.quelle = quelle
     if is_foreign(meta):
-        rows = convert(book, rows, currency(meta), Decimal(str(meta["kurs"])))
+        rows = convert(book, rows, currency(meta), Decimal(str(meta["kurs"])), rounding=rounding)
     return rows
 
 
@@ -458,7 +458,7 @@ def _pay_foreign(book: Book, meta: dict, st: dict, datum, betrag, konto, kurs, f
             raise BookError(f"Konto {konto} führt {bank_acct.waehrung}, {nr} lautet auf {cur}")
         settle = money(fw or betrag) if (fw or betrag) not in (None, "") else open_fw
         rate = parse_amount(kurs, "kurs") if kurs not in (None, "") else fx.rate(book, cur, d)
-        bank_chf = (settle * rate).quantize(CENT)
+        bank_chf = (settle * rate).quantize(CENT, rounding=ROUND_HALF_UP)
     else:
         settle = money(fw) if fw not in (None, "") else open_fw
         if betrag not in (None, ""):
@@ -466,13 +466,13 @@ def _pay_foreign(book: Book, meta: dict, st: dict, datum, betrag, konto, kurs, f
             rate = None
         else:
             rate = parse_amount(kurs, "kurs") if kurs not in (None, "") else fx.rate(book, cur, d)
-            bank_chf = (settle * rate).quantize(CENT)
+            bank_chf = (settle * rate).quantize(CENT, rounding=ROUND_HALF_UP)
     if settle <= 0:
         raise BookError(f"{nr} ist bereits bezahlt")
     if settle > open_fw:
         raise BookError(f"{settle} {cur} übersteigt den offenen Betrag {open_fw} {cur} von {nr}")
     value = book_value(book, meta, d)
-    clear = value if settle == open_fw else (value * settle / open_fw).quantize(CENT)
+    clear = value if settle == open_fw else (value * settle / open_fw).quantize(CENT, rounding=ROUND_HALF_UP)
     beleg = next_beleg(book, d.year)
     quelle = f"kzahlung:{nr}"
     text = f"Zahlung Kreditor {nr} – {meta.get('name')} ({cur} {settle:.2f})"

@@ -84,10 +84,13 @@ def read(data: bytes, filename: str) -> list[list[str]]:
         return _rows_from_table([list(r) for r in sheet.iter_rows(values_only=True)])
     if name.endswith((".csv", ".txt")):
         text = data.decode("utf-8-sig", errors="replace")
-        sample = text[:4096]
-        # Swiss Excel writes ';' — count rather than sniff, a title line above the heading confuses the sniffer
-        delimiter = max(";\t,", key=sample.count)
-        return _rows_from_table(list(csv.reader(io.StringIO(text), delimiter=delimiter)))
+        # Try the delimiters in order (Swiss Excel writes ';'): the first whose parsed rows — quotes respected,
+        # so commas inside a description do not count — contain a recognisable heading wins.
+        for delimiter in (";", "\t", ","):
+            table = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+            if any(_header_map([_cell(c) for c in row]) for row in table[:20]):
+                return _rows_from_table(table)
+        return _rows_from_table(list(csv.reader(io.StringIO(text), delimiter=";")))
     if name.endswith(".xls"):
         raise BookError("Altes Excel-Format (.xls): bitte in Excel als .xlsx speichern")
     raise BookError("Erwartet wird eine Excel-Datei (.xlsx) oder CSV")

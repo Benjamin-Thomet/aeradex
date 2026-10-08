@@ -1,38 +1,86 @@
 {% extends "base.html" %}
 {% from "_macros.html" import errors %}
 {% block title %}Mitarbeitende{% endblock %}
-{% macro empform(e, action, isnew) %}
+{% macro empform(e, action, isnew, fid) %}
 {% set a = e.adresse or {} %}
-<form class="body" hx-post="{{ action }}" hx-target="find .errors">
-  <div class="form four">
-    <div class="field"><label>Vorname</label><input class="input" name="vorname" value="{{ e.vorname or '' }}" required></div>
-    <div class="field"><label>Nachname</label><input class="input" name="nachname" value="{{ e.nachname or '' }}" required></div>
-    <div class="field"><label>AHV-Nr.</label><input class="input" name="ahv_nr" value="{{ e.ahv_nr or '' }}" placeholder="756.0000.0000.00"></div>
-    <div class="field"><label>Geburtsdatum</label><input class="input" type="date" name="geburtsdatum" value="{{ e.geburtsdatum or '' }}"></div>
-    <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ a.strasse or '' }}"></div>
-    <div class="field"><label>Nr.</label><input class="input" name="nr" value="{{ a.nr or '' }}"></div>
-    <div class="field"><label>PLZ / Ort</label><span class="actions" style="flex-wrap:nowrap"><input class="input" name="plz" value="{{ a.plz or '' }}" style="width:80px"><input class="input" name="ort" value="{{ a.ort or '' }}"></span></div>
-    <div class="field"><label>Lohnkonto IBAN</label><input class="input" name="iban" value="{{ e.iban or '' }}" placeholder="CH… / LI…"></div>
-    <div class="field"><label>Land (ISO-Code)</label><input class="input" name="land" value="{{ a.land or 'CH' }}" maxlength="2"></div>
-    <div class="field"><label>Eintritt</label><input class="input" type="date" name="eintritt" value="{{ e.eintritt or '' }}"></div>
-    {% if not isnew %}<div class="field"><label>Austritt</label><input class="input" type="date" name="austritt" value="{{ e.austritt or '' }}"></div>{% endif %}
-    <div class="field"><label>Lohnart</label><select class="input" name="lohnart" style="width:100%"><option value="monat" {{ 'selected' if e.lohnart != 'stunde' }}>Monatslohn</option><option value="stunde" {{ 'selected' if e.lohnart == 'stunde' }}>Stundenlohn</option></select></div>
-    <div class="field"><label>Monatslohn 100 % (CHF)</label><input class="input num" name="monatslohn" value="{{ e.monatslohn or '' }}"></div>
-    <div class="field"><label>Pensum %</label><input class="input num" name="pensum" value="{{ e.pensum or 100 }}"></div>
-    <div class="field"><label>Stundenlohn (CHF)</label><input class="input num" name="stundenlohn" value="{{ e.stundenlohn or '' }}"></div>
-    <div class="field"><label>Stunden pro Monat (Standard)</label><input class="input num" name="standard_stunden" value="{{ e.standard_stunden or '' }}"></div>
-    <div class="field"><label>Vollzeit Std./Woche</label><input class="input num" name="vollzeit_stunden_woche" value="{{ e.vollzeit_stunden_woche or 42 }}"></div>
-    <div class="field"><label>Ferienzuschlag %</label><input class="input num" name="ferienzuschlag" value="{{ ((e.ferienzuschlag_satz or 0)|float * 100)|round(2) if e.ferienzuschlag_satz else '' }}" placeholder="8.33 / 10.64"></div>
-    <div class="field"><label class="check" style="margin-top:22px"><input type="checkbox" name="ferien_inbegriffen" value="1" {{ 'checked' if e.ferien_inbegriffen }}> im Lohn inbegriffen</label></div>
-    <div class="field"><label>BVG AN (CHF/Monat)</label><input class="input num" name="bvg_betrag" value="{{ e.bvg_betrag or '' }}"></div>
-    <div class="field"><label>BVG AG (CHF/Monat)</label><input class="input num" name="ag_bvg_betrag" value="{{ e.ag_bvg_betrag or '' }}" placeholder="nur bei abweichendem AG-Anteil"></div>
-    <div class="field"><label>Kinderzulagen (CHF/Monat)</label><input class="input num" name="kinderzulagen" value="{{ e.kinderzulagen or '' }}"></div>
-    <div class="field"><label>Quellensteuer-Tabelle</label><select class="input" name="qst_tabelle" style="width:100%">{% for k, j in tarife %}<option value="{{ k }}-{{ j }}" {{ 'selected' if e.qst and e.qst.kanton == k and e.qst.jahr == j }}>{{ k }} {{ j }}</option>{% endfor %}</select></div>
-    <div class="field"><label>QST-Tarifcode</label><input class="input" name="qst_code" value="{{ e.qst.code if e.qst else '' }}" placeholder="z.B. A0N, C1Y; leer = keine"></div>
-    <div class="field"><label>oder QST-Pauschalsatz %</label><input class="input num" name="qst_satz_pct" value="{{ ((e.qst_satz or 0)|float * 100)|round(2) if e.qst_satz else '' }}"></div>
-    {% if not isnew %}<div class="field"><label class="check" style="margin-top:22px"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if e.aktiv != false }}> aktiv (im Lohnlauf)</label></div>{% endif %}
+{% set code = (e.qst or {}).code or "" %}
+<form class="body empform" hx-post="{{ action }}" hx-target="find .errors">
+  <div class="tabset" role="tablist">
+    {% for key, label in [("person", "Person"), ("anstellung", "Anstellung & Lohn"), ("sv", "Sozialversicherungen"), ("qst", "Quellensteuer"), ("auszahlung", "Auszahlung")] %}
+    <input type="radio" name="_tab" id="{{ fid }}-{{ key }}" class="tabradio" {{ 'checked' if loop.first }}><label for="{{ fid }}-{{ key }}" role="tab">{{ label }}</label>
+    {% endfor %}
+
+    <section class="tabpane">
+      <div class="form four">
+        <div class="field"><label>Vorname *</label><input class="input" name="vorname" value="{{ e.vorname or '' }}" required></div>
+        <div class="field"><label>Nachname *</label><input class="input" name="nachname" value="{{ e.nachname or '' }}" required></div>
+        <div class="field"><label>AHV-Nr.</label><input class="input" name="ahv_nr" value="{{ e.ahv_nr or '' }}" placeholder="756.0000.0000.00"></div>
+        <div class="field"><label>Geburtsdatum</label><input class="input" type="date" name="geburtsdatum" value="{{ e.geburtsdatum or '' }}"></div>
+        <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ a.strasse or '' }}"></div>
+        <div class="field"><label>Nr.</label><input class="input" name="nr" value="{{ a.nr or '' }}"></div>
+        <div class="field"><label>Land</label><select class="input" name="land" style="width:100%">{% for k, l in [("CH", "Schweiz"), ("DE", "Deutschland"), ("FR", "Frankreich"), ("IT", "Italien"), ("AT", "Österreich"), ("LI", "Liechtenstein")] %}<option value="{{ k }}" {{ 'selected' if (a.land or 'CH') == k }}>{{ l }}</option>{% endfor %}{% if a.land and a.land not in ("CH","DE","FR","IT","AT","LI") %}<option selected>{{ a.land }}</option>{% endif %}</select></div>
+        <div class="field"><label>PLZ</label><input class="input" name="plz" value="{{ a.plz or '' }}" inputmode="numeric"></div>
+        <div class="field" style="grid-column: span 2"><label>Ort</label><input class="input" name="ort" value="{{ a.ort or '' }}"></div>
+        <div class="field"><label>Aufenthaltsstatus</label><select class="input" name="aufenthalt" style="width:100%"><option value="" {{ 'selected' if not e.aufenthalt }}>— bitte wählen —</option>{% for k, l in aufenthalt.items() %}<option value="{{ k }}" {{ 'selected' if e.aufenthalt == k }}>{{ l }}</option>{% endfor %}</select></div>
+      </div>
+    </section>
+
+    <section class="tabpane">
+      <div class="form four">
+        <div class="field"><label>Eintritt</label><input class="input" type="date" name="eintritt" value="{{ e.eintritt or '' }}"></div>
+        {% if not isnew %}<div class="field"><label>Austritt</label><input class="input" type="date" name="austritt" value="{{ e.austritt or '' }}"></div>{% endif %}
+        <div class="field"><label>Lohnart</label><select class="input" name="lohnart" style="width:100%"><option value="monat" {{ 'selected' if e.lohnart != 'stunde' }}>Monatslohn</option><option value="stunde" {{ 'selected' if e.lohnart == 'stunde' }}>Stundenlohn</option></select></div>
+        {% if not isnew %}<div class="field"><label class="check" style="margin-top:22px"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if e.aktiv != false }}> aktiv (im Lohnlauf)</label></div>{% endif %}
+      </div>
+      <div class="form four only-monat">
+        <div class="field"><label>Monatslohn bei 100 % (CHF)</label><input class="input num" name="monatslohn" value="{{ e.monatslohn or '' }}"></div>
+        <div class="field"><label>Pensum %</label><input class="input num" name="pensum" value="{{ e.pensum or 100 }}"></div>
+      </div>
+      <div class="form four only-stunde">
+        <div class="field"><label>Stundenlohn (CHF)</label><input class="input num" name="stundenlohn" value="{{ e.stundenlohn or '' }}"></div>
+        <div class="field"><label>Stunden pro Monat (Standard)</label><input class="input num" name="standard_stunden" value="{{ e.standard_stunden or '' }}"></div>
+        <div class="field"><label>Ferienentschädigung %</label><input class="input num" name="ferienzuschlag" value="{{ ((e.ferienzuschlag_satz or 0)|float * 100)|round(2) if e.ferienzuschlag_satz else '' }}" placeholder="8.33 / 10.64 / 13.04"></div>
+        <div class="field"><label class="check" style="margin-top:22px"><input type="checkbox" name="ferien_inbegriffen" value="1" {{ 'checked' if e.ferien_inbegriffen }}> im Stundenlohn inbegriffen</label></div>
+      </div>
+      <div class="form four">
+        <div class="field"><label>Vollzeit Std./Woche (Betrieb)</label><input class="input num" name="vollzeit_stunden_woche" value="{{ e.vollzeit_stunden_woche or 42 }}"></div>
+      </div>
+    </section>
+
+    <section class="tabpane">
+      <div class="form four">
+        <div class="field"><label>BVG Arbeitnehmer (CHF/Monat)</label><input class="input num" name="bvg_betrag" value="{{ e.bvg_betrag or '' }}"></div>
+        <div class="field"><label>BVG Arbeitgeber (CHF/Monat)</label><input class="input num" name="ag_bvg_betrag" value="{{ e.ag_bvg_betrag or '' }}" placeholder="nur wenn abweichend"></div>
+        <div class="field"><label>Kinder-/Ausbildungszulagen (CHF/Monat)</label><input class="input num" name="kinderzulagen" value="{{ e.kinderzulagen or '' }}"></div>
+      </div>
+      <p class="small muted">AHV/IV/EO, ALV, NBU und KTG rechnet aeradex mit den Sätzen aus <a class="link" href="/einstellungen#lohn">Einstellungen → Lohn</a>.</p>
+    </section>
+
+    <section class="tabpane">
+      <div class="qststatus" hx-get="/lohn/qst-status" hx-trigger="load, change from:closest form" hx-include="closest form" hx-swap="innerHTML"></div>
+      <div class="form four">
+        <div class="field" style="grid-column: span 2"><label>Tarif</label><select class="input" name="qst_tarif" style="width:100%"><option value="">— keiner —</option>{% for k, l in tarife.items() %}<option value="{{ k }}" {{ 'selected' if code[:1] == k }}>{{ k }} · {{ l }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Kinder</label><select class="input" name="qst_kinder" style="width:100%">{% for n in range(10) %}<option {{ 'selected' if code[1:2] == n|string }}>{{ n }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="check" style="margin-top:22px"><input type="checkbox" name="qst_kirche" value="1" {{ 'checked' if code[2:3] == 'Y' }}> Kirchensteuer</label></div>
+      </div>
+      <details class="fxopt" {{ 'open' if (e.qst or {}).kanton or e.qst_pflicht in ('ja', 'nein') or e.qst_satz }}><summary class="small muted">Abweichungen: Pflicht, Kanton, vereinfachtes Verfahren</summary>
+        <div class="form four">
+          <div class="field"><label>Quellensteuerpflicht</label><select class="input" name="qst_pflicht" style="width:100%"><option value="auto" {{ 'selected' if (e.qst_pflicht or 'auto') == 'auto' }}>aus Aufenthaltsstatus</option><option value="ja" {{ 'selected' if e.qst_pflicht == 'ja' }}>pflichtig</option><option value="nein" {{ 'selected' if e.qst_pflicht == 'nein' }}>nicht pflichtig (z.B. Ehe mit Schweizer/in oder C)</option></select></div>
+          <div class="field"><label>Kanton abweichend</label><select class="input" name="qst_kanton" style="width:100%"><option value="">aus dem Wohnort</option>{% for k in kantone %}<option {{ 'selected' if (e.qst or {}).kanton == k }}>{{ k }}</option>{% endfor %}</select></div>
+          <div class="field"><label>Satz vereinfachtes Verfahren %</label><input class="input num" name="qst_satz_pct" value="{{ ((e.qst_satz or 0)|float * 100)|round(2) if e.qst_satz else '' }}" placeholder="statt Tarif"></div>
+        </div>
+        <p class="small muted">Kanton abweichend z.B. bei Wochenaufenthalt. Die ESTV-Tarife lädt aeradex beim Lohnlauf automatisch.</p>
+      </details>
+    </section>
+
+    <section class="tabpane">
+      <div class="form four">
+        <div class="field" style="grid-column: span 2"><label>Lohnkonto IBAN</label><input class="input" name="iban" value="{{ e.iban or '' }}" placeholder="CH… / LI…"></div>
+      </div>
+      <p class="small muted">Für die Lohnzahlungsdatei (pain.001) und als Angabe auf der Lohnabrechnung.</p>
+    </section>
   </div>
-  {{ errors() }}<div class="formfoot"><span class="small muted">Änderungen gelten für Entwürfe und künftige Monate; abgeschlossene Abrechnungen bleiben unverändert.</span><button class="btn primary" type="submit">{{ 'Erfassen' if isnew else 'Speichern' }}</button></div>
+  {{ errors() }}<div class="formfoot"><span class="small muted">* Pflichtfelder. Änderungen gelten für Entwürfe und künftige Monate; abgeschlossene Abrechnungen bleiben unverändert.</span><button class="btn primary" type="submit">{{ 'Erfassen' if isnew else 'Speichern' }}</button></div>
 </form>
 {% endmacro %}
 {% block main %}
@@ -40,15 +88,15 @@
 <div class="panel">
   {% if emps %}
   <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Nr.</th><th>Name</th><th>Lohn</th><th>QST</th><th>Eintritt</th><th></th></tr></thead>
+    <thead><tr><th>Nr.</th><th>Name</th><th>Lohn</th><th>Quellensteuer</th><th>Eintritt</th><th></th></tr></thead>
     <tbody>
     {% for nr, e in emps.items() %}
-      <tr class="row" {% if e.aktiv == false %}style="opacity:.55"{% endif %}><td class="acc">{{ nr }}</td><td><strong>{{ e.vorname }} {{ e.nachname }}</strong>{% if e.aktiv == false %} <span class="pill muted">inaktiv</span>{% endif %}<br><span class="small muted">{{ e.ahv_nr }}</span></td>
+      <tr class="row" {% if e.aktiv == false %}style="opacity:.55"{% endif %}><td class="acc">{{ nr }}</td><td><strong>{{ e.vorname }} {{ e.nachname }}</strong>{% if e.aktiv == false %} <span class="pill muted">inaktiv</span>{% endif %}{% if e.aufenthalt %} <span class="pill muted">{{ aufenthalt[e.aufenthalt] }}</span>{% endif %}<br><span class="small muted">{{ e.ahv_nr }}</span></td>
         <td class="small">{% if e.lohnart == 'stunde' %}{{ e.stundenlohn|chf }}/h{% else %}{{ e.monatslohn|chf }} × {{ e.pensum }} %{% endif %}</td>
-        <td class="small">{{ e.qst.code if e.qst else ('pauschal ' ~ (e.qst_satz|pct) if e.qst_satz else '—') }}</td>
+        <td class="small">{% set q = qst_info[nr] %}{% if q.pflichtig %}{{ q.tarif or '—' }}{% if q.kanton %} · {{ q.kanton }}{% endif %}{% if q.fehler %} <span class="pill red" title="{{ q.fehler }}">prüfen</span>{% endif %}{% else %}<span class="muted">nicht pflichtig</span>{% endif %}</td>
         <td class="num">{{ e.eintritt|datum }}</td>
         <td class="right"><span class="rowactions"><a class="btn small" href="/lohn/lohnkonto/{{ year }}/{{ nr }}">Lohnkonto / Lohnausweis {{ year }}</a><a class="btn small ghost" href="/lohn/mitarbeiter?edit={{ nr }}&jahr={{ year }}#edit">Bearbeiten</a></span></td></tr>
-      {% if edit == nr %}<tr><td colspan="6" id="edit" style="padding:0">{{ empform(e, "/lohn/mitarbeiter/" ~ nr, false) }}</td></tr>{% endif %}
+      {% if edit == nr %}<tr><td colspan="6" id="edit" style="padding:0">{{ empform(e, "/lohn/mitarbeiter/" ~ nr, false, "e" ~ nr) }}</td></tr>{% endif %}
     {% endfor %}
     </tbody>
   </table></div>
@@ -56,11 +104,6 @@
 </div>
 <details class="panel drawer" id="neu" {{ 'open' if neu or not emps }}>
   <summary><header style="border-bottom:0"><h2>+ Mitarbeiter erfassen</h2></header></summary>
-  {{ empform({}, "/lohn/mitarbeiter/neu", true) }}
+  {{ empform({}, "/lohn/mitarbeiter/neu", true, "neu") }}
 </details>
-<div class="panel body">
-  <h2>Quellensteuertarife von der ESTV</h2>
-  <p class="small muted">Offizielle Tarife nach Kanton und Jahr laden oder aktualisieren. Der Lohnlauf verwendet sein Abrechnungsjahr. Abgeschlossene Abrechnungen bleiben unverändert. FR, GE, TI, VD und VS benötigen eine geprüfte Jahresberechnung.</p>
-  <form hx-post="/lohn/qst-import" hx-target="find .errors"><label>Kanton <select class="input" name="kanton">{% for k in kantone %}<option>{{ k }}</option>{% endfor %}<option value="ALLE">Alle Kantone</option></select></label> <label>Jahr <input class="input" name="jahr" type="number" min="2025" max="2099" value="{{ today().year }}" required></label> <button class="btn" type="submit">ESTV-Tarife laden</button>{{ errors() }}</form>
-</div>
 {% endblock %}

@@ -121,6 +121,17 @@ def _snapshot_address(cust: dict) -> dict:
             "plz": str(a.get("plz") or ""), "ort": a.get("ort") or "", "land": a.get("land") or "CH"}
 
 
+PRICE_Q = Decimal("0.0001")
+
+
+def unit_price(preis: Decimal, i: int) -> Decimal:
+    """A unit price as stored on the frozen document: cents, or up to four decimals (0.335 CHF/km) — the line
+    amount is always Menge × this stored price, so the document recomputes to the same figures."""
+    if preis != preis.quantize(PRICE_Q):
+        raise BookError(f"Position {i}: Preis {preis} hat mehr als vier Nachkommastellen")
+    return preis.quantize(CENT) if preis == preis.quantize(CENT) else preis.quantize(PRICE_Q).normalize()
+
+
 def normalize_positions(raw: list[dict], default_konto: str, default_mwst: str = "") -> list[dict]:
     from . import mwst as vat
     out = []
@@ -129,12 +140,12 @@ def normalize_positions(raw: list[dict], default_konto: str, default_mwst: str =
         if not text:
             raise BookError(f"Position {i}: Text fehlt")
         menge = Decimal(str(p.get("menge", 1)))
-        preis = parse_amount(p.get("preis", 0), f"Position {i}")
+        preis = unit_price(parse_amount(p.get("preis", 0), f"Position {i}"), i)
         betrag = money(menge * preis) if p.get("betrag") is None else money(p["betrag"])
         if betrag != money(menge * preis):
             raise BookError(f"Position {i}: Betrag {betrag} ≠ Menge × Preis {money(menge * preis)}")
         item = {"text": text, "menge": menge, "einheit": str(p.get("einheit") or ""),
-                "preis": money(preis), "betrag": betrag,
+                "preis": preis, "betrag": betrag,
                 "konto": str(p.get("konto") or default_konto)}
         code = str(p.get("mwst") if p.get("mwst") is not None else default_mwst).strip().upper()
         if code:

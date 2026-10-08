@@ -65,6 +65,14 @@
   </div>
 </form>
 
+<details class="panel drawer" id="qst-tarife">
+  <summary><header style="border-bottom:0"><h2>Quellensteuertarife</h2><span class="hint">werden beim Lohnlauf automatisch von der ESTV geladen{% if qst_geladen %} · vorhanden: {{ qst_geladen|join(", ") }}{% endif %}</span></header></summary>
+  <div class="body" style="border-top:1px solid var(--rule)">
+    <p class="small muted">Nur nötig ohne Internet beim Lohnlauf oder um neu publizierte Tarife zu übernehmen. Abgeschlossene Abrechnungen bleiben unverändert. FR, GE, TI, VD und VS rechnen mit einem Jahresmodell und brauchen eine geprüfte Jahresberechnung.</p>
+    <form class="actions" hx-post="/lohn/qst-import" hx-target="find .errors"><label>Kanton <select class="input" name="kanton">{% for k in kantone %}<option>{{ k }}</option>{% endfor %}<option value="ALLE">Alle Kantone</option></select></label> <label>Jahr <input class="input" name="jahr" type="number" min="2025" max="2099" value="{{ today().year }}" required></label> <button class="btn" type="submit">Jetzt laden</button>{{ errors() }}</form>
+  </div>
+</details>
+
 <div class="panel">
   <header><h2>Agent im Seitenpanel</h2>{% if cred.ok %}<span class="pill ok">bereit · {{ cred.quelle }}</span>{% else %}<span class="pill warn">nicht bereit</span>{% endif %}</header>
   <div class="body">
