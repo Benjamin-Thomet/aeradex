@@ -2,7 +2,8 @@
 {% from "_macros.html" import errors, currency_fields, accounts_datalist, acc, mwst_select %}
 {% block title %}Journal {{ year }}{% endblock %}
 {% block main %}
-{% set q_base = "/journal?jahr=" ~ year ~ ("&konto=" ~ konto if konto) ~ ("&quelle=" ~ quelle if quelle) ~ ("&q=" ~ q|urlq if q) %}
+{% set q_base = "/journal?jahr=" ~ year ~ ("&konto=" ~ konto if konto) ~ ("&quelle=" ~ quelle if quelle) ~ ("&q=" ~ q|urlq if q) ~ ("&mwst=" ~ mwst_filter if mwst_filter) ~ ("&betrag=" ~ betrag_filter|urlq if betrag_filter) %}
+{% set filtered = q or konto or quelle or ohne_beleg or mwst_filter or betrag_filter %}
 <div class="topbar">
   <div><h1>Journal {{ year }}</h1><div class="sub">Jede Zeile steht in journal/{{ year }}/{{ year }}-MM.md · Belege mit mehreren Zeilen sind aufklappbar</div></div>
   <div class="actions">
@@ -87,23 +88,35 @@
   </nav>
   <form class="filters" method="get" action="/journal">
     <input type="hidden" name="jahr" value="{{ year }}"><input type="hidden" name="monat" value="alle">
-    <input class="input search" id="q" name="q" value="{{ q }}" placeholder="Suchen: Text, Beleg, Konto …  ( / )">
-    <input class="input" name="konto" value="{{ konto }}" list="konten" placeholder="Konto" style="width:160px">
+    <input class="input search" id="q" name="q" value="{{ q }}" placeholder="Suchen: Text, Lieferant, Beleg, Betrag …  ( / )">
+    <input class="input" name="konto" value="{{ konto }}" list="konten" placeholder="Konto (Soll oder Haben)" style="width:180px">
+    {% if vat.methode != 'keine' %}<select class="input" name="mwst" aria-label="MWST-Code" style="width:150px"><option value="">Alle MWST-Codes</option><option value="ohne" {{ 'selected' if mwst_filter == 'ohne' }}>ohne Code</option>{% for c in vat_codes.values() if not (vat.methode == 'saldo' and c.kind in ('vorsteuer', 'investition')) %}<option value="{{ c.code }}" {{ 'selected' if c.code == mwst_filter }}>{{ c.code }} · {{ c.label }}</option>{% endfor %}</select>{% endif %}
+    <input class="input" name="betrag" value="{{ betrag_filter }}" placeholder="Betrag, 100-200, >500" style="width:150px" aria-label="Betrag">
     <select class="input" name="quelle">{% for k, v in quellen.items() %}<option value="{{ k }}" {{ 'selected' if k == quelle }}>{{ v }}</option>{% endfor %}</select>
     <label class="check"><input type="checkbox" name="ohne_beleg" value="1" {{ 'checked' if ohne_beleg }}> nur ohne Beleg-Datei</label>
     <button class="btn small" type="submit">Filtern</button>
-    {% if q or konto or quelle or ohne_beleg %}<a class="btn small ghost" href="/journal?jahr={{ year }}&monat={{ month or 'alle' }}">Zurücksetzen</a>{% endif %}
+    {% if filtered %}<a class="btn small ghost" href="/journal?jahr={{ year }}&monat={{ month or 'alle' }}">Zurücksetzen</a>{% endif %}
   </form>
   {% if groups %}
+  <form id="umbuchen" class="bulkbar" hx-post="/journal/umbuchen/vorschau" hx-target="#umbuchenVorschau" hidden>
+    <strong><span data-selcount>0</span> ausgewählt</strong>
+    <span class="bulkfield"><label for="u-alt">Konto</label><input class="input" id="u-alt" name="konto_alt" list="konten" value="{{ konto }}" placeholder="von, z.B. 6500"></span>
+    <span aria-hidden="true">→</span>
+    <span class="bulkfield"><input class="input" name="konto_neu" list="konten" placeholder="nach (leer = bleibt)" aria-label="Neues Konto"></span>
+    {% if vat.methode != 'keine' %}<span class="bulkfield"><label for="u-mwst">MWST</label><select class="input" id="u-mwst" name="mwst_neu"><option value="">Code bleibt</option><option value="-">ohne Code</option>{% for c in vat_codes.values() if not (vat.methode == 'saldo' and c.kind in ('vorsteuer', 'investition')) %}<option value="{{ c.code }}">{{ c.code }} · {{ c.label }}</option>{% endfor %}</select></span>{% endif %}
+    <span class="actions"><button class="btn small ghost" type="button" data-selnone>Auswahl aufheben</button><button class="btn small primary" type="submit">Vorschau</button></span>
+  </form>
+  <div id="umbuchenVorschau"></div>
   <div class="tablewrap">
     <table class="ledger">
-      <thead><tr><th>Datum</th><th>Beleg</th><th>Text</th><th>Soll</th><th>Haben</th><th class="right">Betrag</th><th>Quelle</th><th></th></tr></thead>
+      <thead><tr><th class="sel"><input type="checkbox" data-selall title="Alle umbuchbaren Belege auswählen" aria-label="Alle auswählen"></th><th>Datum</th><th>Beleg</th><th>Text</th><th>Soll</th><th>Haben</th><th class="right">Betrag</th><th>Quelle</th><th></th></tr></thead>
       <tbody>
       {% set total = namespace(v=0) %}
       {% for g in groups %}{% set total.v = total.v + g.total %}
         {% set multi = g.rows|length > 1 %}
         {% set gi = loop.index %}
         <tr class="row {{ 'group' if multi }}" data-group="g{{ gi }}"{% if g.edit %} data-edit="e{{ gi }}" title="Doppelklick: bearbeiten"{% endif %}>
+          <td class="sel">{% if g.recode %}<input type="checkbox" name="beleg" value="{{ g.beleg }}" form="umbuchen" data-sel aria-label="Beleg {{ g.beleg }} auswählen">{% else %}<span class="small muted" title="{{ 'gesperrt' if g.locked else ('Fremdwährung — stornieren und neu buchen' if g.kind == 'manuell' else 'gehört zu ' ~ g.kind ~ ' — dort ändern') }}">·</span>{% endif %}</td>
           <td class="num">{{ g.datum|datum("%d.%m.") }}</td>
           <td><span class="beleg">{{ g.beleg }}</span></td>
           <td>{% if multi %}<span class="caret">▸</span> {% endif %}{{ g.text }}{% if multi %} <span class="small muted">· {{ g.rows|length }} Zeilen</span>{% endif %}
@@ -137,12 +150,12 @@
         </tr>
         {% if multi %}{% for r in g.rows %}
         <tr class="sub" data-of="g{{ gi }}" hidden>
-          <td></td><td></td><td>{{ r.text.split(" · ")[-1] if " · " in r.text else r.text }}{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}{% if r.waehrung %} <span class="pill muted" title="Kurs {{ r.kurs }}">{{ r.waehrung }} {{ r.fw|chf }}</span>{% endif %}</td>
+          <td></td><td></td><td></td><td>{{ r.text.split(" · ")[-1] if " · " in r.text else r.text }}{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}{% if r.waehrung %} <span class="pill muted" title="Kurs {{ r.kurs }}">{{ r.waehrung }} {{ r.fw|chf }}</span>{% endif %}</td>
           {{ acc(r.soll, names) }}{{ acc(r.haben, names) }}<td class="right num">{{ r.betrag|chf }}</td><td></td><td></td>
         </tr>
         {% endfor %}{% endif %}
         {% if g.edit %}
-        <tr class="editrow" id="e{{ gi }}" hidden><td colspan="8">
+        <tr class="editrow" id="e{{ gi }}" hidden><td colspan="9">
           <form class="editform" hx-post="/journal/aendern" hx-target="find .errors">
             <input type="hidden" name="beleg" value="{{ g.beleg }}">
             <div class="form four">
@@ -163,11 +176,11 @@
         {% endif %}
       {% endfor %}
       </tbody>
-      <tfoot><tr><td colspan="5">Total {{ MONTHS[month] if month else "Jahr " ~ year }} · {{ groups|length }} Belege</td><td class="right num total">{{ total.v|chf }}</td><td colspan="2"></td></tr></tfoot>
+      <tfoot><tr><td colspan="6">Total {{ MONTHS[month] if month else "Jahr " ~ year }} · {{ groups|length }} Belege</td><td class="right num total">{{ total.v|chf }}</td><td colspan="2"></td></tr></tfoot>
     </table>
   </div>
   {% else %}
-    <div class="empty">Keine Buchungen{% if q or konto or quelle or ohne_beleg %} für diesen Filter{% else %} in diesem Monat{% endif %}. Mit <strong>N</strong> erfasst du eine neue.</div>
+    <div class="empty">Keine Buchungen{% if filtered %} für diesen Filter{% else %} in diesem Monat{% endif %}. Mit <strong>N</strong> erfasst du eine neue.</div>
   {% endif %}
 </div>
 {% endblock %}

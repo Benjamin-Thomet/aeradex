@@ -72,6 +72,26 @@
     $$("[data-removerow]", list).forEach(b => { b.onclick = () => { b.closest(".splitrow, .posrow").remove(); list.dispatchEvent(new Event("input", { bubbles: true })); }; });
   }
 
+  // ---- journal: select Belege, recode them in bulk (konto and/or MWST code) ----
+  // The journal page is swapped in and out, so the handlers sit on the document once and look up the bar.
+  function recodeUpdate() {
+    const bar = $("#umbuchen"); if (!bar) return;
+    const boxes = $$("input[data-sel]"), all = $("[data-selall]"), preview = $("#umbuchenVorschau");
+    const n = boxes.filter(b => b.checked).length;
+    $("[data-selcount]", bar).textContent = n;
+    bar.hidden = n === 0;
+    if (all) { all.checked = n > 0 && n === boxes.length; all.indeterminate = n > 0 && n < boxes.length; }
+    if (!n && preview) preview.innerHTML = "";
+  }
+  document.addEventListener("change", e => {
+    if (e.target.matches("[data-selall]")) $$("input[data-sel]").forEach(b => { b.checked = e.target.checked; });
+    if (e.target.matches("input[data-sel], [data-selall]")) recodeUpdate();
+  });
+  document.addEventListener("click", e => {
+    if (e.target.closest("[data-selnone]")) { $$("input[data-sel]").forEach(b => { b.checked = false; }); recodeUpdate(); }
+    if (e.target.closest("[data-previewclose]")) { const p = $("#umbuchenVorschau"); if (p) p.innerHTML = ""; }
+  });
+
   // ---- booking grid (journal): a spreadsheet for simple bookings ----
   function bindGrid(root) {
     const form = $("#raster", root);
@@ -234,7 +254,7 @@
   // htmx: refused posts swap an error box into the form; network errors become a toast
   document.addEventListener("htmx:responseError", e => toast("Fehler " + e.detail.xhr.status + ": " + (e.detail.xhr.responseText || "").slice(0, 200), true));
   document.addEventListener("htmx:sendError", () => toast("aeradex ist nicht erreichbar. Läuft `aeradex ui` noch?", true));
-  document.addEventListener("htmx:afterSwap", e => { if (e.detail.target.id === "page") { bindPage(e.detail.target); bindTheme(); bindGrid(e.detail.target); $("#livebar").hidden = true; } });
+  document.addEventListener("htmx:afterSwap", e => { if (e.detail.target.id === "page") { bindPage(e.detail.target); bindTheme(); bindGrid(e.detail.target); recodeUpdate(); $("#livebar").hidden = true; } });
   document.addEventListener("htmx:beforeRequest", e => { const b = e.detail.elt.querySelector && e.detail.elt.querySelector("button[type=submit]"); if (b) b.disabled = true; });
   document.addEventListener("htmx:afterRequest", e => { const b = e.detail.elt.querySelector && e.detail.elt.querySelector("button[type=submit]"); if (b) b.disabled = false; });
 
@@ -272,7 +292,7 @@
   });
   document.addEventListener("htmx:afterSwap", e => { if (e.detail.target.id === "page") showCurrent(); });
   showCurrent();
-  bindTheme(); bindPage(document); bindChat(); bindLive(); bindGrid(document);
+  bindTheme(); bindPage(document); bindChat(); bindLive(); bindGrid(document); recodeUpdate();
   if ($("#toast")) toast();
   if (new URLSearchParams(location.search).get("neu")) { const d = $("#neueBuchung"); if (d) { d.open = true; const i = $("input[data-col]", d) || $("input", d); if (i) i.focus(); } }
 })();

@@ -277,6 +277,37 @@ def amend_entry(book: Book, beleg: str, datum, text: str, zeilen: list[dict]) ->
     return _done(book, f"Beleg {beleg} geändert: {after} (vorher: {before})", touched, buchungen=new)
 
 
+def _recode_rows(rows) -> list[dict]:
+    return [{"soll": r.soll, "haben": r.haben, "betrag": r.betrag, "mwst": r.mwst, "text": r.text} for r in rows]
+
+
+def recode_preview(book: Book, belege: list[str], konto_alt: str = "", konto_neu: str = "", mwst_neu: str = "") -> dict:
+    """What recode would change, per Beleg (before/after rows, or why it is skipped). Writes nothing."""
+    from . import umbuchen
+    items = umbuchen.plan(book, belege, konto_alt, konto_neu, mwst_neu)
+    return jsonable({"belege": [{"beleg": i["beleg"], "art": i["art"], "datum": i["datum"], "text": i["text"],
+                                 "vorher": _recode_rows(i["vorher"]), "nachher": _recode_rows(i["nachher"]),
+                                 "problem": i["problem"]} for i in items],
+                     "aenderbar": sum(1 for i in items if not i["problem"]),
+                     "uebersprungen": sum(1 for i in items if i["problem"])})
+
+
+def recode(book: Book, belege: list[str], konto_alt: str = "", konto_neu: str = "", mwst_neu: str = "") -> dict:
+    """Give the selected Belege another account (Soll or Haben, wherever it appears) and/or MWST code.
+    Manual Belege and supplier bills; everything else is skipped with its reason. One commit."""
+    from . import umbuchen
+    _guard(book)
+    ok, skipped, touched = umbuchen.apply(book, belege, konto_alt, konto_neu, mwst_neu)
+    what = " · ".join(x for x in (f"Konto {konto_alt} → {konto_neu}" if konto_neu else "",
+                                  f"MWST-Code → {'ohne' if mwst_neu == umbuchen.NO_CODE else mwst_neu.upper()}"
+                                  if mwst_neu else "") if x)
+    msg = f"Umgebucht ({what}): {len(ok)} Beleg(e) {', '.join(i['beleg'] for i in ok)}"
+    if skipped:
+        msg += f"; übersprungen: {', '.join(i['beleg'] + ' (' + i['problem'] + ')' for i in skipped)}"
+    return _done(book, msg, touched, umgebucht=[i["beleg"] for i in ok],
+                 uebersprungen=[{"beleg": i["beleg"], "grund": i["problem"]} for i in skipped])
+
+
 def reverse_entry(book: Book, beleg: str, datum=None, text: str = "") -> dict:
     _guard(book)
     rows, touched = journal.reverse(book, beleg, datum, text)
@@ -861,7 +892,7 @@ def invoice_preview(book: Book, positionen: list[dict]) -> dict:
 from .storage import transactional as _locked
 
 
-WRITES = ("add_account", "post_entry", "post_split", "reverse_entry", "propose", "approve", "reject",
+WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "reverse_entry", "propose", "approve", "reject",
           "customer_add", "invoice_create", "invoice_void", "invoice_pay", "invoice_credit", "employee_add",
           "payroll_run", "payroll_close", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
           "allocation_book", "lock", "unlock", "customer_update", "employee_update", "account_update",

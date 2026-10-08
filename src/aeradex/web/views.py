@@ -9,7 +9,7 @@ import threading
 import tempfile
 from collections import OrderedDict, defaultdict
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from starlette.requests import Request
@@ -24,7 +24,7 @@ from .app import UI, acct, act, done, fail
 
 ZERO = Decimal("0")
 QUELLEN = {"": "Alle Quellen", "manuell": "Manuell", "rechnung": "Rechnungen", "zahlung": "Zahlungen",
-           "gutschrift": "Gutschriften", "lohn": "Lohn", "abschluss": "Abschluss",
+           "gutschrift": "Gutschriften", "kreditor": "Kreditoren", "kzahlung": "Kreditorenzahlungen", "lohn": "Lohn", "abschluss": "Abschluss",
            "bewertung": "Fremdwährungsbewertung"}
 
 
@@ -235,9 +235,31 @@ async def vorschlag(ui: UI, request: Request):
 
 # ---------- Journal ----------
 
+def _amount_filter(raw: str):
+    """'120' → exactly 120.00, '100-200' → a range, '>500' / '<50' → open ranges; None = no filter."""
+    import re as _re
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        m = _re.fullmatch(r"([<>])\s*(.+)", raw)
+        if m:
+            v = Decimal(grid_amount(m.group(2)))
+            return (lambda x: x > v) if m.group(1) == ">" else (lambda x: x < v)
+        m = _re.fullmatch(r"(.+?)\s*[-–]\s*(.+)", raw)
+        if m:
+            lo, hi = Decimal(grid_amount(m.group(1))), Decimal(grid_amount(m.group(2)))
+            return lambda x: lo <= x <= hi
+        v = Decimal(grid_amount(raw))
+        return lambda x: x == v
+    except (InvalidOperation, ValueError):
+        return None
+
+
 def journal_groups(book: Book, year: int, month: int | None, konto: str, quelle: str, q: str,
-                   ohne_beleg: bool) -> list[dict]:
+                   ohne_beleg: bool, mwst_code: str = "", betrag: str = "") -> list[dict]:
     rows = [r for r in book.rows if r.datum.year == year and (not month or r.datum.month == month)]
+    amount_ok = _amount_filter(betrag)
     groups: "OrderedDict[str, list]" = OrderedDict()
     for r in rows:
         groups.setdefault(r.beleg, []).append(r)
@@ -252,7 +274,14 @@ def journal_groups(book: Book, year: int, month: int | None, konto: str, quelle:
             continue
         if konto and not any(konto in (r.soll, r.haben) for r in group):
             continue
-        if q and not any(q.lower() in f"{r.text} {r.beleg} {r.soll} {r.haben}".lower() for r in group):
+        if q and not any(q.lower() in f"{r.text} {r.beleg} {r.soll} {r.haben} {r.betrag:.2f}".lower() for r in group):
+            continue
+        if mwst_code == "ohne" and any(r.mwst for r in group):
+            continue
+        if mwst_code and mwst_code != "ohne" and not any(r.mwst == mwst_code for r in group):
+            continue
+        total = sum((r.betrag for r in group if r.soll), ZERO)
+        if amount_ok and not (amount_ok(total) or any(amount_ok(r.betrag) for r in group)):
             continue
         receipts = [n for n in names if n == beleg or n.startswith(beleg + " ")]
         if ohne_beleg and (receipts or first.quelle):
@@ -264,8 +293,10 @@ def journal_groups(book: Book, year: int, month: int | None, konto: str, quelle:
             "text": first.text.split(" · ")[0] if len(group) > 1 else first.text,
             "soll": sollset.pop() if len(sollset) == 1 else "div.",
             "haben": habenset.pop() if len(habenset) == 1 else "div.",
-            "total": sum((r.betrag for r in group if r.soll), ZERO),
+            "total": total,
             "receipts": receipts, "locked": bool(lock and first.datum <= lock),
+            "recode": (kind in ("manuell", "kreditor") and not (lock and first.datum <= lock)
+                       and not (kind == "manuell" and any(r.waehrung for r in group))),
             "doc": doc_link(first.quelle, book),
             "edit": (journal.edit_lines(book, group)
                      if not first.quelle and not (lock and first.datum <= lock) and not any(r.waehrung for r in group)
@@ -308,7 +339,8 @@ async def journal_page(ui: UI, request: Request):
     year = year_param(request, book)
     qp = request.query_params
     konto = acct(qp.get("konto", ""))        # a datalist choice arrives as '1020  Bank'
-    filters = (konto, qp.get("quelle", ""), qp.get("q", ""), bool(qp.get("ohne_beleg")))
+    filters = (konto, qp.get("quelle", ""), qp.get("q", ""), bool(qp.get("ohne_beleg")),
+               qp.get("mwst", "").upper() if qp.get("mwst") != "ohne" else "ohne", qp.get("betrag", ""))
     # Month tabs count what the filters match, so a filter never hides bookings in another month unnoticed.
     counts = defaultdict(int)
     for g in journal_groups(book, year, None, *filters):
@@ -322,6 +354,7 @@ async def journal_page(ui: UI, request: Request):
     return ui.render(request, "journal.html", book=book, year=year, month=month, counts=counts, groups=groups,
                      names={a.nr: a.name for a in book.accounts.values()}, accounts=account_options(book),
                      quellen=QUELLEN, q=qp.get("q", ""), konto=konto, quelle=qp.get("quelle", ""),
+                     mwst_filter=filters[4], betrag_filter=filters[5],
                      ohne_beleg=bool(qp.get("ohne_beleg")), next_beleg=journal.next_beleg(book, year),
                      currencies=currencies(book),
                      account_names={a.nr: a.name + (f" ({a.waehrung})" if a.is_foreign else "")
@@ -444,6 +477,30 @@ async def journal_import(ui: UI, request: Request):
     except BookError as exc:
         return JSONResponse({"fehler": str(exc)}, status_code=400)
     return JSONResponse(res)
+
+
+def _recode_form(f) -> tuple[list[str], str, str, str]:
+    return f.getlist("beleg"), acct(f.get("konto_alt", "")), acct(f.get("konto_neu", "")), f.get("mwst_neu", "")
+
+
+async def journal_umbuchen_vorschau(ui: UI, request: Request):
+    """The preview of a recode: before/after per Beleg, skipped ones with their reason (HTML fragment)."""
+    f = await request.form()
+    belege, alt, neu, code = _recode_form(f)
+    book = ui.book()
+    try:
+        res = await asyncio.to_thread(api.recode_preview, book, belege, alt, neu, code)
+    except BookError as exc:
+        return fail(str(exc))
+    return ui.render(request, "_umbuchen_vorschau.html", res=res, alt=alt, neu=neu, code=code,
+                     names={a.nr: a.name for a in book.accounts.values()})
+
+
+async def journal_umbuchen(ui: UI, request: Request):
+    f = await request.form()
+    belege, alt, neu, code = _recode_form(f)
+    return await act(request, api.recode, request.headers.get("hx-current-url") or "/journal", ui.book(),
+                     belege, alt, neu, code)
 
 
 async def journal_storno(ui: UI, request: Request):
@@ -2067,6 +2124,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/lohn/spesen/{nr:str}/entfernen", h(spesen_aktion), methods=["POST"]),
         Route("/journal/raster", h(journal_raster), methods=["POST"]),
         Route("/journal/vorlage.xlsx", h(journal_vorlage)),
+        Route("/journal/umbuchen/vorschau", h(journal_umbuchen_vorschau), methods=["POST"]),
+        Route("/journal/umbuchen", h(journal_umbuchen), methods=["POST"]),
         Route("/journal/import", h(journal_import), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),

@@ -234,12 +234,33 @@ def edit_problem(book: Book, beleg: str) -> str | None:
     return lock_problem(book, rows[0].datum)
 
 
+def mwst_filed_problem(book: Book, rows: list[Row], beleg: str) -> str | None:
+    """A booked MWST Abrechnung covers one of these rows (with a code): change only by Storno."""
+    from . import mwst
+    for r in rows:
+        if not r.mwst:
+            continue
+        for label in mwst.periods(book, r.datum.year):
+            start, end, label = mwst.resolve(label)
+            if start <= r.datum <= end and mwst.load(book, label) is not None:
+                return f"Die MWST-Abrechnung {label} ist bereits verbucht — Beleg {beleg} mit Storno korrigieren"
+    return None
+
+
 def amend(book: Book, beleg: str, datum, text: str, zeilen: list[dict]) -> tuple[list[Row], list[Row], list[Path]]:
     """Replace a manual Beleg by corrected rows under the same number (receipt files stay attached).
     One line with Soll and Haben is a simple booking (MWST split from the gross); several lines are
     taken as they are. Refused in locked periods, for document-owned rows, when a booked MWST
     Abrechnung covers the old or new rows, and when a reconciled bank movement would no longer match.
     Returns (old rows, new rows, touched files); git keeps the previous version."""
+    old, new = plan_amend(book, beleg, datum, text, zeilen)
+    touched = book.remove_rows(lambda r: r.beleg == beleg)
+    touched += book.add_rows(new)
+    return old, new, touched
+
+
+def plan_amend(book: Book, beleg: str, datum, text: str, zeilen: list[dict]) -> tuple[list[Row], list[Row]]:
+    """Everything `amend` checks, without writing: (old rows, new rows) or BookError."""
     from . import bank, mwst
     problem = edit_problem(book, beleg)
     if problem:
@@ -263,22 +284,16 @@ def amend(book: Book, beleg: str, datum, text: str, zeilen: list[dict]) -> tuple
                    str(z.get("haben") or "").strip(), parse_amount(z.get("betrag"), "betrag"),
                    mwst=str(z.get("mwst") or "").strip().upper()) for z in lines]
     validate_rows(book, new, replacing=beleg)
-    for r in old + new:
-        if not r.mwst:
-            continue
-        for label in mwst.periods(book, r.datum.year):
-            start, end, label = mwst.resolve(label)
-            if start <= r.datum <= end and mwst.load(book, label) is not None:
-                raise BookError(f"Die MWST-Abrechnung {label} ist bereits verbucht — Beleg {beleg} mit Storno korrigieren")
+    problem = mwst_filed_problem(book, old + new, beleg)
+    if problem:
+        raise BookError(problem)
     for tx in bank.transactions(book):
         if tx.get("Beleg") == beleg and tx.get("Status") in ("gebucht", "abgeglichen"):
             konto = tx["Konto"]
             if _bank_effect(old, konto) != _bank_effect(new, konto):
                 raise BookError(f"Beleg {beleg} ist mit der Bankbewegung vom {tx['Datum']} abgeglichen — "
                                 f"Betrag auf {konto} muss gleich bleiben")
-    touched = book.remove_rows(lambda r: r.beleg == beleg)
-    touched += book.add_rows(new)
-    return old, new, touched
+    return old, new
 
 
 # ---------- Proposals (agent → human) ----------

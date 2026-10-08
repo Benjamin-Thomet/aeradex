@@ -53,7 +53,8 @@ def last_commit(root: Path) -> str:
     return gitlog.log(root, 1)[0]["nachricht"]
 
 
-PAGES = ["/", "/pruefen", "/journal", "/journal?monat=alle&q=Lohn", "/journal?ohne_beleg=1", "/konten",
+PAGES = ["/", "/pruefen", "/journal", "/journal?monat=alle&q=Lohn", "/journal?ohne_beleg=1",
+         "/journal?monat=alle&konto=6500&betrag=40-50&mwst=ohne", "/konten",
          "/konten/saldenliste?periode=q1", "/konten/1020", "/debitoren", "/debitoren/neu", "/debitoren/kunden",
          "/debitoren/kunden?edit=K0001", "/debitoren/offene-posten", "/debitoren/rechnung/R-2026-0001", "/lohn",
          "/lohn/abrechnung/2026-03/M0002", "/lohn/mitarbeiter?edit=M0001", "/lohn/lohnkonto/2026/M0001",
@@ -573,3 +574,22 @@ def test_journal_edit_in_place(client, root):
                                          "z_betrag": f"{r.betrag:.2f}", "z_text": "", "z_mwst": r.mwst}))
     assert [x.text for x in Book(root).rows if x.beleg == r.beleg] == ["Korrigiert"]
     assert errors(root) == []
+
+
+def test_journal_filter_select_preview_and_recode(client, root):
+    page = client.get("/journal?monat=alle&konto=6500").text
+    assert 'value="26-001" form="umbuchen" data-sel' in page
+    lohn = client.get("/journal?monat=alle&quelle=lohn").text
+    assert "L-2026-01-M0001" in lohn and 'value="L-2026-01-M0001" form="umbuchen"' not in lohn
+
+    r = post(client, "/journal/umbuchen/vorschau", {"beleg": ["26-001", "L-2026-01-M0001"], "konto_alt": "6500  Büromaterial",
+                                                     "konto_neu": "6570"})
+    assert r.status_code == 200 and "wird umgebucht" in r.text and "übersprungen" in r.text
+    assert any(x.soll == "6500" for x in Book(root).rows if x.beleg == "26-001")      # preview wrote nothing
+
+    ok(post(client, "/journal/umbuchen", {"beleg": ["26-001"], "konto_alt": "6500", "konto_neu": "6570"}))
+    assert [(x.soll, x.haben) for x in Book(root).rows if x.beleg == "26-001"] == [("6570", "1020")]
+    assert "Umgebucht" in last_commit(root) and errors(root) == []
+
+    r = post(client, "/journal/umbuchen/vorschau", {"beleg": ["26-001"], "konto_alt": "", "konto_neu": "6570"})
+    assert "Konto von" in r.text

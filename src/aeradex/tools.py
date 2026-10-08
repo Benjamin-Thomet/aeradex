@@ -302,6 +302,36 @@ def reverse_entry(beleg: str, datum: str = "", text: str = "",
                  expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
+def recode_preview(belege: list[str], konto_alt: str = "", konto_neu: str = "", mwst_neu: str = "") -> dict:
+    """Vorschau einer Umbuchung (ändert nichts): pro Beleg vorher/nachher oder warum er übersprungen wird.
+
+    Args:
+        belege: Belegnummern, z.B. ["26-004", "E-2026-0003"] (Belege aus journal()).
+        konto_alt: das zu ersetzende Konto (egal ob im Soll oder Haben), z.B. "6500".
+        konto_neu: das neue Konto, z.B. "6570"; leer = Konto bleibt.
+        mwst_neu: neuer MWST-Code (z.B. "V81"), "-" = Code entfernen, leer = Code bleibt.
+    """
+    return _call(api.recode_preview, belege, konto_alt, konto_neu, mwst_neu)
+
+
+def recode(belege: list[str], konto_alt: str = "", konto_neu: str = "", mwst_neu: str = "",
+           expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
+    """Mehrere Belege umbuchen: Konto ersetzen (Soll oder Haben) und/oder MWST-Code ändern; Netto und
+    Steuer werden aus dem Brutto neu gerechnet. Manuelle Belege und Kreditorenrechnungen; anderes wird mit
+    Grund übersprungen. Zuerst recode_preview zeigen (nur agent_modus: direkt).
+
+    Args:
+        belege: Belegnummern.
+        konto_alt: das zu ersetzende Konto.
+        konto_neu: das neue Konto; leer = Konto bleibt.
+        mwst_neu: neuer MWST-Code, "-" = Code entfernen, leer = Code bleibt.
+        expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
+        idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
+    """
+    return _direct(api.recode, belege, konto_alt, konto_neu, mwst_neu,
+                   expected_revision=expected_revision, idempotency_key=idempotency_key)
+
+
 def mwst_report(periode: str) -> dict:
     """MWST-Abrechnung einer Periode nach ESTV-Ziffern (Umsatz, Steuer, Vorsteuer, Zahllast).
 
@@ -1001,7 +1031,7 @@ def budget_from_prior_year(jahr: int, prozent: str = "0") -> dict:
 # Order matters for prompt caching: a stable list keeps the cached prefix valid.
 SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
           mwst_reconciliation,
-          propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry,
+          propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry, recode_preview, recode,
           exchange_rate, revaluation_preview,
           bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices, bank_rules, expenses,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,

@@ -1,0 +1,32 @@
+{% macro lines(rows) %}{% for r in rows %}<div class="num small" style="white-space:nowrap">{{ r.soll or "–" }} an {{ r.haben or "–" }} · {{ r.betrag|chf }}{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}</div>{% endfor %}{% endmacro %}
+<div class="panel recodepreview">
+  <header><h2>Vorschau Umbuchung</h2>
+    <span class="hint">{% if neu %}Konto {{ alt }} {{ names.get(alt, "") }} → {{ neu }} {{ names.get(neu, "") }}{% endif %}{% if neu and code %} · {% endif %}{% if code %}MWST-Code → {{ "ohne" if code == "-" else code }}{% endif %}
+      · {{ res.aenderbar }} änderbar{% if res.uebersprungen %}, {{ res.uebersprungen }} übersprungen{% endif %}</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Beleg</th><th>Datum</th><th>Text</th><th>Vorher</th><th>Nachher</th><th></th></tr></thead>
+    <tbody>
+    {% for b in res.belege %}
+      <tr class="row{{ ' muted' if b.problem }}">
+        <td><span class="beleg">{{ b.beleg }}</span></td>
+        <td class="num">{{ b.datum|datum("%d.%m.%Y") if b.datum }}</td>
+        <td>{{ b.text }}{% if b.art == "kreditor" %} <span class="pill info" title="Die Kreditorenrechnung wird geändert, ihre Buchung neu erzeugt">Kreditor</span>{% endif %}</td>
+        <td>{{ lines(b.vorher) }}</td>
+        <td>{% if b.problem %}<span class="small muted">—</span>{% else %}{{ lines(b.nachher) }}{% endif %}</td>
+        <td>{% if b.problem %}<span class="pill red" title="{{ b.problem }}">übersprungen</span><div class="small muted" style="max-width:260px">{{ b.problem }}</div>{% else %}<span class="pill ok">wird umgebucht</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if res.aenderbar %}
+  <form class="body" hx-post="/journal/umbuchen" hx-target="find .errors" hx-confirm="{{ res.aenderbar }} Beleg(e) umbuchen?">
+    {% for b in res.belege if not b.problem %}<input type="hidden" name="beleg" value="{{ b.beleg }}">{% endfor %}
+    <input type="hidden" name="konto_alt" value="{{ alt }}"><input type="hidden" name="konto_neu" value="{{ neu }}"><input type="hidden" name="mwst_neu" value="{{ code }}">
+    <div class="errors"></div>
+    <div class="formfoot"><span class="small muted">Gleiche Belegnummern, Beleg-Dateien bleiben angehängt. Netto und Steuer werden aus dem Brutto neu gerechnet. Die vorherige Fassung bleibt im Verlauf (git).</span>
+      <span class="actions"><button class="btn ghost" type="button" data-previewclose>Abbrechen</button><button class="btn primary" type="submit">{{ res.aenderbar }} Beleg(e) umbuchen</button></span></div>
+  </form>
+  {% else %}
+  <div class="body"><span class="small muted">Keiner der ausgewählten Belege lässt sich so umbuchen.</span> <button class="btn small ghost" type="button" data-previewclose>Schliessen</button></div>
+  {% endif %}
+</div>
