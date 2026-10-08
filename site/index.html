@@ -10,12 +10,21 @@
 <meta property="og:description" content="Offene Schweizer Buchhaltung für Menschen und KI-Agenten. Belege, QR-Rechnungen, Bank, MWST, Lohn — als lesbare Dateien in git.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="de_CH">
-<meta property="og:image" content="img/og.png">
+<meta property="og:image" content="https://aeradex.com/img/og.png">
+<meta property="og:url" content="https://aeradex.com/">
+<link rel="canonical" href="https://aeradex.com/">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/hanken-grotesk-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/hanken-grotesk-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "aeradex", "url": "https://aeradex.com/",
+ "applicationCategory": "BusinessApplication", "operatingSystem": "Linux, macOS, Windows", "inLanguage": "de-CH",
+ "description": "Offene Schweizer Buchhaltung für Menschen und KI-Agenten: Belege, QR-Rechnungen, Bank, MWST und Lohn als lesbare Dateien in git.",
+ "license": "https://www.gnu.org/licenses/agpl-3.0.html", "codeRepository": "https://github.com/aeradex/aeradex",
+ "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CHF"}}
+</script>
 <script>try { const t = localStorage.getItem("aeradex-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {} document.documentElement.classList.add("js");</script>
 </head>
 <body>
@@ -29,7 +38,9 @@
         <li><a href="#agent">Agent</a></li>
         <li><a href="#produkt">Produkt</a></li>
         <li><a href="#open-source">Open Source</a></li>
-        <li><a href="#schweiz">Schweiz</a></li>
+        <li><a href="#schweiz">Funktionen</a></li>
+        <li><a href="#kontrolle">Kontrolle</a></li>
+        <li><a href="#roadmap">Roadmap</a></li>
         <li><a href="#start">Start</a></li>
       </ul>
     </nav>
@@ -204,7 +215,7 @@
         <p class="label"><span>04</span>Für die Schweiz</p>
         <h2 id="s-h">Schweizer Recht ist eingebaut.<br><span class="dim">Nicht nachgerüstet.</span></h2>
       </div>
-      <p class="intro">Kontenrahmen KMU, OR-Gliederung, QR-Rechnung, ESTV-Ziffern, Sozialversicherungen. Die Fachlogik stammt aus einer produktiv genutzten Buchhaltung und stimmt gegen echte Zahlen auf den Rappen.</p>
+      <p class="intro">Kontenrahmen KMU, OR-Gliederung, QR-Rechnung, ESTV-Ziffern, Sozialversicherungen. Die Fachlogik stammt aus der produktiv genutzten Buchhaltung einer Schweizer GmbH: Bilanz, Erfolgsrechnung und Lohnabrechnungen stimmen gegen deren echte Zahlen auf den Rappen.</p>
     </div>
     <div class="bento">
       <article class="card c-qr reveal">
@@ -247,6 +258,20 @@
         <div class="bars" aria-hidden="true"><i style="--h:42%"></i><i style="--h:55%"></i><i style="--h:48%"></i><i style="--h:63%"></i><i style="--h:58%"></i><i style="--h:71%"></i><i style="--h:66%"></i><i style="--h:80%"></i><i style="--h:74%"></i><i style="--h:88%" class="hi"></i></div>
       </article>
     </div>
+
+    <div class="more reveal">
+      <h3>Ausserdem drin</h3>
+      <ul>
+        <li><b>Kreditoren</b>QR-Rechnungen einlesen, Zahlungen als pain.001 an die Bank, auch in Fremdwährung.</li>
+        <li><b>Belegeingang</b>Quittungen und Rechnungen per QR-Zahlteil, PDF-Text oder OCR erfasst, als Entwurf zur Freigabe.</li>
+        <li><b>Fremdwährungen</b>Bankkonten in Fremdwährung, mit BAZG-Tageskursen und Bewertung am Stichtag.</li>
+        <li><b>Journal</b>Erfassen wie in Excel, Zeilen aus Excel einfügen, Suchen und Umbuchen in Serie.</li>
+        <li><b>Spesen und Budget</b>Auslagen mit dem nächsten Lohn auszahlen, Budget gegen Ist pro Monat.</li>
+        <li><b>Gesellschaft</b>Gewinnverwendung, Dividende mit Verrechnungssteuer und Anhang zur Jahresrechnung.</li>
+        <li><b>Rechtsformen</b>GmbH, AG, Einzelfirma und Verein, jeweils mit passendem Kontenplan.</li>
+        <li><b>Jev, optional</b>Schlägt für offene Bankbewegungen das Gegenkonto vor, mit kalibrierter Sicherheit. Gebucht wird nie automatisch.</li>
+      </ul>
+    </div>
   </div>
 </section>
 
@@ -272,7 +297,74 @@
         <li><b>Prüfung vor jedem Speichern.</b> Ob Mensch, Agent oder Kommandozeile: Ein Buch, das die Prüfregeln verletzt, lässt sich nicht speichern.</li>
         <li><b>Sichtbar im Verlauf.</b> Jeder Eintrag zeigt, ob ein Mensch oder welcher Agent ihn gemacht hat.</li>
         <li><b>Rollen im Team.</b> Auf dem eigenen Server mit Login: lesen, buchhaltung, admin.</li>
+        <li><b>Regeln statt Hoffnung.</b> Soll gleich Haben, existierende Konten, Kasse nie negativ, gesperrte Monate unverändert, Rechnungen und Löhne passend zu ihrem Dokument. <a href="https://github.com/aeradex/aeradex#regeln-die-aeradex-check-durchsetzt">Alle Prüfregeln</a></li>
       </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 06 Umstieg ============ -->
+<section class="sec" id="umstieg" aria-labelledby="w-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="label"><span>06</span>Umstieg</p>
+      <h2 id="w-h">Wechseln, ohne etwas zu riskieren.<br><span class="dim">Ein Quartal parallel, dann entscheiden.</span></h2>
+      <p class="intro">Du musst deine bisherige Buchhaltung nicht von heute auf morgen ablösen. aeradex läuft zuerst daneben, in einem eigenen Buch. Die bisherige Lösung bleibt massgebend, bis die Zahlen stimmen.</p>
+    </div>
+    <ol class="roles steps">
+      <li class="role reveal">
+        <div class="role-top"><span class="role-n">Schritt 1</span></div>
+        <h3>Übernehmen.</h3>
+        <p>Eröffnungsbilanz aus dem letzten Abschluss, offene Kunden- und Lieferantenrechnungen, Mitarbeitende und Lohneinstellungen, MWST-Methode und Bankkonten.</p>
+        <code class="role-code">aeradex check · Bilanz geht auf</code>
+      </li>
+      <li class="role reveal">
+        <div class="role-top"><span class="role-n">Schritt 2</span></div>
+        <h3>Parallel buchen.</h3>
+        <p>Jeden Monat Kontoauszüge importieren, Belege erfassen und den Lohnlauf rechnen, so wie in der bisherigen Buchhaltung auch.</p>
+        <code class="role-code">camt.053 · Belegeingang · Lohnlauf</code>
+      </li>
+      <li class="role reveal">
+        <div class="role-top"><span class="role-n">Schritt 3</span></div>
+        <h3>Vergleichen.</h3>
+        <p>Saldenliste, Bank, offene Posten, Lohnkonto, MWST-Ziffern und Jahresrechnung gegenüberstellen. Jede Abweichung braucht eine erklärte Ursache.</p>
+        <code class="role-code">Differenz 0.00</code>
+      </li>
+    </ol>
+    <p class="after reveal"><a href="https://github.com/aeradex/aeradex/blob/main/docs/parallelbetrieb.md">Checkliste für den Parallelbetrieb <span class="arrow" aria-hidden="true">→</span></a></p>
+  </div>
+</section>
+
+<!-- ============ 07 Roadmap ============ -->
+<section class="sec" id="roadmap" aria-labelledby="r-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="label"><span>07</span>Roadmap und Plugins</p>
+      <h2 id="r-h">Was kommt, steht hier.<br><span class="dim">Was fehlt, kann ein Plugin sein.</span></h2>
+    </div>
+    <div class="paths even">
+      <article class="path reveal">
+        <span class="card-tag">Als Nächstes</span>
+        <h3>Woran wir arbeiten.</h3>
+        <ul class="next">
+          <li>Weitere Quellensteuer-Kantone und die ALV-Höchstgrenze</li>
+          <li>Mehrere Mandanten in einer Instanz</li>
+          <li>camt.054: Sammelgutschriften im Detail</li>
+          <li>Lohnmeldungen über ELM, sofern eine Zertifizierung durch Swissdec gelingt</li>
+        </ul>
+        <ul class="stack" aria-label="Heute in v0.8"><li>Finanzbuchhaltung</li><li>MWST + eMWST</li><li>Bank camt.053</li><li>QR-Rechnung CHF/EUR</li><li>Mahnwesen</li><li>Kreditoren + pain.001</li><li>Fremdwährungen</li><li>Lohn + Spesen</li><li>Abschluss-Dossier</li><li>CLI + MCP</li><li>Server mit Login</li></ul>
+      </article>
+      <article class="path reveal">
+        <span class="card-tag">Plugins</span>
+        <h3>Erweitern, ohne den Kern anzufassen.</h3>
+        <p>Ein Plugin ist ein gewöhnliches Python-Paket. Auch seine Buchungen müssen alle Prüfregeln bestehen.</p>
+        <ul class="plugin-list">
+          <li><b>aeradex-anlagen</b>Anlagenbuchhaltung: Abschreibungen, Abgänge, Anlagenspiegel</li>
+          <li><b>aeradex-leistungen</b>Offerten, Zeiterfassung, Projekte und Abrechnung an Kunden</li>
+          <li><b>aeradex-revolut</b>Kontoauszüge von Revolut Business und Privat</li>
+        </ul>
+        <p class="small">Gesucht: PostFinance, Wise, TWINT, Stripe und SumUp, weitere Kantone, Kontenpläne und Exporte für Banana, Bexio oder Abacus. <a href="https://github.com/aeradex/aeradex/blob/main/PLUGINS.md">Wunschliste</a> · <a href="https://github.com/aeradex/aeradex/blob/main/docs/plugins.md">Plugin schreiben</a></p>
+      </article>
     </div>
   </div>
 </section>
@@ -281,7 +373,7 @@
 <section class="sec" id="start" aria-labelledby="q-h">
   <div class="wrap">
     <div class="sec-head reveal">
-      <p class="label"><span>06</span>Loslegen</p>
+      <p class="label"><span>08</span>Loslegen</p>
       <h2 id="q-h">Früh dabei sein.<br><span class="dim">Mit offenen Karten.</span></h2>
     </div>
     <div class="paths">
@@ -291,6 +383,13 @@
         <p>aeradex läuft auf deinem Rechner oder deinem eigenen Server und wird im Browser bedient. Die Einrichtung braucht heute noch technische Kenntnisse oder jemanden, der sie dir abnimmt.</p>
         <ul class="checks"><li>Keine Lizenzkosten, kein Abo</li><li>Daten bleiben bei dir</li><li>Export für die Treuhand jederzeit</li></ul>
         <a class="btn ghost" href="https://github.com/aeradex/aeradex/blob/main/README.md">Zur Anleitung <span class="arrow" aria-hidden="true">→</span></a>
+      </article>
+      <article class="path reveal">
+        <span class="card-tag">Für Treuhand</span>
+        <h3>Mitlesen statt nachfragen.</h3>
+        <p>Deine Kundschaft bucht selbst oder mit ihrem Agenten. Du siehst jede Änderung im Verlauf und erhältst den Abschluss als ein geprüftes Paket.</p>
+        <ul class="checks"><li>Leserecht über die Rolle «lesen»</li><li>Abschluss-Dossier mit SHA-256-Manifest</li><li>Ganzes Buch als eine Datei, auf Wunsch verschlüsselt</li></ul>
+        <a class="btn ghost" href="https://github.com/aeradex/aeradex/blob/main/docs/server.md">Zum Serverbetrieb <span class="arrow" aria-hidden="true">→</span></a>
       </article>
       <article class="path path-dev reveal">
         <span class="card-tag">Für Entwickler</span>
@@ -322,6 +421,11 @@
       <details><summary>Wo liegen meine Daten?</summary><p>In einem Ordner auf deinem Rechner oder Server, versioniert mit git. Du bist für Betrieb und Backups verantwortlich. Nutzt du einen KI-Agenten, hängt die Verarbeitung der Daten, die er liest, vom gewählten Anbieter ab.</p></details>
       <details><summary>Was kostet aeradex?</summary><p>Die Software selbst ist kostenlos und quelloffen. Kosten entstehen höchstens für deinen Server und für den KI-Anbieter, falls du einen Agenten nutzt.</p></details>
       <details><summary>Was heisst Open Source hier konkret?</summary><p>Der Quellcode steht unter der AGPL-3.0. Du kannst ihn einsehen, selbst betreiben und anpassen. Dateiformat, Plugin-Schnittstelle und Werkzeuge für Agenten sind <a href="https://github.com/aeradex/aeradex/blob/main/docs/format.md">offen dokumentiert</a>.</p></details>
+      <details><summary>Kann ich von Bexio, Banana oder Abacus wechseln?</summary><p>Ja, schrittweise. Du übernimmst Eröffnungsbilanz und offene Posten und buchst ein Quartal parallel, bis die Zahlen übereinstimmen. Die <a href="https://github.com/aeradex/aeradex/blob/main/docs/parallelbetrieb.md">Checkliste</a> führt durch jeden Schritt.</p></details>
+      <details><summary>Für welche Rechtsformen eignet sich aeradex?</summary><p>Für GmbH und AG, Einzelfirmen und Vereine. Beim Anlegen eines Buchs wählt aeradex den passenden Kontenplan, den du danach anpassen kannst.</p></details>
+      <details><summary>Kann ich mehrere Firmen führen?</summary><p>Ja, jede Firma ist ein eigenes Buch, also ein eigener Ordner. Mehrere Mandanten in einer Server-Instanz sind in Arbeit.</p></details>
+      <details><summary>Wie sichere ich meine Daten?</summary><p>Das Buch ist ein git-Repository. Ein zweites Remote auf einem anderen Server oder ein gewöhnliches Backup des Ordners genügt. Zusätzlich lässt sich das ganze Buch als eine Datei exportieren, auf Wunsch verschlüsselt.</p></details>
+      <details><summary>Was passiert, wenn es aeradex nicht mehr gibt?</summary><p>Deine Bücher bleiben Markdown- und YAML-Dateien, lesbar in jedem Editor. Der Quellcode bleibt unter der AGPL verfügbar und kann von allen weitergeführt werden.</p></details>
       <details><summary>Was kann aeradex noch nicht?</summary><p>Lohnmeldungen über ELM (Swissdec) erfordern eine Zertifizierung und sind nicht möglich. Als Vorschau gibt es zudem keine Gewährleistung. Teste die Abläufe zuerst mit einem Testbuch.</p></details>
       </div>
     </div>
@@ -351,7 +455,7 @@
     </div>
     <div>
       <h4>Produkt</h4>
-      <ul><li><a href="#agent">Agent</a></li><li><a href="#produkt">Oberfläche</a></li><li><a href="#schweiz">Funktionen</a></li><li><a href="#kontrolle">Kontrolle</a></li></ul>
+      <ul><li><a href="#agent">Agent</a></li><li><a href="#produkt">Oberfläche</a></li><li><a href="#schweiz">Funktionen</a></li><li><a href="#kontrolle">Kontrolle</a></li><li><a href="#umstieg">Umstieg</a></li><li><a href="#roadmap">Roadmap</a></li></ul>
     </div>
     <div>
       <h4>Dokumentation</h4>
@@ -360,6 +464,7 @@
         <li><a href="https://github.com/aeradex/aeradex/blob/main/docs/format.md">Dateiformat</a></li>
         <li><a href="https://github.com/aeradex/aeradex/blob/main/docs/server.md">Server</a></li>
         <li><a href="https://github.com/aeradex/aeradex/blob/main/docs/plugins.md">Plugins</a></li>
+        <li><a href="https://github.com/aeradex/aeradex/blob/main/docs/parallelbetrieb.md">Parallelbetrieb</a></li>
       </ul>
     </div>
     <div>
@@ -367,11 +472,12 @@
       <ul>
         <li><a href="https://github.com/aeradex/aeradex">GitHub</a></li>
         <li><a href="https://github.com/aeradex/aeradex/blob/main/CONTRIBUTING.md">Mitmachen</a></li>
+        <li><a href="https://github.com/aeradex/aeradex/issues">Fragen und Fehler</a></li>
         <li><a href="https://github.com/aeradex/aeradex/blob/main/LICENSE">Lizenz (AGPL-3.0)</a></li>
       </ul>
     </div>
     <p class="footer-mark" aria-hidden="true">aeradex</p>
-    <div class="fine"><span>aeradex · AGPL-3.0-or-later · ohne Gewähr</span><span>Gemacht in der Schweiz</span></div>
+    <div class="fine"><span>aeradex · AGPL-3.0-or-later · ohne Gewähr</span><span><a href="impressum.html">Impressum</a> · <a href="datenschutz.html">Datenschutz</a> · Gemacht in der Schweiz</span></div>
   </div>
 </footer>
 
