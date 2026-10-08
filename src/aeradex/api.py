@@ -497,6 +497,20 @@ def ledger_pdf(book: Book, konto: str, jahr: int | None = None, pdf_out: str | N
     return {"pdf": _write_report(book, pdf_out, pdf.ledger_pdf(book, led), f"Konto {konto} {year}.pdf")}
 
 
+def journal_template(book: Book) -> bytes:
+    """The Excel template for bookings (with account and MWST dropdowns)."""
+    from . import buchungsimport
+    return buchungsimport.template(book)
+
+
+def journal_import_read(book: Book, data: bytes, dateiname: str) -> dict:
+    """Read a filled-in template (.xlsx/.csv) into grid rows — nothing is booked; book them with post_entries."""
+    from . import buchungsimport
+    rows = buchungsimport.read(data, dateiname)
+    return {"zeilen": rows, "meldung": f"{len(rows)} Zeile(n) aus {dateiname} ins Raster übernommen — prüfen, "
+                                       "dann «Alle buchen»"}
+
+
 def journal_pdf(book: Book, jahr: int | None = None, pdf_out: str | None = None) -> dict:
     year = jahr or max(book.years())
     rows = [r for r in book.rows if r.datum.year == year]

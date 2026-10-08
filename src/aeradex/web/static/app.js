@@ -102,7 +102,7 @@
         if (c[0].value.trim()) prev = c[0].value;
         hint(c[2]); hint(c[3]);
       });
-      if (!rows().length || !empty(rows()[rows().length - 1])) addRow(), update(false);
+      if (!rows().length) addRow(), update(false);
       if (n) form.setAttribute("data-dirty", ""); else form.removeAttribute("data-dirty");
       $("#rasterAnzahl").textContent = n; $("#rasterSumme").textContent = fmt(sum);
       if (save) store.set(key, JSON.stringify(rows().filter(tr => !empty(tr)).map(tr => cells(tr).map(c => c.value))));
@@ -146,7 +146,21 @@
     });
     form.addEventListener("click", e => {
       if (e.target.closest("[data-gridremove]")) { e.target.closest("tr").remove(); update(); }
-      if (e.target.closest("[data-gridclear]") && confirm("Alle Zeilen leeren?")) { rows().forEach(tr => tr.remove()); for (let i = 0; i < 5; i++) addRow(); update(); }
+      if (e.target.closest("[data-gridadd]")) { const tr = addRow(); update(); cells(tr)[0].focus(); }
+      if (e.target.closest("[data-gridclear]") && confirm("Alle Zeilen leeren?")) { rows().forEach(tr => tr.remove()); addRow(); update(); }
+    });
+    const picker = $("[data-gridimport]", form.closest(".panel") || root);
+    if (picker) picker.addEventListener("change", async () => {
+      const file = picker.files[0]; if (!file) return;
+      const body = new FormData(); body.append("datei", file); picker.value = "";
+      const csrf = JSON.parse(document.body.getAttribute("hx-headers") || "{}")["X-CSRF"];
+      let res;
+      try { res = await (await fetch("/journal/import", { method: "POST", body, headers: { "X-CSRF": csrf } })).json(); }
+      catch (x) { toast("Import fehlgeschlagen", true); return; }
+      if (res.fehler) { toast(res.fehler, true); return; }
+      rows().filter(empty).forEach(tr => tr.remove());
+      res.zeilen.forEach(vals => { const tr = addRow(); cells(tr).forEach(c => { c.value = vals[+c.dataset.col] || ""; }); });
+      update(); toast(res.meldung);
     });
     form.addEventListener("rasterFehler", e => {
       const marks = (e.detail && (e.detail.value || e.detail)) || {};

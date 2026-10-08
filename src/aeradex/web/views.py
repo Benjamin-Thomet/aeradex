@@ -13,7 +13,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from .. import api, check as checks, invoices, journal, payroll, statements
@@ -425,6 +425,25 @@ async def journal_raster(ui: UI, request: Request):
     response = fail("Nichts gebucht — " + "; ".join(f"Zeile {k}: {v}" for k, v in sorted(problems.items())))
     response.headers["HX-Trigger"] = json.dumps({"rasterFehler": {str(k): v for k, v in problems.items()}})
     return response
+
+
+async def journal_vorlage(ui: UI, request: Request):
+    data = await asyncio.to_thread(api.journal_template, ui.book())
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="Buchungen Vorlage.xlsx"'})
+
+
+async def journal_import(ui: UI, request: Request):
+    """A filled-in template → rows for the grid (JSON); the grid books them."""
+    f = await request.form()
+    upload = f.get("datei")
+    if not upload or not getattr(upload, "filename", ""):
+        return JSONResponse({"fehler": "Keine Datei gewählt."}, status_code=400)
+    try:
+        res = await asyncio.to_thread(api.journal_import_read, ui.book(), await upload.read(), upload.filename)
+    except BookError as exc:
+        return JSONResponse({"fehler": str(exc)}, status_code=400)
+    return JSONResponse(res)
 
 
 async def journal_storno(ui: UI, request: Request):
@@ -2047,6 +2066,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/lohn/spesen", h(spesen_aktion), methods=["POST"]),
         Route("/lohn/spesen/{nr:str}/entfernen", h(spesen_aktion), methods=["POST"]),
         Route("/journal/raster", h(journal_raster), methods=["POST"]),
+        Route("/journal/vorlage.xlsx", h(journal_vorlage)),
+        Route("/journal/import", h(journal_import), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),
         Route("/kreditoren/einlesen", h(eingang_einlesen), methods=["POST"]),

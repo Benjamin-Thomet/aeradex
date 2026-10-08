@@ -21,14 +21,16 @@
   {% if vat.methode != 'keine' %}<td><input name="mwst" data-col="5" list="mwstcodes" aria-label="MWST-Code" autocomplete="off"></td>{% endif %}
   <td class="x"><button class="btn small ghost" type="button" data-gridremove tabindex="-1" aria-label="Zeile entfernen">✕</button></td></tr>{% endmacro %}
 <div class="panel" id="neueBuchung">
-  <header><h2>Buchungen erfassen</h2><span class="hint">Taste N · Enter = nächste Zeile · leeres Datum = wie oben · aus Excel einfügen · ⌘↵ / Ctrl+↵ bucht</span></header>
+  <header><h2>Buchungen erfassen</h2><span class="hint">Taste N · Enter = nächste Zeile · leeres Datum = wie oben · aus Excel einfügen · ⌘↵ / Ctrl+↵ bucht</span>
+    <span class="actions"><a class="btn small ghost" href="/journal/vorlage.xlsx" title="Excel-Vorlage mit Konten- und MWST-Auswahl">Excel-Vorlage</a>
+      <label class="btn small" title="Ausgefüllte Vorlage (.xlsx oder .csv) ins Raster laden">Excel importieren<input type="file" accept=".xlsx,.xlsm,.csv,.txt" data-gridimport hidden></label></span></header>
   <form id="raster" class="raster" hx-post="/journal/raster" hx-target="find .errors" data-accounts='{{ account_names|tojson }}' data-key="{{ settings.firma }}">
     <input type="hidden" name="jahr" value="{{ year }}">
     {% if vat.methode != 'keine' %}<datalist id="mwstcodes">{% for c in vat_codes.values() if not (vat.methode == 'saldo' and c.kind in ('vorsteuer', 'investition')) %}<option value="{{ c.code }}">{{ c.label }}</option>{% endfor %}</datalist>{% endif %}
     <div class="tablewrap"><table class="grid">
       <thead><tr><th class="nr">#</th><th class="c-datum">Datum</th><th>Beschreibung</th><th class="c-konto">Soll</th><th class="c-konto">Haben</th><th class="c-betrag right">Betrag</th>{% if vat.methode != 'keine' %}<th class="c-mwst">MWST</th>{% endif %}<th class="x"></th></tr></thead>
-      <tbody>{% for _ in range(5) %}{{ gridrow() }}{% endfor %}</tbody>
-      <tfoot><tr><td></td><td colspan="4" class="small muted"><span id="rasterAnzahl">0</span> Buchung(en)</td><td class="right num" id="rasterSumme">0.00</td><td colspan="{{ 2 if vat.methode != 'keine' else 1 }}"></td></tr></tfoot>
+      <tbody>{{ gridrow() }}</tbody>
+      <tfoot><tr><td></td><td colspan="4" class="small muted"><button class="btn small" type="button" data-gridadd>+ Zeile</button> <span id="rasterAnzahl">0</span> Buchung(en)</td><td class="right num" id="rasterSumme">0.00</td><td colspan="{{ 2 if vat.methode != 'keine' else 1 }}"></td></tr></tfoot>
     </table></div>
     <template>{{ gridrow() }}</template>
     <div class="body" style="padding-top:8px">
@@ -62,7 +64,7 @@
     <div data-show="split" hidden>
       <div class="splitrow poshead"><span>Soll</span><span>Haben</span><span class="right">Betrag</span><span>Zeilentext (optional)</span>{% if vat.methode != 'keine' %}<span>MWST</span>{% endif %}<span></span></div>
       <div class="splitrows" id="splitrows">
-        {% for _ in range(3) %}
+        {% for _ in range(2) %}
         <div class="splitrow"><input class="input" name="z_soll" list="konten" aria-label="Soll"><input class="input" name="z_haben" list="konten" aria-label="Haben"><input class="input num" name="z_betrag" inputmode="decimal" aria-label="Betrag"><input class="input" name="z_text" aria-label="Zeilentext">{% if vat.methode != 'keine' %}{{ mwst_select("z_mwst", vat, vat_codes, label=false) }}{% endif %}<button class="btn small ghost" type="button" data-removerow aria-label="Zeile entfernen">✕</button></div>
         {% endfor %}
       </div>
