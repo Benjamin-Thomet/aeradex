@@ -35,6 +35,8 @@
       <div class="form">
         <div class="field"><label for="q-d">Datum{{ src('datum') }}</label><input class="input" id="q-d" type="date" name="datum" value="{{ ev.datum or today }}" required></div>
         <div class="field"><label for="q-b">Betrag brutto{{ src('betrag') }}</label><input class="input num" id="q-b" name="betrag" value="{{ ev.betrag }}" required></div>
+        <div class="field"><label for="q-lv" title="Datum oder Beginn der Leistung, wenn es vom Rechnungsdatum abweicht — für die Abgrenzung im Jahresabschluss">Leistung von{{ src('leistung_von') }}</label><input class="input" id="q-lv" type="date" name="leistung_von" value="{{ ev.leistung_von or '' }}"></div>
+        <div class="field"><label for="q-lb">Leistung bis <span class="muted">(leer = ein Tag)</span></label><input class="input" id="q-lb" type="date" name="leistung_bis" value="{{ ev.leistung_bis or '' }}"></div>
         <div class="field wide"><label for="q-t">Text</label><input class="input" id="q-t" name="text" value="{{ (ev.name ~ (' ' ~ ev.rechnungsnr if ev.rechnungsnr else ''))|trim or 'Quittung' }}"></div>
         <div class="field"><label for="q-k">Aufwandkonto{% if (entwurf.konto or {}).quelle %} <span class="pill {{ 'info' if entwurf.konto.quelle.startswith('Agent') else 'muted' }}" title="{{ entwurf.konto.begruendung or '' }}">{{ entwurf.konto.quelle }}</span>{% endif %}</label><input class="input" id="q-k" name="konto" list="konten" value="{{ ev.konto }}"></div>
         {{ mwst_select("mwst", vat, vat_codes, kinds=("vorsteuer","investition","bezug"), id="q-m", selected=ev.mwst or "") }}

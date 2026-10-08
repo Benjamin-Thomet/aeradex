@@ -308,6 +308,24 @@ def recode(book: Book, belege: list[str], konto_alt: str = "", konto_neu: str = 
                  uebersprungen=[{"beleg": i["beleg"], "grund": i["problem"]} for i in skipped])
 
 
+def accruals(book: Book, jahr: int) -> dict:
+    """Rechnungsabgrenzungen the year calls for, from the service period in the booking texts (booked or not)."""
+    from . import abgrenzung
+    items = abgrenzung.proposals(book, jahr)
+    return jsonable({"jahr": jahr, "vorschlaege": items, "offen": sum(1 for p in items if not p["gebucht"]),
+                     "konten": {r: abgrenzung.konto(book, r) for r in abgrenzung.ROLES} if items else {}})
+
+
+def accruals_book(book: Book, jahr: int, ids: list[str]) -> dict:
+    """Book the chosen Abgrenzungen per 31.12. with their reversal on 01.01. of the next year."""
+    from . import abgrenzung
+    _guard(book)
+    entry, touched = abgrenzung.book_accruals(book, jahr, ids)
+    return _done(book, f"Abgrenzungen {jahr}: {len(entry['ids'])} gebucht (Beleg {entry['beleg']}, "
+                       f"CHF {Decimal(entry['total']):.2f}), Auflösung am 01.01.{jahr + 1} (Beleg {entry['aufloesung']})",
+                 touched, abgrenzung=entry)
+
+
 def year_open(book: Book, jahr: int | None = None) -> dict:
     """Open the next business year before its first booking; balances carry over by themselves."""
     from . import jahreswechsel
@@ -370,9 +388,11 @@ def customer_add(book: Book, **fields) -> dict:
 
 
 def invoice_create(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
-                   zahlungsfrist: int | None = None, waehrung: str = "", kurs=None) -> dict:
+                   zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
+                   leistung_von=None, leistung_bis=None) -> dict:
     _guard(book)
-    meta, touched = invoices.issue_invoice(book, kunde, positionen, datum, text, zahlungsfrist, waehrung, kurs)
+    meta, touched = invoices.issue_invoice(book, kunde, positionen, datum, text, zahlungsfrist, waehrung, kurs,
+                                           leistung_von, leistung_bis)
     meta["_text"] = text
     pdf_path = meta_pdf_path(book, meta)
     pdf_path.write_bytes(pdf.invoice_pdf(book, meta, invoices.customer(book, kunde)))
@@ -911,7 +931,7 @@ def invoice_preview(book: Book, positionen: list[dict]) -> dict:
 from .storage import transactional as _locked
 
 
-WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "year_open", "reverse_entry", "propose", "approve", "reject",
+WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "year_open", "accruals_book", "reverse_entry", "propose", "approve", "reject",
           "customer_add", "invoice_create", "invoice_void", "invoice_pay", "invoice_credit", "employee_add",
           "payroll_run", "payroll_close", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
           "allocation_book", "lock", "unlock", "customer_update", "employee_update", "account_update",
@@ -1506,11 +1526,14 @@ bill_draft_discard = _locked(bill_draft_discard)
 
 def receipt_book(book: Book, entwurf: str, datum, text: str, betrag, konto: str = "", mwst: str = "",
                  positionen: list[dict] | None = None, waehrung: str = "", kurs=None,
-                 zahlung: dict | None = None) -> dict:
+                 zahlung: dict | None = None, leistung_von=None, leistung_bis=None) -> dict:
     """Book a receipt draft — with its open bank movement, onto an existing booking (file only)
-    or against a cash/bank/card account. The receipt is filed under belege/."""
+    or against a cash/bank/card account. The receipt is filed under belege/. A service period goes into
+    the booking text (« · Leistung 01.10.2026–30.09.2027»), where the year-end Abgrenzung finds it."""
     from . import erfassung
+    from .leistung import with_text
     _guard(book)
+    text = with_text(text, leistung_von, leistung_bis)
     rows, touched = erfassung.book_receipt(book, entwurf, datum, text, betrag, konto, mwst, positionen,
                                            waehrung, kurs, zahlung)
     pay = (zahlung or {}).get("art")

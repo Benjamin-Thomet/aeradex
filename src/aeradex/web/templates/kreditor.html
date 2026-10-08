@@ -4,7 +4,7 @@
 {% block main %}
 <div class="topbar">
   <div><div class="crumbs"><a href="/kreditoren">Kreditoren</a> /</div><h1>{{ meta.nummer }} {{ status_pill(st.status) }}</h1>
-    <div class="sub">{{ meta.name }}{% if meta.rechnungsnr %} · Rechnung {{ meta.rechnungsnr }}{% endif %} · {{ meta.datum|datum }} · fällig {{ meta.faellig|datum }}</div></div>
+    <div class="sub">{{ meta.name }}{% if meta.rechnungsnr %} · Rechnung {{ meta.rechnungsnr }}{% endif %} · {{ meta.datum|datum }} · fällig {{ meta.faellig|datum }}{% if meta.leistung_von %} · Leistung {{ meta.leistung_von|datum }}{% if meta.leistung_bis %} – {{ meta.leistung_bis|datum }}{% endif %}{% endif %}</div></div>
   <div class="actions">{% if meta.datei %}<a class="btn" href="/datei/{{ meta.datei|urlq }}" target="_blank">Beleg öffnen</a>{% endif %}</div>
 </div>
 <div class="review">

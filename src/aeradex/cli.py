@@ -463,6 +463,9 @@ def build_parser() -> argparse.ArgumentParser:
     c = ms.add_parser("abgrenzung", help="vereinnahmte Entgelte: Steuer auf offenen Posten per 31.12. abgrenzen")
     c.add_argument("jahr", type=int)
     c.add_argument("--neu", action="store_true", help="bestehende Abgrenzung neu berechnen")
+    s = sub.add_parser("abgrenzung", help="Rechnungsabgrenzungen per 31.12. aus dem Leistungszeitraum der Buchungen")
+    s.add_argument("jahr", type=int)
+    s.add_argument("--buchen", nargs="*", metavar="ID", help="diese Vorschläge buchen (ohne ID: alle offenen)")
     s = sub.add_parser("jahr-eroeffnen", help="nächstes Geschäftsjahr eröffnen (Salden werden vorgetragen)")
     s.add_argument("jahr", type=int, nargs="?", help="Standard: das Jahr nach dem letzten")
     s = sub.add_parser("lock", help="Periode sperren (unveränderlich)")
@@ -934,6 +937,11 @@ def dispatch(a, book_path: Path | None):
         if a.sub == "abgrenzung":
             return api.mwst_abgrenzung(book(), a.jahr, a.neu)
         return api.mwst_book(book(), a.periode)
+    if c == "abgrenzung":
+        if a.buchen is None:
+            return api.accruals(book(), a.jahr)
+        ids = a.buchen or [p["id"] for p in api.accruals(book(), a.jahr)["vorschlaege"] if not p["gebucht"]]
+        return api.accruals_book(book(), a.jahr, ids)
     if c == "jahr-eroeffnen":
         return api.year_open(book(), a.jahr)
     if c == "lock":

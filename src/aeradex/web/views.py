@@ -751,7 +751,8 @@ async def rechnung_erstellen(ui: UI, request: Request):
     return await act(request, api.invoice_create, lambda r: f"/debitoren/rechnung/{r['rechnung']['nummer']}",
                      ui.book(), f.get("kunde"), _positions(f), f.get("datum") or None, f.get("text", ""),
                      int(f.get("zahlungsfrist")) if f.get("zahlungsfrist") else None,
-                     "" if (f.get("waehrung") or "CHF") == "CHF" else f.get("waehrung"), f.get("kurs") or None)
+                     "" if (f.get("waehrung") or "CHF") == "CHF" else f.get("waehrung"), f.get("kurs") or None,
+                     f.get("leistung_von") or None, f.get("leistung_bis") or None)
 
 
 async def rechnung_aktion(ui: UI, request: Request):
@@ -1114,7 +1115,16 @@ async def abschluss(ui: UI, request: Request):
                      div=(read_yaml(statements.dividend_path(book, year)) if statements.dividend_path(book, year).exists()
                           else None),
                      jahreswechsel=jahreswechsel.checklist(book, year), naechstes_jahr=jahreswechsel.next_year(book),
+                     **_abgrenzungen(book, year),
                      kann_eroeffnen=jahreswechsel.next_year(book) <= date.today().year + 1)
+
+
+def _abgrenzungen(book: Book, year: int) -> dict:
+    from .. import abgrenzung
+    try:
+        return {"abgr": abgrenzung.proposals(book, year), "abgr_fehler": ""}
+    except BookError as exc:
+        return {"abgr": [], "abgr_fehler": str(exc)}
 
 
 async def abschluss_aktion(ui: UI, request: Request):
@@ -1133,6 +1143,8 @@ async def abschluss_aktion(ui: UI, request: Request):
         return await act(request, api.dividend_pay, to, book, year, f.get("datum") or None, f.get("konto") or "")
     if aktion == "anhang":
         return await act(request, api.anhang_save, to, book, year, f.get("text", ""))
+    if aktion == "abgrenzungen":
+        return await act(request, api.accruals_book, to + "#abgrenzungen", book, year, f.getlist("id"))
     if aktion == "jahr-eroeffnen":
         neu = jahreswechsel.next_year(book)
         return await act(request, api.year_open, f"/abschluss?jahr={neu}", book, neu)
@@ -1651,7 +1663,8 @@ async def quittung_buchen(ui: UI, request: Request):
     return await act(request, api.receipt_book, after_draft(ui.book(), "quittung", draft_id, f.get("weiter") == "1"),
                      ui.book(), draft_id, f.get("datum"),
                      (f.get("text") or "").strip() or "Quittung", f.get("betrag"), acct(f.get("konto")),
-                     f.get("mwst") or "", lines or None, "" if cur == "CHF" else cur, f.get("kurs") or None, zahlung)
+                     f.get("mwst") or "", lines or None, "" if cur == "CHF" else cur, f.get("kurs") or None, zahlung,
+                     f.get("leistung_von") or None, f.get("leistung_bis") or None)
 
 
 async def debitor_extern(ui: UI, request: Request):
@@ -1688,7 +1701,7 @@ async def debitor_extern_erfassen(ui: UI, request: Request):
     except (BookError, ValueError) as exc:
         return fail(str(exc))
     fields = {k: (f.get(k) or "").strip() for k in ("datum", "faellig", "rechnungsnr", "referenz", "mwst", "entwurf",
-                                                     "kurs")}
+                                                     "kurs", "leistung_von", "leistung_bis")}
     if (f.get("waehrung") or "CHF").upper() != "CHF":
         fields["waehrung"] = f.get("waehrung").upper()
     fields = {k: v for k, v in fields.items() if v}
@@ -1767,7 +1780,8 @@ async def kreditor_erfassen(ui: UI, request: Request):
     except (BookError, ValueError) as exc:
         return fail(str(exc))
     fields = {k: (f.get(k) or "").strip() for k in ("datum", "faellig", "rechnungsnr", "referenz", "referenz_typ",
-                                                     "mitteilung", "iban", "datei", "entwurf")}
+                                                     "mitteilung", "iban", "datei", "entwurf", "leistung_von",
+                                                     "leistung_bis")}
     fields = {k: v for k, v in fields.items() if v}
     if f.get("konto"):
         fields["konto"] = acct(f.get("konto"))

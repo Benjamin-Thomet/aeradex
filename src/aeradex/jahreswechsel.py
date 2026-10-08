@@ -65,6 +65,11 @@ def checklist(book: Book, jahr: int) -> list[dict]:
             "Nach den letzten Abschlussbuchungen (Abgrenzungen, Abschreibungen, Bewertung) die Periode "
             f"bis 31.12.{prev} sperren — danach ist sie unveränderlich.", f"/abschluss?jahr={prev}")
 
+    from . import abgrenzung
+    offen = abgrenzung.open_count(book, prev)
+    if offen:
+        add("offen", f"Rechnungsabgrenzungen {prev}", f"{offen} Buchung(en) mit Leistungszeitraum über den Jahreswechsel "
+            "noch nicht abgegrenzt.", f"/abschluss?jahr={prev}#abgrenzungen")
     if st.get("gewinnverwendung") is not None:
         g = st["gewinnverwendung"]
         if g["gebucht"]:

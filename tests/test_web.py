@@ -639,3 +639,22 @@ def test_employee_form_tabs_and_live_qst_status(client, root):
     r = client.get("/lohn/qst-status", params={"plz": "79539", "ort": "Lörrach", "land": "DE", "aufenthalt": "G",
                                                "qst_tarif": "L"})
     assert "Kanton <strong>BE</strong>" in r.text and "Sitz der Firma" in r.text     # demo firm: 3000 Bern
+
+
+def test_service_period_from_forms_to_year_end_accrual(client, root):
+    to = ok(post(client, "/debitoren/neu", {"kunde": "K0001", "datum": "2026-11-20", "zahlungsfrist": "30",
+                                             "leistung_von": "2026-11-01", "leistung_bis": "2027-04-30",
+                                             "p_text": ["Wartungsvertrag"], "p_menge": ["1"], "p_einheit": [""],
+                                             "p_preis": ["1810"], "p_konto": ["3400"]}))
+    nr = to.rsplit("/", 1)[-1]
+    assert "Leistung 01.11.2026 – 30.04.2027" in client.get(f"/debitoren/rechnung/{nr}").text
+    page = client.get("/abschluss?jahr=2026").text
+    assert "Rechnungsabgrenzungen 31.12.2026" in page and "Wartungsvertrag" not in page.split('id="abgrenzungen"')[0]
+    assert "120/181 Tage" in page                       # 01.01.–30.04.2027 of 01.11.2026–30.04.2027
+    from aeradex import abgrenzung
+    (p,) = abgrenzung.proposals(Book(root), 2026)
+    assert (p["soll"], p["haben"]) == ("3400", abgrenzung.konto(Book(root), "ertrag_voraus"))
+    ok(post(client, "/abschluss/abgrenzungen", {"jahr": "2026", "id": [p["id"]]}))
+    assert abgrenzung.proposals(Book(root), 2026)[0]["gebucht"]
+    assert "Abgrenzungen 2026: 1 gebucht" in last_commit(root) and errors(root) == []
+    assert "Neue Rechnung" in client.get("/debitoren/neu").text and 'name="leistung_von"' in client.get("/debitoren/neu").text

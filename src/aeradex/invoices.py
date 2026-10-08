@@ -75,7 +75,7 @@ FROZEN = ("nummer", "kunde", "an", "datum", "faellig", "waehrung", "positionen",
           "referenz_typ", "referenz", "debitorenkonto")
 # Added with MWST support; part of the fingerprint only when present, so
 # invoices issued before keep their fingerprint.
-FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto", "extern", "kurs")
+FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto", "extern", "kurs", "leistung_von", "leistung_bis")
 QR_CURRENCIES = ("CHF", "EUR")          # what a Swiss QR-bill can carry
 
 
@@ -210,8 +210,19 @@ def _to_chf(rows: list[Row], cur: str, rate: Decimal) -> list[Row]:
     return rows
 
 
+def _leistung(meta: dict, von, bis) -> None:
+    """The date or period of the service (Art. 26 Abs. 2 MWSTG), stored as ISO dates; also in the booking text."""
+    from .leistung import normalize
+    v, b = normalize(von, bis)
+    if v:
+        meta["leistung_von"] = v.isoformat()
+    if b:
+        meta["leistung_bis"] = b.isoformat()
+
+
 def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
-                  zahlungsfrist: int | None = None, waehrung: str = "", kurs=None) -> tuple[dict, list[Path]]:
+                  zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
+                  leistung_von=None, leistung_bis=None) -> tuple[dict, list[Path]]:
     """Issue and book an invoice: DR Debitoren / CR Ertrag (per position account),
     with MWST per rate when the book is MWST-pflichtig."""
     from . import mwst as vat
@@ -253,6 +264,7 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
                      "mwst_konto": cfg["konten"]["umsatzsteuer"]})
     if rate is not None:
         meta["kurs"] = str(rate)
+    _leistung(meta, leistung_von, leistung_bis)
     meta["fingerprint"] = fingerprint(_canonical(meta))
     path = book.root / "rechnungen" / str(d.year) / f"{nummer}.md"
     rows = booking_rows(meta)
@@ -263,7 +275,8 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
 
 def record_external(book: Book, kunde: str, betrag, datum=None, faellig=None, rechnungsnr: str = "",
                     referenz: str = "", referenz_typ: str = "", konto: str = "", mwst: str = "",
-                    datei: str = "", text: str = "", waehrung: str = "", kurs=None) -> tuple[dict, list[Path]]:
+                    datei: str = "", text: str = "", waehrung: str = "", kurs=None,
+                    leistung_von=None, leistung_bis=None) -> tuple[dict, list[Path]]:
     """Book an invoice that was issued outside aeradex (Word, another program, by hand), so it
     is an open item like any other: payments, bank matching, credit notes, Mahnungen.
     `betrag` is the gross total as on the invoice; with a MWST code the tax is taken out of it."""
@@ -313,6 +326,7 @@ def record_external(book: Book, kunde: str, betrag, datum=None, faellig=None, re
                      "mwst_methode": cfg["methode"], "mwst_konto": cfg["konten"]["umsatzsteuer"]})
     if rate is not None:
         meta["kurs"] = str(rate)
+    _leistung(meta, leistung_von, leistung_bis)
     meta["fingerprint"] = fingerprint(_canonical(meta))
     rows = booking_rows(meta)
     touched = post(book, rows)
@@ -344,11 +358,20 @@ def _canonical(meta: dict) -> dict:
                         "netto": f"{money(b.get('netto')):.2f}", "steuer": f"{money(b.get('steuer')):.2f}"}
                        for b in meta.get("mwst") or []]
     out["positionen"] = [{**p, "menge": format(Decimal(str(p.get("menge"))).normalize(), "f"),
-                          "preis": f"{money(p.get('preis')):.2f}", "betrag": f"{money(p.get('betrag')):.2f}"}
+                          "preis": _price_canon(p.get("preis")), "betrag": f"{money(p.get('betrag')):.2f}"}
                          for p in meta.get("positionen") or []]
     for key in ("datum", "faellig"):
         out[key] = str(meta.get(key))
+    for key in ("leistung_von", "leistung_bis"):
+        if key in meta:
+            out[key] = str(meta.get(key))
     return out
+
+
+def _price_canon(value) -> str:
+    """Cent prices as before ('12.50', so older fingerprints hold); finer unit prices with all their decimals."""
+    v = Decimal(str(value or 0))
+    return f"{money(v):.2f}" if v == money(v) else f"{v.quantize(PRICE_Q)}"
 
 
 def invoice_fingerprint_ok(meta: dict) -> bool:
@@ -370,8 +393,9 @@ def _booking_rows(meta: dict) -> list[Row]:
     (Saldo method) in Haben; per code the Umsatzsteuer (effective method)."""
     nummer = meta["nummer"]
     d = parse_date(meta["datum"])
+    from .leistung import with_text
     name = (meta.get("an") or {}).get("name") or meta.get("kunde")
-    text = f"Rechnung {nummer} – {name}"
+    text = with_text(f"Rechnung {nummer} – {name}", meta.get("leistung_von"), meta.get("leistung_bis"))
     quelle = f"rechnung:{nummer}"
     deb = str(meta.get("debitorenkonto"))
     per: dict[tuple[str, str], Decimal] = defaultdict(lambda: ZERO)

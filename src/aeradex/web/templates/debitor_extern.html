@@ -40,6 +40,8 @@
       <div class="field"><label for="d-r">Rechnungsnummer auf dem Original{{ src('rechnungsnr') }}</label><input class="input" id="d-r" name="rechnungsnr" value="{{ ev.rechnungsnr or '' }}"></div>
       <div class="field"><label for="d-d">Rechnungsdatum{{ src('datum') }}</label><input class="input" id="d-d" type="date" name="datum" value="{{ ev.datum or today }}"></div>
       <div class="field"><label for="d-f">Fällig am{{ src('faellig') }}</label><input class="input" id="d-f" type="date" name="faellig" value="{{ ev.faellig or '' }}"></div>
+      <div class="field"><label for="d-lv" title="Datum oder Beginn der Leistung, wenn es vom Rechnungsdatum abweicht — für die Abgrenzung im Jahresabschluss">Leistung von{{ src('leistung_von') }}</label><input class="input" id="d-lv" type="date" name="leistung_von" value="{{ ev.leistung_von or '' }}"></div>
+        <div class="field"><label for="d-lb">Leistung bis <span class="muted">(leer = ein Tag)</span></label><input class="input" id="d-lb" type="date" name="leistung_bis" value="{{ ev.leistung_bis or '' }}"></div>
       <div class="field"><label for="d-e">Ertragskonto</label><input class="input" id="d-e" name="konto" list="konten" value="{{ ev.konto or settings.konto('ertrag') }}"></div>
       {{ mwst_select("mwst", vat, vat_codes, kinds=("umsatz","befreit","ausgenommen"), id="d-m", selected=ev.mwst or "") }}
       <div class="field wide"><label for="d-ref">QR- oder SCOR-Referenz (falls auf dem Original){{ src('referenz') }}</label><input class="input num" id="d-ref" name="referenz" value="{{ ev.referenz or '' }}" style="text-align:left"></div>

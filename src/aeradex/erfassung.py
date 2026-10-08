@@ -38,7 +38,7 @@ from .files import CENT, read_yaml, write_yaml
 
 FIELDS = ("lieferant", "kunde", "name", "strasse", "nr", "plz", "ort", "land", "uid", "iban", "betrag", "waehrung",
           "referenz_typ", "referenz", "mitteilung", "rechnungsnr", "datum", "faellig", "mwst_satz", "mwst_betrag",
-          "zahlungsart")
+          "zahlungsart", "leistung_von", "leistung_bis")
 ARTEN = {"kreditor": "Lieferantenrechnung", "quittung": "Quittung (bezahlt)", "debitor": "eigene Rechnung (extern erstellt)"}
 _RECEIPT = re.compile(r"\b(quittung|kassenbon|kassenzettel|kassenbeleg|bon-?nr|barzahlung|bar bezahlt|bezahlt|rückgeld|"
                       r"wechselgeld|kartenzahlung|twint|visa|mastercard|maestro|v pay|debit|postfinance card|kreditkarte|"
@@ -203,6 +203,12 @@ def parse_text(text: str, own_name: str = "") -> dict:
             due = d + timedelta(days=int(next(g for g in m.groups() if g)))
     if due:
         out["faellig"] = due.isoformat()
+    from . import leistung
+    period = leistung.parse(text, d.year if d else None)
+    if period:
+        out["leistung_von"] = period[0].isoformat()
+        if period[1] and period[1] != period[0]:
+            out["leistung_bis"] = period[1].isoformat()
     nr = _after(lines, r"(rechnung(?:s)?[- ]?(?:nr\.?|nummer|no\.?)|rg\.?-?nr\.?|invoice (?:no\.?|number|#)|"
                        r"facture (?:n[°o]\.?|numéro)|fattura (?:n\.?|numero))\s*[:#]?",
                 lambda s: (re.match(r"\s*[:#]?\s*([A-Z0-9][A-Z0-9\-/.]{2,24})", s, re.I) or [None, None])[1])
@@ -743,7 +749,8 @@ def agent_prompt(meta: dict, book: Book) -> str:
     if meta.get("art") == "debitor":
         return (f"Prüfe den Beleg-Entwurf {meta['id']} (eigene Rechnung an einen Kunden, ausserhalb von aeradex erstellt, "
                 f"Datei {meta['datei']}). Bisher erkannt: {known or 'nichts'}. Ergänze mit complete_bill_draft fehlende "
-                "Felder (betrag, datum, faellig, rechnungsnr, name des Kunden) und das Ertragskonto (konto). "
+                "Felder (betrag, datum, faellig, rechnungsnr, name des Kunden, leistung_von/leistung_bis = Datum oder "
+                "Zeitraum der Leistung, falls angegeben) und das Ertragskonto (konto). "
                 "Buche nichts selbst.")
     return (f"Kontiere den Kreditoren-Entwurf {meta['id']} (Lieferantenrechnung, Datei {meta['datei']} im Buch).\n"
             f"Bisher erkannt: {known or 'nichts'}.\n"
@@ -754,7 +761,9 @@ def agent_prompt(meta: dict, book: Book) -> str:
             "(z.B. Material und eine Anschaffung), teile sie mit `aufteilung` auf (Beträge brutto, Summe = Rechnung). "
             "Lautet die Rechnung nicht auf CHF, setze `waehrung` (EUR, USD …) — umgerechnet wird zum BAZG-Kurs. "
             "Trage alles mit complete_bill_draft ein: konto, begruendung (ein Satz, warum), und fehlende oder falsch "
-            "erkannte Felder (betrag, datum, faellig, rechnungsnr, name, iban). Ein Lieferant im Ausland, der eine "
+            "erkannte Felder (betrag, datum, faellig, rechnungsnr, name, iban). Nennt die Rechnung ein Leistungsdatum "
+            "oder einen Leistungszeitraum (Abo, Miete, Versicherung, Lizenz …), setze leistung_von und leistung_bis — "
+            "das braucht der Jahresabschluss für die Abgrenzung. Ein Lieferant im Ausland, der eine "
             "Dienstleistung erbringt: bei MWST-pflichtigen Büchern Code B81 (Bezugsteuer). Ist der Beleg eine bereits "
             "bezahlte Quittung, setze `art` auf «quittung». "
             "Erfasse die Rechnung NICHT selbst und buche nichts — ein Mensch prüft den Entwurf.")

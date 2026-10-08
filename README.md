@@ -314,7 +314,17 @@ aeradex allocation set 2026 --dividende 5000 --reserve 500
 aeradex allocation book 2026 --datum 2027-05-20 # nach dem GV-Beschluss
 aeradex allocation dividende 2026 --datum 2027-06-10  # 65 % auszahlen, 35 % Verrechnungssteuer (Formular 103)
 aeradex lock 2026-12-31                         # Periode sperren (gehasht)
+aeradex abgrenzung 2026                         # Rechnungsabgrenzungen per 31.12. vorschlagen
+aeradex abgrenzung 2026 --buchen                # alle offenen buchen, Auflösung am 01.01.2027
 ```
+
+**Leistungsdatum und Rechnungsabgrenzung:** Rechnungen, Lieferantenrechnungen und Quittungen haben ein Feld
+«Leistung von/bis». Der Belegeingang liest es vom Beleg («Leistungszeitraum 01.10.2026 – 30.09.2027», «Abo Oktober –
+Dezember», «Lieferdatum …»), eigene Rechnungen drucken es (Art. 26 Abs. 2 MWSTG), und jede Buchung trägt es im Text:
+`Kreditor E-2026-0003 – Hostpunkt GmbH · Leistung 01.10.2026–30.09.2027`. Im Abschluss schlägt aeradex daraus die
+Abgrenzungen vor — Anteil des Folgejahres nach Tagen auf 1300/2301, noch nicht verbuchte Anteile des Jahres auf
+2300/1301, netto — und bucht die ausgewählten per 31.12. mit Auflösung am 01.01. Auch eine von Hand erfasste Buchung
+mit «· Leistung …» im Text wird berücksichtigt.
 
 **Abschlussunterlagen** für Treuhand, Revision und Archiv — alles als ein ZIP oder jeder Teil einzeln
 (Oberfläche: Abschluss → Unterlagen):

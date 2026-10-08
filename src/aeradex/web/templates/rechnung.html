@@ -4,7 +4,7 @@
 {% block main %}
 <div class="topbar">
   <div><div class="crumbs"><a href="/debitoren">Debitoren</a> /</div><h1>{{ meta.nummer }} {{ status_pill(state.status) }}</h1>
-    <div class="sub">{{ meta.an.name }} · {{ meta.datum|datum }} · fällig {{ meta.faellig|datum }}{% if meta.referenz %} · Referenz {{ meta.referenz }}{% endif %}{% if meta.extern %} · <span class="pill info" title="ausserhalb von aeradex erstellt und hier erfasst">extern{{ ': ' ~ meta.extern.rechnungsnr if meta.extern.rechnungsnr }}</span>{% endif %}</div></div>
+    <div class="sub">{{ meta.an.name }} · {{ meta.datum|datum }} · fällig {{ meta.faellig|datum }}{% if meta.leistung_von %} · Leistung {{ meta.leistung_von|datum }}{% if meta.leistung_bis %} – {{ meta.leistung_bis|datum }}{% endif %}{% endif %}{% if meta.referenz %} · Referenz {{ meta.referenz }}{% endif %}{% if meta.extern %} · <span class="pill info" title="ausserhalb von aeradex erstellt und hier erfasst">extern{{ ': ' ~ meta.extern.rechnungsnr if meta.extern.rechnungsnr }}</span>{% endif %}</div></div>
   <div class="actions">{% if pdf %}<a class="btn" href="/datei/{{ pdf|urlq }}" target="_blank">{{ 'Original öffnen' if meta.extern else 'PDF öffnen' }}</a>{% endif %}<a class="btn" href="/debitoren/neu?kunde={{ meta.kunde }}">Neue Rechnung an {{ meta.kunde }}</a></div>
 </div>
 <div class="review" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)">

@@ -332,6 +332,29 @@ def recode(belege: list[str], konto_alt: str = "", konto_neu: str = "", mwst_neu
                    expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
+def accrual_proposals(jahr: int) -> dict:
+    """Rechnungsabgrenzungen für den Jahresabschluss: Buchungen mit « · Leistung von–bis» im Text, deren Leistung
+    ins Folgejahr reicht oder teils im Jahr lag, mit dem Anteil nach Tagen und der vorgeschlagenen Buchung. Ändert nichts.
+
+    Args:
+        jahr: Geschäftsjahr, z.B. 2026.
+    """
+    return _call(api.accruals, jahr)
+
+
+def book_accruals(jahr: int, ids: list[str],
+                  expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
+    """Ausgewählte Abgrenzungen per 31.12. buchen, mit Auflösung am 01.01. des Folgejahres (nur agent_modus: direkt).
+
+    Args:
+        jahr: Geschäftsjahr.
+        ids: IDs aus accrual_proposals().
+        expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
+        idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
+    """
+    return _direct(api.accruals_book, jahr, ids, expected_revision=expected_revision, idempotency_key=idempotency_key)
+
+
 def mwst_report(periode: str) -> dict:
     """MWST-Abrechnung einer Periode nach ESTV-Ziffern (Umsatz, Steuer, Vorsteuer, Zahllast).
 
@@ -399,6 +422,7 @@ def invoices(status: str = "") -> list | dict:
 
 
 def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: str = "",
+                   leistung_von: str = "", leistung_bis: str = "",
                    expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """QR-Rechnung ausstellen und verbuchen; erzeugt die PDF mit QR-Einzahlungsschein.
 
@@ -407,10 +431,14 @@ def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: st
         positionen: z.B. [{"text": "Beratung", "menge": 10, "einheit": "h", "preis": "150.00", "konto": "3400"}] (konto optional).
         datum: Rechnungsdatum JJJJ-MM-TT; leer = heute.
         text: Einleitungstext auf der Rechnung.
+        leistung_von: Leistungsdatum bzw. Beginn des Leistungszeitraums JJJJ-MM-TT, wenn er vom Rechnungsdatum
+            abweicht (MWST-Rechnungen müssen ihn nennen, Art. 26 MWSTG).
+        leistung_bis: Ende des Leistungszeitraums JJJJ-MM-TT; leer bei einem einzelnen Tag.
         expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
         idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
-    return _call(api.invoice_create, kunde, positionen, datum or None, text,
+    return _call(api.invoice_create, kunde, positionen, datum or None, text, None, "", None,
+                 leistung_von or None, leistung_bis or None,
                  expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
@@ -564,7 +592,7 @@ def create_bill_draft(datei: str, art: str = "") -> dict:
 def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", betrag: str = "", datum: str = "",
                         faellig: str = "", rechnungsnr: str = "", name: str = "", iban: str = "", waehrung: str = "",
                         aufteilung: list[dict] | None = None, art: str = "", zahlkonto: str = "",
-                        mitarbeiter: str = "") -> dict:
+                        mitarbeiter: str = "", leistung_von: str = "", leistung_bis: str = "") -> dict:
     """Einen Beleg-Entwurf kontieren und fehlende/falsch erkannte Felder korrigieren. Bucht nichts —
     ein Mensch prüft den Entwurf und bucht. Auch im agent_modus 'vorschlag' erlaubt.
 
@@ -590,9 +618,13 @@ def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", b
             ein Kreditkartenkonto, oder das Konto gegenüber der Person, die privat bezahlt hat).
         mitarbeiter: nur bei Quittungen, die eine Mitarbeiterin/ein Mitarbeiter privat bezahlt hat (z.B. "M0001"):
             dann wird sie als Spesenbeleg erfasst und mit dem nächsten Lohn zurückbezahlt.
+        leistung_von: Leistungsdatum bzw. Beginn des Leistungszeitraums JJJJ-MM-TT, wenn der Beleg es nennt
+            (Abo, Miete, Versicherung, Lizenz, Lieferdatum) — für die Abgrenzung im Jahresabschluss.
+        leistung_bis: Ende des Leistungszeitraums JJJJ-MM-TT; leer bei einem einzelnen Tag.
     """
     fields = {k: v for k, v in (("betrag", betrag), ("datum", datum), ("faellig", faellig),
                                 ("rechnungsnr", rechnungsnr), ("name", name), ("iban", iban),
+                                ("leistung_von", leistung_von), ("leistung_bis", leistung_bis),
                                 ("waehrung", (waehrung or "").upper())) if v}
     return _call(api.bill_draft_update, id, "Agent", konto, mwst or None, begruendung, positionen=aufteilung,
                  art=art, zahlkonto=zahlkonto, mitarbeiter=mitarbeiter, **fields)
@@ -1032,6 +1064,7 @@ def budget_from_prior_year(jahr: int, prozent: str = "0") -> dict:
 SHARED = [status, check, accounts, balance, ledger, journal, report, history, list_inbox, mwst_report,
           mwst_reconciliation,
           propose_booking, list_proposals, book_entry, book_split, approve_proposals, reverse_entry, recode_preview, recode,
+          accrual_proposals, book_accruals,
           exchange_rate, revaluation_preview,
           bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices, bank_rules, expenses,
           customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,

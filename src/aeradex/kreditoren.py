@@ -216,6 +216,9 @@ def fingerprint(meta: dict) -> str:
         frozen["kurs"] = str(Decimal(str(meta["kurs"])).normalize())
     if meta.get("positionen"):
         frozen["positionen"] = json.dumps(positions(meta), sort_keys=True, default=str)
+    for key in ("leistung_von", "leistung_bis"):         # only on bills that carry a service period
+        if meta.get(key):
+            frozen[key] = str(meta[key])
     return hashlib.sha256(json.dumps(frozen, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
 
 
@@ -266,7 +269,9 @@ def booking_rows(book: Book, meta: dict, rounding=ROUND_HALF_UP) -> list[Row]:
     from .journal import convert
     from .mwst import split
     quelle = f"kreditor:{meta['nummer']}"
+    from .leistung import with_text
     base = f"Kreditor {meta['nummer']} – {meta.get('name')}" + (f" ({meta['rechnungsnr']})" if meta.get("rechnungsnr") else "")
+    base = with_text(base, meta.get("leistung_von"), meta.get("leistung_bis"))
     rows: list[Row] = []
     for p in positions(meta):
         row = Row(parse_date(meta["datum"]), meta["nummer"], base + (f" · {p['text']}" if p["text"] else ""),
@@ -301,7 +306,7 @@ def book_value(book: Book, meta: dict, until: date | None = None, paid_rows: lis
 def add_bill(book: Book, lieferant: str, betrag, datum=None, faellig=None, konto: str = "", mwst: str | None = None,
              rechnungsnr: str = "", referenz_typ: str = "", referenz: str = "", mitteilung: str = "",
              iban: str = "", datei: str = "", text: str = "", waehrung: str = "", kurs=None,
-             positionen: list[dict] | None = None) -> tuple[dict, list[Path]]:
+             positionen: list[dict] | None = None, leistung_von=None, leistung_bis=None) -> tuple[dict, list[Path]]:
     """Enter a supplier bill and book it. `betrag` is the gross amount in the bill's currency;
     `positionen` splits it over several accounts: [{konto, betrag, mwst?, text?}]."""
     from .journal import attach, ensure_open, post
@@ -363,6 +368,12 @@ def add_bill(book: Book, lieferant: str, betrag, datum=None, faellig=None, konto
     if split_lines:
         meta["positionen"] = split_lines
         meta["mwst"] = ""
+    from .leistung import normalize
+    von, bis = normalize(leistung_von, leistung_bis)
+    if von:
+        meta["leistung_von"] = von.isoformat()
+    if bis:
+        meta["leistung_bis"] = bis.isoformat()
     meta["fingerprint"] = fingerprint(meta)
     rows = booking_rows(book, meta)
     touched = post(book, rows)

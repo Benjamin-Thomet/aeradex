@@ -45,6 +45,36 @@
   <div class="figure"><span class="label">{{ "Bilanzverlust" if g.bilanzgewinn|neg else "Bilanzgewinn" }}</span><span class="value">{{ g.bilanzgewinn|chf }}</span><span class="meta">Vortrag {{ g.gewinnvortrag|chf }} + Ergebnis</span></div>
   <div class="figure"><span class="label">Gesperrt bis</span><span class="value" style="font-size:18px">{{ settings.sperre_bis|datum or '—' }}</span></div>
 </div>
+<div class="panel" id="abgrenzungen">
+  <header><h2>Rechnungsabgrenzungen 31.12.{{ year }}</h2><span class="hint">aus «Leistung von–bis» der Buchungen · Anteil nach Tagen · Auflösung am 01.01.{{ year + 1 }}</span></header>
+  {% if abgr_fehler %}<div class="body"><div class="alert warn">{{ abgr_fehler }}</div></div>
+  {% elif abgr %}
+  <form hx-post="/abschluss/abgrenzungen" hx-target="find .errors" hx-confirm="Ausgewählte Abgrenzungen per 31.12.{{ year }} buchen? Die Auflösung wird am 01.01.{{ year + 1 }} gebucht.">
+    <input type="hidden" name="jahr" value="{{ year }}">
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th style="width:2em"></th><th>Beleg</th><th>Text</th><th>Leistung</th><th class="right">Gebucht</th><th class="right">Abgrenzung</th></tr></thead>
+      <tbody>
+      {% for p in abgr %}
+        <tr class="row{{ ' muted' if p.gebucht }}">
+          <td>{% if not p.gebucht %}<input type="checkbox" name="id" value="{{ p.id }}" checked aria-label="Abgrenzung zu {{ p.beleg }}">{% endif %}</td>
+          <td><span class="beleg">{{ p.beleg }}</span><div class="small muted">{{ p.datum|datum }}</div></td>
+          <td>{{ p.text }}<div class="small muted"><span class="acc" title="{{ p.konto_name }}">{{ p.konto }}</span> · {{ p.art_label }}</div></td>
+          <td class="num small" style="white-space:nowrap">{{ p.von|datum }} – {{ p.bis|datum }}<div class="muted">{{ p.tage_anteil }}/{{ p.tage }} Tage</div></td>
+          <td class="right num">{{ p.basis|chf }}</td>
+          <td class="right num"><strong>{{ p.betrag|chf }}</strong><div class="small muted">{{ p.soll }} an {{ p.haben }}</div>{% if p.gebucht %}<span class="pill ok">gebucht {{ p.gebucht }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="body">{{ errors() }}
+      <div class="formfoot"><span class="small muted">Vorauserhaltene/-bezahlte Anteile des Folgejahres auf 1300/2301, noch nicht verbuchte Anteile des Jahres auf 2300/1301 — netto, die MWST bleibt bei der Rechnung. Nichts wird gebucht, was du nicht auswählst.</span>
+        {% if abgr|rejectattr("gebucht")|list %}<button class="btn primary" type="submit">Ausgewählte buchen</button>{% endif %}</div>
+    </div>
+  </form>
+  {% else %}
+  <div class="body"><span class="small muted">Keine Buchung mit Leistungszeitraum über den Jahreswechsel. Erfasse «Leistung von/bis» bei Rechnungen und Belegen (Abo, Miete, Versicherung, Lizenz) — oder schreibe «· Leistung 01.10.{{ year }}–30.09.{{ year + 1 }}» in den Buchungstext.</span></div>
+  {% endif %}
+</div>
 <div class="panel" id="unterlagen">
   <header><h2>Unterlagen {{ year }}</h2><span class="hint">für Treuhand, Revision und Archiv (10 Jahre) · {% if st.abgeschlossen %}gesperrtes Jahr{% else %}ohne Sperre mit Vermerk «ENTWURF»{% endif %}</span></header>
   <form method="get" action="/abschluss/unterlagen.zip">
