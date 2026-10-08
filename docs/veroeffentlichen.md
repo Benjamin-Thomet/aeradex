@@ -12,18 +12,18 @@ mit *index* (Verzeichnis).
 | Wo | Name | Stand |
 |---|---|---|
 | PyPI | `aeradex`, `aeradex-anlagen`, `aeradex-leistungen`, `aeradex-revolut` | frei |
-| GitHub | Repository `benjaminthomet/aeradex` (öffentlich) | gehört uns |
+| GitHub | Repository `Benjamin-Thomet/aeradex` (öffentlich) | gehört uns |
 | GitHub | Organisation `Aeradex` | **gehört nicht uns** (angelegt 30.06.2026, vor der Namenswahl — vermutlich die Aviation-Firma unten) |
 | Domain | `aeradex.com` | **gehört nicht uns**: «Aeradex – The Modern Aviation Directory» (Stand 8.10.2026) |
 | Domain | `aeradex.ch` | unsere Adresse für Website und Kontakt (`info@aeradex.ch`) — registrieren und auf Vercel zeigen lassen |
-| Website | Repository `benjaminthomet/aeradex-site` → Vercel (`aeradex.vercel.app`) | gehört uns |
+| Website | Repository `Benjamin-Thomet/aeradex-site` → Vercel (`aeradex.vercel.app`) | gehört uns |
 
 Handelsregister (Zefix) und Markenregister sind für «aeradex» noch nicht geprüft. Im Markenregister des IGE
 (swissreg.ch) und bei der EUIPO nach «aeradex» in den Klassen 9 (Software), 35, 36 (Finanzwesen) und 42
 (Software-Dienstleistungen) suchen.
 
 Entscheid 8.10.2026: Name «aeradex» behalten (andere Branche als die Aviation-Firma), Website `aeradex.ch`,
-Repository `benjaminthomet/aeradex`, PyPI `aeradex`. Die Markenrecherche bleibt offen.
+Repository `Benjamin-Thomet/aeradex`, PyPI `aeradex`. Die Markenrecherche bleibt offen.
 
 ## Vor dem ersten Push
 
@@ -47,7 +47,7 @@ Repository `benjaminthomet/aeradex`, PyPI `aeradex`. Die Markenrecherche bleibt 
 ## PyPI einrichten
 
 - [ ] Konto mit Zwei-Faktor-Anmeldung.
-- [ ] «Trusted Publishing» für jedes Paket: Repository `benjaminthomet/aeradex`, Workflow `release.yml`, Environment `pypi`
+- [ ] «Trusted Publishing» für jedes Paket: Repository `Benjamin-Thomet/aeradex`, Workflow `release.yml`, Environment `pypi`
       (für noch nicht existierende Pakete als «pending publisher»).
 - [ ] Erste Veröffentlichung: Actions → Release → Paket wählen → nach Freigabe auf PyPI.
 

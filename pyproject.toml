@@ -35,10 +35,10 @@ dev = ["pytest>=8", "lxml>=5"]
 
 [project.urls]
 Homepage = "https://aeradex.ch"
-Repository = "https://github.com/benjaminthomet/aeradex"
-Issues = "https://github.com/benjaminthomet/aeradex/issues"
-Documentation = "https://github.com/benjaminthomet/aeradex#readme"
-Changelog = "https://github.com/benjaminthomet/aeradex/commits/main"
+Repository = "https://github.com/Benjamin-Thomet/aeradex"
+Issues = "https://github.com/Benjamin-Thomet/aeradex/issues"
+Documentation = "https://github.com/Benjamin-Thomet/aeradex#readme"
+Changelog = "https://github.com/Benjamin-Thomet/aeradex/commits/main"
 
 [project.scripts]
 aeradex = "aeradex.cli:main"

@@ -8,7 +8,7 @@ QR-Rechnungen, gespeichert als lesbare Textdateien in git, bedient von dir oder 
 
 <p align="center">
   <a href="https://aeradex.ch"><img alt="Website" src="https://img.shields.io/badge/website-aeradex.ch-c8102e"></a>
-  <a href="https://github.com/benjaminthomet/aeradex/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/benjaminthomet/aeradex/actions/workflows/tests.yml/badge.svg"></a>
+  <a href="https://github.com/Benjamin-Thomet/aeradex/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/Benjamin-Thomet/aeradex/actions/workflows/tests.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Lizenz AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
   <img alt="Status: Vorschau" src="https://img.shields.io/badge/status-Vorschau-orange">
