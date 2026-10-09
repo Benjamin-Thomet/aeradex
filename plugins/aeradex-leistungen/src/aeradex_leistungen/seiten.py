@@ -11,9 +11,11 @@ from aeradex.plugins import Page
 
 from . import abrechnung, abwesenheit, daten, kontrolle, offerten, schnell, stoppuhr, woche
 
-TABS = [("woche", "Woche"), ("abrechnen", "Abrechnen"), ("abwesenheiten", "Abwesenheiten"),
+TABS = [("erfassen", "Erfassen"), ("woche", "Woche"), ("abwesenheiten", "Abwesenheiten"),
         ("auswertung", "Auswertung"), ("stammdaten", "Stammdaten")]
-ALIAS = {"erfassen": "woche", "projekte": "auswertung", "kontrolle": "auswertung"}
+HIDDEN_TABS = {"abrechnen"}          # still reachable (all customers at once), linked from «Erfassen»
+ALIAS = {"projekte": "auswertung", "kontrolle": "auswertung"}
+STATUS_FILTER = {"offen": "nicht abgerechnet", "abgerechnet": "abgerechnet", "": "alle"}
 
 
 def _list(form: dict, key: str) -> list:
@@ -136,12 +138,70 @@ def _kalender_ctx(book, query) -> dict:
     return ctx
 
 
+def _erfassen_ctx(book, query) -> dict:
+    """«Erfassen»: one form for hours and products per customer, and every entry, filtered and grouped by
+    customer, ready to bill per customer."""
+    ctx = _common(book)
+    status = query.get("status", "offen")
+    status = status if status in STATUS_FILTER else "offen"
+    f = {"status": status, "kunde": (query.get("kunde") or "").upper(), "von": query.get("von") or "",
+         "bis": query.get("bis") or "", "art": query.get("art") or ""}
+    try:
+        items = abrechnung.select(book, kunde=f["kunde"], von=f["von"] or None, bis=f["bis"] or None,
+                                  art=f["art"], status=status)
+    except BookError:
+        items = []
+    if not status:                                   # «alle»: billable work only, newest first
+        items = [e for e in items if e["status"] in ("offen", "abgerechnet")]
+    groups: dict[str, dict] = {}
+    for e in sorted(items, key=lambda e: (e["datum"], e["id"]), reverse=True):
+        g = groups.setdefault(e["kunde"], {"kunde": e["kunde"], "eintraege": [], "betrag": Decimal(0),
+                                           "stunden": Decimal(0), "offen": 0})
+        g["eintraege"].append(e)
+        g["betrag"] += e["betrag"]
+        if e["art"] == "Zeit":
+            g["stunden"] += e["menge"]
+        if e["status"] == "offen":
+            g["offen"] += 1
+    ctx["gruppen"] = sorted(groups.values(), key=lambda g: ctx["kunden"].get(g["kunde"], g["kunde"]).lower())
+    ctx["filter"] = f
+    ctx["status_filter"] = STATUS_FILTER
+    ctx["total"] = sum((g["betrag"] for g in groups.values()), Decimal(0))
+    ctx["wer"] = _wer(query, ctx["personen"])
+    ctx["heute"] = date.today().isoformat()
+    ctx["neu_kunde"] = (query.get("neu_kunde") or f["kunde"] or "").upper()
+    return ctx
+
+
+def _neu(book, f):
+    """One entry from the «Erfassen» form: a Leistungsart (hours), plain hours, or a product."""
+    was = str(f.get("was") or "").strip().upper()
+    kunde = str(f.get("kunde") or "").strip().upper()
+    if not kunde:
+        raise BookError("Kunde wählen")
+    datum = f.get("datum") or date.today().isoformat()
+    menge = f.get("menge") or ""
+    preis = f.get("preis") or None
+    text = f.get("text") or ""
+    if was in ("", "ZEIT") or daten.is_service(daten.product(book, was)):
+        res = api.write(book, f"Zeit erfasst für {kunde}", daten.add_time, datum, f.get("wer") or "", menge, text,
+                        kunde, "", True, "", preis, "" if was in ("", "ZEIT") else was)
+    else:
+        res = api.write(book, f"Produkt erfasst für {kunde}", daten.add_material, datum, kunde, was, menge, "",
+                        preis, text, f.get("wer") or "")
+    e = res["ergebnis"]
+    return {**res, "meldung": f"Erfasst: {e['text']} · {daten.num(Decimal(str(e['menge'])))}",
+            "weiter": f"/p/leistungen/leistungen?tab=erfassen&neu_kunde={kunde}"}
+
+
 def _context(book, query):
-    tab = ALIAS.get(query.get("tab") or "", query.get("tab") or "woche")
-    if tab not in dict(TABS):
-        tab = "woche"
+    tab = ALIAS.get(query.get("tab") or "", query.get("tab") or "erfassen")
+    if tab not in dict(TABS) and tab not in HIDDEN_TABS:
+        tab = "erfassen"
     y, m = _month(query)
-    if tab == "woche":
+    if tab == "erfassen":
+        ctx = _erfassen_ctx(book, query)
+    elif tab == "woche":
         ctx = _woche_ctx(book, query)
     elif tab == "abrechnen":
         ctx = _abrechnen_ctx(book, query)
@@ -452,7 +512,7 @@ def _offerte_rechnung(book, f):
 
 PAGES = [
     Page("leistungen", "Leistungen", "leistungen.html", _context,
-         {"zeit": _zeit, "material": _material, "loeschen": _loeschen, "rechnung": _rechnung,
+         {"neu": _neu, "zeit": _zeit, "material": _material, "loeschen": _loeschen, "rechnung": _rechnung,
           "projekt_neu": _projekt_neu, "projekt_status": _projekt_status, "person": _person,
           "produkt_neu": _produkt_neu, "produkt": _produkt, "feiertage": _feiertage, "kunde": _kunde, "lohn": _lohn,
           "schnell": _schnell, "start": _start, "stop": _stop, "verwerfen": _verwerfen, "zelle": _zelle,

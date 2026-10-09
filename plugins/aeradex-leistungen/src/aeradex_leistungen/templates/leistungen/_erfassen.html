@@ -1,0 +1,137 @@
+{# «Erfassen»: hours and products per customer, every entry filtered and grouped by customer, billed per customer #}
+{% from "_macros.html" import errors %}
+{% from "plugins/leistungen/leistungen/_macros.html" import kunde_select, state_pill %}
+{% set aktive = personen.items()|selectattr("1.aktiv")|list %}
+
+<form class="panel" id="erfassen" hx-post="{{ A }}neu" hx-target="find .errors" autocomplete="off">
+  <header><h2>Neuer Eintrag</h2></header>
+  <div class="body">
+    <div class="form erfassen-grid">
+      <div class="field"><label for="e-datum">Datum</label><input class="input" type="date" id="e-datum" name="datum" value="{{ heute }}" required></div>
+      <div class="field"><label>Kunde</label>{{ kunde_select(kunden, selected=neu_kunde, required=true) }}</div>
+      <div class="field"><label for="e-was">Was</label>
+        <select class="input" id="e-was" name="was" style="width:100%" data-was>
+          <option value="ZEIT" data-einheit="h" data-preis="">Arbeitszeit (Satz der Person)</option>
+          {% if leistungsarten %}<optgroup label="Leistungen">{% for nr, p in leistungsarten.items() if p.aktiv %}
+            <option value="{{ nr }}" data-einheit="h" data-preis="{{ p.preis }}">{{ p.text }} · {{ p.preis|chf }}/h</option>{% endfor %}</optgroup>{% endif %}
+          {% if material %}<optgroup label="Produkte">{% for nr, p in material.items() if p.aktiv %}
+            <option value="{{ nr }}" data-einheit="{{ p.einheit }}" data-preis="{{ p.preis }}">{{ p.text }} · {{ p.preis|chf }}/{{ p.einheit }}</option>{% endfor %}</optgroup>{% endif %}
+        </select></div>
+      <div class="field"><label for="e-menge">Menge <span class="muted" data-einheit-label>h</span></label><input class="input num" id="e-menge" name="menge" inputmode="decimal" placeholder="3.5" required></div>
+      <div class="field"><label for="e-preis">Preis</label><input class="input num" id="e-preis" name="preis" inputmode="decimal" placeholder="automatisch" title="Leer = Preis aus Produkt, Kunde oder Person"></div>
+      {% if aktive|length > 1 %}
+      <div class="field"><label for="e-wer">Wer</label><select class="input" id="e-wer" name="wer" style="width:100%">{% for nr, p in aktive %}<option value="{{ nr }}" {{ 'selected' if nr == wer }}>{{ p.name }}</option>{% endfor %}</select></div>
+      {% else %}<input type="hidden" name="wer" value="{{ wer }}">{% endif %}
+      <div class="field erfassen-text"><label for="e-text">Text auf der Rechnung</label><input class="input" id="e-text" name="text" placeholder="z.B. Wände gestrichen, 2. Stock (bei Produkten optional)"></div>
+    </div>
+    {% if not aktive %}<p class="small muted">Für Stunden zuerst eine Person erfassen: <a class="link" href="?tab=stammdaten">Stammdaten → Personen</a>.</p>{% endif %}
+    {{ errors() }}
+    <div class="formfoot">
+      <details class="small"><summary class="link">+ Neues Produkt oder neue Leistung</summary></details>
+      <button class="btn primary" type="submit">Erfassen</button>
+    </div>
+  </div>
+</form>
+
+<form class="panel" id="produkt-neu" hx-post="{{ A }}produkt_neu" hx-target="find .errors" hidden>
+  <header><h2>Neues Produkt oder neue Leistung</h2></header>
+  <div class="body">
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label>Bezeichnung</label><input class="input" name="text" placeholder="z.B. Dispersionsfarbe weiss oder Malerarbeiten" required></div>
+      <div class="field"><label>Einheit</label><input class="input" name="einheit" list="einheiten" placeholder="Stk, l, m², h" required>
+        <datalist id="einheiten"><option value="h"><option value="Stk"><option value="l"><option value="m²"><option value="m"><option value="kg"><option value="Pauschal"></datalist></div>
+      <div class="field"><label>Preis</label><input class="input num" name="preis" inputmode="decimal" required></div>
+    </div>
+    {{ errors() }}
+    <div class="formfoot"><span class="small muted">Einheit h = Leistung (Stunden), alles andere = Produkt. Konto und MWST unter Stammdaten.</span><button class="btn primary" type="submit">Speichern</button></div>
+  </div>
+</form>
+
+<form class="panel filterbar" method="get" action="/p/leistungen/leistungen">
+  <input type="hidden" name="tab" value="erfassen">
+  <div class="body form erfassen-filter">
+    <div class="field"><label>Status</label><select class="input" name="status" onchange="this.form.submit()">{% for k, label in status_filter.items() %}<option value="{{ k }}" {{ 'selected' if k == filter.status }}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Kunde</label><span onchange="this.closest('form').submit()">{{ kunde_select(kunden, selected=filter.kunde, leer="alle Kunden") }}</span></div>
+    <div class="field"><label>Von</label><input class="input" type="date" name="von" value="{{ filter.von }}" onchange="this.form.submit()"></div>
+    <div class="field"><label>Bis</label><input class="input" type="date" name="bis" value="{{ filter.bis }}" onchange="this.form.submit()"></div>
+    <div class="field"><label>Art</label><select class="input" name="art" onchange="this.form.submit()">{% for k, label in (("", "Stunden und Produkte"), ("Zeit", "nur Stunden"), ("Produkt", "nur Produkte")) %}<option value="{{ k }}" {{ 'selected' if k == filter.art }}>{{ label }}</option>{% endfor %}</select></div>
+  </div>
+</form>
+
+{% if not gruppen %}
+<div class="panel"><div class="body small muted">Keine Einträge{{ ' für diese Auswahl' if filter.kunde or filter.von or filter.bis or filter.art }}.
+  {% if filter.status == 'offen' %}Alles abgerechnet. 👌{% endif %}</div></div>
+{% endif %}
+
+{% for g in gruppen %}
+<form class="panel kundengruppe" hx-post="{{ A }}rechnung" hx-target="find .errors"
+      hx-confirm="Rechnung an {{ kunden.get(g.kunde, g.kunde) }} für die ausgewählten Einträge ausstellen und verbuchen?">
+  <input type="hidden" name="rapport" value="1">
+  <header>
+    <h2>{{ kunden.get(g.kunde, g.kunde) }} <span class="small muted">· {{ g.eintraege|length }} {{ "Eintrag" if g.eintraege|length == 1 else "Einträge" }}{% if g.stunden %} · {{ g.stunden|qty }} h{% endif %} · netto {{ g.betrag|chf }}</span></h2>
+    {% if g.offen %}<div class="actions"><button class="btn primary small" type="submit" data-abrechnen>Abrechnen → Rechnung <span data-summe>{{ g.betrag|chf }}</span></button></div>{% endif %}
+  </header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th style="width:2em"></th><th style="width:6.5em">Datum</th><th>Was</th><th class="right">Menge</th><th class="right">Preis</th><th class="right">Betrag</th><th>Status</th><th style="width:2em"></th></tr></thead>
+    <tbody>{% for e in g.eintraege %}
+      {% set einheit = 'h' if e.art == 'Zeit' else produkte.get(e.produkt, {}).get('einheit', '') %}
+      <tr class="row">
+        <td>{% if e.status == 'offen' %}<input type="checkbox" name="ids" value="{{ e.id }}" checked data-betrag="{{ e.betrag }}" aria-label="abrechnen">{% endif %}</td>
+        <td class="num small">{{ e.datum|datum }}</td>
+        <td>{{ e.text }}{% if e.produkt and produkte.get(e.produkt) and produkte[e.produkt].text != e.text %} <span class="small muted">· {{ produkte[e.produkt].text }}</span>{% endif %}{% if e.wer and personen.get(e.wer) and aktive|length > 1 %} <span class="small muted">· {{ personen[e.wer].name }}</span>{% endif %}</td>
+        <td class="right num">{{ e.menge|qty }} {{ einheit }}</td>
+        <td class="right num">{{ e.preis|chf if e.preis is not none }}</td>
+        <td class="right num">{{ e.betrag|chf }}</td>
+        <td>{% if e.status == 'abgerechnet' and e.rechnung %}<a class="beleg" href="/debitoren/rechnung/{{ e.rechnung }}">{{ e.rechnung }}</a>{% else %}{{ state_pill(e.status) }}{% endif %}</td>
+        <td>{% if e.status == 'offen' %}<button class="btn small ghost" type="button" title="Eintrag löschen" aria-label="Eintrag löschen"
+            hx-post="{{ A }}loeschen" hx-vals='{"id": "{{ e.id }}"}' hx-confirm="Eintrag {{ e.id }} löschen?">✕</button>{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ errors() }}
+</form>
+{% endfor %}
+
+{% if gruppen and filter.status == 'offen' %}
+<p class="small muted">Total nicht abgerechnet: <strong>{{ total|chf }}</strong> (netto) · Die Rechnung kommt mit Leistungsrapport und QR-Einzahlungsschein unter Verkauf, verbucht als Debitor.
+  <a class="link" href="?tab=abrechnen">Alle Kunden auf einmal abrechnen …</a></p>
+{% endif %}
+
+<style>
+  .erfassen-grid { display: grid; gap: 10px 12px; grid-template-columns: 9.5em minmax(12em, 1.3fr) minmax(14em, 1.6fr) 6.5em 7em; }
+  .erfassen-grid:has(#e-wer) { grid-template-columns: 9.5em minmax(12em, 1.3fr) minmax(14em, 1.6fr) 6.5em 7em minmax(9em, 1fr); }
+  .erfassen-grid .erfassen-text { grid-column: 1 / -1; }
+  .erfassen-filter { display: grid; gap: 10px 12px; grid-template-columns: 11em minmax(12em, 1fr) 10em 10em 13em; }
+  @media (max-width: 900px) { .erfassen-grid, .erfassen-grid:has(#e-wer), .erfassen-filter { grid-template-columns: 1fr 1fr; } }
+  .kundengruppe header h2 .small { font-weight: 400; }
+</style>
+<script>
+(() => {
+  const was = document.querySelector("[data-was]");
+  const unit = document.querySelector("[data-einheit-label]");
+  const text = document.getElementById("e-text");
+  const sync = () => {
+    const o = was.selectedOptions[0];
+    unit.textContent = o.dataset.einheit || "";
+    text.required = was.value === "ZEIT";        // plain hours need a text for the invoice
+  };
+  if (was) { was.addEventListener("change", sync); sync(); }
+  // «+ Neues Produkt» opens the small form below
+  const more = document.querySelector("#erfassen details");
+  const panel = document.getElementById("produkt-neu");
+  if (more && panel) more.addEventListener("toggle", () => { panel.hidden = !more.open; if (more.open) panel.querySelector("input").focus(); });
+  // the billing button shows the sum of the ticked entries
+  const chf = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.querySelectorAll(".kundengruppe").forEach((form) => {
+    const boxes = form.querySelectorAll("input[name=ids]");
+    const sum = form.querySelector("[data-summe]");
+    const btn = form.querySelector("[data-abrechnen]");
+    const update = () => {
+      let total = 0, n = 0;
+      boxes.forEach((b) => { if (b.checked) { total += parseFloat(b.dataset.betrag || "0"); n++; } });
+      if (sum) sum.textContent = chf.format(total);
+      if (btn) btn.disabled = n === 0;
+    };
+    boxes.forEach((b) => b.addEventListener("change", update));
+  });
+})();
+</script>

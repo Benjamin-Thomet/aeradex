@@ -3,7 +3,14 @@
 Zeit und Material erfassen, Abwesenheiten, Offerten, Projekte und Abrechnung an Kunden für
 [aeradex](../../README.md) — gebaut für das Büro: Tastatur zuerst, eine Zeile statt eines Formulars. Abgerechnet wird
 über die normalen aeradex-Rechnungen (QR-Rechnung, Debitor 1100 an Ertrag, MWST). Oberfläche: **Plugins → Leistungen**
-(Woche, Abrechnen, Abwesenheiten, Auswertung, Stammdaten) und **Offerten**.
+(Erfassen, Woche, Abwesenheiten, Auswertung, Stammdaten) und **Offerten**.
+
+**Erfassen** (Startseite) — der einfache Weg: Datum, Kunde, *Was* (vorerfasste Leistungen in h und Produkte aus dem
+Katalog, oder Arbeitszeit zum Satz der Person), Menge, optional Preis und Text → «Erfassen». Neue Produkte und
+Leistungen direkt dort mit «+ Neues Produkt». Darunter alle Einträge, gefiltert nach Status (nicht abgerechnet,
+abgerechnet, alle), Kunde, Zeitraum und Art, gruppiert pro Kunde mit Summe. «Abrechnen → Rechnung» stellt für die
+angehakten Einträge eines Kunden die QR-Rechnung mit Leistungsrapport aus und verbucht sie als Debitor; abgerechnete
+Einträge zeigen die Rechnungsnummer.
 
 **Woche** — Schnelleingabe in einer Zeile mit Live-Vorschau, Enter speichert:
 

@@ -6,7 +6,7 @@
 {% set A = "/p/leistungen/leistungen/" %}
 {% set wer_q = "&wer=" ~ wer if wer is defined and wer else "" %}
 <div class="topbar">
-  <div><h1>Leistungen</h1><div class="sub">Zeit und Material erfassen, Abwesenheiten, abrechnen</div></div>
+  <div><h1>Leistungen</h1><div class="sub">Stunden und Produkte pro Kunde erfassen und abrechnen</div></div>
   <div class="actions">
     {% if tab in ("woche", "abwesenheiten") and personen %}
     <form method="get" class="actions"><input type="hidden" name="tab" value="{{ tab }}">{% if tab == 'abwesenheiten' %}<input type="hidden" name="jahr" value="{{ jahr }}">{% endif %}
@@ -17,7 +17,10 @@
 </div>
 <nav class="subnav">{% for key, label in tabs %}<a href="/p/leistungen/leistungen?tab={{ key }}{{ wer_q if key in ('woche', 'abwesenheiten') }}" class="{{ 'on' if key == tab }}">{{ label }}</a>{% endfor %}</nav>
 
-{% if tab == "woche" %}
+{% if tab == "erfassen" %}
+{% include "plugins/leistungen/leistungen/_erfassen.html" %}
+
+{% elif tab == "woche" %}
 {# ---- quick entry: one line, live preview, Enter saves ---- #}
 <form class="panel quick" id="schnellform" hx-post="{{ A }}schnell" hx-target="#woche" hx-swap="outerHTML" autocomplete="off">
   <input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}">
