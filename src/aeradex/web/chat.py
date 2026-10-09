@@ -149,6 +149,8 @@ def describe_call(name: str, args: dict) -> str:
 class BaseAgent:
     """One running conversation for this UI session (single user, local)."""
 
+    extra_instructions = ""                  # appended to the system prompt (e.g. for a voice channel)
+
     def __init__(self, root: Path):
         self.root = root
         self.turns: dict[str, queue.Queue] = {}
@@ -203,15 +205,20 @@ class BaseAgent:
             book_rules = agents_md.read_text(encoding="utf-8")
         return (tools.instructions_for(self.root) + "\n\nDu arbeitest in der aeradex-Oberfläche; der Mensch sieht deine "
                 "Vorschläge sofort: Buchungsvorschläge unter «Buchhaltung › Vorschläge», eingelesene Belege unter «Einkauf/Verkauf › Entwürfe», Bankbewegungen unter «Bank › Abgleichen». Antworte knapp auf Deutsch (Schweizer Schreibweise, kein ß), "
-                "nenne Belegnummern und Beträge, die die Tools zurückgeben.\n\n" + book_rules)
+                "nenne Belegnummern und Beträge, die die Tools zurückgeben.\n\n" + book_rules
+                + (f"\n\n{self.extra_instructions}" if self.extra_instructions else ""))
 
 
 class Agent(BaseAgent):
     """Claude via the Anthropic API (SDK tool runner over aeradex.tools)."""
 
+    author_label = "Claude API"     # how its commits are attributed in git
+    effort = "medium"
+
     def __init__(self, root: Path):
         super().__init__(root)
         self.messages: list[dict] = []
+        self.model = MODEL
 
     def forget(self) -> None:
         self.messages.clear()
@@ -219,11 +226,21 @@ class Agent(BaseAgent):
     def system_prompt(self) -> list[dict]:
         return [{"type": "text", "text": self.system_prompt_text()}]
 
+    def tool_list(self) -> list:
+        """The tools this agent may call; subclasses narrow it (e.g. remote channels)."""
+        return tools.shared_for(self.root) + tools.CHAT_ONLY
+
+    def server_tools(self) -> list[dict]:
+        """Tools Anthropic runs on its side (e.g. web search); none by default."""
+        return []
+
+    extra_betas: tuple[str, ...] = ()
+
     def tool_functions(self, events: queue.Queue):
         from anthropic import beta_tool
 
         wrapped = []
-        for fn in tools.shared_for(self.root) + tools.CHAT_ONLY:
+        for fn in self.tool_list():
             @functools.wraps(fn)
             def call(*args, __fn=fn, **kwargs):
                 self.emit(events, {"type": "tool", "text": describe_call(__fn.__name__, kwargs)})
@@ -238,22 +255,22 @@ class Agent(BaseAgent):
 
     def run(self, events: queue.Queue, prompt: str) -> None:
         tools.BOOK_ROOT.set(self.root)
-        gitlog.AUTHOR.set(gitlog.agent_author("Claude API"))
+        gitlog.AUTHOR.set(gitlog.agent_author(self.author_label))
         import anthropic
         self.messages.append({"role": "user", "content": prompt})
         try:
             client = anthropic.Anthropic()
             runner = client.beta.messages.tool_runner(
-                model=MODEL,
+                model=self.model,
                 max_tokens=16000,
                 max_iterations=MAX_ITERATIONS,
                 system=self.system_prompt(),
-                tools=self.tool_functions(events),
+                tools=self.tool_functions(events) + self.server_tools(),
                 messages=list(self.messages),
                 thinking={"type": "adaptive"},
-                output_config={"effort": "medium"},
+                output_config={"effort": self.effort},
                 cache_control={"type": "ephemeral"},
-                betas=["server-side-fallback-2026-07-01"],
+                betas=["server-side-fallback-2026-07-01", *self.extra_betas],
                 fallbacks="default",
             )
             for message in runner:
@@ -261,7 +278,7 @@ class Agent(BaseAgent):
                 self.messages.append({"role": "assistant", "content": message.content})
                 for block in message.content:
                     if block.type == "text" and block.text.strip():
-                        self.emit(events, {"type": "text", "html": render_text(block.text)})
+                        self.emit(events, {"type": "text", "html": render_text(block.text), "raw": block.text})
                 if message.stop_reason == "refusal":
                     self.emit(events, {"type": "error", "text": "Claude hat diese Anfrage abgelehnt."})
                     break
@@ -368,7 +385,7 @@ class CodeAgent(CLIAgent):
         if kind == "assistant":
             for block in event.get("message", {}).get("content", []):
                 if block.get("type") == "text" and block.get("text", "").strip():
-                    self.emit(events, {"type": "text", "html": render_text(block["text"])})
+                    self.emit(events, {"type": "text", "html": render_text(block["text"]), "raw": block["text"]})
                 elif block.get("type") == "tool_use" and block.get("name") != "ToolSearch":
                     name = block["name"].removeprefix("mcp__aeradex__")
                     self.emit(events, {"type": "tool", "text": describe_call(name, block.get("input") or {})})

@@ -17,6 +17,9 @@ This file is for developing aeradex itself. Agents *operating a book* read the
 - `web/app.py`: Starlette app, token/CSRF middleware, file serving, SSE live refresh (watchfiles).
   `web/views.py`: one handler per page/form; forms post via HTMX and get `204 + HX-Redirect` or an error box.
   `web/chat.py`: Claude via the SDK tool runner over `tools.py`; commits it makes are attributed to the agent.
+  Subclasses (other channels, plugins) narrow `tool_list()`, add `server_tools()` (e.g. web search) and
+  `extra_instructions`, and set `author_label`/`effort`; text events carry `raw` besides the rendered `html`.
+  `mcp_server.py` serves only the tools named in `AERADEX_MCP_TOOLS` when it is set.
   Templates are Jinja in `web/templates/`, styles in `web/static/aeradex.css` (tokens at the top, light + dark).
 - `web/auth.py`: server mode (`aeradex serve`): users outside the book, scrypt hashes, signed session cookies,
   roles, login throttle. The middleware in `web/app.py` sets the git author per request.

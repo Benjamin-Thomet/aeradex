@@ -405,6 +405,11 @@ def invoice_create(book: Book, kunde: str, positionen: list[dict], datum=None, t
                  touched + [pdf_path], rechnung=meta, pdf=book.rel(pdf_path))
 
 
+def invoice_check(book: Book, kunde: str, positionen: list[dict], datum=None, waehrung: str = "") -> dict:
+    """Validate an invoice fully (customer, open period, accounts, currency) and return its figures; writes nothing."""
+    return jsonable(invoices.preview_invoice(book, kunde, positionen, datum, waehrung))
+
+
 def meta_pdf_path(book: Book, meta: dict) -> Path:
     return book.root / "rechnungen" / str(parse_date(meta["datum"]).year) / f"{meta['nummer']}.pdf"
 

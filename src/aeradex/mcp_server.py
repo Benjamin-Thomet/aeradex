@@ -20,8 +20,11 @@ from . import tools
 def build_server():
     """The tools of aeradex plus those of the plugins the book enables."""
     server = MCPServer("aeradex", instructions=tools.instructions_for())
+    # AERADEX_MCP_TOOLS: only these tools (comma-separated), e.g. for an agent that may only read and draft.
+    only = {n.strip() for n in os.environ.get("AERADEX_MCP_TOOLS", "").split(",") if n.strip()}
     for fn in tools.shared_for():
-        server.tool()(fn)
+        if not only or fn.__name__ in only:
+            server.tool()(fn)
     return server
 
 

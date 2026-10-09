@@ -220,11 +220,8 @@ def _leistung(meta: dict, von, bis) -> None:
         meta["leistung_bis"] = b.isoformat()
 
 
-def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
-                  zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
-                  leistung_von=None, leistung_bis=None) -> tuple[dict, list[Path]]:
-    """Issue and book an invoice: DR Debitoren / CR Ertrag (per position account),
-    with MWST per rate when the book is MWST-pflichtig."""
+def _compute(book: Book, kunde: str, positionen: list[dict], datum=None, waehrung: str = "", kurs=None):
+    """Validate an invoice and compute its figures — shared by issue_invoice and preview_invoice."""
     from . import mwst as vat
     cust = customer(book, kunde)
     d = parse_date(datum, "datum") if datum else date.today()
@@ -245,6 +242,24 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
     total = netto + sum((b["steuer"] for b in breakdown), ZERO)
     if total <= 0:
         raise BookError("Rechnungstotal muss positiv sein")
+    return cust, d, pos, cur, rate, netto, breakdown, total, cfg
+
+
+def preview_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, waehrung: str = "", kurs=None) -> dict:
+    """What issue_invoice would issue, without writing anything (no number is reserved)."""
+    cust, d, pos, cur, rate, netto, breakdown, total, _ = _compute(book, kunde, positionen, datum, waehrung, kurs)
+    return {"kunde": cust["nummer"], "an": _snapshot_address(cust), "datum": d.isoformat(), "waehrung": cur,
+            "positionen": [{**p, "menge": _num(p["menge"])} for p in pos], "netto": netto, "mwst": breakdown,
+            "total": total}
+
+
+def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
+                  zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
+                  leistung_von=None, leistung_bis=None) -> tuple[dict, list[Path]]:
+    """Issue and book an invoice: DR Debitoren / CR Ertrag (per position account),
+    with MWST per rate when the book is MWST-pflichtig."""
+    cust, d, pos, cur, rate, netto, breakdown, total, cfg = _compute(book, kunde, positionen, datum, waehrung, kurs)
+    s = book.settings
     nummer = next_invoice_number(book, d.year)
     iban = qr.normalize_iban(s.get("iban"))
     ref_type = qr.reference_type_for(iban) if iban else "NON"
