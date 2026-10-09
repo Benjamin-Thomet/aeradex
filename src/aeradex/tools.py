@@ -32,6 +32,8 @@ Regeln:
 - Nach jeder Änderung ist das Buch geprüft und in git committet; bei Fehlern die Meldung lesen und korrigieren.
 - status() liefert revision. Bei Schreibtools mit expected_revision diesen Stand mitgeben; nach Konflikten neu lesen.
 - Bei Schreibtools mit idempotency_key einen eindeutigen Schlüssel verwenden und bei Timeout/Wiederholung beibehalten.
+- Kunden: vor add_customer mit customers() prüfen, ob es ihn schon gibt; fehlende oder falsche Angaben eines
+  bestehenden Kunden mit update_customer ergänzen, nie einen zweiten anlegen.
 - Beträge als Text mit Punkt: "1234.50". Datum als JJJJ-MM-TT.
 - MWST: status() nennt die mwst_methode. Bei "effektiv" und einem Beleg mit ausgewiesener MWST den Code mitgeben
   (V81/I81 Vorsteuer, U81 Umsatz …) und den BRUTTO-Betrag buchen; die Steuer wird automatisch abgespalten.
@@ -393,9 +395,35 @@ def customers() -> list | dict:
     return _call(api.customer_list)
 
 
+def customer_details(nummer: str) -> dict:
+    """Alle Angaben eines Kunden: Firma, Kontaktperson, Adresse, E-Mail, Rechnungsempfänger, Stundensatz, Notizen.
+
+    Args:
+        nummer: Kundennummer, z.B. "K0004".
+    """
+    from . import invoices as inv
+
+    def get(b):
+        c = inv.customer(b, nummer)
+        return api.jsonable({**{k: v for k, v in c.items() if not k.startswith("_")}, "notizen": c.get("_notizen", "")})
+    return _call(get)
+
+
+def _same_customer(book: Book, name: str, firma: str) -> list[str]:
+    """Existing customers with the same company (or, for private persons, the same name)."""
+    from . import invoices as inv
+
+    def norm(x) -> str:
+        return " ".join(str(x or "").lower().replace(".", " ").split())
+    key = norm(firma) or norm(name)
+    return [f"{k} {c.get('firma') or c.get('name')}" for k, c in inv.customers(book).items()
+            if key and key in (norm(c.get("firma")) or norm(c.get("name")), norm(c.get("name")))]
+
+
 def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", plz: str = "", ort: str = "",
-                 land: str = "CH", email: str = "", rechnung_an: str = "firma") -> dict:
-    """Kunde anlegen.
+                 land: str = "CH", email: str = "", rechnung_an: str = "firma", trotzdem_neu: bool = False) -> dict:
+    """Kunde anlegen. Gibt es den Kunden schon (gleiche Firma bzw. gleicher Name), wird nichts angelegt:
+    dann update_customer verwenden, um Angaben zu ergänzen oder zu korrigieren.
 
     Args:
         name: Kontaktperson oder Privatperson.
@@ -407,9 +435,49 @@ def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", pl
         land: Ländercode, Standard CH.
         email: E-Mail.
         rechnung_an: "firma" oder "person".
+        trotzdem_neu: nur wenn der Mensch ausdrücklich einen zweiten Kunden gleichen Namens will (z.B. andere Filiale).
     """
+    try:
+        same = _same_customer(book(), name, firma)
+    except BookError as exc:
+        return {"ok": False, "fehler": str(exc)}
+    if same and not trotzdem_neu:
+        return {"ok": False, "fehler": f"Diesen Kunden gibt es schon: {', '.join(same)}. Angaben mit update_customer "
+                                       "ergänzen oder korrigieren statt neu anlegen.", "vorhanden": same}
     return _call(api.customer_add, name=name, firma=firma, strasse=strasse, nr=nr, plz=plz, ort=ort,
                  land=land, email=email, rechnung_an=rechnung_an)
+
+
+def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str = "", nr: str = "", plz: str = "",
+                    ort: str = "", land: str = "", email: str = "", rechnung_an: str = "",
+                    leeren: list[str] | None = None) -> dict:
+    """Angaben eines bestehenden Kunden ergänzen, korrigieren oder entfernen (nur die mitgegebenen Felder; leer =
+    unverändert; was weg soll, in «leeren» nennen). Bereits ausgestellte Rechnungen behalten die Adresse, die beim
+    Ausstellen galt; Offerten-Entwürfe mit update_quote(adresse_neu=True) nachführen.
+
+    Args:
+        nummer: Kundennummer, z.B. "K0003" (customers() zeigt sie).
+        name: Kontaktperson oder Privatperson.
+        firma: Firmenname.
+        strasse: Strasse.
+        nr: Hausnummer.
+        plz: Postleitzahl.
+        ort: Ort.
+        land: Ländercode.
+        email: E-Mail.
+        rechnung_an: "firma" oder "person".
+        leeren: Felder, die entfernt werden sollen, z.B. ["name"] für eine Kontaktperson oder ["email"].
+    """
+    fields = {k: v for k, v in {"name": name, "firma": firma, "strasse": strasse, "nr": nr, "plz": plz, "ort": ort,
+                                "land": land, "email": email, "rechnung_an": rechnung_an}.items() if str(v).strip()}
+    clearable = {"name", "firma", "strasse", "nr", "plz", "ort", "email"}
+    for key in leeren or []:
+        if key not in clearable:
+            return {"ok": False, "fehler": f"«{key}» kann nicht geleert werden (möglich: {', '.join(sorted(clearable))})"}
+        fields[key] = ""
+    if not fields:
+        return {"ok": False, "fehler": "Keine Änderung angegeben"}
+    return _call(api.customer_update, nummer, **fields)
 
 
 def invoices(status: str = "") -> list | dict:
@@ -1067,7 +1135,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           accrual_proposals, book_accruals,
           exchange_rate, revaluation_preview,
           bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices, bank_rules, expenses,
-          customers, add_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
+          customers, customer_details, add_customer, update_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
           book_bank_transaction, employees, payroll_run, payroll_payment_export, qst_sync, payslip, close_payroll, close_payslip, lohnausweis,
