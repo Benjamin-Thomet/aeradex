@@ -297,3 +297,19 @@ def test_reports(book):
     prod = reports.run(Book(book.root), "leistungen_produkte", jahr=2026)
     assert prod["zeilen"][-1]["werte"]["offen"] == Decimal("180.00")
     assert reports.run(Book(book.root), "leistungen_projekte")["zeilen"][0]["werte"]["budget_h"] == Decimal("10")
+
+
+def test_update_quote_takes_new_customer_address(tmp_path, monkeypatch):
+    from aeradex import tools as core_tools
+    from aeradex.testing import make_book as _make
+    import aeradex_leistungen
+    b = _make(tmp_path, plugins=["leistungen"])
+    monkeypatch.setenv("AERADEX_BUCH", str(b.root))
+    nr = core_tools.add_customer(name="Anna Meier", firma="Torfix AG", ort="Bretzwil")["kunde"]["nummer"]
+    quote = aeradex_leistungen.draft_quote(nr, [{"text": "Tor", "menge": "1", "preis": "900"}], titel="Tor")
+    q_nr = quote["ergebnis"]["nummer"]
+    assert quote["ergebnis"]["an"]["zusatz"] == "Anna Meier"
+    core_tools.update_customer(nr, name="Pascal Mühlberg")
+    res = aeradex_leistungen.update_quote(q_nr, adresse_neu=True, titel="Gartentor")
+    assert res["ok"] and res["ergebnis"]["an"]["zusatz"] == "Pascal Mühlberg" and res["ergebnis"]["titel"] == "Gartentor"
+    assert any(str(d).endswith(".pdf") for d in res["dateien"])

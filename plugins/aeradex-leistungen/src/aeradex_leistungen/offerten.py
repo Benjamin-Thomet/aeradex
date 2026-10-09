@@ -136,13 +136,17 @@ def create(book: Book, kunde: str, positionen: list[dict], datum=None, titel: st
 
 
 def update(book: Book, nr: str, positionen: list[dict] | None = None, titel: str | None = None,
-           text: str | None = None, gueltig_tage: int | None = None, abrechnung: str | None = None) -> tuple[dict, list[Path]]:
-    """Revise a quote that is not accepted or declined yet (the PDF is regenerated)."""
+           text: str | None = None, gueltig_tage: int | None = None, abrechnung: str | None = None,
+           adresse_neu: bool = False) -> tuple[dict, list[Path]]:
+    """Revise a quote that is not accepted or declined yet (the PDF is regenerated). `adresse_neu` takes the
+    address from the customer again (after the customer's details changed)."""
     meta = quote(book, nr)
     if meta["status"] in ("angenommen", "abgelehnt"):
         raise BookError(f"Offerte {nr} ist {meta['status']} — nicht mehr änderbar")
     meta.pop("_pfad")
     body = meta.pop("_text", "")
+    if adresse_neu:
+        meta["an"] = invoices._snapshot_address(invoices.customer(book, meta["kunde"]))
     if positionen is not None:
         meta["positionen"] = resolve_positions(book, meta["kunde"], positionen)
         _sums(meta, meta["positionen"])

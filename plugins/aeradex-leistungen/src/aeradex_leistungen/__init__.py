@@ -207,6 +207,21 @@ def draft_quote(kunde: str, positionen: list[dict], titel: str = "", text: str =
     return _w(f"Offerte für {kunde} entworfen", offerten.create, kunde, positionen, None, titel, text, None, abrechnung_art)
 
 
+def update_quote(nummer: str, positionen: list[dict] | None = None, titel: str = "", text: str = "",
+                 adresse_neu: bool = False) -> dict:
+    """Offerte ändern, solange sie nicht angenommen oder abgelehnt ist (das PDF wird neu erstellt).
+
+    Args:
+        nummer: Offertnummer, z.B. "O-2026-0002".
+        positionen: neue Positionen (ersetzen die bisherigen), Format wie bei draft_quote; weglassen = unverändert.
+        titel: neuer Titel; leer = unverändert.
+        text: neuer Einleitungstext; leer = unverändert.
+        adresse_neu: Adresse und Kontaktperson neu vom Kunden übernehmen (nach einer Änderung beim Kunden).
+    """
+    return _w(f"Offerte {nummer} geändert", offerten.update, nummer, positionen, titel or None, text or None,
+              None, None, adresse_neu)
+
+
 def hours_control(monat: str) -> dict:
     """Stundenkontrolle: Soll, Ist, abrechenbar, Saldo im Monat und im Jahr je Person.
 
@@ -231,7 +246,7 @@ def project_status(projekt: str) -> dict:
 @hookimpl
 def aeradex_tools():
     return [record_time, record_material, quick_entry, record_absence, holiday_balance, services_master_data,
-            open_services, billing_preview, draft_quote, hours_control, project_status]
+            open_services, billing_preview, draft_quote, update_quote, hours_control, project_status]
 
 
 @hookimpl
@@ -239,7 +254,7 @@ def aeradex_instructions():
     return ("- Leistungen (Plugin leistungen): am schnellsten mit quick_entry («3.5h Fassade spachteln»), sonst "
             "Arbeitszeit mit record_time, Material mit record_material (Nummern aus services_master_data). Abwesenheiten "
             "mit record_absence, Ferienkonto mit holiday_balance. Offene Leistungen: open_services, Rechnungsvorschau: billing_preview — "
-            "Rechnungen stellt ein Mensch aus. Offerten nur als Entwurf (draft_quote). Stundenkontrolle: hours_control, "
+            "Rechnungen stellt ein Mensch aus. Offerten nur als Entwurf (draft_quote), ändern mit update_quote. Stundenkontrolle: hours_control, "
             "Projekte: project_status.")
 
 
