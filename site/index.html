@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>aeradex — Die Buchhaltung, die dein Agent führen kann</title>
-<meta name="description" content="aeradex ist eine offene Schweizer Buchhaltung, gebaut für die Zusammenarbeit mit KI-Agenten. Dein Agent bereitet vor, die Engine rechnet, du gibst frei. Open Source unter der AGPL.">
+<title>aeradex — Das offene ERP, das dein Agent führen kann</title>
+<meta name="description" content="aeradex ist ein offenes, agentisches ERP für Schweizer KMU, mit einer vollständigen Buchhaltung im Kern. Dein Agent bereitet vor, die Engine rechnet, du gibst frei. Open Source unter der AGPL.">
 <meta name="theme-color" content="#08090a">
-<meta property="og:title" content="aeradex — Die Buchhaltung, die dein Agent führen kann">
-<meta property="og:description" content="Offene Schweizer Buchhaltung für Menschen und KI-Agenten. Belege, QR-Rechnungen, Bank, MWST, Lohn — als lesbare Dateien in git.">
+<meta property="og:title" content="aeradex — Das offene ERP, das dein Agent führen kann">
+<meta property="og:description" content="Offenes, agentisches ERP für Schweizer KMU, mit Buchhaltung im Kern. Belege, QR-Rechnungen, Bank, MWST, Lohn, Offerten — als lesbare Dateien in git. Im Browser, per Chat oder am Telefon.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="de_CH">
 <meta property="og:image" content="https://aeradex.ch/img/og.png">
@@ -21,7 +21,7 @@
 <script type="application/ld+json">
 {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "aeradex", "url": "https://aeradex.ch/",
  "applicationCategory": "BusinessApplication", "operatingSystem": "Linux, macOS, Windows", "inLanguage": "de-CH",
- "description": "Offene Schweizer Buchhaltung für Menschen und KI-Agenten: Belege, QR-Rechnungen, Bank, MWST und Lohn als lesbare Dateien in git.",
+ "description": "Offenes, agentisches ERP für Schweizer KMU mit vollständiger Buchhaltung im Kern: Belege, QR-Rechnungen, Bank, MWST, Lohn, Offerten und Zeiterfassung als lesbare Dateien in git.",
  "license": "https://www.gnu.org/licenses/agpl-3.0.html", "codeRepository": "https://github.com/Benjamin-Thomet/aeradex",
  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CHF"}}
 </script>
@@ -35,6 +35,7 @@
     <a class="brand" href="#top" aria-label="aeradex — zum Anfang"><span class="coin" aria-hidden="true"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><mask id="ae-nav"><rect width="32" height="32" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M15.85 11.4V20.6"/><circle cx="11.25" cy="16" r="4.6"/><path d="M15.85 16H25.35A4.75 4.75 0 0 0 15.85 16"/><path d="M15.85 16A4.75 4.75 0 0 0 24.24 19.05"/></g></mask><circle cx="16" cy="16" r="15" fill="currentColor" mask="url(#ae-nav)"/></svg></span>aeradex</a>
     <nav aria-label="Hauptnavigation">
       <ul>
+        <li><a href="#anruf">Anruf</a></li>
         <li><a href="#agent">Agent</a></li>
         <li><a href="#produkt">Produkt</a></li>
         <li><a href="#open-source">Open Source</a></li>
@@ -63,11 +64,12 @@
   <div class="hero-fx" aria-hidden="true"><div class="hero-grid"></div><div class="hero-glow"></div></div>
   <div class="wrap">
     <div class="hero-copy">
-      <h1 id="hero-h">Die Buchhaltung, <br>die dein <em>Agent</em> führen kann.</h1>
-      <p class="lede">aeradex ist eine offene Schweizer Buchhaltung, gebaut für die Zusammenarbeit mit KI. <strong>Dein Agent bereitet vor, die Engine rechnet, du gibst frei.</strong> Belege, Rechnungen, Bank, MWST und Lohn an einem Ort.</p>
+      <p class="pill eyebrow">Open Source · Agentisches ERP · Gebaut für die Schweiz</p>
+      <h1 id="hero-h">Das ERP, <br>das dein <em>Agent</em> führen kann.</h1>
+      <p class="lede">aeradex ist ein offenes, agentisches ERP für Schweizer KMU, mit einer vollständigen Buchhaltung als Herzstück. <strong>Dein Agent bereitet vor, die Engine rechnet, du gibst frei.</strong> Belege, Rechnungen, Bank, MWST, Lohn, Offerten und Zeiterfassung an einem Ort: im Browser, per Chat oder am Telefon.</p>
       <div class="cta">
         <a class="btn primary" href="https://github.com/Benjamin-Thomet/aeradex">Auf GitHub ansehen <span class="arrow" aria-hidden="true">→</span></a>
-        <a class="btn ghost" href="#agent">So arbeitet der Agent</a>
+        <a class="btn ghost" href="#anruf"><span class="play" aria-hidden="true">▶</span> Demo ansehen</a>
       </div>
     </div>
 
@@ -99,6 +101,27 @@
         <li>Claude&nbsp;Code</li><li>Codex</li><li>opencode</li><li>MCP</li><li>Claude&nbsp;API</li><li>git</li>
       </ul>
     </div>
+  </div>
+</section>
+
+<!-- ============ Anruf ============ -->
+<section class="sec sec-call" id="anruf" aria-labelledby="call-h">
+  <div class="wrap">
+    <div class="sec-head split reveal">
+      <div>
+        <p class="label"><span>Neu</span>Am Telefon</p>
+        <h2 id="call-h">Ruf deine Buchhaltung an.<br><span class="dim">Larissa erledigt den Rest.</span></h2>
+      </div>
+      <p class="intro">Du sagst, was zu tun ist. Der Agent arbeitet mit denselben Werkzeugen wie im Browser, und du siehst live, was er tut. Eine Rechnung geht erst raus, wenn du Ja sagst; das PDF kommt aufs Handy. Plugin <b>aeradex-anruf</b>, bald öffentlich.</p>
+    </div>
+    <figure class="window call-video reveal">
+      <video id="callVideo" controls muted playsinline preload="metadata" poster="img/larissa-poster.webp" width="1920" height="1080" aria-describedby="callScript">
+        <source src="video/larissa-9x16.mp4" type="video/mp4" media="(max-width: 640px) and (orientation: portrait)">
+        <source src="video/larissa-16x9.mp4" type="video/mp4">
+      </video>
+      <button class="btn small light sound-btn" id="callSound" type="button" hidden>Ton an</button>
+      <figcaption class="sr-only" id="callScript">Demo, 28 Sekunden, Gespräch mit Untertiteln. Larissa: «Hoi Marco! Lass mich raten … die Beispiel AG?» Marco: «Du kennst mich. Ja, zwölf Stunden Beratung, wie immer à 160.» Der Agent ruft die Werkzeuge customers und request_invoice auf und zeigt die Rechnung: Beispiel AG, 12 h × 160.00, Total CHF 1920.00. Larissa: «Hab sie. 1'920 Franken. Soll sie raus?» Marco: «Ja, schick sie raus.» Larissa: «Ist draussen. Das PDF hast du gleich auf dem Handy.»</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -368,6 +391,7 @@
           <li><b>aeradex-anlagen</b>Anlagenbuchhaltung: Abschreibungen, Abgänge, Anlagenspiegel</li>
           <li><b>aeradex-leistungen</b>Offerten, Zeiterfassung, Projekte und Abrechnung an Kunden</li>
           <li><b>aeradex-revolut</b>Kontoauszüge von Revolut Business und Privat</li>
+          <li><b>aeradex-anruf</b>Mit dem Agenten telefonieren oder per Telegram schreiben (bald öffentlich)</li>
         </ul>
         <p class="small">Gesucht: PostFinance, Wise, TWINT, Stripe und SumUp, weitere Kantone, Kontenpläne und Exporte für Banana, Bexio oder Abacus. <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/PLUGINS.md">Wunschliste</a> · <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/plugins.md">Plugin schreiben</a></p>
       </article>
@@ -450,11 +474,11 @@
   <div class="wrap">
     <div>
       <a class="brand" href="#top"><span class="coin" aria-hidden="true"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><mask id="ae-foot"><rect width="32" height="32" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M15.85 11.4V20.6"/><circle cx="11.25" cy="16" r="4.6"/><path d="M15.85 16H25.35A4.75 4.75 0 0 0 15.85 16"/><path d="M15.85 16A4.75 4.75 0 0 0 24.24 19.05"/></g></mask><circle cx="16" cy="16" r="15" fill="currentColor" mask="url(#ae-foot)"/></svg></span>aeradex</a>
-      <p class="tagline">Offene Schweizer Buchhaltung für Menschen und Agenten.</p>
+      <p class="tagline">Offenes ERP für Menschen und Agenten. Mit Schweizer Buchhaltung im Kern.</p>
     </div>
     <div>
       <h4>Produkt</h4>
-      <ul><li><a href="#agent">Agent</a></li><li><a href="#produkt">Oberfläche</a></li><li><a href="#schweiz">Funktionen</a></li><li><a href="#kontrolle">Kontrolle</a></li><li><a href="#umstieg">Umstieg</a></li><li><a href="#roadmap">Roadmap</a></li></ul>
+      <ul><li><a href="#anruf">Anruf</a></li><li><a href="#agent">Agent</a></li><li><a href="#produkt">Oberfläche</a></li><li><a href="#schweiz">Funktionen</a></li><li><a href="#kontrolle">Kontrolle</a></li><li><a href="#umstieg">Umstieg</a></li><li><a href="#roadmap">Roadmap</a></li></ul>
     </div>
     <div>
       <h4>Dokumentation</h4>

@@ -1,4 +1,4 @@
-// aeradex landing page: progressive enhancement, no tracking or autoplay of media.
+// aeradex landing page: progressive enhancement, no tracking. The demo video plays muted only while visible.
 (() => {
   'use strict';
   const root = document.documentElement;
@@ -92,6 +92,27 @@
       setTimeout(() => showRest(i + 1), i === lines.length - 2 ? 700 : 420);
     };
     setTimeout(() => typePrompt(() => showRest()), 700);
+  }
+
+  // Call demo: muted while in view (subtitles are burned in), sound on request.
+  const video = document.querySelector('#callVideo');
+  if (video) {
+    if (matchMedia('(max-width: 640px) and (orientation: portrait)').matches) video.poster = 'img/larissa-poster-9x16.webp';
+    const sound = document.querySelector('#callSound');
+    sound.hidden = false;
+    const syncSound = () => { sound.hidden = !video.muted; };
+    sound.addEventListener('click', () => {
+      video.muted = false;
+      video.currentTime = 0;
+      video.play().catch(() => {});
+    });
+    video.addEventListener('volumechange', syncSound);
+    if (!reduceMotion && 'IntersectionObserver' in window) {
+      new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting) { if (video.muted) video.play().catch(() => {}); }
+        else video.pause();
+      }, { threshold: 0.5 }).observe(video);
+    }
   }
 
   // Copy the terminal commands.

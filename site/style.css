@@ -417,3 +417,14 @@ footer li a:hover { color: var(--ink); }
 .legal h2 { font-size: 20px; margin: 40px 0 10px; }
 .legal p, .legal li { color: var(--muted); }
 .legal a { color: var(--ink); text-underline-offset: 3px; }
+
+/* ---------- Anruf-Demo ---------- */
+.eyebrow { margin: 0; }
+.btn .play { font-size: .8em; }
+.call-video { margin: 0; aspect-ratio: 16 / 9; background: #08090a; }
+.call-video video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.sound-btn { position: absolute; top: 16px; right: 16px; z-index: 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+@media (max-width: 640px) and (orientation: portrait) {
+  .call-video { aspect-ratio: 9 / 16; width: min(100%, calc(82svh * 9 / 16)); margin-inline: auto; }
+}
