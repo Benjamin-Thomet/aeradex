@@ -419,7 +419,6 @@ footer li a:hover { color: var(--ink); }
 .legal a { color: var(--ink); text-underline-offset: 3px; }
 
 /* ---------- Anruf-Demo ---------- */
-.eyebrow { margin: 0; }
 .btn .play { font-size: .8em; }
 .call-video { margin: 0; aspect-ratio: 16 / 9; background: #08090a; }
 .call-video video { display: block; width: 100%; height: 100%; object-fit: contain; }
