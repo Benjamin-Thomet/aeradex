@@ -150,3 +150,23 @@ def test_movements_with_a_document_are_not_sent_to_jev(csv_book, monkeypatch):
     swisstel = [t for t in api.bank_list(Book(csv_book.root)) if "Swisstel" in t["Text"]][0]
     assert "im Eingang" in res["jev"]["zugeordnet"][swisstel["ID"]]
     assert "nicht gefragt" in res["meldung"]
+
+
+def test_key_file_and_environment(tmp_path, monkeypatch, book):
+    monkeypatch.delenv("TYPESAFE_API_KEY")
+    assert jev.api_key() == ("", "") and not jev.config(book)["schluessel"]
+    jev.key_file().write_text("ANDERES=1\n")
+    jev.save_key("ts-file-key-1234")
+    path = jev.key_file()
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert path.read_text() == "ANDERES=1\nTYPESAFE_API_KEY=ts-file-key-1234\n"     # other lines stay
+    cfg = jev.config(book)
+    assert cfg["bereit"] is False and cfg["schluessel"] and cfg["schluessel_ende"] == "1234"
+    assert jev.api_key()[0] == "ts-file-key-1234"
+    monkeypatch.setenv("TYPESAFE_API_KEY", "env-key-abcdefgh")                         # the environment wins
+    assert jev.api_key() == ("env-key-abcdefgh", "Umgebung")
+    monkeypatch.delenv("TYPESAFE_API_KEY")
+    jev.delete_key()
+    assert jev.api_key() == ("", "") and path.read_text() == "ANDERES=1\n"
+    with pytest.raises(BookError):
+        jev.save_key("mit leerzeichen")

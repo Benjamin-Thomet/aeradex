@@ -284,6 +284,35 @@
   document.addEventListener("htmx:beforeRequest", e => { const b = e.detail.elt.querySelector && e.detail.elt.querySelector("button[type=submit]"); if (b) b.disabled = true; });
   document.addEventListener("htmx:afterRequest", e => { const b = e.detail.elt.querySelector && e.detail.elt.querySelector("button[type=submit]"); if (b) b.disabled = false; });
 
+  // a redirect to this page with only another #anchor would just scroll: reload so the saved state shows
+  document.addEventListener("htmx:beforeOnLoad", e => {
+    const to = e.detail.xhr.getResponseHeader("HX-Redirect");
+    if (!to) return;
+    const url = new URL(to, location.href);
+    if (url.pathname + url.search !== location.pathname + location.search || !url.hash) return;
+    e.preventDefault();
+    history.replaceState(null, "", url.href);
+    location.reload();
+  });
+
+  // in-page tabs (Einstellungen): the #anchor picks the tab, also an anchor inside a tab (#jev, #pruefung)
+  function showTab() {
+    const tabs = $$("[data-tab]");
+    if (!tabs.length) return;
+    let el = null;
+    try { el = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1))); } catch (err) { /* bad hash */ }
+    const tab = (el && el.closest("[data-tab]")) || tabs[0];
+    tabs.forEach(t => { t.hidden = t !== tab; });
+    $$("[data-tab-link]").forEach(a => a.classList.toggle("on", a.dataset.tabLink === tab.dataset.tab));
+    if (el && el !== tab && el !== tab.firstElementChild) el.scrollIntoView({ block: "start" });
+    else { window.scrollTo(0, 0); const main = $(".main"); if (main) main.scrollTop = 0; }   // title and tab bar in view
+    if (el && el.tagName === "DETAILS") el.open = true;
+  }
+  window.addEventListener("hashchange", showTab);
+  document.addEventListener("htmx:afterSwap", e => { if (e.detail.target.id === "page") showTab(); });
+  showTab();
+  window.addEventListener("load", () => setTimeout(showTab, 0));    // after the browser's own jump to the #anchor
+
   // forms that answer with a file (POST needs the CSRF header, so no plain form post)
   document.addEventListener("submit", async (e) => {
     const form = e.target;

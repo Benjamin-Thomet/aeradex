@@ -13,7 +13,8 @@ The same applies to supplier bill drafts (Kreditoren upload): Jev picks the
 expense account; below the threshold the draft goes to the agent.
 
 Off by default. Enable per book (aeradex.yaml → jev: {aktiv: true}) and set
-TYPESAFE_API_KEY in the environment. Sent per transaction: counterparty,
+TYPESAFE_API_KEY in the environment or save it under Einstellungen (it goes to
+<config>/typesafe.env, chmod 600 — never into the book, which is a shared git repo). Sent per transaction: counterparty,
 payment message, amount, direction, the account list and up to five earlier
 bookings with the same counterparty. Transactions with an employee as
 counterparty are never sent.
@@ -24,11 +25,13 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
+from pathlib import Path
 
 from .book import Book, BookError
 from .files import parse_amount
@@ -37,10 +40,66 @@ API_URL = "https://api.typesafe.ai/v1/systemone"
 DEFAULTS = {"aktiv": False, "schwelle": 0.7, "modell": "jev-latest"}
 
 
+ENV_KEY = "TYPESAFE_API_KEY"
+
+
+def key_file() -> Path:
+    """Where the UI stores the key: the same config directory as the server's users (web/auth.py)."""
+    return Path(os.environ.get("AERADEX_CONFIG") or Path.home() / ".config" / "aeradex") / "typesafe.env"
+
+
+def _read_key_file() -> str:
+    path = key_file()
+    if not path.exists():
+        return ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, sep, value = line.strip().removeprefix("export ").partition("=")
+        if sep and key.strip() == ENV_KEY:
+            return value.strip().strip("'\"")
+    return ""
+
+
+def api_key() -> tuple[str, str]:
+    """(key, source): the environment wins over the key file; ("", "") if neither has one."""
+    if os.environ.get(ENV_KEY):
+        return os.environ[ENV_KEY], "Umgebung"
+    key = _read_key_file()
+    return (key, "Datei") if key else ("", "")
+
+
+def _write_key_file(value: str | None) -> None:
+    path = key_file()
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    lines = [ln for ln in lines if ln.strip().removeprefix("export ").partition("=")[0].strip() != ENV_KEY]
+    if value:
+        lines.append(f"{ENV_KEY}={value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch(mode=0o600, exist_ok=True)
+    path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    path.write_text("\n".join(lines) + "\n" if lines else "", encoding="utf-8")
+
+
+def save_key(value: str) -> None:
+    value = (value or "").strip()
+    if not value:
+        raise BookError("Bitte einen API-Schlüssel eingeben")
+    if any(c.isspace() for c in value) or "=" in value:
+        raise BookError("Der API-Schlüssel darf keine Leerzeichen oder = enthalten")
+    _write_key_file(value)
+
+
+def delete_key() -> None:
+    _write_key_file(None)
+
+
 def config(book: Book) -> dict:
     cfg = {**DEFAULTS, **(book.settings.get("jev") or {})}
     cfg["schwelle"] = float(cfg["schwelle"])
-    cfg["schluessel"] = bool(os.environ.get("TYPESAFE_API_KEY"))
+    key, source = api_key()
+    cfg["schluessel"] = bool(key)
+    cfg["schluessel_quelle"] = source
+    cfg["schluessel_ende"] = key[-4:] if len(key) >= 12 else ""
+    cfg["schluessel_datei"] = bool(_read_key_file())
     cfg["bereit"] = bool(cfg["aktiv"]) and cfg["schluessel"]
     return cfg
 
@@ -56,9 +115,9 @@ def _post(payload: dict, key: str, timeout: float = 30) -> dict:
 
 def system_one(state, questions: dict, model: str) -> dict:
     """One evaluation call, retried with backoff on 429/529 as TypeSafe recommends."""
-    key = os.environ.get("TYPESAFE_API_KEY")
+    key = api_key()[0]
     if not key:
-        raise BookError("TYPESAFE_API_KEY ist nicht gesetzt")
+        raise BookError("Kein TypeSafe-API-Schlüssel (Einstellungen → Agent & KI)")
     payload = {"state": state, "model": model, "questions": questions}
     for attempt in range(4):
         try:
@@ -219,9 +278,9 @@ def suggest_bank(book: Book, ids: list[str] | None = None, schwelle: float | Non
     from . import api, bank
     cfg = config(book)
     if not cfg["aktiv"]:
-        raise BookError("Jev ist für dieses Buch nicht eingeschaltet (Einstellungen → Jev)")
+        raise BookError("Jev ist für dieses Buch nicht eingeschaltet (Einstellungen → Agent & KI)")
     if not cfg["schluessel"]:
-        raise BookError("TYPESAFE_API_KEY ist nicht gesetzt")
+        raise BookError("Kein TypeSafe-API-Schlüssel (Einstellungen → Agent & KI)")
     threshold = cfg["schwelle"] if schwelle is None else float(schwelle)
     employees = _employee_names(book)
     proposed_banks = {p.get("Bank") for p in api.proposals(book)}

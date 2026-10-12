@@ -2082,11 +2082,12 @@ async def einstellungen(ui: UI, request: Request):
     from ..qrbill_ch import iban_problem, is_qr_iban, normalize_iban
     iban = normalize_iban(book.settings.get("iban"))
     from .chat import credentials_status
+    from .. import jev
     return ui.render(request, "einstellungen.html", book=book, cfg=payroll.config(book),
                      iban_problem=iban_problem(iban) if iban else "Keine IBAN hinterlegt",
                      qr_iban=is_qr_iban(iban) if iban else False, issues=checks.run(book),
                      accounts=account_options(book), cred=credentials_status(book.settings.get("agent_backend")),
-                     jev=__import__("aeradex.jev", fromlist=["config"]).config(book),
+                     jev=jev.config(book), jev_datei=str(jev.key_file()).replace(str(Path.home()), "~", 1),
                      backends=__import__("aeradex.web.chat", fromlist=["BACKENDS"]).BACKENDS,
                      plugin_rows=api.plugin_list(book), katalog=_katalog(book), server_mode=ui.auth_dir is not None,
                      neustart=bool(getattr(ui, "neustart_noetig", False)),
@@ -2094,26 +2095,47 @@ async def einstellungen(ui: UI, request: Request):
                      qst_geladen=sorted(p.stem.replace("-", " ") for p in (book.root / "lohn" / "qst_tarife").glob("??-????.json")))
 
 
+SETTINGS_TABS = ("firma", "buchhaltung", "lohn", "agent", "plugins", "buch")
+
+
 async def einstellungen_speichern(ui: UI, request: Request):
+    """One handler for the forms of several tabs: only what a form sends is changed."""
     f = await request.form()
     fields = {k: (f.get(k) or "").strip() for k in ("firma", "rechtsform", "uid", "telefon", "email", "iban",
                                                      "qr_referenz_praefix", "zahlungsfrist_tage", "agent_modus", "co",
-                                                     "zahlungs_iban")}
+                                                     "zahlungs_iban") if k in f}
     vat = {"methode": f.get("mwst_methode") or "keine", "periode": f.get("mwst_periode") or "",
            "saldosteuersatz": (f.get("mwst_saldosteuersatz") or "").strip(),
            "taetigkeit": (f.get("mwst_taetigkeit") or "").strip(), "abrechnungsart": f.get("mwst_abrechnungsart") or ""}
-    adresse = {k: (f.get(f"a_{k}") or "").strip() for k in ("strasse", "nr", "plz", "ort", "land")}
+    adresse = {k: (f.get(f"a_{k}") or "").strip() for k in ("strasse", "nr", "plz", "ort", "land") if f"a_{k}" in f}
     konten = {k: acct(f.get(f"k_{k}")) for k in ("bank", "debitoren", "ertrag", "gutschrift", "gewinnvortrag",
-                                                  "jahresergebnis", "dividende", "reserve")}
-    if not fields["firma"]:
+                                                  "jahresergebnis", "dividende", "reserve") if f"k_{k}" in f}
+    if "firma" in fields and not fields["firma"]:
         return fail("Firmenname ist nötig.")
-    return await act(request, api.settings_update, "/einstellungen", ui.book(), adresse=adresse, konten=konten,
+    tab = f.get("_tab") if f.get("_tab") in SETTINGS_TABS else ""
+    return await act(request, api.settings_update, "/einstellungen" + (f"#{tab}" if tab else ""), ui.book(),
+                     adresse=adresse or None, konten=konten or None,
                      mwst=vat if f.get("mwst_methode") is not None else None, **fields)
 
 
 async def agent_einstellung(ui: UI, request: Request):
     f = await request.form()
-    return await act(request, api.settings_update, "/einstellungen", ui.book(), agent_backend=f.get("agent_backend") or "auto")
+    return await act(request, api.settings_update, "/einstellungen#agent", ui.book(),
+                     agent_backend=f.get("agent_backend") or "auto")
+
+
+async def jev_schluessel(ui: UI, request: Request):
+    """The TypeSafe key goes to <config>/typesafe.env (chmod 600), never into the book."""
+    from .. import jev
+    f = await request.form()
+    try:
+        if f.get("entfernen") == "1":
+            jev.delete_key()
+            return done("API-Schlüssel entfernt", "/einstellungen#jev")
+        jev.save_key(f.get("schluessel") or "")
+    except (BookError, OSError) as exc:
+        return fail(str(exc))
+    return done("API-Schlüssel gespeichert", "/einstellungen#jev")
 
 
 async def lohn_einstellungen(ui: UI, request: Request):
@@ -2336,6 +2358,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/einstellungen/buch-export", h(buch_export), methods=["POST"]),
         Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),
         Route("/einstellungen/jev", h(jev_einstellung), methods=["POST"]),
+        Route("/einstellungen/jev/schluessel", h(jev_schluessel), methods=["POST"]),
         Route("/einstellungen/plugins/installieren", h(plugin_installieren), methods=["POST"]),
         Route("/einstellungen/plugins/neustart", h(plugin_neustart), methods=["POST"]),
         Route("/einstellungen/plugins/{aktion:str}", h(plugin_einstellung), methods=["POST"]),

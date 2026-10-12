@@ -208,7 +208,8 @@ tr.open .caret { transform: rotate(90deg); }
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule); padding: 0 12px; overflow-x: auto; }
 .tabs a { padding: 10px 9px; color: var(--muted); border-bottom: 2px solid transparent; font-weight: 500; white-space: nowrap; text-decoration: none; }
 .tabs a.on { color: var(--ink); border-bottom-color: var(--red); }
-.tabs a .count { font-family: var(--f-num); font-size: 10px; color: var(--faint); margin-left: 3px; }
+.tabs a .count, .subnav a .count { font-family: var(--f-num); font-size: 10px; color: var(--faint); margin-left: 3px; }
+section[data-tab] { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
 .filters { display: flex; gap: 8px; padding: 10px 12px; flex-wrap: wrap; border-bottom: 1px solid var(--rule); align-items: center; }
 
 /* forms */

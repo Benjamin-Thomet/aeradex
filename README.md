@@ -296,8 +296,9 @@ Die Bilanz zeigt Fremdwährungskonten danach zum Kurs des Stichtags, mit dem Sal
 Entscheidungen mit kalibrierter Konfidenz. aeradex nutzt es optional, um für offene Bankbewegungen das Gegenkonto
 vorzuschlagen, mit dem bisherigen Konto derselben Gegenpartei als stärkstem Hinweis.
 ```bash
-export TYPESAFE_API_KEY=…              # Early-Access-Schlüssel von console.typesafe.ai
-# Einstellungen → Jev einschalten (pro Buch), Schwelle wählen
+# Einstellungen → Agent & KI: Schlüssel speichern (Early Access, console.typesafe.ai),
+# Jev einschalten (pro Buch), Schwelle wählen. Der Schlüssel landet in ~/.config/aeradex/typesafe.env
+# (chmod 600, nie im Buch); alternativ export TYPESAFE_API_KEY=… (hat Vorrang)
 aeradex bank kontieren                  # oder Knopf «Konten vorschlagen (Jev)» auf der Bank-Seite
 ```
 Ab der Schwelle entsteht ein Vorschlag (*Buchhaltung › Vorschläge*), darunter nur ein Hinweis; gebucht wird nie automatisch.

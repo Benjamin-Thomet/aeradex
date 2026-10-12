@@ -258,6 +258,37 @@ def test_employee_add_and_edit(client, root):
     assert (root / "lohn" / "2026" / "04" / "M0003.md").exists()
 
 
+def test_settings_tabs_save_only_their_fields(client, root):
+    page = client.get("/einstellungen").text
+    for tab in ("firma", "buchhaltung", "lohn", "agent", "plugins", "buch"):
+        assert f'data-tab="{tab}"' in page and f'href="#{tab}"' in page
+    before = Book(root).settings
+    firma, adresse = before.firma, dict(before.adresse)
+    r = post(client, "/einstellungen", {"_tab": "agent", "agent_modus": "direkt"})
+    ok(r)
+    assert r.headers["HX-Redirect"] == "/einstellungen#agent"
+    after = Book(root).settings
+    assert after.get("agent_modus") == "direkt" and after.firma == firma and dict(after.adresse) == adresse
+    ok(post(client, "/einstellungen", {"_tab": "buchhaltung", "mwst_methode": "effektiv", "k_bank": "1020"}))
+    assert Book(root).settings.firma == firma
+    assert "Firmenname" in post(client, "/einstellungen", {"firma": ""}).text
+
+
+def test_settings_jev_key_never_in_book(client, root):
+    from aeradex import jev
+    r = post(client, "/einstellungen/jev/schluessel", {"schluessel": "ts-secret-key-9876"})
+    ok(r)
+    assert r.headers["HX-Redirect"] == "/einstellungen#jev"
+    assert jev.key_file().stat().st_mode & 0o777 == 0o600
+    assert "ts-secret-key-9876" not in (root / "aeradex.yaml").read_text()
+    assert "ts-secret-key-9876" not in subprocess.run(["git", "-C", str(root), "log", "-p"], capture_output=True,
+                                                      text=True).stdout
+    page = client.get("/einstellungen").text
+    assert "…9876" in page and "ts-secret-key-9876" not in page
+    ok(post(client, "/einstellungen/jev/schluessel", {"entfernen": "1"}))
+    assert jev.api_key() == ("", "")
+
+
 def test_settings_accounts_and_closing(client, root):
     ok(post(client, "/einstellungen", {"firma": "Muster GmbH", "rechtsform": "GmbH", "uid": "", "telefon": "031 000 00 00",
                                         "email": "", "iban": "CH93 0076 2011 6238 5295 7", "qr_referenz_praefix": "",

@@ -200,7 +200,7 @@ Frontmatter: `mitarbeiter, name, jahr, monat, status (entwurf|abgeschlossen), ei
 ## Jev (optional)
 
 ```yaml
-jev: {aktiv: true, schwelle: 0.7, modell: jev-latest}   # plus TYPESAFE_API_KEY in der Umgebung
+jev: {aktiv: true, schwelle: 0.7, modell: jev-latest}   # Schlüssel: TYPESAFE_API_KEY oder ~/.config/aeradex/typesafe.env
 ```
 
 ## lieferanten/L0001-name.md

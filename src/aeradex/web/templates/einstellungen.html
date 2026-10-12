@@ -3,9 +3,16 @@
 {% block title %}Einstellungen{% endblock %}
 {% block main %}
 {% set a = settings.adresse %}{% set k = settings.get('konten') or {} %}
+{% set n_issues = issues|selectattr('level', 'in', ['fehler', 'warnung'])|list|length %}
 <div class="topbar"><div><h1>Einstellungen</h1><div class="sub">aeradex.yaml und lohn/einstellungen.yaml · jede Änderung wird committet</div></div></div>
 {{ accounts_datalist(accounts) }}
+<nav class="subnav" aria-label="Bereiche der Einstellungen">
+  {% for key, label in [("firma", "Firma"), ("buchhaltung", "Buchhaltung"), ("lohn", "Lohn"), ("agent", "Agent & KI"), ("plugins", "Plugins"), ("buch", "Buch")] %}<a href="#{{ key }}" data-tab-link="{{ key }}">{{ label }}{% if key == 'buch' and n_issues %} <span class="count">{{ n_issues }}</span>{% endif %}</a>{% endfor %}
+</nav>
+
+<section data-tab="firma" id="firma">
 <form class="panel" hx-post="/einstellungen" hx-target="find .errors">
+  <input type="hidden" name="_tab" value="firma">
   <header><h2>Firma und Bank</h2>{% if iban_problem %}<span class="pill warn">{{ iban_problem }}</span>{% else %}<span class="pill ok">IBAN gültig · {{ 'QR-IBAN (QRR-Referenz)' if qr_iban else 'SCOR-Referenz (RF…)' }}</span>{% endif %}</header>
   <div class="body">
     <div class="form four">
@@ -24,12 +31,19 @@
       <div class="field"><label>c/o-Zeile</label><input class="input" name="co" value="{{ settings.get('co') or '' }}"></div>
       <div class="field"><label>Zahlungsfrist (Tage)</label><input class="input num" name="zahlungsfrist_tage" value="{{ settings.get('zahlungsfrist_tage') or 30 }}"></div>
       <div class="field"><label>QR-Referenz-Präfix</label><input class="input num" name="qr_referenz_praefix" value="{{ settings.get('qr_referenz_praefix') or '' }}" placeholder="nur wenn die Bank es verlangt"></div>
-      <div class="field wide"><span class="lbl">Agent</span>
-        <span class="actions"><label class="check"><input type="radio" name="agent_modus" value="vorschlag" {{ 'checked' if (settings.get('agent_modus') or 'vorschlag') == 'vorschlag' }}> Vorschlag: Agenten schlagen freie Buchungen nur vor, du gibst frei</label>
-        <label class="check"><input type="radio" name="agent_modus" value="direkt" {{ 'checked' if settings.get('agent_modus') == 'direkt' }}> Direkt: Agenten dürfen selbst buchen</label></span></div>
     </div>
-    <div class="field wide"><span class="lbl">Mehrwertsteuer</span>
-      <div class="form four" style="margin-top:4px">
+    {{ errors() }}<div class="formfoot"><span class="small muted">Gilt für neue Rechnungen; ausgestellte bleiben eingefroren.</span><button class="btn primary" type="submit">Speichern</button></div>
+  </div>
+</form>
+</section>
+
+<section data-tab="buchhaltung" id="buchhaltung">
+<form class="panel" hx-post="/einstellungen" hx-target="find .errors">
+  <input type="hidden" name="_tab" value="buchhaltung">
+  <header><h2>Mehrwertsteuer</h2></header>
+  <div class="body">
+    <div class="field wide">
+      <div class="form four">
         <div class="field"><label for="mw-m">Methode</label><select class="input" id="mw-m" name="mwst_methode" style="width:100%">{% for k, l in [("keine", "nicht MWST-pflichtig"), ("effektiv", "effektive Methode"), ("saldo", "Saldosteuersatz")] %}<option value="{{ k }}" {{ 'selected' if vat.methode == k }}>{{ l }}</option>{% endfor %}</select></div>
         <div class="field"><label for="mw-p">Abrechnung</label><select class="input" id="mw-p" name="mwst_periode" style="width:100%"><option value="">Standard der Methode</option><option value="quartal" {{ 'selected' if vat.periode == 'quartal' }}>quartalsweise</option><option value="semester" {{ 'selected' if vat.periode == 'semester' }}>halbjährlich</option></select></div>
         <div class="field"><label for="mw-s">Saldosteuersatz %</label><input class="input num" id="mw-s" name="mwst_saldosteuersatz" value="{{ vat.saldosteuersatz if vat.saldosteuersatz|float else '' }}" placeholder="nur Saldo-Methode"></div>
@@ -38,18 +52,21 @@
         <div class="field"><span class="lbl">Konten</span><span class="small muted">Vorsteuer {{ vat.konten.vorsteuer }}/{{ vat.konten.vorsteuer_inv }} · Umsatzsteuer {{ vat.konten.umsatzsteuer }} · Abrechnung {{ vat.konten.abrechnung }}{{ ' · Saldosteuer ' ~ vat.konten.saldosteuer if vat.methode == 'saldo' }}</span></div>
       </div>
     </div>
-    <details><summary class="lbl" style="cursor:pointer">Systemkonten</summary>
-      <div class="form four" style="margin-top:10px">
-        {% for role, label in [("bank","Bank"),("debitoren","Debitoren"),("ertrag","Standard-Ertrag"),("gutschrift","Erlösminderung"),("gewinnvortrag","Gewinnvortrag"),("jahresergebnis","Jahresergebnis"),("dividende","Dividende"),("reserve","Gesetzliche Reserve")] %}
-        <div class="field"><label>{{ label }}</label><input class="input" name="k_{{ role }}" list="konten" value="{{ settings.konto(role) }}"></div>
-        {% endfor %}
-      </div>
-    </details>
-    {{ errors() }}<div class="formfoot"><span class="small muted">Gilt für neue Rechnungen; ausgestellte bleiben eingefroren.</span><button class="btn primary" type="submit">Speichern</button></div>
+  </div>
+  <header style="border-top:1px solid var(--rule)"><h2>Systemkonten</h2><span class="hint">Konten, auf die aeradex selbst bucht</span></header>
+  <div class="body">
+    <div class="form four">
+      {% for role, label in [("bank","Bank"),("debitoren","Debitoren"),("ertrag","Standard-Ertrag"),("gutschrift","Erlösminderung"),("gewinnvortrag","Gewinnvortrag"),("jahresergebnis","Jahresergebnis"),("dividende","Dividende"),("reserve","Gesetzliche Reserve")] %}
+      <div class="field"><label>{{ label }}</label><input class="input" name="k_{{ role }}" list="konten" value="{{ settings.konto(role) }}"></div>
+      {% endfor %}
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Gilt für neue Buchungen.</span><button class="btn primary" type="submit">Speichern</button></div>
   </div>
 </form>
+</section>
 
-<form class="panel" id="lohn" hx-post="/einstellungen/lohn" hx-target="find .errors">
+<section data-tab="lohn" id="lohn">
+<form class="panel" hx-post="/einstellungen/lohn" hx-target="find .errors">
   <header><h2>Lohn: Sätze und Buchung</h2><span class="hint">in Prozent; an Ausgleichskasse, UVG- und KTG-Police anpassen</span></header>
   <div class="body">
     <span class="lbl">Arbeitnehmer-Abzüge</span>
@@ -72,6 +89,19 @@
     <form class="actions" hx-post="/lohn/qst-import" hx-target="find .errors"><label>Kanton <select class="input" name="kanton">{% for k in kantone %}<option>{{ k }}</option>{% endfor %}<option value="ALLE">Alle Kantone</option></select></label> <label>Jahr <input class="input" name="jahr" type="number" min="2025" max="2099" value="{{ today().year }}" required></label> <button class="btn" type="submit">Jetzt laden</button>{{ errors() }}</form>
   </div>
 </details>
+</section>
+
+<section data-tab="agent" id="agent">
+<form class="panel" hx-post="/einstellungen" hx-target="find .errors">
+  <input type="hidden" name="_tab" value="agent">
+  <header><h2>Was Agenten dürfen</h2></header>
+  <div class="body">
+    <div class="field wide">
+      <span class="actions"><label class="check"><input type="radio" name="agent_modus" value="vorschlag" {{ 'checked' if (settings.get('agent_modus') or 'vorschlag') == 'vorschlag' }}> Vorschlag: Agenten schlagen freie Buchungen nur vor, du gibst frei</label>
+        <label class="check"><input type="radio" name="agent_modus" value="direkt" {{ 'checked' if settings.get('agent_modus') == 'direkt' }}> Direkt: Agenten dürfen selbst buchen</label></span></div>
+    {{ errors() }}<div class="formfoot"><span></span><button class="btn primary" type="submit">Speichern</button></div>
+  </div>
+</form>
 
 <div class="panel">
   <header><h2>Agent im Seitenpanel</h2>{% if cred.ok %}<span class="pill ok">bereit · {{ cred.quelle }}</span>{% else %}<span class="pill warn">nicht bereit</span>{% endif %}</header>
@@ -90,19 +120,30 @@
 </div>
 
 <div class="panel" id="jev">
-  <header><h2>Jev (TypeSafe) für Bank-Kontierung</h2>{% if jev.bereit %}<span class="pill ok">eingeschaltet</span>{% elif jev.aktiv %}<span class="pill warn">TYPESAFE_API_KEY fehlt</span>{% else %}<span class="pill muted">aus</span>{% endif %}</header>
+  <header><h2>Jev (TypeSafe) für Bank-Kontierung</h2>{% if jev.bereit %}<span class="pill ok">eingeschaltet</span>{% elif jev.aktiv %}<span class="pill warn">API-Schlüssel fehlt</span>{% else %}<span class="pill muted">aus</span>{% endif %}</header>
   <form class="body" hx-post="/einstellungen/jev" hx-target="find .errors">
     <p class="small">Schlägt für offene Bankbewegungen das Gegenkonto vor, mit Konfidenz. Ab der Schwelle entsteht ein Vorschlag (Buchhaltung › Vorschläge), darunter nur ein Hinweis; gebucht wird nie automatisch. An TypeSafe (USA) gehen pro Bewegung: Gegenpartei, Mitteilung, Betrag, der Kontenplan und bis zu fünf frühere Buchungen derselben Gegenpartei. Bewegungen von Mitarbeitenden werden nie gesendet.</p>
     <div class="form three">
       <label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if jev.aktiv }}> für dieses Buch einschalten</label>
       <div class="field"><label for="jv-s">Schwelle (Konfidenz 0.3–0.99)</label><input class="input num" id="jv-s" name="schwelle" value="{{ jev.schwelle }}"></div>
-      <div class="field"><span class="lbl">API-Schlüssel</span><span class="small muted">{{ 'gesetzt' if jev.schluessel else 'TYPESAFE_API_KEY in der Umgebung von aeradex setzen' }}</span></div>
     </div>
     {{ errors() }}<div class="formfoot"><span></span><button class="btn primary" type="submit">Speichern</button></div>
   </form>
+  <form class="body" id="jev-schluessel" hx-post="/einstellungen/jev/schluessel" hx-target="find .errors" style="border-top:1px solid var(--rule)">
+    <div class="field wide"><span class="lbl">API-Schlüssel</span>
+      <span class="small">{% if jev.schluessel %}<span class="pill ok">gesetzt</span> {% if jev.schluessel_ende %}<code>…{{ jev.schluessel_ende }}</code> {% endif %}<span class="muted">{{ 'aus der Umgebung (TYPESAFE_API_KEY)' if jev.schluessel_quelle == 'Umgebung' else 'gespeichert in ' ~ jev_datei }}</span>{% else %}<span class="pill warn">fehlt</span> <span class="muted">Early-Access-Schlüssel von console.typesafe.ai</span>{% endif %}</span></div>
+    {% if jev.schluessel_quelle == 'Umgebung' %}<p class="small muted">TYPESAFE_API_KEY ist in der Umgebung von aeradex gesetzt und hat Vorrang vor einem hier gespeicherten Schlüssel.</p>{% endif %}
+    <div class="form">
+      <div class="field"><label for="jv-k">{{ 'Neuer Schlüssel' if jev.schluessel else 'Schlüssel' }}</label><input class="input" id="jv-k" type="password" name="schluessel" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <p class="small muted">Wird nicht im Buch gespeichert (das Buch ist ein git-Repository, das weitergegeben werden kann), sondern in <code>{{ jev_datei }}</code> mit Dateirechten 600. Der Schlüssel gilt für alle Bücher auf diesem Rechner.</p>
+    {{ errors() }}<div class="formfoot"><span>{% if jev.schluessel_datei %}<button class="btn small" type="submit" name="entfernen" value="1">Entfernen</button>{% endif %}</span><button class="btn primary" type="submit">Schlüssel speichern</button></div>
+  </form>
 </div>
+</section>
 
-<div class="panel" id="plugins">
+<section data-tab="plugins" id="plugins">
+<div class="panel">
   <header><h2>Plugins</h2><span class="hint">Erweiterungen der Community · <code>pip install aeradex-…</code></span></header>
   {% if plugin_rows %}
   <div class="tablewrap"><table class="ledger">
@@ -138,6 +179,14 @@
   </table></div>
   <div class="body"><p class="small muted">Installiert heisst nicht eingeschaltet: ein Plugin wirkt erst in einem Buch, das es einschaltet, und schreibt nur über die Prüfung von aeradex. Plugins sind Programmcode — nur aus vertrauenswürdigen Quellen installieren.</p></div>
 </div>
+</section>
+
+<section data-tab="buch" id="buch">
+<div class="panel" id="pruefung">
+  <header><h2>Prüfung des Buchs</h2><span class="hint">aeradex check</span></header>
+  {% if issues %}<ul class="todo">{% for i in issues %}<li><a href="#pruefung"><span class="stripe {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}"></span><div><div class="t">{{ i.message }}</div><div class="d">{{ i.where }}</div></div><span class="pill {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}">{{ i.level }}</span></a></li>{% endfor %}</ul>
+  {% else %}<div class="empty">✓ Keine Fehler, Warnungen oder Hinweise.</div>{% endif %}
+</div>
 
 <div class="panel" id="weitergeben">
   <header><h2>Buch weitergeben</h2><span class="hint">.aeradex-Datei für einen anderen aeradex-Nutzer · Import: <code>aeradex import-buch DATEI ORDNER</code></span></header>
@@ -156,10 +205,5 @@
     </div>
   </form>
 </div>
-
-<div class="panel" id="pruefung">
-  <header><h2>Prüfung des Buchs</h2><span class="hint">aeradex check</span></header>
-  {% if issues %}<ul class="todo">{% for i in issues %}<li><a href="#pruefung"><span class="stripe {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}"></span><div><div class="t">{{ i.message }}</div><div class="d">{{ i.where }}</div></div><span class="pill {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}">{{ i.level }}</span></a></li>{% endfor %}</ul>
-  {% else %}<div class="empty">✓ Keine Fehler, Warnungen oder Hinweise.</div>{% endif %}
-</div>
+</section>
 {% endblock %}
