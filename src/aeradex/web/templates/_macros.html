@@ -24,19 +24,27 @@
   </form>
   {% endif %}
 {% endmacro %}
-{% macro eingang_table(drafts, book, dv, show_art=false) %}
+{% macro eingang_table(drafts, book, dv, show_art=false, vat_of=none) %}
   {% set review = {"kreditor": "/kreditoren/neu?entwurf=", "quittung": "/eingang/quittung?entwurf=", "debitor": "/debitoren/extern?entwurf="} %}
   {% set artlabel = {"kreditor": "Lieferantenrechnung", "quittung": "Quittung", "debitor": "eigene Rechnung"} %}
+  {% set bulk = vat_of is not none %}{% set ready = drafts|selectattr("status", "equalto", "bereit")|list %}
+  {% if bulk and ready %}<form id="freigabe" class="body bulkbar" hx-post="/eingang/freigeben" hx-target="find .errors" hx-indicator="find .busy">
+    <span class="small muted">{{ ready|length }} bereit · angehakte werden mit den Werten aus der Liste gebucht</span>
+    <span class="actions"><span class="busy small muted htmx-indicator">Buche …</span><button class="btn primary" type="submit">Ausgewählte freigeben</button></span>
+    {{ errors() }}
+  </form>{% endif %}
   <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Entwurf</th>{% if show_art %}<th>Art</th>{% endif %}<th>{{ 'Kunde / Lieferant' if show_art else ('Kunde' if drafts and drafts[0].art == 'debitor' else 'Lieferant') }}</th><th>Rg.-Nr.</th><th class="right">Betrag</th><th>Konto</th><th>Status</th><th class="right"></th></tr></thead>
+    <thead><tr>{% if bulk %}<th>{% if ready %}<input type="checkbox" aria-label="Alle bereiten Entwürfe wählen" checked onchange="document.querySelectorAll('input[form=freigabe][name=entwurf]').forEach(c => c.checked = this.checked)">{% endif %}</th>{% endif %}<th>Entwurf</th>{% if show_art %}<th>Art</th>{% endif %}<th>{{ 'Kunde / Lieferant' if show_art else ('Kunde' if drafts and drafts[0].art == 'debitor' else 'Lieferant') }}</th><th>Rg.-Nr.</th><th class="right">Betrag</th><th>Konto</th>{% if bulk %}<th>MWST</th>{% endif %}<th>Status</th><th class="right"></th></tr></thead>
     <tbody>{% for d in drafts %}{% set k = d.konto or {} %}{% set z = d.zahlung or {} %}
       <tr class="row">
+        {% if bulk %}<td>{% if d.status == 'bereit' %}<input type="checkbox" form="freigabe" name="entwurf" value="{{ d.id }}" checked aria-label="{{ d.id }} freigeben">{% endif %}</td>{% endif %}
         <td><span class="beleg">{{ d.id }}</span><br><a class="small link" href="/datei/{{ d.datei|urlq }}" target="_blank">{{ d.datei.split('/')[-1] }}</a></td>
         {% if show_art %}<td><form hx-post="/eingang/{{ d.id }}/art" hx-target="find .errors" hx-trigger="change"><select class="input small" name="art" aria-label="Belegart">{% for a, l in artlabel.items() %}<option value="{{ a }}" {{ 'selected' if a == d.art }}>{{ l }}</option>{% endfor %}</select>{{ errors() }}</form></td>{% endif %}
         <td>{{ dv(d, 'name') or '—' }}</td><td class="small">{{ dv(d, 'rechnungsnr') }}</td>
         <td class="right num">{% if dv(d, 'waehrung') and dv(d, 'waehrung') != 'CHF' %}<span class="small muted">{{ dv(d, 'waehrung') }}</span> {% endif %}{{ dv(d, 'betrag')|chf if dv(d, 'betrag') else '—' }}</td>
         <td>{% if k.wert %}<span class="acc">{{ k.wert }}</span> <span class="small muted">{{ book.accounts[k.wert].name if k.wert in book.accounts }}</span><br><span class="pill {{ 'info' if k.quelle.startswith('Agent') else 'muted' }}" title="{{ k.begruendung or '' }}">{{ k.quelle }}</span>{% else %}—{% endif %}
           {% if d.art == 'quittung' and z %}<div class="small muted" title="{{ z.text or '' }}">{{ {'bank': '↔ Bankbewegung', 'buchung': '↔ an Beleg ' ~ (z.beleg or ''), 'konto': 'bezahlt über ' ~ (z.konto or '')}[z.art] }}</div>{% endif %}</td>
+        {% if bulk %}<td class="small">{% for t in vat_of(d) %}<span class="num">{{ t.code }}</span>{% if t.betrag %} {{ t.betrag|chf }}{% endif %}{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">keine</span>{% endfor %}</td>{% endif %}
         <td>{% if d.status == 'bereit' %}<span class="pill ok">bereit</span>{% elif d.status == 'agent' %}<span class="pill info">Agent arbeitet …</span>{% elif d.status == 'konflikt' %}<span class="pill red">Name ≠ IBAN</span>{% elif d.status == 'unvollstaendig' %}<span class="pill warn">unvollständig</span>{% else %}<span class="pill warn">Konto offen</span>{% endif %}
           {% set last = (d.hinweise or [])|reject("equalto", d.konflikt)|list %}{% if d.konflikt %}<div class="small muted" title="{{ d.konflikt }}">Rechnung nennt einen anderen Namen als der Inhaber der IBAN</div>{% elif last %}<div class="small muted" title="{{ last|join(' · ') }}">{{ last[-1]|truncate(70) }}</div>{% endif %}</td>
         <td class="right"><span class="actions">

@@ -1376,6 +1376,8 @@ async def bank_aktion(ui: UI, request: Request):
         call = (api.bank_ignore, book, tid, f.get("grund", ""))
     elif aktion == "regel":
         call = (api.bank_rule_from, book, tid)
+    elif aktion == "loesen":
+        call = (api.bank_unlink, book, tid)
     elif aktion == "uebernehmen":
         call = (api.bank_accept, book, tid, f.get("art", ""), f.get("ziel", ""))
     else:
@@ -1549,7 +1551,7 @@ async def kreditoren_page(ui: UI, request: Request):
     return ui.render(request, "kreditoren.html", book=book, rows=rows, status=status, op=kred.open_payables(book),
                      default_date=_next_workday().isoformat(), drafts=drafts,
                      auto_agent=erfassung.agent_auto(book), jev=jev.config(book),
-                     ocr=bool(erfassung.ocr_languages()), dv=erfassung.value)
+                     ocr=bool(erfassung.ocr_languages()), dv=erfassung.value, vat_of=draft_vat)
 
 
 # ---------- Kreditoren drafts: upload → read → account (supplier, Jev, agent) ----------
@@ -1652,6 +1654,45 @@ async def eingang_entwurf(ui: UI, request: Request):
         f = await request.form()
         return await act(request, api.bill_draft_update, back, ui.book(), draft_id, "Hand", art=f.get("art", ""))
     return fail("Unbekannte Aktion")
+
+
+async def eingang_freigeben(ui: UI, request: Request):
+    """«Freigeben» for the ticked drafts in the list: each is booked as it stands; one that still needs
+    a person (warning, new supplier) stays and says why."""
+    f = await request.form()
+    ids = f.getlist("entwurf")
+    back = request.headers.get("hx-current-url") or "/kreditoren?status=entwurf"
+    if not ids:
+        return fail("Keinen Entwurf gewählt.")
+    booked, problems = [], []
+    for draft_id in ids:
+        try:
+            await asyncio.to_thread(api.bill_draft_approve, ui.book(), draft_id)
+            booked.append(draft_id)
+        except (BookError, FormatError, ValueError) as exc:
+            problems.append(str(exc))
+    if not booked:
+        return fail(" · ".join(problems))
+    msg = f"{len(booked)} freigegeben ({', '.join(booked)})" + (f" · offen: {' · '.join(problems)}" if problems else "")
+    return done(msg, back, "warn" if problems else "ok")
+
+
+def draft_vat(meta: dict) -> list[dict]:
+    """The VAT a draft would book, per code: what the list shows before «Freigeben»."""
+    from .. import erfassung, mwst as m
+    v = erfassung.form_values(meta)
+    lines = [(p.get("mwst") or "", p.get("betrag")) for p in v["positionen"]] or [(v["mwst"], v["betrag"])]
+    out: dict[str, Decimal] = {}
+    for code, gross in lines:
+        if not code:
+            continue
+        c = m.CODES.get(code)
+        try:
+            tax = m.tax_from_gross(parse_amount(str(gross)), c.rate) if c and c.kind != "bezug" else Decimal(0)
+        except (FormatError, InvalidOperation, TypeError):
+            tax = Decimal(0)
+        out[code] = out.get(code, Decimal(0)) + tax
+    return [{"code": k, "betrag": t} for k, t in out.items()]
 
 
 async def quittung_pruefen(ui: UI, request: Request):
@@ -2247,6 +2288,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/kreditoren/einlesen", h(eingang_einlesen), methods=["POST"]),
         Route("/kreditoren/entwurf/{id:str}/{aktion:str}", h(eingang_entwurf), methods=["POST"]),
         Route("/eingang/einlesen", h(eingang_einlesen), methods=["POST"]),
+        Route("/eingang/freigeben", h(eingang_freigeben), methods=["POST"]),
         Route("/eingang/quittung", h(quittung_pruefen)),
         Route("/eingang/quittung", h(quittung_buchen), methods=["POST"]),
         Route("/eingang/{id:str}/{aktion:str}", h(eingang_entwurf), methods=["POST"]),

@@ -21,7 +21,8 @@
         <td class="right num">{{ t.Betrag|chf(sign=true) }}</td>
         <td>{% if t.Status == 'offen' %}<a class="pill warn" href="/bank#karte-{{ t.ID }}">offen · abgleichen</a>{% elif t.Status == 'ignoriert' %}<span class="pill muted">ignoriert</span>{% else %}<a class="pill ok" href="/journal?jahr={{ t.Datum[:4] }}&monat=alle&q={{ t.Beleg|urlq }}">{{ t.Status }} · {{ t.Beleg }}</a>{% if t.Hinweis and t.Hinweis.startswith('Regel ') %} <span class="pill muted">{{ t.Hinweis }}</span>{% endif %}{% endif %}</td>
         <td class="right">{% if false %}{% elif t.Status == 'gebucht' and t.Gegenpartei and not (t.Hinweis or '').startswith('Regel ') %}
-          <form hx-post="/bank/{{ t.ID }}/regel" hx-target="find .errors" title="Künftige Bewegungen von {{ t.Gegenpartei }} beim Import gleich buchen"><button class="btn small ghost" type="submit">Immer so buchen</button>{{ errors() }}</form>{% endif %}</td>
+          <form hx-post="/bank/{{ t.ID }}/regel" hx-target="find .errors" title="Künftige Bewegungen von {{ t.Gegenpartei }} beim Import gleich buchen"><button class="btn small ghost" type="submit">Immer so buchen</button>{{ errors() }}</form>{% endif %}
+          {% if t.Status != 'offen' %}<form hx-post="/bank/{{ t.ID }}/loesen" hx-target="find .errors" hx-confirm="Abgleich lösen? Die Bewegung wird wieder offen.{% if t.Beleg %} Beleg {{ t.Beleg }} bleibt im Journal: dort ändern oder stornieren, dann neu abgleichen.{% endif %}"><button class="btn small ghost" type="submit" title="Bewegung wieder öffnen">Abgleich lösen</button>{{ errors() }}</form>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>

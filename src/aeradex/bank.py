@@ -511,6 +511,24 @@ def ignore(book: Book, tid: str, grund: str) -> list[Path]:
     return _set(book, tid, Status="ignoriert", Text=f"{tx['Text']} [ignoriert: {grund.strip()}]"[:240])
 
 
+_IGNORED = re.compile(r"\s*\[ignoriert: [^\]]*\]$")
+
+
+def unlink(book: Book, tid: str) -> list[Path]:
+    """Undo a reconciliation: the movement is open again and can be matched anew. A booking made with it
+    stays in the journal (correct it there or reverse it); an ignored movement gets its text back."""
+    from .journal import lock_problem
+    tx = find(book, tid)
+    if tx["Status"] == "offen":
+        raise BookError(f"Bankbewegung {tid} ist schon offen")
+    problem = lock_problem(book, parse_date(tx["Datum"], "datum"))
+    if problem:
+        raise BookError(problem)
+    was = f"{tx['Status']}{' · Beleg ' + tx['Beleg'] if tx.get('Beleg') else ''}"
+    return _set(book, tid, Status="offen", Beleg="", Text=_IGNORED.sub("", tx["Text"]),
+                Hinweis=f"Abgleich gelöst (war {was})")
+
+
 # ---------- counterparty: from its own column, or read from the booking text ----------
 
 _PARTY_PREFIX = re.compile(

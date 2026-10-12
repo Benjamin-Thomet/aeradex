@@ -875,6 +875,10 @@ def run_agent(root: Path, draft_id: str) -> str:
             said.append(ev.get("text", ""))
     after = draft(Book(root), draft_id)
     if after.get("status") == "agent":
-        api.bill_draft_mark(Book(root), draft_id, "unsicher",
-                            "Agent hat kein Konto gesetzt" + (f": {said[-1][:200]}" if said else ""))
+        if (after.get("konto") or {}).get("wert"):
+            # asked again for a draft it had already accounted: the account stands, only the mark goes
+            api.bill_draft_mark(Book(root), draft_id, status(after), "Agent: Konto bleibt")
+        else:
+            api.bill_draft_mark(Book(root), draft_id, "unsicher",
+                                "Agent hat kein Konto gesetzt" + (f": {said[-1][:200]}" if said else ""))
     return said[-1] if said else ""

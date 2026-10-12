@@ -1236,6 +1236,16 @@ def bank_ignore(book: Book, id: str, grund: str) -> dict:
     return _done(book, f"Bankbewegung {id} ignoriert: {grund}", touched)
 
 
+def bank_unlink(book: Book, id: str) -> dict:
+    """Undo a reconciliation (gebucht, abgeglichen or ignoriert → offen); the booking stays in the journal."""
+    _guard(book)
+    from . import bank
+    beleg = bank.find(book, id).get("Beleg")
+    touched = bank.unlink(book, id)
+    return _done(book, f"Abgleich von Bankbewegung {id} gelöst" + (f" — Beleg {beleg} bleibt im Journal, dort "
+                                                                  "ändern oder stornieren" if beleg else ""), touched)
+
+
 def bank_suggest(book: Book, ids: list[str] | None = None, schwelle: float | None = None) -> dict:
     """Jev (TypeSafe): counter-account proposals for open bank transactions."""
     _guard(book)
@@ -1401,7 +1411,7 @@ payslip_inputs = _locked(payslip_inputs)
 
 
 for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_void", "payment_run", "payment_run_book",
-              "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore", "bank_suggest", "bank_accept",
+              "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore", "bank_unlink", "bank_suggest", "bank_accept",
               "bank_accept_all", "bank_format_propose", "bank_format_confirm", "card_statement_propose"):
     globals()[_name] = _locked(globals()[_name])
 
@@ -1526,6 +1536,40 @@ def bill_draft_agent(book: Book, entwurf: str) -> dict:
     meta = erfassung.draft(Book(book.root), entwurf)
     return jsonable({"ok": True, "entwurf": {k: v for k, v in meta.items() if not k.startswith("_")},
                      "agent": said})
+
+
+def bill_draft_approve(book: Book, entwurf: str) -> dict:
+    """Book a ready draft as it stands, with the values its review page would show («Freigeben» from the list).
+    Refused when a person still has to look: not «bereit», a warning (IBAN), or a supplier not yet on file."""
+    from . import erfassung, kreditoren as kred
+    meta = erfassung.draft(book, entwurf)
+    if meta.get("status") != "bereit":
+        raise BookError(f"{entwurf} ist nicht bereit — einzeln prüfen")
+    v = erfassung.form_values(meta)
+    cur = (v["waehrung"] or "CHF").upper()
+    if meta.get("art") == "quittung":
+        pay = dict(meta.get("zahlung") or {})
+        if pay.get("art") not in ("bank", "buchung", "spesen"):
+            pay = {"art": "konto", "konto": pay.get("konto") or book.settings.konto("bank")}
+        text = f"{v['name']} {v['rechnungsnr']}".strip() or "Quittung"
+        return receipt_book(book, entwurf, v["datum"] or None, text, v["betrag"], v["konto"], v["mwst"],
+                            v["positionen"] or None, "" if cur == "CHF" else cur, None, pay,
+                            v["leistung_von"] or None, v["leistung_bis"] or None)
+    if meta.get("art") != "kreditor":
+        raise BookError(f"{entwurf}: nur Lieferantenrechnungen und Quittungen lassen sich aus der Liste freigeben")
+    warn = erfassung.warnings(book, meta)
+    if warn:
+        raise BookError(f"{entwurf}: {warn[0]} — einzeln prüfen")
+    if v["lieferant"] not in kred.suppliers(book):
+        raise BookError(f"{entwurf}: Lieferant «{v['name'] or '?'}» ist neu — einzeln prüfen und anlegen")
+    fields = {k: v[k] for k in ("datum", "faellig", "rechnungsnr", "referenz", "referenz_typ", "mitteilung", "iban",
+                                "leistung_von", "leistung_bis", "konto") if v[k]}
+    fields["mwst"] = v["mwst"] or ""
+    if cur != "CHF":
+        fields["waehrung"] = cur
+    if v["positionen"]:
+        fields["positionen"] = v["positionen"]
+    return bill_add(book, v["lieferant"], v["betrag"], entwurf=entwurf, **fields)
 
 
 _bill_draft_store = _locked(_bill_draft_store)

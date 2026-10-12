@@ -146,6 +146,14 @@ class DossierTeil:
 
 
 @dataclass
+class Dienst:
+    """A background service the local UI (`aeradex ui`) starts with itself and stops with itself, e.g. a call
+    gateway or a chat bot. `args` are aeradex CLI arguments after `--buch <buch>`."""
+    name: str
+    args: list[str]
+
+
+@dataclass
 class Finding:
     """A `check` result from a plugin rule. level: fehler | warnung | hinweis."""
     level: str
@@ -203,6 +211,10 @@ class Spec:
     @hookspec
     def aeradex_dossier_teile(self) -> list[DossierTeil]:
         """Parts for the Abschlussunterlagen of a year."""
+
+    @hookspec
+    def aeradex_dienste(self, book: Book) -> list[Dienst]:
+        """Background services the local UI starts for this book (`aeradex ui`, not the server mode)."""
 
 
 # ---------- discovery ----------
@@ -406,6 +418,18 @@ def pages(book: Book | None) -> list[tuple[str, Page]]:
         try:
             for page in impl.function() or []:
                 out.append((impl.plugin_name, page))
+        except Exception:
+            continue
+    return out
+
+
+def dienste(book: Book) -> list[Dienst]:
+    """Services of the plugins this book enables; a broken plugin is skipped."""
+    out = []
+    for impl in manager(book).hook.aeradex_dienste.get_hookimpls():
+        try:
+            kwargs = {"book": book} if "book" in impl.argnames else {}    # pluggy: an impl may take fewer args
+            out += [d for d in impl.function(**kwargs) or [] if isinstance(d, Dienst)]
         except Exception:
             continue
     return out

@@ -527,10 +527,52 @@ def create_app(root: Path, token: str | None = None, auth_dir: Path | None = Non
             yield
         finally:
             task.cancel()
+            # here, not after uvicorn.run(): on SIGTERM uvicorn re-raises the signal once shut down
+            await asyncio.to_thread(stop_services)
 
     app = Starlette(routes=routes, middleware=[Middleware(SessionMiddleware, ui=ui)], lifespan=lifespan)
     app.state.ui = ui
     return app
+
+
+_services: list = []          # (Dienst, Popen) started by run(); stopped on exit and before a restart
+
+
+def start_services(root: Path) -> None:
+    """Start the background services the book's plugins ask for (plugins.Dienst), each as its own
+    `aeradex --buch <root> …` process with its output in .aeradex/lokal/dienste/<name>.log."""
+    import subprocess
+    import sys
+
+    from .. import plugins
+    from ..storage import LOCAL
+    logs = root / LOCAL / "dienste"
+    for d in plugins.dienste(Book(root)):
+        logs.mkdir(parents=True, exist_ok=True)
+        log = open(logs / f"{d.name}.log", "ab")
+        try:
+            proc = subprocess.Popen([sys.executable, "-m", "aeradex", "--buch", str(root), *d.args],
+                                    stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        except OSError as exc:
+            print(f"Dienst {d.name} startet nicht: {exc}")
+            continue
+        finally:
+            log.close()
+        _services.append((d, proc))
+        print(f"Dienst {d.name} gestartet (aeradex {' '.join(d.args)}) · Log: {logs / (d.name + '.log')}")
+
+
+def stop_services(timeout: float = 5.0) -> None:
+    import subprocess
+    for _d, proc in _services:
+        if proc.poll() is None:
+            proc.terminate()
+    for _d, proc in _services:
+        try:
+            proc.wait(timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    _services.clear()
 
 
 def restart_later(ui: "UI", delay: float = 0.8) -> None:
@@ -541,6 +583,7 @@ def restart_later(ui: "UI", delay: float = 0.8) -> None:
     def go():
         os.environ["AERADEX_UI_TOKEN"] = ui.token
         os.environ["AERADEX_UI_RESTART"] = "1"
+        stop_services()                       # the new process starts them again (with new plugins)
         # Re-run as a module: sys.argv[0] may be the `aeradex` script or, with `python -m aeradex`,
         # the path of __main__.py, which cannot be executed on its own (relative imports).
         os.execv(sys.executable, [sys.executable, "-m", "aeradex", *sys.argv[1:]])
@@ -561,7 +604,12 @@ def run(root: Path, port: int = 5151, open_browser: bool = True) -> None:
     print(f"aeradex läuft für {ui.book().settings.firma}: {url}\n(Beenden mit Ctrl+C)")
     if open_browser and not restarted:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    start_services(root)
+    try:
+        # an open tab keeps its live-refresh stream (SSE) open forever: without a limit Ctrl+C would wait for it
+        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=2)
+    finally:
+        stop_services()
 
 
 def run_server(root: Path, host: str = "127.0.0.1", port: int = 8080, config: Path | None = None,

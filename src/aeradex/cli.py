@@ -433,6 +433,8 @@ def build_parser() -> argparse.ArgumentParser:
     c = bs.add_parser("ignorieren")
     c.add_argument("id")
     c.add_argument("--grund", required=True)
+    c = bs.add_parser("loesen", help="Abgleich rückgängig: Bewegung wieder offen, die Buchung bleibt im Journal")
+    c.add_argument("id")
     bs.add_parser("abstimmung", help="Schlusssaldo Bank gegen Buchhaltung")
     c = bs.add_parser("vorschlaege", help="was die offenen Bewegungen wahrscheinlich sind (Rechnung, Kreditor, Quittung …)")
     c.add_argument("ids", nargs="*", help="nur diese Bewegungen")
@@ -914,6 +916,8 @@ def dispatch(a, book_path: Path | None):
             return api.bank_link(b, a.id, a.beleg)
         if a.sub == "ignorieren":
             return api.bank_ignore(b, a.id, a.grund)
+        if a.sub == "loesen":
+            return api.bank_unlink(b, a.id)
         if a.sub == "kontieren":
             return api.bank_suggest(b, a.ids or None, a.schwelle)
         if a.sub == "vorschlaege":

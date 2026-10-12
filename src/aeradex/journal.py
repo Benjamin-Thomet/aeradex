@@ -292,7 +292,8 @@ def plan_amend(book: Book, beleg: str, datum, text: str, zeilen: list[dict]) -> 
             konto = tx["Konto"]
             if _bank_effect(old, konto) != _bank_effect(new, konto):
                 raise BookError(f"Beleg {beleg} ist mit der Bankbewegung vom {tx['Datum']} abgeglichen — "
-                                f"Betrag auf {konto} muss gleich bleiben")
+                                f"Betrag auf {konto} muss gleich bleiben (oder zuerst unter Bank › Bewegungen "
+                                f"den Abgleich lösen)")
     return old, new
 
 
