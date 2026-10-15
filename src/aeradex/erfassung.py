@@ -485,9 +485,8 @@ def _jev(book: Book, meta: dict, text: str) -> None:
         return
     fields = meta["felder"]
     found_amounts, found_dates = jev.bill_candidates(text)
-    ask = set()
-    if not (meta.get("konto") or {}).get("wert"):
-        ask.add("konto")
+    # the account always: with a known supplier as a second opinion (the same shop may once sell a machine)
+    ask = {"konto"}
     # a single candidate the reader already took needs no second opinion
     if found_amounts and (not value(meta, "betrag") or len(found_amounts) > 1):
         ask.add("betrag")
@@ -504,7 +503,15 @@ def _jev(book: Book, meta: dict, text: str) -> None:
         return
     sure = lambda r: r["konfidenz"] >= cfg["schwelle"]  # noqa: E731
     k = res.get("konto")
-    if k and sure(k):
+    have = (meta.get("konto") or {}).get("wert")
+    if k and have:
+        if sure(k) and k["wert"] != have:            # never overrules the supplier's account, only warns
+            name = book.accounts[k["wert"]].name if k["wert"] in book.accounts else ""
+            meta.setdefault("abweichungen", []).append(
+                {"feld": "konto", "jev": k["wert"], "gelesen": have,
+                 "text": f"Jev hält Konto {k['wert']} {name} für richtig ({k['konfidenz']:.2f}), eingesetzt ist "
+                         f"{have} ({meta['konto'].get('quelle')}): prüfen"})
+    elif k and sure(k):
         meta["konto"] = {"wert": k["wert"], "quelle": f"Jev {k['konfidenz']:.2f}", "konfidenz": round(k["konfidenz"], 3)}
     elif k:
         meta.setdefault("hinweise", []).append(
@@ -661,7 +668,8 @@ def update(book: Book, draft_id: str, quelle: str, konto: str = "", mwst: str | 
         if art == "debitor" or (meta.get("konto") or {}).get("quelle", "").startswith("Standard"):
             meta.pop("konto", None)
         meta.setdefault("hinweise", []).append(f"{quelle}: als {ARTEN[art]} eingeordnet")
-        kontieren(book, meta, "")
+        cache = text_cache(book, draft_id)
+        kontieren(book, meta, cache.read_text(encoding="utf-8") if cache.is_file() else "")
     if zahlkonto:
         acct = book.account(zahlkonto)
         if acct.klasse not in ("aktiv", "passiv"):
@@ -751,7 +759,9 @@ def warnings(book: Book, meta: dict) -> list[str]:
     from . import kreditoren as kred
     out = [meta["konflikt"]] if meta.get("konflikt") else []
     # Jev confidently picked another amount/date than the reader: stands until the field is changed
-    out += [a["text"] for a in meta.get("abweichungen") or [] if value(meta, a["feld"]) == a["gelesen"]]
+    def now(feld):
+        return (meta.get("konto") or {}).get("wert") if feld == "konto" else value(meta, feld)
+    out += [a["text"] for a in meta.get("abweichungen") or [] if now(a["feld"]) == a["gelesen"]]
     if meta.get("art") in ("quittung", "debitor"):
         return out
     iban = qr.normalize_iban(value(meta, "iban"))

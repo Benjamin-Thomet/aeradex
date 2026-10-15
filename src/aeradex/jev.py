@@ -292,7 +292,8 @@ def read_bill(book: Book, meta: dict, text: str, cfg: dict, ask: set[str]) -> di
             "instructions": ("Diese `rechnung` ist eine Lieferantenrechnung oder Quittung an eine Schweizer KMU. Auf "
                              "welches Konto gehört der Aufwand (bei Anschaffungen von Anlagen ein Aktivkonto)? Wenn "
                              "`fruehere_rechnungen_gleicher_lieferant` Einträge hat, ist das bisher verwendete Konto "
-                             "der stärkste Hinweis."),
+                             "der stärkste Hinweis, ausser diese Rechnung betrifft offensichtlich etwas anderes "
+                             "(z.B. eine Maschine, ein Fahrzeug oder eine andere Anschaffung statt Verbrauchsmaterial)."),
             "criteria": options}
     if "betrag" in ask and found_amounts:
         questions["rechnungsbetrag"] = {

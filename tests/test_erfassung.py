@@ -380,3 +380,31 @@ def test_a_very_sure_jev_overrules_the_reader_and_dates_are_no_amounts(book, mon
     assert any("gelesen war 2026-03-03" in h for h in d["hinweise"])
     assert not erfassung.warnings(Book(book.root), d)
     assert list(jev.bill_candidates("\n".join(lines))[0]) == ["308.10"]          # not «03.03» of a date
+
+
+def test_jev_second_opinion_on_a_known_suppliers_account(book, monkeypatch):
+    """Known supplier with its account: Jev is asked anyway; a confident other account never replaces the
+    supplier's, it warns and blocks approval from the list until the account is changed."""
+    api.supplier_add(book, name="Druckerei Beispiel AG", iban="CH93 0076 2011 6238 5295 7", konto="6600")
+    api.settings_update(book, jev={"aktiv": True, "schwelle": 0.7})
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    answer = {"choice": "1500", "confidence": 0.88}
+    sent = []
+
+    def fake(state, questions, model):
+        sent.append(questions)
+        return {"answers": {"aufwandkonto": answer}}
+    monkeypatch.setattr(jev, "system_one", fake)
+    text_pdf(book.root / "inbox" / "m.pdf")
+    d = api.bill_draft_create(Book(book.root), "inbox/m.pdf")["entwurf"]
+    assert "aufwandkonto" in sent[0] and d["konto"]["wert"] == "6600"
+    warn = erfassung.warnings(Book(book.root), d)
+    assert any("Jev hält Konto 1500" in w and "eingesetzt ist 6600" in w for w in warn)
+    with pytest.raises(BookError, match="Jev hält Konto 1500"):
+        api.bill_draft_approve(Book(book.root), d["id"])
+    erfassung.update(Book(book.root), d["id"], "Delia", konto="1500")          # changed: the warning is gone
+    assert not any("Jev hält Konto" in w for w in erfassung.warnings(Book(book.root), erfassung.draft(Book(book.root), d["id"])))
+    answer.update(choice="6600", confidence=0.95)                               # agrees: nothing to see
+    text_pdf(book.root / "inbox" / "n.pdf")
+    d = api.bill_draft_create(Book(book.root), "inbox/n.pdf")["entwurf"]
+    assert d["konto"]["wert"] == "6600" and not erfassung.warnings(Book(book.root), d)
