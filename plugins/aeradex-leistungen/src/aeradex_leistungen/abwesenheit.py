@@ -128,10 +128,12 @@ def workday(person: dict, d: date, hols: set[date]) -> bool:
     return not (start and d < start or end and d > end)
 
 
-def daily_target(person: dict) -> Decimal | None:
-    if person.get("stundenlohn") or not person.get("woche"):
+def daily_target(person: dict, d: date | None = None) -> Decimal | None:
+    """Target hours per workday: weekly hours ÷ 5; on day `d` those then in force (Pensum history)."""
+    if person.get("stundenlohn") or not (person.get("woche") or person.get("wochen")):
         return None
-    return Decimal(str(person["woche"])) / 5
+    hours = daten.week_hours(person, d)
+    return None if hours is None else hours / 5
 
 
 def on_day(book: Book, wer: str, d: date, rows: list[dict] | None = None) -> dict | None:
@@ -146,7 +148,7 @@ def day_hours(book: Book, person: dict, d: date, hols: set[date], rows: list[dic
     a = on_day(book, person["nummer"], d, rows)
     if a is None or not workday(person, d, hols):
         return {"stunden": ZERO, "soll_weniger": ZERO, "art": a["art"] if a else None, "anteil": a["anteil"] if a else ZERO}
-    per_day = daily_target(person) or ZERO
+    per_day = daily_target(person, d) or ZERO
     share = (per_day * a["anteil"]).quantize(Decimal("0.01"))
     kind = ARTEN[a["art"]]
     return {"stunden": share if kind == "zählt" else ZERO, "soll_weniger": share if kind == "unbezahlt" else ZERO,

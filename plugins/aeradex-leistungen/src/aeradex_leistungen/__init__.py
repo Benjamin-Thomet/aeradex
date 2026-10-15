@@ -291,6 +291,9 @@ def _run(book, a):
     if b == "satz":
         return w(book, f"Leistungen: Satz {a.wer or a.name}", daten.set_person, a.wer, a.satz, a.kostensatz,
                  a.name, a.soll_woche)
+    if b == "pensum":
+        verb = "entfernt" if a.entfernen else f"{a.wert} ab {a.ab}"
+        return w(book, f"Leistungen: Pensum {a.wer} {verb}", daten.set_pensum, a.wer, a.ab, a.wert, a.entfernen)
     if b == "feiertage":
         return w(book, "Leistungen: Feiertage", daten.set_holidays, a.daten or None, a.ab)
     if b == "produkt":
@@ -394,6 +397,11 @@ def _run(book, a):
 
 def _setup(p):
     sub = p.add_subparsers(dest="bereich", required=True)
+    s = sub.add_parser("pensum", help="Pensum (Mitarbeitende, %) bzw. Wochenstunden (ohne Lohn) ab einem Datum — für das Soll")
+    s.add_argument("--wer", required=True)
+    s.add_argument("--ab", required=True, help="JJJJ-MM-TT")
+    s.add_argument("--wert", help="Pensum in %% bzw. Wochenstunden")
+    s.add_argument("--entfernen", action="store_true", help="die Änderung an diesem Datum löschen")
     s = sub.add_parser("satz", help="Verrechnungs-/Kostensatz einer Person; ohne --wer: Person ohne Lohn anlegen")
     s.add_argument("--wer", default="")
     s.add_argument("--name", default="")

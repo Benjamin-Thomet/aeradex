@@ -77,13 +77,34 @@ def save_settings(book: Book, cfg: dict) -> Path:
     return path
 
 
+def _history(raw: dict | None, per_value) -> list[tuple[date, Decimal]]:
+    """`{date: value}` from the settings as [(from, weekly hours)], oldest first."""
+    return sorted((parse_date(k, "ab"), per_value(Decimal(str(v)))) for k, v in (raw or {}).items())
+
+
+def week_hours(p: dict, d: date | None = None) -> Decimal | None:
+    """Weekly target hours of a person on day `d` (today's value without `d`). A person whose Pensum changed
+    during their employment carries a history (`wochen`); the value in force on `d` applies."""
+    hist = p.get("wochen") or []
+    if not hist or d is None:
+        return Decimal(str(p["woche"])) if p.get("woche") not in (None, "") else None
+    current = hist[0][1]
+    for start, hours in hist:
+        if start <= d:
+            current = hours
+    return current
+
+
 def people(book: Book) -> dict[str, dict]:
     """Everyone who records time: employees from personal/ plus people without payroll (owner …),
-    with their billing rate (`satz`), internal cost rate (`kostensatz`) and weekly target hours."""
+    with their billing rate (`satz`), internal cost rate (`kostensatz`) and weekly target hours
+    (`woche` today, `wochen` the history when the Pensum changed: see `set_pensum`)."""
     cfg = settings(book)
     out = {}
+    today = date.today()
     for nr, emp in payroll.employees(book).items():
         own = cfg["personen"].get(nr, {})
+        full = Decimal(str(emp.get("vollzeit_stunden_woche") or 0))
         out[nr] = {"nummer": nr, "name": payroll.display_name(emp), "lohn": True,
                    "aktiv": bool(emp.get("aktiv", True)), "stundenlohn": payroll.is_hourly(emp),
                    "satz": money(own["satz"]) if own.get("satz") not in (None, "") else None,
@@ -92,7 +113,11 @@ def people(book: Book) -> dict[str, dict]:
                              * Decimal(str(emp.get("pensum") or 100)) / 100),
                    "eintritt": emp.get("eintritt"), "austritt": emp.get("austritt"),
                    "vortrag": own.get("vortrag") or {}, "ferien_tage": own.get("ferien_tage"),
-                   "ferien_vortrag": own.get("ferien_vortrag") or {}}
+                   "ferien_vortrag": own.get("ferien_vortrag") or {},
+                   "wochen": _history(own.get("pensum_ab"), lambda pct, full=full: full * pct / 100),
+                   "pensum_ab": {str(k): v for k, v in (own.get("pensum_ab") or {}).items()}}
+        if out[nr]["wochen"]:
+            out[nr]["woche"] = week_hours(out[nr], today)
     for nr, own in cfg["personen"].items():
         if nr in out:
             continue
@@ -103,7 +128,11 @@ def people(book: Book) -> dict[str, dict]:
                    "woche": Decimal(str(own["soll_woche"])) if own.get("soll_woche") not in (None, "") else None,
                    "eintritt": own.get("eintritt"), "austritt": own.get("austritt"),
                    "vortrag": own.get("vortrag") or {}, "ferien_tage": own.get("ferien_tage"),
-                   "ferien_vortrag": own.get("ferien_vortrag") or {}}
+                   "ferien_vortrag": own.get("ferien_vortrag") or {},
+                   "wochen": _history(own.get("soll_woche_ab"), lambda h: h),
+                   "pensum_ab": {str(k): v for k, v in (own.get("soll_woche_ab") or {}).items()}}
+        if out[nr]["wochen"]:
+            out[nr]["woche"] = week_hours(out[nr], today)
     return out
 
 
@@ -151,6 +180,45 @@ def set_person(book: Book, nummer: str = "", satz=None, kostensatz=None, name: s
     if ferien_jahr and ferien_vortrag not in (None, ""):
         entry.setdefault("ferien_vortrag", {})[int(ferien_jahr)] = Decimal(str(ferien_vortrag).replace(",", "."))
     return {"nummer": nr, **entry}, [save_settings(book, cfg)]
+
+
+def set_pensum(book: Book, nummer: str, ab, wert=None, entfernen: bool = False) -> tuple[dict, list[Path]]:
+    """A change of the Pensum (employees, in %) or of the weekly hours (people without payroll) from a date on.
+    The first change also records the value before it (from the Eintritt), so earlier months keep their target.
+    `entfernen` deletes the change on that date. The Lohn (salary) is not touched: adjust it there."""
+    cfg = settings(book)
+    nr = str(nummer or "").strip().upper()
+    p = person(book, nr)
+    start = parse_date(ab, "ab")
+    employee = p["lohn"]
+    key = "pensum_ab" if employee else "soll_woche_ab"
+    own = cfg["personen"].setdefault(nr, {})
+    hist = {parse_date(k, "ab"): Decimal(str(v)) for k, v in (own.get(key) or {}).items()}
+    if entfernen:
+        if start not in hist:
+            raise BookError(f"Keine Änderung per {start:%d.%m.%Y}")
+        del hist[start]
+        if len(hist) == 1:          # only the recorded starting value is left: back to the plain setting
+            hist = {}
+    else:
+        value = Decimal(str(wert if wert not in (None, "") else "").replace(",", ".") or "-1")
+        limit = Decimal(100) if employee else Decimal(60)
+        if not 0 <= value <= limit:
+            raise BookError("Pensum: 0 bis 100 %" if employee else "Wochenstunden: 0 bis 60")
+        if not hist:
+            if employee:
+                before = Decimal(str(payroll.employee(book, nr).get("pensum") or 100))
+            else:
+                before = Decimal(str(own.get("soll_woche") or 0))
+            first = parse_date(p["eintritt"]) if p.get("eintritt") else date(2000, 1, 1)
+            if first < start:
+                hist[first] = before
+        hist[start] = value
+    if hist:
+        own[key] = {d.isoformat(): hist[d] for d in sorted(hist)}
+    else:
+        own.pop(key, None)
+    return {"nummer": nr, key: own.get(key, {})}, [save_settings(book, cfg)]
 
 
 def set_options(book: Book, rundung=None, ferien_tage=None, feiertage_kanton=None, abrechnen_je=None,

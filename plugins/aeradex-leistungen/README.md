@@ -46,6 +46,7 @@ aeradex leistungen produkt add --text "Dispersionsfarbe weiss" --preis 45 --einh
 aeradex leistungen produkt set --nummer P001 --kunde K0001 --kundenpreis 40
 aeradex leistungen projekt add --kunde K0001 --name "Fassade" --budget-stunden 40 --satz 110
 aeradex leistungen feiertage 2026-12-25 2026-12-26 --ab 2026-10-01
+aeradex leistungen pensum --wer M0001 --ab 2026-07-01 --wert 80   # Pensumwechsel: Soll ab dann mit 80 %
 
 # Erfassen — am schnellsten in einer Zeile
 aeradex leistungen schnell 3.5h Fassade spachteln --wer M0001

@@ -40,7 +40,7 @@ def workdays(year: int, month: int, holidays: set[date], start: date | None = No
 def day_target(p: dict, d: date, holidays: set[date], from_: date | None = None) -> Decimal | None:
     """Soll hours of one day (None for people without a target: hourly wage or no weekly hours)."""
     from .abwesenheit import daily_target, workday
-    per_day = daily_target(p)
+    per_day = daily_target(p, d)
     if per_day is None:
         return None
     if from_ and d < from_ or not workday(p, d, holidays):
@@ -50,10 +50,18 @@ def day_target(p: dict, d: date, holidays: set[date], from_: date | None = None)
 
 def target(p: dict, year: int, month: int, holidays: set[date], from_: date | None = None) -> Decimal | None:
     """Soll hours of the month; `from_` (start of the control) acts like a later Eintritt."""
-    if p["stundenlohn"] or not p.get("woche"):
+    if p["stundenlohn"] or not (p.get("woche") or p.get("wochen")):
         return None
     start = max(filter(None, (_opt_date(p.get("eintritt")), from_)), default=None)
-    days = workdays(year, month, holidays, start, _opt_date(p.get("austritt")))
+    end = _opt_date(p.get("austritt"))
+    if p.get("wochen"):   # Pensum changed: each day at the value then in force
+        total = ZERO
+        for day in range(1, calendar.monthrange(year, month)[1] + 1):
+            d = date(year, month, day)
+            if d.weekday() < 5 and d not in holidays and not (start and d < start) and not (end and d > end):
+                total += daten.week_hours(p, d) / 5
+        return total.quantize(Decimal("0.01"))
+    days = workdays(year, month, holidays, start, end)
     return (Decimal(p["woche"]) / 5 * days).quantize(Decimal("0.01"))
 
 
