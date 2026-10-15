@@ -109,6 +109,34 @@ def _period(items: list[dict]) -> str:
     return a.strftime("%d.%m.%Y") if a == b else f"{a.strftime('%d.%m.%Y')}–{b.strftime('%d.%m.%Y')}"
 
 
+def _descriptions(group: list[dict], skip: set[str]) -> list[str]:
+    """«13.10. Abdecken, Wände grundiert» per day: every different text of that day once (two people on the same
+    job: one of them describes it), without the bare name of the Leistungsart; days nobody described are left out."""
+    days: dict[date, list[str]] = defaultdict(list)
+    for e in sorted(group, key=lambda e: (e["datum"], e["id"])):
+        text = " ".join(str(e.get("text") or "").split())
+        days[e["datum"]]            # keep the day in order even when it has no text
+        if text and text not in skip and text not in days[e["datum"]]:
+            days[e["datum"]].append(text)
+    return [f"{d.strftime('%d.%m.')} {'; '.join(texts)}" for d, texts in sorted(days.items()) if texts]
+
+
+def undescribed_days(book: Book, items: list[dict]) -> list[dict]:
+    """Billable working days (per customer and project) on which nobody wrote what was done — with
+    `rechnung_tage` the invoice would show no line for them. → [{datum, kunde, projekt, ids}]"""
+    prods = daten.products(book)
+    days: dict[tuple, list[dict]] = defaultdict(list)
+    for e in items:
+        if e["art"] == "Zeit" and e.get("abrechenbar") and e.get("kunde"):
+            days[(e["datum"], e["kunde"], e.get("projekt") or "")].append(e)
+    out = []
+    for (d, kunde, projekt), group in sorted(days.items()):
+        skip = {prods.get(e.get("produkt") or "", {}).get("text") for e in group} - {None}
+        if not _descriptions(group, skip):
+            out.append({"datum": d, "kunde": kunde, "projekt": projekt, "ids": [e["id"] for e in group]})
+    return out
+
+
 def positions(book: Book, items: list[dict], detail: bool = False) -> list[dict]:
     """Invoice positions (raw, for `invoices.normalize_positions`) for the given entries."""
     cfg = daten.settings(book)
@@ -141,15 +169,21 @@ def positions(book: Book, items: list[dict], detail: bool = False) -> list[dict]
         return out
     # Hours with a Leistungsart are grouped by it («Malerarbeiten 12.5 h à 95»); hours without one per person,
     # as always — so invoices issued before Leistungsarten existed still add up the same (mismatches()).
+    # `rechnung_tage`: never per person; the position lists the days with what was done below its title.
+    by_day = cfg["rechnung_tage"]
     groups: dict[tuple, list[dict]] = defaultdict(list)
     for e in times:
         art = e.get("produkt") or ""
-        groups[(e["projekt"], art, "" if art else e["wer"], e["preis"])].append(e)
+        groups[(e["projekt"], art, "" if art or by_day else e["wer"], e["preis"])].append(e)
     for (proj, art, wer, preis), group in sorted(groups.items(), key=lambda kv: tuple(str(x) for x in kv[0])):
-        label = prods.get(art, {}).get("text") or art if art else f"Arbeit {names.get(wer, wer)}"
+        art_text = prods.get(art, {}).get("text") or art if art else ""
+        label = art_text or (f"Arbeit {names.get(wer, wer)}" if wer else "Arbeiten")
         if proj:
             label += f", {projs.get(proj, {}).get('name', proj)}"
-        out.append({"text": f"{label} ({_period(group)})", "menge": sum((e["menge"] for e in group), ZERO),
+        text = f"{label} ({_period(group)})"
+        if by_day:
+            text = "\n".join([text] + _descriptions(group, {art_text} - {""}))
+        out.append({"text": text, "menge": sum((e["menge"] for e in group), ZERO),
                     "einheit": "h", "preis": preis, **service(group[0])})
     goods_groups: dict[tuple, list[dict]] = defaultdict(list)
     for e in goods:
@@ -190,7 +224,9 @@ def _billable(book: Book, ids: list[str]) -> list[dict]:
 
 def preview(book: Book, ids: list[str], detail: bool = False) -> dict:
     items = _billable(book, ids)
-    return {"kunde": items[0]["kunde"], "eintraege": len(items), **totals(book, positions(book, items, detail))}
+    leer = undescribed_days(book, items) if daten.settings(book)["rechnung_tage"] and not detail else []
+    return {"kunde": items[0]["kunde"], "eintraege": len(items), "ohne_beschreibung": leer,
+            **totals(book, positions(book, items, detail))}
 
 
 def bill(book: Book, ids: list[str], detail: bool = False, datum=None, text: str = "",

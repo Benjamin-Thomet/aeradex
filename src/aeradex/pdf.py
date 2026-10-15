@@ -87,6 +87,12 @@ def P(text, style="base"):
     return Paragraph(escape(str(text)) if not str(text).startswith("<") else str(text), ST[style])
 
 
+def _lines(text) -> str:
+    """A text with line breaks (e.g. a position with the days' descriptions below its title) as markup for P."""
+    text = str(text)
+    return text if "\n" not in text else "<para>" + "<br/>".join(escape(t) for t in text.split("\n")) + "</para>"
+
+
 # Set while aeradex builds the reports of a year that is not locked yet: every page
 # drawn through _doc then carries this word across it (see dossier.Kontext.draft).
 WATERMARK: contextvars.ContextVar[str] = contextvars.ContextVar("aeradex_watermark", default="")
@@ -249,7 +255,7 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
         data = [["Position", "Menge", "Preis", f"Betrag {meta.get('waehrung', 'CHF')}"]]
         for p in meta["positionen"]:
             menge = f"{Decimal(str(p['menge'])).normalize():f} {p.get('einheit') or ''}".strip()
-            data.append([P(p["text"], "cell"), menge, price(p["preis"]), chf(p["betrag"])])
+            data.append([P(_lines(p["text"]), "cell"), menge, price(p["preis"]), chf(p["betrag"])])
         cur = meta.get('waehrung', 'CHF')
         sums = []
         if meta.get("mwst"):

@@ -54,7 +54,7 @@
         <a class="btn small ghost" href="?tab=woche&wer={{ wer }}&woche={{ woche_start }}&vorwoche=1" title="Zeilen der Vorwoche leer übernehmen">Zeilen der Vorwoche</a>
       </span></header>
     <div class="tablewrap"><table class="ledger weekgrid" data-wer="{{ wer }}" data-woche="{{ woche_start }}">
-      <thead><tr><th>Kunde / Projekt · Leistung</th>{% for d in g.tage %}<th class="right day{{ ' off' if d.weekday() >= 5 or d in g.feiertage }}{{ ' today' if d == heute }}" title="{{ 'Feiertag' if d in g.feiertage }}">{{ ['Mo','Di','Mi','Do','Fr','Sa','So'][loop.index0] }} {{ d.day }}.</th>{% endfor %}<th class="right">Total</th></tr></thead>
+      <thead><tr><th>Kunde / {{ cfg.projekt_wort }} · Leistung</th>{% for d in g.tage %}<th class="right day{{ ' off' if d.weekday() >= 5 or d in g.feiertage }}{{ ' today' if d == heute }}" title="{{ 'Feiertag' if d in g.feiertage }}">{{ ['Mo','Di','Mi','Do','Fr','Sa','So'][loop.index0] }} {{ d.day }}.</th>{% endfor %}<th class="right">Total</th></tr></thead>
       <tbody>
       {% for r in g.zeilen %}
         <tr class="row" data-row="{{ r.dom }}">
@@ -73,7 +73,7 @@
       {% endfor %}
         <tr class="addrow" hidden><td colspan="9">
           <form class="actions" data-addrow-form>
-            <input class="input" name="ziel" list="ziele" placeholder="Projekt oder Kunde …" style="min-width:260px" required>
+            <input class="input" name="ziel" list="ziele" placeholder="{{ cfg.projekt_wort }} oder Kunde …" style="min-width:260px" required>
             <select class="input" name="leistung"><option value="">— Leistungsart —</option>{% for nr, p in leistungsarten.items() %}<option value="{{ nr }}">{{ p.text }}</option>{% endfor %}</select>
             <button class="btn small" type="submit">Zeile hinzufügen</button><button class="btn small ghost" type="button" data-addrow-cancel>Abbrechen</button>
           </form></td></tr>
@@ -97,13 +97,13 @@
     <form id="bulk" class="bulkbar" hx-post="{{ A }}verschieben" hx-target="#woche" hx-swap="outerHTML" hidden>
       <input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}">
       <strong><span data-bulkcount>0</span> ausgewählt</strong> →
-      {{ projekt_select(projekte, kunden, leer="— Projekt —") }}
+      {{ projekt_select(projekte, kunden, leer="— " ~ cfg.projekt_wort ~ " —") }}
       <select class="input" name="leistung"><option value="__">Leistungsart bleibt</option><option value="">ohne Leistungsart</option>{% for nr, p in leistungsarten.items() %}<option value="{{ nr }}">{{ p.text }}</option>{% endfor %}</select>
       <label class="check"><input type="checkbox" name="neu_bewerten" value="1" checked> Satz neu bestimmen</label>
       <button class="btn small primary" type="submit">Verschieben</button>
     </form>
     <div class="tablewrap"><table class="ledger">
-      <thead><tr><th style="width:2em"></th><th>Tag</th><th>Kunde / Projekt</th><th>Leistung</th><th class="right">Menge</th><th class="right">Betrag</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th style="width:2em"></th><th>Tag</th><th>Kunde / {{ cfg.projekt_wort }}</th><th>Leistung</th><th class="right">Menge</th><th class="right">Betrag</th><th>Status</th><th></th></tr></thead>
       <tbody>{% for e in eintraege %}
         <tr class="row" data-edit="ed-{{ e.id }}">
           <td>{% if e.status != 'abgerechnet' %}<input type="checkbox" name="ids" value="{{ e.id }}" form="bulk" data-bulk aria-label="{{ e.id }} auswählen">{% endif %}</td>
@@ -127,7 +127,7 @@
             <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ e.datum }}"></div>
             <div class="field"><label>{{ 'Stunden' if e.art == 'Zeit' else 'Menge' }}</label><input class="input num" name="menge" value="{{ e.menge|qty }}"></div>
             <div class="field" style="grid-column: span 2"><label>Text</label><input class="input" name="text" value="{{ e.text }}"></div>
-            {% if e.abrechenbar %}<div class="field" style="grid-column: span 2"><label>Projekt</label>{{ projekt_select(projekte, kunden, selected=e.projekt) }}</div>
+            {% if e.abrechenbar %}<div class="field" style="grid-column: span 2"><label>{{ cfg.projekt_wort }}</label>{{ projekt_select(projekte, kunden, selected=e.projekt, leer="— kein " ~ cfg.projekt_wort ~ " —") }}</div>
             {% if e.art == 'Zeit' %}<div class="field"><label>Leistungsart</label>{{ leistung_select(leistungsarten, selected=e.produkt, leer="— keine —") }}</div>{% endif %}
             <div class="field"><label>Preis</label><input class="input num" name="preis" value="{{ e.preis if e.preis is not none else '' }}"></div>{% endif %}
             <div class="field" style="grid-column: span 4"><span class="actions"><button class="btn small ghost" type="button" data-editclose="ed-{{ e.id }}">Abbrechen</button><button class="btn small primary" type="submit">Speichern</button></span></div>

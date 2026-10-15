@@ -2,9 +2,10 @@
 <div class="drawerbody" data-fragment>
 {% if vorschau_fehler %}<div class="alert error">{{ vorschau_fehler }}</div>
 {% elif vorschau %}
+  {% if vorschau.ohne_beschreibung %}<div class="alert warn">Ohne Beschreibung (fehlt auf der Rechnung): {% for d in vorschau.ohne_beschreibung %}{{ d.datum|datum }}{{ ', ' if not loop.last }}{% endfor %}. Beim Eintrag den Text ergänzen.</div>{% endif %}
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th>Position</th><th class="right">Menge</th><th class="right">Preis</th><th>MWST</th><th class="right">Betrag</th></tr></thead>
-    <tbody>{% for p in vorschau.positionen %}<tr class="row"><td>{{ p.text }}</td><td class="right num">{{ p.menge|qty }} {{ p.einheit }}</td><td class="right num">{{ p.preis|preis }}</td><td>{{ p.mwst or '' }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for p in vorschau.positionen %}<tr class="row"><td style="white-space:pre-line">{{ p.text }}</td><td class="right num">{{ p.menge|qty }} {{ p.einheit }}</td><td class="right num">{{ p.preis|preis }}</td><td>{{ p.mwst or '' }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
     <tfoot>{% for b in vorschau.mwst %}<tr><td colspan="4">MWST {{ b.code }} auf {{ b.netto|chf }}</td><td class="right num">{{ b.steuer|chf }}</td></tr>{% endfor %}
       <tr><td colspan="4"><strong>Total CHF</strong></td><td class="right num total"><strong>{{ vorschau.total|chf }}</strong></td></tr></tfoot>
   </table></div>

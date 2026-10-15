@@ -66,6 +66,9 @@ def settings(book: Book) -> dict:
         "feiertage_ohne": [str(d) for d in raw.get("feiertage_ohne") or []],     # canton holidays not observed
         "favoriten": {str(k): list(v or []) for k, v in (raw.get("favoriten") or {}).items()},
         "abrechnen_je": str(raw.get("abrechnen_je") or "kunde"),  # one invoice per customer or per project
+        "projekt_wort": str(raw.get("projekt_wort") or "Projekt"),   # what projects are called («Objekt» for a painter)
+        "projekt_pflicht": bool(raw.get("projekt_pflicht")),        # a customer with open projects needs one chosen
+        "rechnung_tage": bool(raw.get("rechnung_tage")),            # invoice: hours in total plus the days' descriptions
     }
 
 
@@ -222,9 +225,12 @@ def set_pensum(book: Book, nummer: str, ab, wert=None, entfernen: bool = False) 
 
 
 def set_options(book: Book, rundung=None, ferien_tage=None, feiertage_kanton=None, abrechnen_je=None,
-                feiertage_ohne: list | None = None) -> tuple[dict, list[Path]]:
+                feiertage_ohne: list | None = None, projekt_wort=None, projekt_pflicht=None,
+                rechnung_tage=None) -> tuple[dict, list[Path]]:
     """Timer rounding (minutes, rounded up), holiday days per year, the holiday canton ('' = from the company seat,
-    'keiner' = none), one invoice per customer or project, canton holidays that are not observed."""
+    'keiner' = none), one invoice per customer or project, canton holidays that are not observed, what projects are
+    called (Projekt/Objekt), whether a customer with open projects needs one on every entry, and whether invoices
+    show the hours in total with the days' descriptions (so only one person of a team has to describe the day)."""
     from aeradex.qst_estv import CANTONS
     cfg = settings(book)
     if rundung not in (None, ""):
@@ -247,7 +253,23 @@ def set_options(book: Book, rundung=None, ferien_tage=None, feiertage_kanton=Non
         cfg["abrechnen_je"] = abrechnen_je
     if feiertage_ohne is not None:
         cfg["feiertage_ohne"] = sorted({parse_date(d, "feiertag").isoformat() for d in feiertage_ohne if str(d).strip()})
-    return {k: cfg[k] for k in ("rundung", "ferien_tage", "feiertage_kanton", "abrechnen_je")}, [save_settings(book, cfg)]
+    if projekt_wort not in (None, ""):
+        if projekt_wort not in WORDS:
+            raise BookError(f"Bezeichnung: {' oder '.join(WORDS)}")
+        cfg["projekt_wort"] = projekt_wort
+    if projekt_pflicht is not None:
+        cfg["projekt_pflicht"] = _flag(projekt_pflicht)
+    if rechnung_tage is not None:
+        cfg["rechnung_tage"] = _flag(rechnung_tage)
+    return ({k: cfg[k] for k in ("rundung", "ferien_tage", "feiertage_kanton", "abrechnen_je", "projekt_wort",
+                                 "projekt_pflicht", "rechnung_tage")}, [save_settings(book, cfg)])
+
+
+WORDS = ("Projekt", "Objekt")
+
+
+def _flag(value) -> bool:
+    return str(value).strip().lower() in ("1", "true", "ja", "on", "yes")
 
 
 def set_holidays(book: Book, feiertage: list | None = None, kontrolle_ab=None) -> tuple[dict, list[Path]]:
@@ -531,6 +553,21 @@ def _resolve_customer(book: Book, kunde: str, projekt: str) -> tuple[str, str]:
     return kunde, projekt
 
 
+def open_projects(book: Book, kunde: str) -> list[dict]:
+    """The customer's projects that still take entries."""
+    return [p for p in projects(book).values() if p.get("kunde") == kunde and p.get("status") != "abgeschlossen"]
+
+
+def require_project(book: Book, kunde: str, projekt: str) -> None:
+    """With `projekt_pflicht`: an entry for a customer who has open projects must name one of them."""
+    if kunde and not projekt:
+        cfg = settings(book)
+        if cfg["projekt_pflicht"] and open_projects(book, kunde):
+            word = cfg["projekt_wort"]
+            name = invoices.qr.invoice_name(invoices.customer(book, kunde))
+            raise BookError(f"{name} hat {word}e: zuerst das {word} wählen")
+
+
 def add_time(book: Book, datum, wer: str, stunden, text: str, kunde: str = "", projekt: str = "",
              abrechenbar: bool = True, kategorie: str = "", satz=None, leistung: str = "") -> tuple[dict, list[Path]]:
     """Record hours. Billable hours need a customer (or project) and get the rate fixed now (saetze.py):
@@ -543,15 +580,18 @@ def add_time(book: Book, datum, wer: str, stunden, text: str, kunde: str = "", p
     if hours <= 0 or hours > 24:
         raise BookError("Stunden: mehr als 0 und höchstens 24")
     kunde, projekt = _resolve_customer(book, kunde, projekt)
+    by_day = settings(book)["rechnung_tage"]        # one person describes the day; the others may leave it empty
     leistung = str(leistung or "").strip().upper()
     if leistung:
         art = product(book, leistung)
         if not is_service(art):
             raise BookError(f"{leistung} ist Material, keine Leistungsart (Einheit h)")
-        text = str(text or "").strip() or art["text"]
+        if not by_day:
+            text = str(text or "").strip() or art["text"]
     if abrechenbar:
         if not kunde:
             raise BookError("Abrechenbare Stunden brauchen einen Kunden oder ein Projekt")
+        require_project(book, kunde, projekt)
         rate = (money(parse_amount(satz, "satz")) if satz not in (None, "")
                 else hourly_rate(book, p["nummer"], kunde, projekt, leistung))
         kategorie = ""
@@ -560,7 +600,7 @@ def add_time(book: Book, datum, wer: str, stunden, text: str, kunde: str = "", p
         kategorie = kategorie or "Intern"
         if kategorie not in settings(book)["kategorien"]:
             raise BookError(f"Kategorie: {', '.join(settings(book)['kategorien'])}")
-    if not str(text or "").strip() and abrechenbar:
+    if not str(text or "").strip() and abrechenbar and not by_day:
         raise BookError("Text fehlt (erscheint auf der Rechnung)")
     return _add(book, {"datum": d, "art": "Zeit", "wer": p["nummer"], "kunde": kunde, "projekt": projekt,
                        "produkt": leistung, "menge": hours, "preis": rate, "text": str(text or "").strip(),
@@ -575,6 +615,7 @@ def add_material(book: Book, datum, kunde: str, produkt: str, menge, projekt: st
     kunde, projekt = _resolve_customer(book, kunde, projekt)
     if not kunde:
         raise BookError("Produkte brauchen einen Kunden oder ein Projekt")
+    require_project(book, kunde, projekt)
     prod = product(book, produkt)
     qty = Decimal(str(menge or 0).replace(",", "."))
     if qty == 0:
@@ -637,8 +678,11 @@ def update_entry(book: Book, eid: str, **fields) -> tuple[dict, list[Path]]:
     if fields.get("text") is not None:
         e["text"] = str(fields["text"]).strip()
     if "kunde" in fields or "projekt" in fields:
+        before = (e["kunde"], e["projekt"])
         e["kunde"], e["projekt"] = _resolve_customer(book, fields.get("kunde", e["kunde"]),
                                                      fields.get("projekt", e["projekt"]))
+        if (e["kunde"], e["projekt"]) != before:       # entries from before the rule stay as they are
+            require_project(book, e["kunde"], e["projekt"])
     if e["art"] == "Zeit" and fields.get("leistung") is not None:
         nr = str(fields["leistung"]).strip().upper()
         if nr and not is_service(product(book, nr)):

@@ -112,3 +112,18 @@ def test_stammdaten_produkt_umbenennen_und_einheit(ui):
                             "kunde": "", "kundenpreis": "", "aktiv": ""})
     p = daten.product(Book(book.root), "P001")
     assert p["text"] == "Malerarbeiten innen" and p["preis"] == Decimal("92.00") and p["einheit"] == "h"
+
+
+def test_settings_page_calls_projects_objects(ui):
+    c, book = ui
+    post(c, "/p/leistungen/leistungen/einstellungen", {"rundung": "0", "ferien_tage": "25", "feiertage_kanton": "BE",
+         "abrechnen_je": "projekt", "projekt_wort": "Objekt", "projekt_pflicht": "1", "rechnung_tage": "1"})
+    cfg = daten.settings(Book(book.root))
+    assert (cfg["projekt_wort"], cfg["projekt_pflicht"], cfg["rechnung_tage"]) == ("Objekt", True, True)
+    for tab in ("erfassen", "woche", "abrechnen", "auswertung", "stammdaten"):
+        r = c.get(f"/p/leistungen/leistungen?tab={tab}")
+        assert r.status_code == 200, tab
+    assert "Objekt anlegen" in c.get("/p/leistungen/leistungen?tab=auswertung").text
+    assert "eine Rechnung je Objekt" in c.get("/p/leistungen/leistungen?tab=stammdaten").text
+    post(c, "/p/leistungen/leistungen/einstellungen", {"projekt_pflicht": "0", "rechnung_tage": "0"})
+    assert not daten.settings(Book(book.root))["projekt_pflicht"]

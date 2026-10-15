@@ -425,7 +425,8 @@ def _feiertage(book, f):
 def _einstellungen(book, f):
     return api.write(book, "Leistungen: Einstellungen", daten.set_options, rundung=f.get("rundung"),
                      ferien_tage=f.get("ferien_tage"), feiertage_kanton=f.get("feiertage_kanton"),
-                     abrechnen_je=f.get("abrechnen_je"))
+                     abrechnen_je=f.get("abrechnen_je"), projekt_wort=f.get("projekt_wort"),
+                     projekt_pflicht=f.get("projekt_pflicht"), rechnung_tage=f.get("rechnung_tage"))
 
 
 def _nachweis(book, f):

@@ -313,3 +313,40 @@ def test_update_quote_takes_new_customer_address(tmp_path, monkeypatch):
     res = aeradex_leistungen.update_quote(q_nr, adresse_neu=True, titel="Gartentor")
     assert res["ok"] and res["ergebnis"]["an"]["zusatz"] == "Pascal Mühlberg" and res["ergebnis"]["titel"] == "Gartentor"
     assert any(str(d).endswith(".pdf") for d in res["dateien"])
+
+
+def test_objects_required_and_invoice_with_the_days(book):
+    regie = W(book, daten.add_product, "Regiearbeiten", "95", "h")["nummer"]          # a Leistungsart
+    farbe = next(iter(daten.materials(Book(book.root))))
+    W(book, daten.set_options, abrechnen_je="projekt", projekt_wort="Objekt", projekt_pflicht="1", rechnung_tage="1")
+    cfg = daten.settings(Book(book.root))
+    assert (cfg["projekt_wort"], cfg["projekt_pflicht"], cfg["rechnung_tage"]) == ("Objekt", True, True)
+    old = W(book, daten.add_time, "2026-10-12", "M0001", "1", "Vorher", "K0001")   # before the customer had objects
+    W(book, daten.add_project, "K0001", "MFH Bernstrasse 12, Thun")
+    with pytest.raises(BookError, match="Beispiel AG hat Objekte: zuerst das Objekt wählen"):
+        W(book, daten.add_time, "2026-10-13", "M0001", "4", "Abdecken", "K0001", leistung=regie)
+    with pytest.raises(BookError, match="Objekt wählen"):
+        W(book, daten.add_material, "2026-10-13", "K0001", farbe, "2")
+    W(book, daten.update_entry, old["id"], text="Vorher, nachgetragen")          # old entries stay editable
+    # two people on the same day: only one describes it; the same text twice is shown once
+    W(book, daten.add_time, "2026-10-13", "M0001", "4", "Abdecken, Wände grundiert", "", "P0001", leistung=regie)
+    W(book, daten.add_time, "2026-10-13", "M0002", "4", "", "", "P0001", leistung=regie)
+    W(book, daten.add_time, "2026-10-14", "M0001", "8", "Decken 2× gestrichen", "", "P0001", leistung=regie)
+    W(book, daten.add_time, "2026-10-14", "M0002", "8", "Decken 2× gestrichen", "", "P0001", leistung=regie)
+    W(book, daten.add_time, "2026-10-15", "M0002", "2", "", "", "P0001", leistung=regie)   # nobody described it
+    W(book, daten.add_material, "2026-10-14", "", farbe, "3", "P0001")
+    b = Book(book.root)
+    items = abrechnung.select(b, "K0001", "P0001")
+    pre = abrechnung.preview(b, [e["id"] for e in items])
+    assert [d["datum"].isoformat() for d in pre["ohne_beschreibung"]] == ["2026-10-15"]
+    hours = pre["positionen"][0]
+    assert hours["text"] == ("Regiearbeiten, MFH Bernstrasse 12, Thun (13.10.2026–15.10.2026)\n"
+                             "13.10. Abdecken, Wände grundiert\n14.10. Decken 2× gestrichen")
+    assert hours["menge"] == Decimal("26") and hours["preis"] == Decimal("95.00")
+    assert pre["positionen"][1]["text"] == "Dispersionsfarbe weiss" and pre["positionen"][1]["menge"] == Decimal("3")
+    res = W(book, abrechnung.bill, [e["id"] for e in items])
+    import io
+    from pypdf import PdfReader
+    text = PdfReader(io.BytesIO((book.root / res["pdf"]).read_bytes())).pages[0].extract_text()
+    assert "13.10. Abdecken, Wände grundiert" in text and "14.10. Decken 2× gestrichen" in text
+    assert_clean(Book(book.root))

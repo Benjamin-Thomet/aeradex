@@ -40,13 +40,13 @@
 
 {% elif tab == "abrechnen" %}
 <div class="figures">
-  <div class="figure"><span class="label">Bereit zur Rechnung</span><span class="value">{{ total_offen|chf }}</span><span class="meta">{{ karten|length }} Kunde(n)/Projekt(e){{ ' bis ' ~ (bis|datum) if bis }}</span></div>
+  <div class="figure"><span class="label">Bereit zur Rechnung</span><span class="value">{{ total_offen|chf }}</span><span class="meta">{{ karten|length }} Kunde(n)/{{ cfg.projekt_wort }}(e){{ ' bis ' ~ (bis|datum) if bis }}</span></div>
 </div>
 {% if gruppen %}
 <form class="panel body actions" hx-post="{{ A }}alle_abrechnen" hx-target="find .errors" hx-confirm="{{ gruppen|length }} Rechnung(en) über total CHF {{ total_offen|chf }} ausstellen und verbuchen?">
   <strong>Monatsende:</strong>
   <label class="small muted inlinelabel">alles bis <input class="input" type="date" name="bis" value="{{ bis }}"></label>
-  <select class="input" name="je"><option value="kunde" {{ 'selected' if cfg.abrechnen_je == 'kunde' }}>eine Rechnung je Kunde</option><option value="projekt" {{ 'selected' if cfg.abrechnen_je == 'projekt' }}>eine Rechnung je Projekt</option></select>
+  <select class="input" name="je"><option value="kunde" {{ 'selected' if cfg.abrechnen_je == 'kunde' }}>eine Rechnung je Kunde</option><option value="projekt" {{ 'selected' if cfg.abrechnen_je == 'projekt' }}>eine Rechnung je {{ cfg.projekt_wort }}</option></select>
   <button class="btn primary" type="submit">Alle abrechnen ({{ gruppen|length }})</button>
   <span class="small muted">mit Leistungsrapport, Rechnungsdatum heute</span>{{ errors() }}
 </form>
@@ -122,10 +122,10 @@
 </div>
 {% endif %}
 <div class="panel">
-  <header><h2>Projekte</h2>
+  <header><h2>{{ cfg.projekt_wort }}e</h2>
     <form class="actions" method="get"><input type="hidden" name="tab" value="auswertung"><select class="input" name="status" onchange="this.form.submit()" aria-label="Status">{% for s in ("offen", "abgeschlossen", "alle") %}<option {{ 'selected' if s == status }}>{{ s }}</option>{% endfor %}</select></form></header>
   <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Projekt</th><th>Kunde</th><th>Art</th><th class="right">Stunden / Budget</th><th class="right">Wert</th><th class="right">Kosten</th><th class="right">Verrechnet</th><th class="right">Offen</th><th class="right">DB</th><th></th></tr></thead>
+    <thead><tr><th>{{ cfg.projekt_wort }}</th><th>Kunde</th><th>Art</th><th class="right">Stunden / Budget</th><th class="right">Wert</th><th class="right">Kosten</th><th class="right">Verrechnet</th><th class="right">Offen</th><th class="right">DB</th><th></th></tr></thead>
     <tbody>{% for p in liste %}
       <tr class="row"><td><span class="beleg">{{ p.nummer }}</span> {{ p.name }}{% if p.offerte %}<br><a class="small link" href="/p/leistungen/offerten?nr={{ p.offerte }}">{{ p.offerte }}</a>{% endif %}</td>
         <td>{{ kunden.get(p.kunde, p.kunde) }}</td><td>{{ p.abrechnung }}</td>
@@ -133,12 +133,12 @@
         <td class="right num">{{ p.wert|chf(true) }}{% if p.budget_chf is not none %}<br><span class="small muted">Budget {{ p.budget_chf|chf }}</span>{% endif %}</td>
         <td class="right num">{{ p.kosten|chf(true) }}</td><td class="right num">{{ p.abgerechnet|chf(true) }}</td><td class="right num">{{ p.offen|chf(true) }}</td><td class="right num">{{ p.deckungsbeitrag|chf }}</td>
         <td class="right"><form hx-post="{{ A }}projekt_status" hx-target="find .errors" style="display:inline"><input type="hidden" name="nummer" value="{{ p.nummer }}"><input type="hidden" name="status" value="{{ 'abgeschlossen' if p.status == 'offen' else 'offen' }}"><button class="btn small ghost" type="submit">{{ 'Abschliessen' if p.status == 'offen' else 'Wieder öffnen' }}</button>{{ errors() }}</form></td></tr>
-    {% else %}<tr><td colspan="10" class="empty">Keine Projekte.</td></tr>{% endfor %}</tbody>
+    {% else %}<tr><td colspan="10" class="empty">Keine {{ cfg.projekt_wort }}e.</td></tr>{% endfor %}</tbody>
   </table></div>
   <div class="body small muted">Wert = erfasste Leistungen zu Verrechnungssätzen · Kosten = Stunden × Kostensatz · DB = Deckungsbeitrag (pauschal: verrechnet − Kosten).</div>
 </div>
 <div class="panel">
-  <header><h2>Projekt anlegen</h2><span class="hint">aus einer angenommenen Offerte entsteht das Projekt automatisch</span></header>
+  <header><h2>{{ cfg.projekt_wort }} anlegen</h2><span class="hint">aus einer angenommenen Offerte entsteht das {{ cfg.projekt_wort }} automatisch</span></header>
   <form class="body" hx-post="{{ A }}projekt_neu" hx-target="find .errors">
     <div class="form four">
       <div class="field" style="grid-column: span 2"><label>Name</label><input class="input" name="name" required></div>
@@ -159,7 +159,10 @@
     <div class="field"><label>Stoppuhr runden auf</label><select class="input" name="rundung" style="width:100%">{% for m in (0, 1, 5, 6, 10, 15, 30) %}<option value="{{ m }}" {{ 'selected' if cfg.rundung == m }}>{{ 'genau (Minute)' if m in (0, 1) else m ~ ' Minuten (aufrunden)' }}</option>{% endfor %}</select></div>
     <div class="field"><label>Ferientage pro Jahr (100 %)</label><input class="input num" name="ferien_tage" value="{{ cfg.ferien_tage|qty }}"></div>
     <div class="field"><label>Feiertage des Kantons</label><input class="input" name="feiertage_kanton" value="{{ cfg.feiertage_kanton }}" placeholder="leer = Kanton des Firmensitzes"></div>
-    <div class="field"><label>Abrechnen</label><select class="input" name="abrechnen_je" style="width:100%"><option value="kunde" {{ 'selected' if cfg.abrechnen_je == 'kunde' }}>eine Rechnung je Kunde</option><option value="projekt" {{ 'selected' if cfg.abrechnen_je == 'projekt' }}>eine Rechnung je Projekt</option></select></div>
+    <div class="field"><label>Abrechnen</label><select class="input" name="abrechnen_je" style="width:100%"><option value="kunde" {{ 'selected' if cfg.abrechnen_je == 'kunde' }}>eine Rechnung je Kunde</option><option value="projekt" {{ 'selected' if cfg.abrechnen_je == 'projekt' }}>eine Rechnung je {{ cfg.projekt_wort }}</option></select></div>
+    <div class="field"><label>Bezeichnung</label><select class="input" name="projekt_wort" style="width:100%">{% for w in ("Projekt", "Objekt") %}<option {{ 'selected' if cfg.projekt_wort == w }}>{{ w }}</option>{% endfor %}</select></div>
+    <div class="field"><label>{{ cfg.projekt_wort }} Pflicht</label><select class="input" name="projekt_pflicht" style="width:100%"><option value="0">nein</option><option value="1" {{ 'selected' if cfg.projekt_pflicht }}>ja, wenn der Kunde {{ cfg.projekt_wort }}e hat</option></select></div>
+    <div class="field" style="grid-column: span 2"><label>Stunden auf der Rechnung</label><select class="input" name="rechnung_tage" style="width:100%"><option value="0">je Person bzw. Leistungsart</option><option value="1" {{ 'selected' if cfg.rechnung_tage }}>total, darunter die Tage mit Beschreibung</option></select></div>
     <div class="field" style="grid-column: span 4">{{ errors() }}<div class="formfoot"><span class="small muted">Feiertage: die gesetzlichen des Kantons; zusätzliche oder nicht gehaltene unten anpassen.</span><button class="btn" type="submit">Speichern</button></div></div>
   </form>
 </div>
@@ -402,7 +405,7 @@
     const intern = nr === "INTERN";
     const vals = { wer: grid.dataset.wer, woche: grid.dataset.woche, kunde: /^K/.test(nr) ? nr : "", projekt: /^P\d{4}/.test(nr) ? nr : "",
                    leistung: f.leistung.value, abrechenbar: intern ? "False" : "True", kategorie: intern ? "Intern" : "", text: "" };
-    if (!intern && !vals.kunde && !vals.projekt) { toast("Projekt oder Kunde aus der Liste wählen", true); return; }
+    if (!intern && !vals.kunde && !vals.projekt) { toast("{{ cfg.projekt_wort }} oder Kunde aus der Liste wählen", true); return; }
     const tr = document.createElement("tr"); tr.className = "row";
     const label = document.createElement("td"); label.className = "rowlabel"; label.innerHTML = "<strong></strong>"; label.firstChild.textContent = raw; tr.appendChild(label);
     const start = new Date(grid.dataset.woche + "T00:00:00");
