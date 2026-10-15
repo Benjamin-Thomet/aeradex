@@ -151,3 +151,26 @@ def test_tools_name_written_files_relative_to_the_book(tmp_path: Path, monkeypat
     monkeypatch.setenv("AERADEX_BUCH", str(book.root))
     res = tools.closing_documents(teile=["kontenplan"], formate=["pdf"])
     assert res["ok"] and res["datei"].startswith("berichte/") and (book.root / res["datei"]).exists()
+
+
+def test_openai_access_saved_in_config_not_in_book(tmp_path: Path, monkeypatch):
+    for k in chat.OPENAI_KEYS:
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("AERADEX_CONFIG", str(tmp_path / "cfg"))
+    assert chat.openai_settings() is None and chat.openai_status()["base"] == chat.GEMINI_BASE
+    with pytest.raises(ValueError):
+        chat.save_openai("ftp://x", "m", "k")
+    chat.save_openai(chat.GEMINI_BASE, "gemini-test", "secret-key-1234")
+    path = tmp_path / "cfg" / "ki.env"
+    assert oct(path.stat().st_mode)[-3:] == "600"
+    assert chat.openai_settings()["model"] == "gemini-test"
+    st = chat.openai_status()
+    assert st["bereit"] and st["schluessel_ende"] == "1234" and "secret" not in str(st)
+    chat.save_openai(chat.GEMINI_BASE, "gemini-other", "")                # empty key keeps the stored one
+    assert chat.openai_settings()["key"] == "secret-key-1234" and chat.openai_settings()["model"] == "gemini-other"
+    monkeypatch.setenv("AERADEX_OPENAI_BASE_URL", "https://env.example/")
+    monkeypatch.setenv("AERADEX_OPENAI_API_KEY", "env-key")
+    monkeypatch.setenv("AERADEX_OPENAI_MODEL", "env-model")
+    assert chat.openai_settings()["model"] == "env-model" and chat.openai_status()["quelle"] == "Umgebung"
+    chat.delete_openai()
+    assert not path.exists()

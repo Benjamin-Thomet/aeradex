@@ -52,15 +52,77 @@ BACKENDS = {"claude-code": "Claude Code", "codex": "Codex", "opencode": "opencod
             "openai": "OpenAI-kompatibel (Gemini …)"}
 
 
+OPENAI_KEYS = ("AERADEX_OPENAI_BASE_URL", "AERADEX_OPENAI_API_KEY", "AERADEX_OPENAI_MODEL")
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+def ki_file() -> Path:
+    """Where Einstellungen › Agent stores the OpenAI-compatible access: next to the server's users and the Jev key,
+    never in the book (a git repository that may be passed on)."""
+    return Path(os.environ.get("AERADEX_CONFIG") or Path.home() / ".config" / "aeradex") / "ki.env"
+
+
+def _read_ki_file() -> dict[str, str]:
+    path = ki_file()
+    out = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.strip().removeprefix("export ").partition("=")
+            if sep and key.strip() in OPENAI_KEYS:
+                out[key.strip()] = value.strip().strip("'\"")
+    return out
+
+
+def _openai_values() -> tuple[dict[str, str], str]:
+    """The three values and where they come from: the environment wins (a server's EnvironmentFile), else ki.env."""
+    if all(os.environ.get(k, "").strip() for k in OPENAI_KEYS):
+        return {k: os.environ[k].strip() for k in OPENAI_KEYS}, "Umgebung"
+    return _read_ki_file(), "Datei"
+
+
 def openai_settings() -> dict | None:
-    """An OpenAI-compatible endpoint (Google Gemini, Mistral, …): base URL, key and model from the environment.
-    All three must be set; nothing is guessed."""
-    base = os.environ.get("AERADEX_OPENAI_BASE_URL", "").strip()
-    key = os.environ.get("AERADEX_OPENAI_API_KEY", "").strip()
-    model = os.environ.get("AERADEX_OPENAI_MODEL", "").strip()
+    """An OpenAI-compatible endpoint (Google Gemini, Mistral, …): base URL, key and model. All three must be set;
+    nothing is guessed."""
+    values, _ = _openai_values()
+    base, key, model = (values.get(k, "").strip() for k in OPENAI_KEYS)
     if not (base and key and model):
         return None
     return {"base": base.rstrip("/"), "key": key, "model": model}
+
+
+def openai_status() -> dict:
+    """For Einstellungen › Agent: what is set, without showing the key."""
+    values, source = _openai_values()
+    key = values.get("AERADEX_OPENAI_API_KEY", "")
+    return {"base": values.get("AERADEX_OPENAI_BASE_URL") or GEMINI_BASE, "model": values.get("AERADEX_OPENAI_MODEL", ""),
+            "schluessel": bool(key), "schluessel_ende": key[-4:] if len(key) > 8 else "", "quelle": source if key else "",
+            "bereit": openai_settings() is not None, "datei": str(ki_file()).replace(str(Path.home()), "~", 1)}
+
+
+def save_openai(base: str, model: str, key: str = "") -> None:
+    """Store the access in ki.env (chmod 600). An empty key keeps the stored one (so the model can be changed alone)."""
+    base, model, key = (base or "").strip(), (model or "").strip(), (key or "").strip()
+    if not (base.startswith("https://") or base.startswith("http://127.0.0.1") or base.startswith("http://localhost")):
+        raise ValueError("Adresse: https://… (z.B. Google Gemini)")
+    if not model or any(c.isspace() for c in model):
+        raise ValueError("Modell angeben, z.B. den Namen des Gemini-Modells aus Google AI Studio")
+    if key and (any(c.isspace() for c in key) or "=" in key):
+        raise ValueError("Der API-Schlüssel darf keine Leerzeichen oder = enthalten")
+    old = _read_ki_file()
+    key = key or old.get("AERADEX_OPENAI_API_KEY", "")
+    if not key:
+        raise ValueError("Bitte den API-Schlüssel eingeben")
+    path = ki_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch(mode=0o600, exist_ok=True)
+    path.chmod(0o600)
+    path.write_text(f"AERADEX_OPENAI_BASE_URL={base}\nAERADEX_OPENAI_MODEL={model}\nAERADEX_OPENAI_API_KEY={key}\n",
+                    encoding="utf-8")
+
+
+def delete_openai() -> None:
+    if ki_file().exists():
+        ki_file().unlink()
 
 
 def _codex_logged_in() -> bool:

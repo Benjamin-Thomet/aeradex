@@ -2088,6 +2088,7 @@ async def einstellungen(ui: UI, request: Request):
                      qr_iban=is_qr_iban(iban) if iban else False, issues=checks.run(book),
                      accounts=account_options(book), cred=credentials_status(book.settings.get("agent_backend")),
                      jev=jev.config(book), jev_datei=str(jev.key_file()).replace(str(Path.home()), "~", 1),
+                     ki=__import__("aeradex.web.chat", fromlist=["openai_status"]).openai_status(),
                      backends=__import__("aeradex.web.chat", fromlist=["BACKENDS"]).BACKENDS,
                      plugin_rows=api.plugin_list(book), katalog=_katalog(book), server_mode=ui.auth_dir is not None,
                      neustart=bool(getattr(ui, "neustart_noetig", False)),
@@ -2136,6 +2137,20 @@ async def jev_schluessel(ui: UI, request: Request):
     except (BookError, OSError) as exc:
         return fail(str(exc))
     return done("API-Schlüssel gespeichert", "/einstellungen#jev")
+
+
+async def ki_zugang(ui: UI, request: Request):
+    """Access to an OpenAI-compatible model (Google Gemini …) goes to <config>/ki.env (chmod 600), never into the book."""
+    from . import chat
+    f = await request.form()
+    try:
+        if f.get("entfernen") == "1":
+            chat.delete_openai()
+            return done("Zugang entfernt", "/einstellungen#ki")
+        chat.save_openai(f.get("adresse") or "", f.get("modell") or "", f.get("schluessel") or "")
+    except (ValueError, OSError) as exc:
+        return fail(str(exc))
+    return done("Zugang gespeichert", "/einstellungen#ki")
 
 
 async def lohn_einstellungen(ui: UI, request: Request):
@@ -2359,6 +2374,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),
         Route("/einstellungen/jev", h(jev_einstellung), methods=["POST"]),
         Route("/einstellungen/jev/schluessel", h(jev_schluessel), methods=["POST"]),
+        Route("/einstellungen/ki", h(ki_zugang), methods=["POST"]),
         Route("/einstellungen/plugins/installieren", h(plugin_installieren), methods=["POST"]),
         Route("/einstellungen/plugins/neustart", h(plugin_neustart), methods=["POST"]),
         Route("/einstellungen/plugins/{aktion:str}", h(plugin_einstellung), methods=["POST"]),

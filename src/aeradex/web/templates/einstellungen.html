@@ -119,6 +119,23 @@
   </div>
 </div>
 
+<div class="panel" id="ki">
+  <header><h2>Gemini und andere Modelle (OpenAI-kompatibel)</h2>{% if ki.bereit %}<span class="pill ok">bereit · {{ ki.model }}</span>{% else %}<span class="pill muted">nicht eingerichtet</span>{% endif %}</header>
+  <form class="body" hx-post="/einstellungen/ki" hx-target="find .errors">
+    <p class="small">Für den Agenten «OpenAI-kompatibel» (oben wählbar), den Telegram-Bot auf einem Server und die Textkorrektur der Team-App. Die Daten des Buchs gehen beim Arbeiten an diesen Anbieter; bei Google Gemini die bezahlte Stufe wählen, dann werden sie nicht fürs Training verwendet.</p>
+    <div class="form three">
+      <div class="field" style="grid-column: span 2"><label for="ki-a">Adresse</label><input class="input" id="ki-a" name="adresse" value="{{ ki.base }}" spellcheck="false"></div>
+      <div class="field"><label for="ki-m">Modell</label><input class="input" id="ki-m" name="modell" value="{{ ki.model }}" spellcheck="false" placeholder="Modellname aus Google AI Studio"></div>
+    </div>
+    <div class="field wide"><span class="lbl">API-Schlüssel</span>
+      <span class="small">{% if ki.schluessel %}<span class="pill ok">gesetzt</span> {% if ki.schluessel_ende %}<code>…{{ ki.schluessel_ende }}</code> {% endif %}<span class="muted">{{ 'aus der Umgebung (AERADEX_OPENAI_*)' if ki.quelle == 'Umgebung' else 'gespeichert in ' ~ ki.datei }}</span>{% else %}<span class="pill warn">fehlt</span> <span class="muted">Google AI Studio › API-Schlüssel</span>{% endif %}</span></div>
+    {% if ki.quelle == 'Umgebung' %}<p class="small muted">AERADEX_OPENAI_* sind in der Umgebung von aeradex gesetzt und haben Vorrang vor den hier gespeicherten Werten.</p>{% endif %}
+    <div class="form"><div class="field"><label for="ki-k">{{ 'Neuer Schlüssel (leer = behalten)' if ki.schluessel else 'Schlüssel' }}</label><input class="input" id="ki-k" type="password" name="schluessel" autocomplete="off" spellcheck="false"></div></div>
+    <p class="small muted">Wird nicht im Buch gespeichert, sondern in <code>{{ ki.datei }}</code> mit Dateirechten 600.</p>
+    {{ errors() }}<div class="formfoot"><span>{% if ki.schluessel and ki.quelle == 'Datei' %}<button class="btn small" type="submit" name="entfernen" value="1">Entfernen</button>{% endif %}</span><button class="btn primary" type="submit">Speichern</button></div>
+  </form>
+</div>
+
 <div class="panel" id="jev">
   <header><h2>Jev (TypeSafe) für Bank-Kontierung</h2>{% if jev.bereit %}<span class="pill ok">eingeschaltet</span>{% elif jev.aktiv %}<span class="pill warn">API-Schlüssel fehlt</span>{% else %}<span class="pill muted">aus</span>{% endif %}</header>
   <form class="body" hx-post="/einstellungen/jev" hx-target="find .errors">
