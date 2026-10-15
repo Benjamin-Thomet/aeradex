@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import time
 import urllib.error
@@ -256,7 +257,7 @@ def bill_candidates(text: str, limit: int = 40) -> tuple[dict[str, str], dict[st
         line = " ".join(line.split())
         if not line:
             continue
-        for a in erfassung.amounts(line):
+        for a in erfassung.amounts(re.sub(erfassung._DATE, " ", line, flags=re.I)):   # not «03.10» of a date
             if a > 0:
                 found_amounts.setdefault(f"{a:.2f}", f"{a:.2f} · Zeile «{line[:90]}»")
         for d in erfassung.dates(line):

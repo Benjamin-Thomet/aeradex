@@ -472,6 +472,9 @@ def _match_kreditor(book: Book, meta: dict) -> None:
                 meta["mwst"] = {"wert": sup["mwst"], "quelle": f"Lieferant {sup['nummer']}"}
 
 
+JEV_OVERRULES = 0.95       # this sure, Jev's pick replaces what the text reader found (which stays as a note)
+
+
 def _jev(book: Book, meta: dict, text: str) -> None:
     """Jev picks, from what is on the document, the account (unless a known supplier gave one), the invoice total,
     the invoice date and the Vorsteuer code. A confident pick fills an empty field; a confident pick that differs
@@ -515,6 +518,10 @@ def _jev(book: Book, meta: dict, text: str) -> None:
         current = value(meta, key)
         if not current:
             _set(fields, key, r["wert"], f"Jev {r['konfidenz']:.2f}")
+        elif current != r["wert"] and r["konfidenz"] >= max(cfg["schwelle"], JEV_OVERRULES):
+            _set(fields, key, r["wert"], f"Jev {r['konfidenz']:.2f}", overwrite=True)
+            meta.setdefault("hinweise", []).append(f"{labels[key]}: Jev ({r['konfidenz']:.2f}) wählt {r['wert']}, "
+                                                   f"gelesen war {current}")
         elif current != r["wert"]:
             meta.setdefault("abweichungen", []).append(
                 {"feld": key, "jev": r["wert"], "gelesen": current,

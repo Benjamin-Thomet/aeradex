@@ -362,3 +362,21 @@ def test_confident_other_amount_blocks_approval_from_the_list(book, monkeypatch)
     assert any("Jev hält Betrag 450.00" in w for w in erfassung.warnings(Book(book.root), d))
     with pytest.raises(BookError, match="Jev hält Betrag"):
         api.bill_draft_approve(Book(book.root), d["id"])
+
+
+def test_a_very_sure_jev_overrules_the_reader_and_dates_are_no_amounts(book, monkeypatch):
+    api.settings_update(book, jev={"aktiv": True, "schwelle": 0.7})
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    sent = []
+
+    def fake(state, questions, model):
+        sent.append(questions)
+        return {"answers": {"rechnungsdatum": {"choice": "2026-03-05", "confidence": 0.99}}}
+    monkeypatch.setattr(jev, "system_one", fake)
+    lines = ["Farben Keller AG", "Lieferschein 03.03.2026", "Rechnung vom 05.03.2026", "Total CHF 308.10"]
+    (book.root / "inbox" / "v.txt").write_text("\n".join(lines), encoding="utf-8")
+    d = api.bill_draft_create(Book(book.root), "inbox/v.txt")["entwurf"]
+    assert d["felder"]["datum"] == {"wert": "2026-03-05", "quelle": "Jev 0.99"}
+    assert any("gelesen war 2026-03-03" in h for h in d["hinweise"])
+    assert not erfassung.warnings(Book(book.root), d)
+    assert list(jev.bill_candidates("\n".join(lines))[0]) == ["308.10"]          # not «03.03» of a date
