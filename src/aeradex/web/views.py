@@ -1239,7 +1239,9 @@ async def bank_upload(ui: UI, request: Request):
             result = await asyncio.to_thread(api.bank_import, ui.book(), str(tmp))
         except (BookError, FormatError) as exc:
             suffix = Path(name).suffix.lower()
-            if "Unbekanntes Kontoauszugsformat" not in str(exc) or suffix not in bankformat.TEXT + bankformat.EXCEL + (".pdf",):
+            # an unknown format, or a known one the bank changed: the agent learns it (a person confirms it)
+            unknown = "Unbekanntes Kontoauszugsformat" in str(exc) or isinstance(exc, bankformat.FormatChanged)
+            if not unknown or suffix not in bankformat.TEXT + bankformat.EXCEL + (".pdf",):
                 return fail(str(exc))
             return await _bank_learn(ui, request, name, data, acct(f.get("konto")), suffix)
         return done(result.get("meldung", "Importiert"), "/bank")

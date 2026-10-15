@@ -220,3 +220,81 @@ def test_bank_page_learn_confirm_import(book, monkeypatch):
         assert r.headers.get("HX-Redirect") == "/bank", r.text
         assert "Bestätigen und importieren" not in c.get("/bank").text
     assert len(bank.transactions(Book(book.root))) == 3
+
+
+def _learned(book):
+    datei = _inbox(book, "ubs.csv", UBS)
+    res = api.bank_format_propose(book, datei, "UBS Kontoauszug", **SPEC)
+    api.bank_format_confirm(Book(book.root), res["format"])
+    api.bank_import(Book(book.root), datei)
+    return Book(book.root)
+
+
+APRIL = UBS.replace("31.03.2026;Swisscom", "02.04.2026;Bäckerei;Znüni;12.50;;10'798.50\n31.03.2026;Swisscom")
+
+
+def _reorder(text: str, order: list[int]) -> str:
+    """The same export with its columns in another order (preamble lines untouched)."""
+    out = []
+    for line in text.splitlines():
+        cells = line.split(";")
+        out.append(";".join(cells[i] for i in order) if len(cells) == 6 else line)
+    return "\n".join(out) + "\n"
+
+
+def test_harmless_column_changes_are_read_with_the_learned_format(book):
+    b = _learned(book)
+    out = api.bank_import(b, _inbox(b, "umgestellt.csv", _reorder(APRIL, [1, 0, 2, 5, 3, 4])))["import_"]
+    assert (out["neu"], out["doppelt"]) == (1, 3)                       # other order: columns are found by name
+    extra = APRIL.replace("Belastung;Gutschrift;Saldo", "Belastung;Gutschrift;Saldo;Valuta")
+    out = api.bank_import(Book(b.root), _inbox(b, "valuta.csv", extra))["import_"]
+    assert out["neu"] == 0 and out["doppelt"] == 4                      # a new column: nothing new, nothing twice
+    assert [t["Betrag"] for t in bank.transactions(Book(b.root))] == ["-1600.00", "1500.00", "-89.00", "-12.50"]
+
+
+@pytest.mark.parametrize("change, msg", [
+    (("02.04.2026;", "04/02/2026;"), "Datum «04/02/2026» unlesbar"),
+    (("02.04.2026;", "02.04.26;"), "Datum «02.04.26» unlesbar"),                 # not the year 26
+    (("12.50;;10'798.50", "12,50;;10'798,50"), "Dezimalzeichen passt nicht"),   # not 1250.00
+    (("10'798.50", "10'800.50"), "Saldo"),                                       # a misread amount
+])
+def test_a_changed_format_is_refused_not_misread(book, change, msg):
+    b = _learned(book)
+    with pytest.raises(bankformat.FormatChanged, match=msg):
+        api.bank_import(b, _inbox(b, "neu.csv", APRIL.replace(*change)))
+    assert len(bank.transactions(Book(b.root))) == 3                     # nothing imported
+
+
+def test_changed_columns_without_a_balance_are_refused(book):
+    spec = {**SPEC, "saldo": None, "kopfzeile": SPEC["kopfzeile"][:-1]}
+    plain = "\n".join(";".join(l.split(";")[:5]) for l in UBS.splitlines()) + "\n"
+    res = api.bank_format_propose(book, _inbox(book, "ohne.csv", plain), "Ohne Saldo", konto="1020", **spec)
+    api.bank_format_confirm(Book(book.root), res["format"])
+    assert api.bank_import(Book(book.root), _inbox(book, "a.csv", plain))["import_"]["neu"] == 3   # as learned
+    swapped = "\n".join(";".join([c[1], c[0], *c[2:]]) if len(c) == 5 else l
+                        for l in plain.splitlines() for c in [l.split(";")]) + "\n"
+    with pytest.raises(bankformat.FormatChanged, match="kein Saldo"):
+        api.bank_import(Book(book.root), _inbox(book, "b.csv", swapped))
+
+
+def test_overlap_after_the_bank_changed_its_texts_is_not_imported_twice(book):
+    b = _learned(book)
+    changed = APRIL.replace("Rechnung März", "Rechnung 03/2026").replace("Miete März", "Miete 03/2026")
+    out = api.bank_import(b, _inbox(b, "neu.csv", changed))["import_"]
+    assert (out["neu"], out["doppelt"], out["doppelt_aehnlich"]) == (1, 3, 2)
+    # two equal payments on one day stay two when the file has two
+    twice = changed.replace("02.04.2026;Bäckerei;Znüni;12.50;;10'798.50",
+                            "02.04.2026;Bäckerei;Znüni;12.50;;10'786.00\n02.04.2026;Bäckerei;Znüni;12.50;;10'798.50")
+    out = api.bank_import(Book(b.root), _inbox(b, "zwei.csv", twice))["import_"]
+    assert out["neu"] == 1
+    assert [t["Betrag"] for t in bank.transactions(Book(b.root))].count("-12.50") == 2
+
+
+def test_relearning_keeps_the_old_format(book):
+    b = _learned(book)
+    renamed = APRIL.replace("Buchungstext", "Text")
+    spec = {**SPEC, "kopfzeile": [c.replace("Buchungstext", "Text") for c in SPEC["kopfzeile"]],
+            "text": ["Text", "Beschreibung 2"]}
+    res = api.bank_format_propose(b, _inbox(b, "neu.csv", renamed), "UBS Kontoauszug", **spec)
+    assert res["format"] == "ubs-kontoauszug-2"
+    assert bankformat.formats(Book(b.root))["ubs-kontoauszug"]["bestaetigt"]   # old exports still read

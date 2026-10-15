@@ -23,7 +23,7 @@ import hashlib
 import re
 import shutil
 import xml.etree.ElementTree as ET
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -263,10 +263,22 @@ def import_file(book: Book, source: Path) -> tuple[dict, list[Path]]:
             touched.append(target)
         summary["auszuege"].append({"id": stmt["id"], "iban": stmt.get("iban", ""), "konto": konto, "format": fmt.name,
                                     "schluss": stmt["schluss"], "schluss_datum": stmt["schluss_datum"]})
+        # Movements already on file under another ID (the bank changed its texts or columns, an overlapping export
+        # in another format): per day and amount, as many as were imported before and this file does not
+        # match exactly count as known — two equal payments on one day stay two if the file has two.
+        def key(e):
+            return e["datum"].isoformat(), f"{e['betrag']:.2f}"
+        same = Counter((r["Datum"], r["Betrag"]) for r in rows if r["Konto"] == konto)
+        same.subtract(Counter(key(e) for e in stmt["buchungen"] if _tx_id(stmt["id"], e) in known))
         for e in stmt["buchungen"]:
             tid = _tx_id(stmt["id"], e)
             if tid in known:
                 summary["doppelt"] += 1
+                continue
+            if same[key(e)] > 0:
+                same[key(e)] -= 1
+                summary["doppelt"] += 1
+                summary["doppelt_aehnlich"] = summary.get("doppelt_aehnlich", 0) + 1
                 continue
             known.add(tid)
             summary["neu"] += 1

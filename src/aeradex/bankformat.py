@@ -34,6 +34,12 @@ ZERO = Decimal("0")
 EXCEL = (".xlsx", ".xlsm")
 TEXT = (".csv", ".txt", ".tsv")
 FIELDS = ("datum", "betrag", "belastung", "gutschrift", "gegenpartei", "referenz", "saldo", "id", "waehrung")
+SIMILAR = 0.6        # share of the learned header a changed header must still have to be read with the old format
+
+
+class FormatChanged(BookError):
+    """A file matches a learned format only partly (dates, amounts or columns differ): not imported, the agent
+    may learn the new format."""
 
 
 # ---------- reading a table ----------
@@ -107,6 +113,25 @@ def find_header(rows: list[list[str]], kopfzeile: list[str]) -> int | None:
     return None
 
 
+def used_columns(spec: dict) -> set[str]:
+    texts = spec.get("text") or []
+    return {_norm(n) for n in [spec.get(k) for k in FIELDS] + ([texts] if isinstance(texts, str) else list(texts)) if n}
+
+
+def find_changed_header(rows: list[list[str]], spec: dict) -> tuple[int, dict] | None:
+    """A header that is not the learned one but still carries every column the format reads (other order, a new
+    or a dropped unused column) and most of the old header. → (row index, {neu, weg}) or None."""
+    old = {_norm(c) for c in spec.get("kopfzeile") or []}
+    need = used_columns(spec)
+    if not old or not need:
+        return None
+    for i, row in enumerate(rows[:80]):
+        have = {_norm(c) for c in row}
+        if need <= have and len(old & have) / len(old | have) >= SIMILAR:
+            return i, {"neu": sorted(have - old), "weg": sorted(old - have)}
+    return None
+
+
 def preview_text(filename: str, data: bytes, lines: int = 40) -> str:
     """The first lines as the agent should see them (Excel rows joined with ' | ')."""
     if Path(filename).suffix.lower() in EXCEL:
@@ -127,6 +152,11 @@ def number(raw: str, dezimal: str = ".") -> Decimal | None:
         negative, t = True, t[1:-1]
     if t.endswith("-"):
         negative, t = True, t[:-1]
+    # the other separator in the decimal place («12,50» in a «.» format, «12.50» in a «,» format) would silently
+    # read as 1250 / be off by the thousands: the file is not in the learned format
+    other = "," if dezimal == "." else "."
+    if re.search(re.escape(other) + r"\d{1,2}$", t):
+        raise FormatChanged(f"Betrag «{raw}»: Dezimalzeichen passt nicht zum gelernten Format («{dezimal}»)")
     if dezimal == ",":
         t = t.replace(".", "").replace(",", ".")
     else:
@@ -145,9 +175,11 @@ def to_date(raw: str, fmt: str) -> date | None:
     for candidate in (text, re.split(r"[ T]", text)[0]):
         for f in (fmt, "%Y-%m-%d") if fmt else ("%Y-%m-%d",):
             try:
-                return datetime.strptime(candidate, f).date()
+                found = datetime.strptime(candidate, f).date()
             except ValueError:
                 continue
+            if 2000 <= found.year <= date.today().year + 1:    # «02.04.26» read with %Y is the year 26
+                return found
     return None
 
 
@@ -169,15 +201,22 @@ def match(book: Book, filename: str, data: bytes, nur_bestaetigt: bool = True) -
     """The stored format whose header row this file contains."""
     if Path(filename).suffix.lower() not in EXCEL + TEXT:
         return None
-    for name, spec in formats(book).items():
-        if nur_bestaetigt and not spec.get("bestaetigt"):
-            continue
-        try:
-            rows = rows_of(filename, data, spec.get("trennzeichen") or "")
-        except (BookError, csv.Error, ValueError):
-            continue
-        if find_header(rows, spec.get("kopfzeile") or []) is not None:
-            return name, spec
+    candidates = [(n, s) for n, s in formats(book).items() if s.get("bestaetigt") or not nur_bestaetigt]
+    tables = {}
+    for name, spec in candidates:
+        for sep in dict.fromkeys([spec.get("trennzeichen") or "", ""]):
+            try:
+                tables[(name, sep)] = rows_of(filename, data, sep)
+            except (BookError, csv.Error, ValueError):
+                continue
+    for name, spec in candidates:                       # the learned header, exactly
+        for (n, _), rows in tables.items():
+            if n == name and find_header(rows, spec.get("kopfzeile") or []) is not None:
+                return name, spec
+    for name, spec in candidates:                       # a changed header that still has every column it reads
+        for (n, sep), rows in tables.items():
+            if n == name and find_changed_header(rows, spec) is not None:
+                return name, {**spec, "trennzeichen": sep or spec.get("trennzeichen") or ""}
     return None
 
 
@@ -220,8 +259,12 @@ def read_with(book: Book, name: str, spec: dict, filename: str, data: bytes) -> 
     from . import bank
     rows = rows_of(filename, data, spec.get("trennzeichen") or "")
     head = find_header(rows, spec.get("kopfzeile") or [])
+    changed = None
     if head is None:
-        raise BookError(f"Format {spec.get('name') or name}: Kopfzeile nicht gefunden")
+        found = find_changed_header(rows, spec)
+        if found is None:
+            raise BookError(f"Format {spec.get('name') or name}: Kopfzeile nicht gefunden")
+        head, changed = found
     cols = _columns(spec, rows[head])
     texts = spec.get("text") or []
     texts = [texts] if isinstance(texts, str) else texts
@@ -306,7 +349,31 @@ def read_with(book: Book, name: str, spec: dict, filename: str, data: bytes) -> 
                            "buchungen": items})
     report = {"zeilen": len(entries), "uebersprungen": skipped, "saldo_fehler": mismatches,
               "saldo_geprueft": any(s["schluss"] is not None for s in statements)}
+    if changed:
+        report["spalten_geaendert"] = changed
     return statements, report
+
+
+def checked(book: Book, name: str, spec: dict, filename: str, data: bytes) -> list[dict]:
+    """Read a file for the import: refused when a row could not be read, the running balance does not add up, or
+    the columns changed and there is no balance to prove the old format still reads it right."""
+    label = spec.get("name") or name
+    try:
+        statements, report = read_with(book, name, spec, filename, data)
+    except FormatChanged as exc:
+        raise FormatChanged(f"Format geändert ({label}): {exc}") from None
+    problems = list(report["uebersprungen"]) + list(report["saldo_fehler"])
+    if report.get("spalten_geaendert") and not report["saldo_geprueft"]:
+        ch = report["spalten_geaendert"]
+        problems.append("andere Spalten (" + ", ".join([f"neu {', '.join(ch['neu'])}"] * bool(ch["neu"]) +
+                                                    [f"weg {', '.join(ch['weg'])}"] * bool(ch["weg"])) + ")"
+                        " und kein Saldo zum Prüfen")
+    if problems:
+        raise FormatChanged(f"Format geändert ({label}): " + " · ".join(problems[:4])
+                            + (f" … ({len(problems)} Probleme)" if len(problems) > 4 else "")
+                            + " — die Datei passt nicht mehr zum gelernten Format, nichts importiert. Neu lernen: "
+                            f"aeradex bank format lernen {filename} (in der Oberfläche geschieht das beim Hochladen)")
+    return statements
 
 
 def propose(book: Book, datei: str, name: str, spec: dict) -> tuple[dict, list[Path]]:
@@ -314,6 +381,11 @@ def propose(book: Book, datei: str, name: str, spec: dict) -> tuple[dict, list[P
     path = _source(book, datei)
     data = path.read_bytes()
     key = slug(name or "bank")[:40] or "bank"
+    existing = formats(book)
+    base, n = key, 2
+    while key in existing and existing[key].get("bestaetigt") and \
+            [_norm(c) for c in existing[key].get("kopfzeile") or []] != [_norm(c) for c in spec.get("kopfzeile") or []]:
+        key, n = f"{base}-{n}", n + 1
     clean = {k: v for k, v in spec.items() if v not in (None, "", [], {})}
     clean = {"name": name, "bestaetigt": False, **clean}
     if not clean.get("kopfzeile"):
@@ -471,7 +543,7 @@ def bank_format(book: Book | None, filename: str, data: bytes):
         name, spec = found
         return BankFormat(name=f"csv:{name}", label=f"{spec.get('name') or name} (gelerntes Format)",
                           suffixes=(Path(filename).suffix.lower(),), detect=lambda f, d: True,
-                          parse=lambda d, b: read_with(b, name, spec, filename, d)[0])
+                          parse=lambda d, b: checked(b, name, spec, filename, d))
     card = load_card(book, data) if Path(filename).suffix.lower() == ".pdf" else None
     if card:
         def parse(d, b):
