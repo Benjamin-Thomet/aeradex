@@ -816,7 +816,7 @@ def dispatch(a, book_path: Path | None):
                 d = res["entwurf"]
                 use_agent = erfassung.agent_auto(Book(b.root)) if a.agent is None else a.agent
                 if erfassung.needs_agent(d) and use_agent:
-                    print(f"… {d['id']}: Konto unsicher, frage den Agenten", file=sys.stderr)
+                    print(f"… {d['id']}: offen ({', '.join(erfassung.missing(d))}), frage den Agenten", file=sys.stderr)
                     try:
                         d = api.bill_draft_agent(Book(b.root), d["id"])["entwurf"]
                     except BookError as exc:
@@ -850,7 +850,7 @@ def dispatch(a, book_path: Path | None):
                 d = api.bill_draft_create(Book(b.root), datei, a.art)["entwurf"]
                 use_agent = erfassung.agent_auto(Book(b.root)) if a.agent is None else a.agent
                 if erfassung.needs_agent(d) and use_agent:
-                    print(f"… {d['id']}: Konto unsicher, frage den Agenten", file=sys.stderr)
+                    print(f"… {d['id']}: offen ({', '.join(erfassung.missing(d))}), frage den Agenten", file=sys.stderr)
                     try:
                         d = api.bill_draft_agent(Book(b.root), d["id"])["entwurf"]
                     except BookError as exc:
@@ -866,7 +866,8 @@ def dispatch(a, book_path: Path | None):
             zahlung = {"art": "konto", "konto": a.zahlkonto} if a.zahlkonto else meta.get("zahlung")
             return api.receipt_book(b, a.id, v["datum"] or None, (v["name"] or "Quittung").strip(), v["betrag"],
                                     a.konto or v["konto"], v["mwst"], v["positionen"] or None,
-                                    "" if (v["waehrung"] or "CHF") == "CHF" else v["waehrung"], None, zahlung)
+                                    "" if (v["waehrung"] or "CHF") == "CHF" else v["waehrung"], None, zahlung,
+                                    v["leistung_von"] or None, v["leistung_bis"] or None)
         if a.sub == "agent":
             return api.bill_draft_agent(b, a.id)
         if a.sub == "verwerfen":

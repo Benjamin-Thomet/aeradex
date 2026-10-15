@@ -141,6 +141,12 @@ _DATE = (r"(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4}|\d{2})(?!\d)|(\d{4})-(\d{2})-(\d{2
 _TOTAL = re.compile(r"(total|gesamt|rechnungsbetrag|zu bezahlen|zahlbetrag|betrag fällig|endbetrag|montant|à payer|"
                     r"totale|importo|amount due)", re.I)
 _VAT = re.compile(r"(mwst|mw\.?st|mehrwertsteuer|tva|iva|vat)", re.I)
+# words that say a document covers a period (subscription, rent, insurance …): when no period was read, the agent looks
+_PERIOD_HINT = re.compile(r"\b(abo|abonnement|miete|mietzins|pacht|versicherung|prämie|praemie|police|lizenz|leasing|"
+                          r"leistungszeitraum|leistungsperiode|abrechnungsperiode|zeitraum|periode|monatlich|jährlich|"
+                          r"jaehrlich|quartal|jahresgebühr|jahresbeitrag|mitgliederbeitrag|wartungsvertrag|"
+                          r"abonnement|loyer|assurance|période|abbonamento|affitto|assicurazione|periodo|"
+                          r"subscription|rent|insurance|billing period|service period)\b", re.I)
 _LEGAL = re.compile(r"\b(AG|GmbH|SA|Sàrl|Sarl|S\.A\.|Genossenschaft|KlG|& Co|Ltd|Inc)\b")
 
 
@@ -588,6 +594,10 @@ def create(book: Book, datei: str, fields: dict, text: str, notes: list[str],
     meta = {"id": draft_id, "art": found, "datei": rel, "erstellt": date.today().isoformat(), "felder": fields,
             "hinweise": list(notes) + ([f"Als {ARTEN[found]} erkannt: {why}"] if found != (art or found) or not art else []),
             "status": "neu"}
+    if not fields.get("leistung_von") and found != "debitor" and _PERIOD_HINT.search(text or ""):
+        meta["zeitraum_pruefen"] = True
+        meta["hinweise"].append(f"Der Beleg nennt «{_PERIOD_HINT.search(text).group(1)}», ein Leistungszeitraum "
+                                "wurde aber nicht erkannt")
     kontieren(book, meta, text)
     target = folder(book) / f"{draft_id}.yaml"
     write_yaml(target, meta)
@@ -723,9 +733,20 @@ def form_values(meta: dict) -> dict:
     return out
 
 
+def missing(meta: dict) -> list[str]:
+    """What the readers could not settle: the account (not for own invoices), amount, date, and a service period
+    the document speaks of but nobody read. Any of it sends the draft to the agent."""
+    out = []
+    if meta.get("art") != "debitor" and not (meta.get("konto") or {}).get("wert"):
+        out.append("konto")
+    out += [k for k in ("betrag", "datum") if not value(meta, k)]
+    if meta.get("zeitraum_pruefen") and not value(meta, "leistung_von"):
+        out.append("leistung_von")
+    return out
+
+
 def needs_agent(meta: dict) -> bool:
-    return (meta.get("art") != "debitor" and not (meta.get("konto") or {}).get("wert")
-            and meta.get("status") != "agent")
+    return meta.get("status") != "agent" and bool(missing(meta))
 
 
 def agent_auto(book: Book) -> bool:
@@ -734,13 +755,32 @@ def agent_auto(book: Book) -> bool:
     return bool((book.settings.get("kreditoren") or {}).get("agent_automatisch", True))
 
 
+PERIOD_TASK = ("Nennt der Beleg ein Leistungsdatum oder einen Leistungszeitraum (Abo, Miete, Versicherung, Lizenz, "
+               "«Oktober 2026», «01.10.–31.12.2026» …), setze leistung_von und leistung_bis — er kommt in den "
+               "Buchungstext und der Jahresabschluss braucht ihn für die Abgrenzung. ")
+
+
+def _todo(meta: dict) -> str:
+    """The line that tells the agent what is still open (and that an account already found stays)."""
+    open_ = missing(meta)
+    labels = {"konto": "Konto", "betrag": "Betrag", "datum": "Datum", "leistung_von": "Leistungszeitraum"}
+    konto = meta.get("konto") or {}
+    out = f"Noch offen: {', '.join(labels[k] for k in open_)}.\n" if open_ else ""
+    if konto.get("wert") and "konto" not in open_:
+        out += (f"Das Konto {konto['wert']} steht schon ({konto.get('quelle')}): nicht ändern, nur die offenen Felder "
+                "ergänzen.\n")
+    return out
+
+
 def agent_prompt(meta: dict, book: Book) -> str:
     known = {k: v["wert"] for k, v in (meta.get("felder") or {}).items()}
     if meta.get("art") == "quittung":
         pay = meta.get("zahlung") or {}
         return (f"Kontiere den Beleg-Entwurf {meta['id']} (Quittung für etwas bereits Bezahltes, Datei {meta['datei']}).\n"
                 f"Bisher erkannt: {known or 'nichts'}. Bezahlt über: {pay.get('text') or pay.get('konto') or 'unbekannt'}.\n"
-                "Vorgehen: bill_draft() zeigt Entwurf und Text; lies bei Bedarf die Datei. Wähle mit accounts() das "
+                + _todo(meta) +
+                "Vorgehen: bill_draft() zeigt Entwurf und Text; lies bei Bedarf die Datei. Ergänze fehlende oder falsch "
+                "erkannte Felder (betrag, datum, name). " + PERIOD_TASK + "Wähle mit accounts() das "
                 "Aufwandkonto und — wenn das Buch MWST abrechnet und die Quittung MWST ausweist — den Vorsteuer-Code; "
                 "Quittungen mit mehreren Sätzen (z.B. Lebensmittel 2.6 % und anderes 8.1 %) mit `aufteilung`. Stimmt das "
                 "Zahlkonto nicht (bar = Kasse, Firmenkarte, privat bezahlt = Konto gegenüber der Person), setze "
@@ -748,12 +788,13 @@ def agent_prompt(meta: dict, book: Book) -> str:
                 "Alles mit complete_bill_draft, mit begruendung. Buche nichts selbst — ein Mensch prüft.")
     if meta.get("art") == "debitor":
         return (f"Prüfe den Beleg-Entwurf {meta['id']} (eigene Rechnung an einen Kunden, ausserhalb von aeradex erstellt, "
-                f"Datei {meta['datei']}). Bisher erkannt: {known or 'nichts'}. Ergänze mit complete_bill_draft fehlende "
+                f"Datei {meta['datei']}). Bisher erkannt: {known or 'nichts'}.\n" + _todo(meta) +
+                "Ergänze mit complete_bill_draft fehlende "
                 "Felder (betrag, datum, faellig, rechnungsnr, name des Kunden, leistung_von/leistung_bis = Datum oder "
                 "Zeitraum der Leistung, falls angegeben) und das Ertragskonto (konto). "
                 "Buche nichts selbst.")
     return (f"Kontiere den Kreditoren-Entwurf {meta['id']} (Lieferantenrechnung, Datei {meta['datei']} im Buch).\n"
-            f"Bisher erkannt: {known or 'nichts'}.\n"
+            f"Bisher erkannt: {known or 'nichts'}.\n" + _todo(meta)
             + (f"Hinweise: {'; '.join(meta.get('hinweise') or [])}.\n" if meta.get("hinweise") else "")
             + "Vorgehen: bill_draft() zeigt Entwurf und erkannten Text; lies bei Bedarf die Datei. Wähle mit accounts() "
             "das passende Aufwandkonto (bei Anschaffungen ein Aktivkonto) und, falls die Rechnung MWST ausweist und das "
@@ -761,9 +802,7 @@ def agent_prompt(meta: dict, book: Book) -> str:
             "(z.B. Material und eine Anschaffung), teile sie mit `aufteilung` auf (Beträge brutto, Summe = Rechnung). "
             "Lautet die Rechnung nicht auf CHF, setze `waehrung` (EUR, USD …) — umgerechnet wird zum BAZG-Kurs. "
             "Trage alles mit complete_bill_draft ein: konto, begruendung (ein Satz, warum), und fehlende oder falsch "
-            "erkannte Felder (betrag, datum, faellig, rechnungsnr, name, iban). Nennt die Rechnung ein Leistungsdatum "
-            "oder einen Leistungszeitraum (Abo, Miete, Versicherung, Lizenz …), setze leistung_von und leistung_bis — "
-            "das braucht der Jahresabschluss für die Abgrenzung. Ein Lieferant im Ausland, der eine "
+            "erkannte Felder (betrag, datum, faellig, rechnungsnr, name, iban). " + PERIOD_TASK + "Ein Lieferant im Ausland, der eine "
             "Dienstleistung erbringt: bei MWST-pflichtigen Büchern Code B81 (Bezugsteuer). Ist der Beleg eine bereits "
             "bezahlte Quittung, setze `art` auf «quittung». "
             "Erfasse die Rechnung NICHT selbst und buche nichts — ein Mensch prüft den Entwurf.")

@@ -274,3 +274,35 @@ def test_foreign_iban_address_and_confirmed_fields(book, monkeypatch):
                "felder": {"waehrung": {"wert": "EUR", "quelle": "Text"}}})
     api.bill_draft_update(Book(book.root), "ENT-0001", "Agent", "6600", waehrung="EUR")
     assert erfassung.draft(Book(book.root), "ENT-0001")["felder"]["waehrung"]["quelle"] == "Text"
+
+
+def test_agent_also_when_amount_date_or_a_named_period_is_missing(book):
+    """The account alone is not enough: a draft whose amount or date was not read, or whose text speaks of a
+    subscription/rent without a period that was read, goes to the agent too, which is told what is open."""
+    api.supplier_add(book, name="Druckerei Beispiel AG", iban="CH93 0076 2011 6238 5295 7", konto="6600")
+    inbox = book.root / "inbox"
+    (inbox / "abo.txt").write_text("\n".join(INVOICE[:9] + ["Abo Druckvorlagen-Software"] + INVOICE[9:]), encoding="utf-8")
+    d = api.bill_draft_create(Book(book.root), "inbox/abo.txt")["entwurf"]
+    assert d["konto"]["wert"] == "6600" and d["zeitraum_pruefen"]
+    assert erfassung.missing(d) == ["leistung_von"] and erfassung.needs_agent(d)
+    prompt = erfassung.agent_prompt(erfassung.draft(Book(book.root), d["id"]), Book(book.root))
+    assert "Noch offen: Leistungszeitraum" in prompt and "Das Konto 6600 steht schon" in prompt
+    assert "leistung_von und leistung_bis" in prompt
+
+    (inbox / "abo2.txt").write_text("\n".join(INVOICE[:9] + ["Abo Druckvorlagen-Software",
+                                    "Leistungszeitraum 01.03.2026 - 28.02.2027"] + INVOICE[9:]), encoding="utf-8")
+    d = api.bill_draft_create(Book(book.root), "inbox/abo2.txt")["entwurf"]
+    assert d["felder"]["leistung_von"]["wert"] == "2026-03-01" and not d.get("zeitraum_pruefen")
+    assert erfassung.missing(d) == [] and not erfassung.needs_agent(d)
+
+    (inbox / "ohne.txt").write_text("\n".join(l for l in INVOICE if not l.startswith("Total")), encoding="utf-8")
+    d = api.bill_draft_create(Book(book.root), "inbox/ohne.txt")["entwurf"]
+    assert erfassung.missing(d) == ["betrag"] and erfassung.needs_agent(d)
+
+
+def test_receipt_prompt_asks_for_the_period(book):
+    (book.root / "inbox" / "q.txt").write_text("Migros\nQuittung\nBar bezahlt\n12.03.2026\nTotal CHF 23.40\n",
+                                               encoding="utf-8")
+    d = api.bill_draft_create(Book(book.root), "inbox/q.txt")["entwurf"]
+    assert d["art"] == "quittung"
+    assert "leistung_von und leistung_bis" in erfassung.agent_prompt(erfassung.draft(Book(book.root), d["id"]), Book(book.root))
