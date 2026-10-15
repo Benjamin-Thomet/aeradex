@@ -689,3 +689,28 @@ def test_service_period_from_forms_to_year_end_accrual(client, root):
     assert abgrenzung.proposals(Book(root), 2026)[0]["gebucht"]
     assert "Abgrenzungen 2026: 1 gebucht" in last_commit(root) and errors(root) == []
     assert "Neue Rechnung" in client.get("/debitoren/neu").text and 'name="leistung_von"' in client.get("/debitoren/neu").text
+
+
+def test_login_failures_are_logged_with_the_proxied_address(tmp_path, caplog):
+    """Behind Caddy the real client is the last X-Forwarded-For value; a forged first value must not count."""
+    import logging
+    from starlette.testclient import TestClient
+    from aeradex.testing import make_book
+    from aeradex.web.app import client_address, create_app
+    from aeradex.web.auth import UserStore
+    book = make_book(tmp_path)
+    cfg = tmp_path / "cfg"
+    UserStore(cfg).add("anna", "geheim-geheim-1", "admin")
+    app = create_app(book.root, auth_dir=cfg)
+    c = TestClient(app, client=("127.0.0.1", 5000))
+    with caplog.at_level(logging.WARNING, logger="aeradex.web"):
+        r = c.post("/login", data={"name": "anna", "passwort": "falsch"},
+                   headers={"x-forwarded-for": "6.6.6.6, 203.0.113.9"})
+    assert r.status_code == 401
+    assert "login failed user=anna ip=203.0.113.9" in caplog.text
+
+    class Req:
+        def __init__(self, peer, fwd):
+            self.client = type("C", (), {"host": peer})()
+            self.headers = {"x-forwarded-for": fwd} if fwd else {}
+    assert client_address(Req("198.51.100.4", "6.6.6.6")) == "198.51.100.4"     # not from the proxy: ignore header

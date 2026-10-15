@@ -9,6 +9,7 @@ editor) so they refresh themselves.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import contextlib
 import hashlib
@@ -122,6 +123,8 @@ def make_env() -> Environment:
 
 
 # ---------- app ----------
+
+log = logging.getLogger("aeradex.web")
 
 class UI:
     """Holds the book location, the session token and the template env."""
@@ -466,6 +469,16 @@ async def watch(ui: UI) -> None:
         ui.version += 1
 
 
+def client_address(request: Request) -> str:
+    """The client's address. Behind the reverse proxy (a request from this machine) the proxy appends the real
+    one as the last X-Forwarded-For value; earlier values come from the client and prove nothing."""
+    peer = request.client.host if request.client else "?"
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded and peer in ("127.0.0.1", "::1"):
+        return forwarded.split(",")[-1].strip() or peer
+    return peer
+
+
 def login_routes(ui: UI) -> list[Route]:
     from .auth import SESSION_COOKIE, SESSION_DAYS
 
@@ -477,8 +490,9 @@ def login_routes(ui: UI) -> list[Route]:
         if request.method == "POST":
             form = await request.form()
             name = (form.get("name") or "").strip().lower()
-            address = request.headers.get("x-forwarded-for", request.client.host if request.client else "?").split(",")[0]
+            address = client_address(request)
             if ui.throttle.blocked(f"u:{name}", f"a:{address}"):
+                log.warning("login blocked user=%s ip=%s", name or "-", address)
                 error = "Zu viele Fehlversuche. Bitte in 5 Minuten erneut versuchen."
             else:
                 user = await asyncio.to_thread(ui.users.check, name, form.get("passwort") or "")
@@ -490,6 +504,7 @@ def login_routes(ui: UI) -> list[Route]:
                                         secure=ui.https or request.headers.get("x-forwarded-proto") == "https")
                     return response
                 ui.throttle.fail(f"u:{name}", f"a:{address}")
+                log.warning("login failed user=%s ip=%s", name or "-", address)   # for fail2ban on a server
                 error = "Benutzername oder Passwort falsch."
         book = ui.book()
         html = ui.env.get_template("login.html").render(firma=book.settings.firma, error=error, weiter=weiter)
