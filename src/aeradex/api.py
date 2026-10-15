@@ -800,8 +800,8 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
         raise BookError(f"Diese Einstellungen sind nicht änderbar: {', '.join(sorted(unknown))}")
     if fields.get("agent_modus") not in (None, "vorschlag", "direkt"):
         raise BookError("agent_modus muss 'vorschlag' oder 'direkt' sein")
-    if fields.get("agent_backend") not in (None, "", "auto", "claude-code", "codex", "opencode", "api"):
-        raise BookError("Agent: auto, claude-code, codex, opencode oder api")
+    if fields.get("agent_backend") not in (None, "", "auto", "claude-code", "codex", "opencode", "api", "openai"):
+        raise BookError("Agent: auto, claude-code, codex, opencode, api oder openai")
     data = book.settings.data
     for key, value in fields.items():
         if value is not None:

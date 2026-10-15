@@ -153,6 +153,17 @@ def report(jahr: int | None = None) -> dict:
     return _call(api.statement, jahr)
 
 
+def _in_book(result, key: str):
+    """A file the tool wrote into the book, named relative to it: the agent may run elsewhere (MCP over ssh) and
+    the web UI serves book files under /datei/<path>."""
+    if isinstance(result, dict) and isinstance(result.get(key), str):
+        try:
+            result[key] = book().rel(Path(result[key]))
+        except (BookError, ValueError):
+            pass
+    return result
+
+
 def closing_documents(jahr: int | None = None, teile: list[str] | None = None,
                       formate: list[str] | None = None) -> dict:
     """Abschlussunterlagen eines Jahres als ZIP in berichte/: Jahresrechnung, Saldenliste, Journal,
@@ -164,7 +175,7 @@ def closing_documents(jahr: int | None = None, teile: list[str] | None = None,
         teile: Auswahl, z.B. ["journal", "belege"]; leer = alle, die für das Buch zutreffen.
         formate: z.B. ["pdf"]; leer = alle (pdf, csv, Originalbelege).
     """
-    return _call(api.dossier, jahr, teile, formate)
+    return _in_book(_call(api.dossier, jahr, teile, formate), "datei")
 
 
 def history(limit: int = 20) -> list | dict:
@@ -385,7 +396,7 @@ def mwst_reconciliation(jahr: int, als_pdf: bool = False) -> dict:
         jahr: Geschäftsjahr, z.B. 2026.
         als_pdf: Abstimmung zusätzlich als PDF unter berichte/ ablegen.
     """
-    return _call(api.mwst_abstimmung, jahr, als_pdf=als_pdf)
+    return _in_book(_call(api.mwst_abstimmung, jahr, als_pdf=als_pdf), "pdf")
 
 
 # ---------- debitoren ----------

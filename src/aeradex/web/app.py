@@ -623,4 +623,5 @@ def run_server(root: Path, host: str = "127.0.0.1", port: int = 8080, config: Pa
         raise SystemExit(f"Noch kein Admin in {directory}/users.yaml — zuerst: aeradex user add NAME --rolle admin")
     app = create_app(root, auth_dir=directory, https=https)
     print(f"aeradex läuft für {app.state.ui.book().settings.firma} auf http://{host}:{port} (Login, Benutzer in {directory})")
-    uvicorn.run(app, host=host, port=port, log_level="warning", proxy_headers=True, forwarded_allow_ips="*")
+    uvicorn.run(app, host=host, port=port, log_level="warning", proxy_headers=True, forwarded_allow_ips="*",
+                timeout_graceful_shutdown=2)    # open event streams must not block a service restart

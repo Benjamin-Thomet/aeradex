@@ -48,7 +48,19 @@ def _api_credentials() -> str | None:
     return None
 
 
-BACKENDS = {"claude-code": "Claude Code", "codex": "Codex", "opencode": "opencode", "api": "Claude API"}
+BACKENDS = {"claude-code": "Claude Code", "codex": "Codex", "opencode": "opencode", "api": "Claude API",
+            "openai": "OpenAI-kompatibel (Gemini …)"}
+
+
+def openai_settings() -> dict | None:
+    """An OpenAI-compatible endpoint (Google Gemini, Mistral, …): base URL, key and model from the environment.
+    All three must be set; nothing is guessed."""
+    base = os.environ.get("AERADEX_OPENAI_BASE_URL", "").strip()
+    key = os.environ.get("AERADEX_OPENAI_API_KEY", "").strip()
+    model = os.environ.get("AERADEX_OPENAI_MODEL", "").strip()
+    if not (base and key and model):
+        return None
+    return {"base": base.rstrip("/"), "key": key, "model": model}
 
 
 def _codex_logged_in() -> bool:
@@ -71,18 +83,19 @@ def available() -> dict[str, bool]:
     return {"claude-code": bool(shutil.which("claude")),
             "codex": bool(shutil.which("codex")) and _codex_logged_in(),
             "opencode": bool(shutil.which("opencode")),
-            "api": api}
+            "api": api,
+            "openai": openai_settings() is not None}
 
 
 def backend(preferred: str | None = None) -> str | None:
     """The drawer's agent: AERADEX_CHAT_BACKEND, else the book's `agent_backend` setting,
-    else the first available of Claude API, Claude Code, Codex, opencode."""
+    else the first available of Claude API, Claude Code, Codex, opencode, an OpenAI-compatible endpoint."""
     choice = os.environ.get("AERADEX_CHAT_BACKEND") or preferred or "auto"
     if choice in BACKENDS:
         return choice
     avail = available()
-    for name in ("api", "claude-code", "codex", "opencode"):
-        if avail[name]:
+    for name in ("api", "claude-code", "codex", "opencode", "openai"):
+        if avail.get(name):
             return name
     return None
 
@@ -100,7 +113,8 @@ def credentials_status(preferred: str | None = None) -> dict:
                 "hinweis": f"{BACKENDS[kind]} ist gewählt, aber nicht bereit (installiert und angemeldet?)."
                            + (" Für Codex: `codex login`." if kind == "codex" else "")}
     label = {"api": f"Claude API ({_api_credentials()})", "claude-code": "Claude Code (dein Login)",
-             "codex": "Codex (dein Login)", "opencode": "opencode (deine Anbieter)"}[kind]
+             "codex": "Codex (dein Login)", "opencode": "opencode (deine Anbieter)",
+             "openai": f"{(openai_settings() or {}).get('model', '')} (OpenAI-kompatibel)"}[kind]
     return {"ok": True, "quelle": label, "verfuegbar": avail, "hinweis": ""}
 
 
@@ -292,6 +306,118 @@ class Agent(BaseAgent):
             # Drop a dangling user turn so the next request starts clean.
             while self.messages and self.messages[-1]["role"] != "assistant":
                 self.messages.pop()
+            raise
+
+
+class OpenAIAgent(Agent):
+    """Any model behind an OpenAI-compatible Chat Completions endpoint (Google Gemini, Mistral, …) with the same
+    aeradex tools as the Claude agent. Plain HTTP, no extra package; function schemas come from the same tool
+    functions (`anthropic.beta_tool` reads their signatures and docstrings)."""
+
+    author_label = "OpenAI-kompatibel"
+
+    def __init__(self, root: Path):
+        super().__init__(root)
+        cfg = openai_settings()
+        if cfg is None:
+            raise RuntimeError("AERADEX_OPENAI_BASE_URL, AERADEX_OPENAI_API_KEY und AERADEX_OPENAI_MODEL setzen")
+        self.cfg = cfg
+        self.model = cfg["model"]
+        self.author_label = cfg["model"]
+
+    def tool_specs(self) -> list[dict]:
+        from anthropic import beta_tool
+        out = []
+        for fn in self.tool_list():
+            spec = beta_tool(fn).to_dict()
+            out.append({"type": "function", "function": {"name": spec["name"], "description": spec["description"],
+                                                         "parameters": spec["input_schema"]}})
+        return out
+
+    def post(self, payload: dict) -> dict:
+        import urllib.error
+        import urllib.request
+        req = urllib.request.Request(f"{self.cfg['base']}/chat/completions", method="POST",
+                                     data=json.dumps(payload).encode(),
+                                     headers={"authorization": f"Bearer {self.cfg['key']}",
+                                              "content-type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", "replace")[:300]
+            raise RuntimeError(f"{self.model}: HTTP {exc.code} {detail}") from None
+
+    @staticmethod
+    def _attachment(blocks: list[dict]) -> list[dict]:
+        """read_inbox_file's content blocks (Anthropic shape) as OpenAI content parts."""
+        parts = []
+        for b in blocks:
+            if b.get("type") in ("image", "document") and b.get("source", {}).get("type") == "base64":
+                src = b["source"]
+                parts.append({"type": "image_url",
+                              "image_url": {"url": f"data:{src['media_type']};base64,{src['data']}"}})
+            elif b.get("type") == "text":
+                parts.append({"type": "text", "text": b["text"]})
+        return parts
+
+    def run(self, events: queue.Queue, prompt: str) -> None:
+        tools.BOOK_ROOT.set(self.root)
+        gitlog.AUTHOR.set(gitlog.agent_author(self.author_label))
+        functions = {fn.__name__: fn for fn in self.tool_list()}
+        specs = self.tool_specs()
+        if not self.messages:
+            self.messages.append({"role": "system", "content": self.system_prompt_text()})
+        start = len(self.messages)
+        self.messages.append({"role": "user", "content": prompt})
+        try:
+            for _ in range(MAX_ITERATIONS):
+                reply = self.post({"model": self.model, "messages": self.messages, "tools": specs,
+                                   "tool_choice": "auto"})
+                choice = (reply.get("choices") or [{}])[0]
+                msg = choice.get("message") or {}
+                calls = msg.get("tool_calls") or []
+                for i, c in enumerate(calls):          # some endpoints leave ids empty; the protocol needs them
+                    c["id"] = c.get("id") or f"call_{len(self.messages)}_{i}"
+                self.messages.append({"role": "assistant", "content": msg.get("content") or "",
+                                      **({"tool_calls": calls} if calls else {})})
+                text = msg.get("content") or ""
+                if isinstance(text, str) and text.strip():
+                    self.emit(events, {"type": "text", "html": render_text(text), "raw": text})
+                if not calls:
+                    if choice.get("finish_reason") == "length":
+                        self.emit(events, {"type": "error", "text": "Die Antwort war zu lang und wurde abgeschnitten."})
+                    return
+                attachments: list[dict] = []
+                for c in calls:
+                    name = c.get("function", {}).get("name", "")
+                    try:
+                        args = json.loads(c.get("function", {}).get("arguments") or "{}")
+                    except ValueError:
+                        args = {}
+                    fn = functions.get(name)
+                    self.emit(events, {"type": "tool", "text": describe_call(name, args)})
+                    if fn is None:
+                        result: object = {"ok": False, "fehler": f"Werkzeug {name} gibt es nicht"}
+                    else:
+                        try:
+                            result = fn(**args)
+                        except TypeError as exc:
+                            result = {"ok": False, "fehler": f"Falsche Argumente: {exc}"}
+                    if isinstance(result, list):
+                        attachments += self._attachment(result)
+                        content = "Die Datei ist unten angehängt."
+                    else:
+                        if isinstance(result, dict) and result.get("ok") is False:
+                            self.emit(events, {"type": "tool_error", "text": str(result.get("fehler", ""))[:300]})
+                        content = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
+                    self.messages.append({"role": "tool", "tool_call_id": c["id"], "content": content})
+                if attachments:
+                    self.messages.append({"role": "user", "content": [{"type": "text", "text": "Angehängte Datei:"},
+                                                                      *attachments]})
+            self.emit(events, {"type": "error", "text": "Zu viele Schritte, bitte die Anfrage aufteilen."})
+        except Exception:
+            del self.messages[start:]                 # drop the unfinished turn so the next request starts clean
             raise
 
 
@@ -492,7 +618,8 @@ class OpencodeAgent(CLIAgent):
         return None
 
 
-AGENTS = {"api": Agent, "claude-code": CodeAgent, "codex": CodexAgent, "opencode": OpencodeAgent}
+AGENTS = {"api": Agent, "claude-code": CodeAgent, "codex": CodexAgent, "opencode": OpencodeAgent,
+          "openai": OpenAIAgent}
 
 
 def agent(ui) -> BaseAgent:
