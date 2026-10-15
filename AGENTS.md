@@ -31,7 +31,9 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   `kreditoren/entwuerfe/` are still read). Receipts are matched with open bank movements / existing bookings so
   nothing is booked twice; own invoices from outside aeradex become `invoices.record_external`. Reader chain (QR, PDF text, Tesseract OCR,
   plugin readers via `aeradex_beleg_leser`), account chain (known supplier → Jev → agent via `web/chat` backends,
-  writing through the `complete_bill_draft` tool). Never books; IBAN/name conflicts are flagged, never auto-matched.
+  writing through the `complete_bill_draft` tool). Jev also picks, among the amounts and dates on the document, the total and
+  the invoice date, and the Vorsteuer code (`jev.read_bill`): a confident pick fills an empty field, a different one only
+  warns. The agent runs when account, amount or date is missing, or a period the text names was not read (`missing`). Never books; IBAN/name conflicts are flagged, never auto-matched.
 - `spesen.py`: employee expense claims (own their rows on 2210); `payroll.run/close` add open claims to the payslip
   (`werte.spesen`, `auszahlung`) without touching the wage calculation; Lohnausweis 13.1.2.
 - `mahnungen.py`: reminders (3 steps, PDF with QR-bill for the open amount). Plugin pages: `plugins.Page`, routes

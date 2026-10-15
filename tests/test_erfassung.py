@@ -306,3 +306,59 @@ def test_receipt_prompt_asks_for_the_period(book):
     d = api.bill_draft_create(Book(book.root), "inbox/q.txt")["entwurf"]
     assert d["art"] == "quittung"
     assert "leistung_von und leistung_bis" in erfassung.agent_prompt(erfassung.draft(Book(book.root), d["id"]), Book(book.root))
+
+
+RECEIPT_NO_TOTAL = [
+    "Farben Keller AG", "Industriestrasse 4", "3600 Thun", "Lieferschein 03.03.2026",
+    "Rechnung vom 05.03.2026", "Dispersionsfarbe weiss 15 l      240.00", "Abdeckband 10 Rollen  45.00",
+    "Summe                          308.10", "Zahlbar bis 04.04.2026", "IBAN CH93 0076 2011 6238 5295 7",
+]
+
+
+def test_jev_picks_amount_date_and_vat_from_the_document(book, monkeypatch):
+    """Jev chooses among what is on the bill (never a value of its own): a confident pick fills an empty field,
+    a confident different pick only warns, the Vorsteuer code comes from its choice when no rate was read."""
+    api.settings_update(book, jev={"aktiv": True, "schwelle": 0.7}, mwst={"methode": "effektiv"})
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    sent = []
+    reply = {"aufwandkonto": {"choice": "4000", "confidence": 0.88, "probabilities": {"4000": 0.88}},
+             "rechnungsbetrag": {"choice": "308.10", "confidence": 0.93, "probabilities": {"308.10": 0.93}},
+             "rechnungsdatum": {"choice": "2026-03-05", "confidence": 0.81, "probabilities": {"2026-03-05": 0.81}},
+             "mwst_code": {"choice": "V81", "confidence": 0.77, "probabilities": {"V81": 0.77}}}
+
+    def fake(state, questions, model):
+        sent.append(questions)
+        return {"answers": {k: v for k, v in reply.items() if k in questions}}
+    monkeypatch.setattr(jev, "system_one", fake)
+    (book.root / "inbox" / "k.txt").write_text("\n".join(RECEIPT_NO_TOTAL), encoding="utf-8")
+    d = api.bill_draft_create(Book(book.root), "inbox/k.txt")["entwurf"]
+    q = sent[0]
+    assert set(q) == {"aufwandkonto", "rechnungsbetrag", "rechnungsdatum", "mwst_code"}
+    assert "308.10" in q["rechnungsbetrag"]["criteria"] and "45.00" in q["rechnungsbetrag"]["criteria"]
+    assert "Zeile «Summe" in q["rechnungsbetrag"]["criteria"]["308.10"]
+    assert set(q["rechnungsdatum"]["criteria"]) >= {"2026-03-03", "2026-03-05", "2026-04-04"}
+    assert d["felder"]["betrag"] == {"wert": "308.10", "quelle": "Jev 0.93"}       # «Summe» is no total word
+    assert d["konto"]["wert"] == "4000" and d["mwst"] == {"wert": "V81", "quelle": "Jev 0.77"}
+    read_date = d["felder"]["datum"]["wert"]
+    if read_date != "2026-03-05":                       # the reader took another date: Jev only warns
+        assert any("Jev hält Datum 2026-03-05" in w for w in erfassung.warnings(Book(book.root), d))
+    # unsure answers change nothing; a value Jev may not choose from is ignored
+    reply.update(rechnungsbetrag={"choice": "999.99", "confidence": 0.99},
+                 aufwandkonto={"choice": "4000", "confidence": 0.3, "probabilities": {"4000": 0.3}})
+    (book.root / "inbox" / "k2.txt").write_text("\n".join(RECEIPT_NO_TOTAL), encoding="utf-8")
+    d2 = api.bill_draft_create(Book(book.root), "inbox/k2.txt")["entwurf"]
+    assert "betrag" not in d2["felder"] and not d2.get("konto") and erfassung.missing(d2)[:2] == ["konto", "betrag"]
+
+
+def test_confident_other_amount_blocks_approval_from_the_list(book, monkeypatch):
+    api.supplier_add(book, name="Druckerei Beispiel AG", iban="CH93 0076 2011 6238 5295 7", konto="6600")
+    api.settings_update(book, jev={"aktiv": True, "schwelle": 0.7})
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(jev, "system_one", lambda s, q, m: {"answers": {
+        "rechnungsbetrag": {"choice": "450.00", "confidence": 0.9}}})
+    text_pdf(book.root / "inbox" / "x.pdf")
+    d = api.bill_draft_create(Book(book.root), "inbox/x.pdf")["entwurf"]
+    assert d["felder"]["betrag"]["wert"] == "486.45"                               # the reader's value stays
+    assert any("Jev hält Betrag 450.00" in w for w in erfassung.warnings(Book(book.root), d))
+    with pytest.raises(BookError, match="Jev hält Betrag"):
+        api.bill_draft_approve(Book(book.root), d["id"])

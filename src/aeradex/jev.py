@@ -10,7 +10,8 @@ decides whether a person has to look:
     below                   →  only a hint on the bank transaction
 
 The same applies to supplier bill drafts (Kreditoren upload): Jev picks the
-expense account; below the threshold the draft goes to the agent.
+expense account and, among the amounts and dates on the document, the total and
+the invoice date, and the Vorsteuer code; below the threshold the draft goes to the agent.
 
 Off by default. Enable per book (aeradex.yaml → jev: {aktiv: true}) and set
 TYPESAFE_API_KEY in the environment or save it under Einstellungen (it goes to
@@ -245,32 +246,100 @@ def bill_history(book: Book, name: str, limit: int = 5) -> list[dict]:
     return out
 
 
-def suggest_bill(book: Book, meta: dict, text: str, cfg: dict) -> dict:
-    """Expense account for a supplier bill draft. Sent: supplier name, amount, invoice number,
-    VAT rate, the first 1500 characters of the bill's text, the chart and earlier bills of that supplier."""
+def bill_candidates(text: str, limit: int = 40) -> tuple[dict[str, str], dict[str, str]]:
+    """Every amount and every date on the document, each with the line it stands on — the options Jev chooses
+    from (it never writes a value itself, so it can only pick what is really on the bill)."""
     from . import erfassung
-    options = {k: v for k, v in candidate_accounts(book, False, "").items()
-               if book.accounts[k].klasse in ("aufwand", "aktiv")}
+    found_amounts: dict[str, str] = {}
+    found_dates: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        line = " ".join(line.split())
+        if not line:
+            continue
+        for a in erfassung.amounts(line):
+            if a > 0:
+                found_amounts.setdefault(f"{a:.2f}", f"{a:.2f} · Zeile «{line[:90]}»")
+        for d in erfassung.dates(line):
+            found_dates.setdefault(d.isoformat(), f"{d:%d.%m.%Y} · Zeile «{line[:90]}»")
+    return dict(list(found_amounts.items())[:limit]), dict(list(found_dates.items())[:limit])
+
+
+def vat_options(book: Book) -> dict[str, str]:
+    """Vorsteuer codes of the current rates plus «no VAT shown», for books that account VAT effectively."""
+    from . import mwst
+    if mwst.config(book)["methode"] != "effektiv":
+        return {}
+    out = {c.code: c.label for c in mwst.CODES.values() if c.kind in ("vorsteuer", "investition")}
+    out["keine"] = "Keine MWST ausgewiesen (nicht MWST-pflichtiger Lieferant, steuerfrei)"
+    return out
+
+
+def read_bill(book: Book, meta: dict, text: str, cfg: dict, ask: set[str]) -> dict[str, dict]:
+    """One call, several narrow choices on a supplier bill or receipt: `konto` (expense account), `betrag` (which
+    of the amounts is the invoice total), `datum` (which date is the invoice date), `mwst` (Vorsteuer code).
+    Sent: supplier name, amount, invoice number, VAT rate, the first 3000 characters of the text, the chart and
+    earlier bills of that supplier. → {name: {wert, konfidenz, alternativen}} for the questions answered."""
+    from . import erfassung
     name = erfassung.value(meta, "name")
+    found_amounts, found_dates = bill_candidates(text)
+    questions: dict[str, dict] = {}
+    if "konto" in ask:
+        options = {k: v for k, v in candidate_accounts(book, False, "").items()
+                   if book.accounts[k].klasse in ("aufwand", "aktiv")}
+        questions["aufwandkonto"] = {
+            "type": "choice",
+            "instructions": ("Diese `rechnung` ist eine Lieferantenrechnung oder Quittung an eine Schweizer KMU. Auf "
+                             "welches Konto gehört der Aufwand (bei Anschaffungen von Anlagen ein Aktivkonto)? Wenn "
+                             "`fruehere_rechnungen_gleicher_lieferant` Einträge hat, ist das bisher verwendete Konto "
+                             "der stärkste Hinweis."),
+            "criteria": options}
+    if "betrag" in ask and found_amounts:
+        questions["rechnungsbetrag"] = {
+            "type": "choice",
+            "instructions": ("Welcher dieser Beträge aus dem `text` ist der Rechnungsbetrag, also das Total, das zu "
+                             "bezahlen ist bzw. bezahlt wurde (inklusive MWST)? Nicht eine Position, ein Zwischentotal, "
+                             "der MWST-Betrag oder ein Rabatt."),
+            "criteria": found_amounts}
+    if "datum" in ask and found_dates:
+        questions["rechnungsdatum"] = {
+            "type": "choice",
+            "instructions": ("Welches dieser Daten aus dem `text` ist das Rechnungs- bzw. Belegdatum? Nicht das "
+                             "Fälligkeitsdatum, das Lieferdatum oder ein Leistungszeitraum."),
+            "criteria": found_dates}
+    vat = vat_options(book) if "mwst" in ask else {}
+    if vat:
+        questions["mwst_code"] = {
+            "type": "choice",
+            "instructions": ("Welcher Vorsteuer-Code passt zu diesem Beleg? «V…» für Material, Waren und "
+                             "Dienstleistungen, «I…» für Investitionen und übrigen Betriebsaufwand, jeweils mit dem Satz, "
+                             "den der Beleg ausweist; «keine», wenn keine MWST ausgewiesen ist."),
+            "criteria": vat}
+    if not questions:
+        return {}
     state = {
         "firma": book.settings.firma,
         "rechnung": {"lieferant": name, "betrag_chf": erfassung.value(meta, "betrag"),
                      "rechnungsnr": erfassung.value(meta, "rechnungsnr"),
-                     "mwst_satz": erfassung.value(meta, "mwst_satz"), "text": (text or "")[:1500]},
+                     "mwst_satz": erfassung.value(meta, "mwst_satz"), "text": (text or "")[:3000]},
         "fruehere_rechnungen_gleicher_lieferant": bill_history(book, name),
     }
-    questions = {"aufwandkonto": {
-        "type": "choice",
-        "instructions": ("Diese `rechnung` ist eine Lieferantenrechnung an eine Schweizer KMU. Auf welches Konto "
-                         "gehört der Aufwand (bei Anschaffungen von Anlagen ein Aktivkonto)? Wenn "
-                         "`fruehere_rechnungen_gleicher_lieferant` Einträge hat, ist das bisher verwendete Konto "
-                         "der stärkste Hinweis."),
-        "criteria": options,
-    }}
-    answer = system_one(state, questions, cfg["modell"])["answers"]["aufwandkonto"]
-    probs = sorted(((k, float(v)) for k, v in (answer.get("probabilities") or {}).items()), key=lambda kv: -kv[1])
-    return {"konto": answer.get("choice"), "konfidenz": float(answer.get("confidence") or 0),
-            "alternativen": probs[1:4]}
+    answers = system_one(state, questions, cfg["modell"]).get("answers") or {}
+    out = {}
+    for ours, theirs in (("konto", "aufwandkonto"), ("betrag", "rechnungsbetrag"), ("datum", "rechnungsdatum"),
+                         ("mwst", "mwst_code")):
+        a = answers.get(theirs)
+        if theirs in questions and a and a.get("choice") in questions[theirs]["criteria"]:
+            probs = sorted(((k, float(v)) for k, v in (a.get("probabilities") or {}).items()), key=lambda kv: -kv[1])
+            out[ours] = {"wert": a["choice"], "konfidenz": float(a.get("confidence") or 0), "alternativen": probs[1:4]}
+    return out
+
+
+def suggest_bill(book: Book, meta: dict, text: str, cfg: dict) -> dict:
+    """Expense account for a supplier bill draft (the account question of read_bill alone)."""
+    res = read_bill(book, meta, text, cfg, {"konto"}).get("konto")
+    if not res:
+        raise BookError("Jev hat kein Konto gewählt")
+    return {"konto": res["wert"], "konfidenz": res["konfidenz"], "alternativen": res["alternativen"]}
 
 
 def suggest_bank(book: Book, ids: list[str] | None = None, schwelle: float | None = None) -> dict:

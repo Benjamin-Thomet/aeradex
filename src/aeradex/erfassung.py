@@ -473,23 +473,56 @@ def _match_kreditor(book: Book, meta: dict) -> None:
 
 
 def _jev(book: Book, meta: dict, text: str) -> None:
+    """Jev picks, from what is on the document, the account (unless a known supplier gave one), the invoice total,
+    the invoice date and the Vorsteuer code. A confident pick fills an empty field; a confident pick that differs
+    from what the reader found only leaves a note (a person or the agent decides); an unsure one changes nothing."""
+    from . import jev
+    cfg = jev.config(book)
+    if not cfg["bereit"]:
+        return
+    fields = meta["felder"]
+    found_amounts, found_dates = jev.bill_candidates(text)
+    ask = set()
     if not (meta.get("konto") or {}).get("wert"):
-        from . import jev
-        cfg = jev.config(book)
-        if cfg["bereit"]:
-            try:
-                res = jev.suggest_bill(book, meta, text, cfg)
-            except BookError as exc:
-                meta.setdefault("hinweise", []).append(f"Jev: {exc}")
-            else:
-                if res["konfidenz"] >= cfg["schwelle"]:
-                    meta["konto"] = {"wert": res["konto"], "quelle": f"Jev {res['konfidenz']:.2f}",
-                                     "konfidenz": round(res["konfidenz"], 3)}
-                else:
-                    meta.setdefault("hinweise", []).append(
-                        f"Jev unsicher ({res['konfidenz']:.2f}): {res['konto']}"
-                        + (f" · {', '.join(f'{k} {p:.0%}' for k, p in res['alternativen'] if p >= 0.01)}"
-                           if res["alternativen"] else ""))
+        ask.add("konto")
+    # a single candidate the reader already took needs no second opinion
+    if found_amounts and (not value(meta, "betrag") or len(found_amounts) > 1):
+        ask.add("betrag")
+    if found_dates and (not value(meta, "datum") or len(found_dates) > 1):
+        ask.add("datum")
+    if not (meta.get("mwst") or {}).get("wert") and not value(meta, "mwst_satz"):
+        ask.add("mwst")
+    if not ask:
+        return
+    try:
+        res = jev.read_bill(book, meta, text, cfg, ask)
+    except BookError as exc:
+        meta.setdefault("hinweise", []).append(f"Jev: {exc}")
+        return
+    sure = lambda r: r["konfidenz"] >= cfg["schwelle"]  # noqa: E731
+    k = res.get("konto")
+    if k and sure(k):
+        meta["konto"] = {"wert": k["wert"], "quelle": f"Jev {k['konfidenz']:.2f}", "konfidenz": round(k["konfidenz"], 3)}
+    elif k:
+        meta.setdefault("hinweise", []).append(
+            f"Jev unsicher ({k['konfidenz']:.2f}): {k['wert']}"
+            + (f" · {', '.join(f'{a} {p:.0%}' for a, p in k['alternativen'] if p >= 0.01)}" if k["alternativen"] else ""))
+    labels = {"betrag": "Betrag", "datum": "Datum"}
+    for key in ("betrag", "datum"):
+        r = res.get(key)
+        if not r or not sure(r):
+            continue
+        current = value(meta, key)
+        if not current:
+            _set(fields, key, r["wert"], f"Jev {r['konfidenz']:.2f}")
+        elif current != r["wert"]:
+            meta.setdefault("abweichungen", []).append(
+                {"feld": key, "jev": r["wert"], "gelesen": current,
+                 "text": f"Jev hält {labels[key]} {r['wert']} für richtig ({r['konfidenz']:.2f}), gelesen wurde "
+                         f"{current}: auf dem Beleg prüfen"})
+    m = res.get("mwst")
+    if m and sure(m) and m["wert"] != "keine" and not (meta.get("mwst") or {}).get("wert"):
+        meta["mwst"] = {"wert": m["wert"], "quelle": f"Jev {m['konfidenz']:.2f}"}
 
 
 def match_payment(book: Book, meta: dict) -> dict:
@@ -710,6 +743,8 @@ def warnings(book: Book, meta: dict) -> list[str]:
     """What a person must look at before booking a draft."""
     from . import kreditoren as kred
     out = [meta["konflikt"]] if meta.get("konflikt") else []
+    # Jev confidently picked another amount/date than the reader: stands until the field is changed
+    out += [a["text"] for a in meta.get("abweichungen") or [] if value(meta, a["feld"]) == a["gelesen"]]
     if meta.get("art") in ("quittung", "debitor"):
         return out
     iban = qr.normalize_iban(value(meta, "iban"))

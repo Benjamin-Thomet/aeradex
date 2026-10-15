@@ -1548,6 +1548,9 @@ def bill_draft_approve(book: Book, entwurf: str) -> dict:
     v = erfassung.form_values(meta)
     cur = (v["waehrung"] or "CHF").upper()
     if meta.get("art") == "quittung":
+        warn = erfassung.warnings(book, meta)
+        if warn:
+            raise BookError(f"{entwurf}: {warn[0]} — einzeln prüfen")
         pay = dict(meta.get("zahlung") or {})
         if pay.get("art") not in ("bank", "buchung", "spesen"):
             pay = {"art": "konto", "konto": pay.get("konto") or book.settings.konto("bank")}
