@@ -80,3 +80,18 @@ def test_hourly_paid_have_no_target(book):
     W(book, daten.set_pensum, "M0002", "2026-07-01", "50")
     p = daten.person(Book(book.root), "M0002")
     assert abwesenheit.daily_target(p, date(2026, 8, 3)) is None
+
+
+def test_cli_builds_and_sets_pensum(book, capsys):
+    """Every help text must survive argparse's format check (Python 3.14 checks them when they are added)."""
+    import argparse
+    from aeradex_leistungen import _run, _setup
+    parser = argparse.ArgumentParser()
+    _setup(parser)
+    parser.format_help()
+    for action in parser._subparsers._group_actions:
+        for sub in action.choices.values():
+            sub.format_help()
+    args = parser.parse_args(["pensum", "--wer", "M0001", "--ab", "2026-07-01", "--wert", "80"])
+    _run(Book(book.root), args)
+    assert daten.week_hours(daten.person(Book(book.root), "M0001"), date(2026, 7, 2)) == D("33.6")

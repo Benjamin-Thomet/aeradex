@@ -397,7 +397,7 @@ def _run(book, a):
 
 def _setup(p):
     sub = p.add_subparsers(dest="bereich", required=True)
-    s = sub.add_parser("pensum", help="Pensum (Mitarbeitende, %) bzw. Wochenstunden (ohne Lohn) ab einem Datum — für das Soll")
+    s = sub.add_parser("pensum", help="Pensum (Mitarbeitende, %%) bzw. Wochenstunden (ohne Lohn) ab einem Datum, für das Soll")
     s.add_argument("--wer", required=True)
     s.add_argument("--ab", required=True, help="JJJJ-MM-TT")
     s.add_argument("--wert", help="Pensum in %% bzw. Wochenstunden")
