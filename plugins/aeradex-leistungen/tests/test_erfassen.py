@@ -127,3 +127,24 @@ def test_settings_page_calls_projects_objects(ui):
     assert "eine Rechnung je Objekt" in c.get("/p/leistungen/leistungen?tab=stammdaten").text
     post(c, "/p/leistungen/leistungen/einstellungen", {"projekt_pflicht": "0", "rechnung_tage": "0"})
     assert not daten.settings(Book(book.root))["projekt_pflicht"]
+
+
+def test_open_entries_can_be_edited_from_the_list(ui):
+    c, book = ui
+    W = lambda fn, *a, **k: api.write(Book(book.root), "test", fn, *a, **k)["ergebnis"]
+    e = W(daten.add_time, "2026-10-13", "X01", "3", "Fenster", "K0001")
+    W(daten.add_project, "K0002", "MFH Seeweg 2")
+    html = c.get("/p/leistungen/leistungen").text
+    assert f'data-editopen="ed-{e["id"]}"' in html and f'id="ef-{e["id"]}"' in html
+    r = c.post("/p/leistungen/leistungen/aendern", headers={"HX-Request": "true"},
+               data={"id": e["id"], "datum": "2026-10-14", "menge": "3.5", "text": "Fenster geschliffen",
+                     "kunde": "K0001", "projekt": "P0001", "preis": "120.00"})        # the object brings its customer
+    assert r.status_code == 204, r.text
+    got = daten.entry(Book(book.root), e["id"])
+    assert (str(got["datum"]), got["menge"], got["text"], got["kunde"], got["projekt"]) == \
+        ("2026-10-14", Decimal("3.5"), "Fenster geschliffen", "K0002", "P0001")
+    r = c.post("/p/leistungen/leistungen/aendern", headers={"HX-Request": "true"},
+               data={"id": e["id"], "kunde": "K0001", "projekt": "P0001", "preis": "99"})   # back, own price
+    got = daten.entry(Book(book.root), e["id"])
+    assert (got["kunde"], got["projekt"], got["preis"]) == ("K0001", "", Decimal("99.00"))
+    assert 'data-editopen="ed-' in c.get("/p/leistungen/leistungen?tab=woche&wer=X01&woche=2026-10-12").text

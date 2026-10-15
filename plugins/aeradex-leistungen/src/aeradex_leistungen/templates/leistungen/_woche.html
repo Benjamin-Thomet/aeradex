@@ -115,6 +115,7 @@
           <td>{{ state_pill(e.status) }}{% if e.rechnung and e.status == 'abgerechnet' %} <a class="beleg" href="/debitoren/rechnung/{{ e.rechnung }}">{{ e.rechnung }}</a>{% endif %}</td>
           <td class="right" style="white-space:nowrap">
             {% if e.status != 'abgerechnet' %}
+            <button class="btn small ghost" type="button" title="Bearbeiten" aria-label="{{ e.id }} bearbeiten" data-editopen="ed-{{ e.id }}">✎</button>
             <form hx-post="{{ A }}kopieren" hx-target="#woche" hx-swap="outerHTML" class="inline"><input type="hidden" name="id" value="{{ e.id }}"><input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}"><input type="hidden" name="datum" value="{{ heute }}"><button class="btn small ghost" type="submit" title="Für heute kopieren">⧉</button></form>
             <form hx-post="{{ A }}entfernen" hx-target="#woche" hx-swap="outerHTML" hx-confirm="{{ e.id }} löschen?" class="inline"><input type="hidden" name="id" value="{{ e.id }}"><input type="hidden" name="wer" value="{{ wer }}"><input type="hidden" name="woche" value="{{ woche_start }}"><button class="btn small ghost" type="submit" title="Löschen">✕</button></form>
             {% endif %}

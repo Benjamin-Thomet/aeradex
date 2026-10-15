@@ -290,6 +290,36 @@ def _eintrag(book, f):
     return _week(book, f, "Gespeichert")
 
 
+def _aendern(book, f):
+    """Change an open entry from the list in «Erfassen» (the page reloads with it). Another project brings its
+    customer along; another customer drops a project of the old one; moved elsewhere, the rate is determined
+    again unless a price was typed in."""
+    e = daten.entry(book, f.get("id") or "")
+    fields = {k: f.get(k) for k in ("datum", "menge", "text") if f.get(k) not in (None, "")}
+    kunde = str(f.get("kunde") if f.get("kunde") is not None else e["kunde"]).strip().upper()
+    projekt = str(f.get("projekt") if f.get("projekt") is not None else e["projekt"]).strip().upper()
+    leistung = str(f.get("leistung") if f.get("leistung") is not None else e["produkt"]).strip().upper()
+    if e["abrechenbar"]:
+        if projekt != e["projekt"] and projekt:
+            kunde = daten.project(book, projekt)["kunde"]
+        elif kunde != e["kunde"] and projekt and daten.project(book, projekt)["kunde"] != kunde:
+            projekt = ""
+        moved = (kunde, projekt) != (e["kunde"], e["projekt"]) or (e["art"] == "Zeit" and leistung != e["produkt"])
+        fields.update(kunde=kunde, projekt=projekt)
+        if e["art"] == "Zeit":
+            fields["leistung"] = leistung
+        price = str(f.get("preis") or "").strip()
+        try:
+            same_price = e["preis"] is not None and bool(price) and daten.money(price.replace(",", ".")) == e["preis"]
+        except ArithmeticError:
+            same_price = False                     # not a number: update_entry says so
+        if moved and (not price or same_price):
+            fields["neu_bewerten"] = True
+        elif price:
+            fields["preis"] = price
+    return api.write(book, f"Leistung {e['id']} geändert", daten.update_entry, e["id"], **fields)
+
+
 def _kopieren(book, f):
     e = daten.entry(book, f.get("id") or "")
     d = f.get("datum") or date.today().isoformat()
@@ -517,7 +547,7 @@ PAGES = [
           "projekt_neu": _projekt_neu, "projekt_status": _projekt_status, "person": _person,
           "produkt_neu": _produkt_neu, "produkt": _produkt, "feiertage": _feiertage, "kunde": _kunde, "lohn": _lohn,
           "schnell": _schnell, "start": _start, "stop": _stop, "verwerfen": _verwerfen, "zelle": _zelle,
-          "favorit": _favorit, "eintrag": _eintrag, "kopieren": _kopieren, "entfernen": _loeschen_schnell,
+          "favorit": _favorit, "eintrag": _eintrag, "aendern": _aendern, "kopieren": _kopieren, "entfernen": _loeschen_schnell,
           "verschieben": _verschieben, "abwesenheit": _abwesenheit, "abwesenheit_loeschen": _abwesenheit_loeschen,
           "alle_abrechnen": _alle_abrechnen, "einstellungen": _einstellungen, "nachweis": _nachweis},
          fragments={"woche": ("leistungen/_woche.html", _woche_ctx),

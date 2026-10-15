@@ -1,6 +1,6 @@
 {# «Erfassen»: hours and products per customer, every entry filtered and grouped by customer, billed per customer #}
 {% from "_macros.html" import errors %}
-{% from "plugins/leistungen/leistungen/_macros.html" import kunde_select, state_pill %}
+{% from "plugins/leistungen/leistungen/_macros.html" import kunde_select, projekt_select, leistung_select, state_pill %}
 {% set aktive = personen.items()|selectattr("1.aktiv")|list %}
 
 <form class="panel" id="erfassen" hx-post="{{ A }}neu" hx-target="find .errors" autocomplete="off">
@@ -75,7 +75,7 @@
     <thead><tr><th style="width:2em"></th><th style="width:6.5em">Datum</th><th>Was</th><th class="right">Menge</th><th class="right">Preis</th><th class="right">Betrag</th><th>Status</th><th style="width:2em"></th></tr></thead>
     <tbody>{% for e in g.eintraege %}
       {% set einheit = 'h' if e.art == 'Zeit' else produkte.get(e.produkt, {}).get('einheit', '') %}
-      <tr class="row">
+      <tr class="row"{% if e.status == 'offen' %} data-edit="ed-{{ e.id }}"{% endif %}>
         <td>{% if e.status == 'offen' %}<input type="checkbox" name="ids" value="{{ e.id }}" checked data-betrag="{{ e.betrag }}" aria-label="abrechnen">{% endif %}</td>
         <td class="num small">{{ e.datum|datum }}</td>
         <td>{{ e.text }}{% if e.produkt and produkte.get(e.produkt) and produkte[e.produkt].text != e.text %} <span class="small muted">· {{ produkte[e.produkt].text }}</span>{% endif %}{% if e.wer and personen.get(e.wer) and aktive|length > 1 %} <span class="small muted">· {{ personen[e.wer].name }}</span>{% endif %}</td>
@@ -83,12 +83,27 @@
         <td class="right num">{{ e.preis|chf if e.preis is not none }}</td>
         <td class="right num">{{ e.betrag|chf }}</td>
         <td>{% if e.status == 'abgerechnet' and e.rechnung %}<a class="beleg" href="/debitoren/rechnung/{{ e.rechnung }}">{{ e.rechnung }}</a>{% else %}{{ state_pill(e.status) }}{% endif %}</td>
-        <td>{% if e.status == 'offen' %}<button class="btn small ghost" type="button" title="Eintrag löschen" aria-label="Eintrag löschen"
+        <td style="white-space:nowrap">{% if e.status == 'offen' %}<button class="btn small ghost" type="button" title="Bearbeiten" aria-label="Eintrag {{ e.id }} bearbeiten" data-editopen="ed-{{ e.id }}">✎</button><button class="btn small ghost" type="button" title="Eintrag löschen" aria-label="Eintrag löschen"
             hx-post="{{ A }}loeschen" hx-vals='{"id": "{{ e.id }}"}' hx-confirm="Eintrag {{ e.id }} löschen?">✕</button>{% endif %}</td>
-      </tr>{% endfor %}</tbody>
+      </tr>
+      {% if e.status == 'offen' %}{% set fid = "ef-" ~ e.id %}
+      <tr class="editrow" id="ed-{{ e.id }}" hidden><td colspan="8"><div class="form four">
+        <input type="hidden" name="id" value="{{ e.id }}" form="{{ fid }}">
+        <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ e.datum }}" form="{{ fid }}"></div>
+        <div class="field"><label>{{ 'Stunden' if e.art == 'Zeit' else 'Menge' }}</label><input class="input num" name="menge" value="{{ e.menge|qty }}" form="{{ fid }}"></div>
+        <div class="field" style="grid-column: span 2"><label>Text</label><input class="input" name="text" value="{{ e.text }}" form="{{ fid }}"></div>
+        {% if e.abrechenbar %}<div class="field"><label>Kunde</label>{{ kunde_select(kunden, selected=e.kunde, required=true, form=fid) }}</div>
+        <div class="field"><label>{{ cfg.projekt_wort }}</label>{{ projekt_select(projekte, kunden, selected=e.projekt, leer="— kein " ~ cfg.projekt_wort ~ " —", form=fid) }}</div>
+        {% if e.art == 'Zeit' %}<div class="field"><label>Leistungsart</label>{{ leistung_select(leistungsarten, selected=e.produkt, leer="— keine —", form=fid) }}</div>{% endif %}
+        <div class="field"><label>Preis</label><input class="input num" name="preis" value="{{ e.preis if e.preis is not none else '' }}" form="{{ fid }}"></div>{% endif %}
+        <div class="field" style="grid-column: span 4"><div class="errors" id="err-{{ fid }}"></div><span class="actions"><button class="btn small ghost" type="button" data-editclose="ed-{{ e.id }}">Abbrechen</button><button class="btn small primary" type="submit" form="{{ fid }}">Speichern</button></span></div>
+      </div></td></tr>{% endif %}
+      {% endfor %}</tbody>
   </table></div>
   {{ errors() }}
 </form>
+{# the edit forms live outside the billing form (no nested forms); their fields point here with form="…" #}
+{% for e in g.eintraege if e.status == 'offen' %}<form id="ef-{{ e.id }}" hx-post="{{ A }}aendern" hx-target="#err-ef-{{ e.id }}" hidden></form>{% endfor %}
 {% endfor %}
 
 {% if gruppen and filter.status == 'offen' %}

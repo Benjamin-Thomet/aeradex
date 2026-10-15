@@ -672,7 +672,10 @@ def update_entry(book: Book, eid: str, **fields) -> tuple[dict, list[Path]]:
     if fields.get("datum"):
         e["datum"] = parse_date(fields["datum"], "datum")
     if fields.get("menge") not in (None, ""):
-        e["menge"] = Decimal(str(fields["menge"]).replace(",", "."))
+        try:
+            e["menge"] = Decimal(str(fields["menge"]).replace(",", "."))
+        except ArithmeticError:
+            raise BookError("Menge/Stunden: eine Zahl, z.B. 2.5") from None
         if e["menge"] == 0 or (e["art"] == "Zeit" and not 0 < e["menge"] <= 24):
             raise BookError("Menge/Stunden ungültig")
     if fields.get("text") is not None:
