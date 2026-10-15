@@ -101,3 +101,14 @@ def test_old_tabs_still_work(ui):
     c, _ = ui
     for tab in ("woche", "abrechnen", "abwesenheiten", "auswertung", "stammdaten"):
         assert c.get(f"/p/leistungen/leistungen?tab={tab}").status_code == 200, tab
+
+
+def test_stammdaten_produkt_umbenennen_und_einheit(ui):
+    c, book = ui
+    post(c, A + "produkt_neu", {"text": "Malerarbeiten", "preis": "90", "einheit": "h"})
+    page = c.get("/p/leistungen/leistungen?tab=stammdaten").text
+    assert 'name="text" value="Malerarbeiten"' in page and 'name="einheit" value="h"' in page
+    post(c, A + "produkt", {"nummer": "P001", "text": "Malerarbeiten innen", "einheit": "h", "preis": "92",
+                            "kunde": "", "kundenpreis": "", "aktiv": ""})
+    p = daten.product(Book(book.root), "P001")
+    assert p["text"] == "Malerarbeiten innen" and p["preis"] == Decimal("92.00") and p["einheit"] == "h"
