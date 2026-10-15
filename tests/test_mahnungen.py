@@ -62,3 +62,11 @@ def test_reminder_page_and_detail(book):
         assert r.status_code == 204, r.text
         assert "Zahlungserinnerung" in c.get("/debitoren/rechnung/R-2026-0001").text
     assert mahnungen.history(Book(book.root), "R-2026-0001")[0]["frist"] == "2026-03-06"
+
+
+def test_invoice_without_iban_is_refused_with_a_clear_message(tmp_path):
+    b = make_book(tmp_path, strasse="Hauptstrasse", nr="1", plz="3000", ort="Bern")
+    api.customer_add(b, name="Anna", firma="Kunde AG", strasse="Gasse", nr="1", plz="3011", ort="Bern")
+    with pytest.raises(BookError, match="Keine IBAN hinterlegt.*Einstellungen › Firma und Bank"):
+        api.invoice_create(Book(b.root), "K0001", [{"text": "Beratung", "menge": 1, "preis": "100"}], "2026-01-10")
+    assert not list((b.root / "rechnungen").rglob("*.md"))

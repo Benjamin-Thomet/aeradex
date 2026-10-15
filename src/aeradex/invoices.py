@@ -260,6 +260,11 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
     with MWST per rate when the book is MWST-pflichtig."""
     cust, d, pos, cur, rate, netto, breakdown, total, cfg = _compute(book, kunde, positionen, datum, waehrung, kurs)
     s = book.settings
+    # The PDF always carries a QR slip; fail here with a clear message instead of deep inside the PDF renderer.
+    problem = qr.iban_problem(s.get("iban"))
+    if problem:
+        raise BookError(f"Rechnung nicht möglich: {problem} Unter Einstellungen › Firma und Bank die IBAN "
+                        "eintragen (für den QR-Einzahlungsschein).")
     nummer = next_invoice_number(book, d.year)
     iban = qr.normalize_iban(s.get("iban"))
     ref_type = qr.reference_type_for(iban) if iban else "NON"
