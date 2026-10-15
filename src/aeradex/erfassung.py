@@ -505,12 +505,20 @@ def _jev(book: Book, meta: dict, text: str) -> None:
     k = res.get("konto")
     have = (meta.get("konto") or {}).get("wert")
     if k and have:
-        if sure(k) and k["wert"] != have:            # never overrules the supplier's account, only warns
-            name = book.accounts[k["wert"]].name if k["wert"] in book.accounts else ""
+        # never overrules the supplier's account, only warns: when Jev is sure of another one, or when it finds the
+        # one in place unlikely (a machine from the paint shop: 1500 56 %, 1540 43 %, 4000 ~0 %)
+        probs = k.get("wahrscheinlichkeiten") or {}
+        unlikely = bool(probs) and probs.get(have, 0.0) <= 1 - cfg["schwelle"]
+        if k["wert"] != have and (sure(k) or unlikely):
+            def acct(nr):
+                return f"{nr} {book.accounts[nr].name}" if nr in book.accounts else nr
+            top = sorted(((nr, p) for nr, p in probs.items() if nr != have), key=lambda kv: -kv[1])[:2] or \
+                [(k["wert"], k["konfidenz"])]
             meta.setdefault("abweichungen", []).append(
                 {"feld": "konto", "jev": k["wert"], "gelesen": have,
-                 "text": f"Jev hält Konto {k['wert']} {name} für richtig ({k['konfidenz']:.2f}), eingesetzt ist "
-                         f"{have} ({meta['konto'].get('quelle')}): prüfen"})
+                 "text": f"Jev hält Konto {have} ({meta['konto'].get('quelle')}) für unpassend"
+                         + (f" ({probs.get(have, 0.0):.0%})" if probs else "") + ", eher "
+                         + " oder ".join(f"{acct(nr)} ({p:.0%})" for nr, p in top) + ": prüfen"})
     elif k and sure(k):
         meta["konto"] = {"wert": k["wert"], "quelle": f"Jev {k['konfidenz']:.2f}", "konfidenz": round(k["konfidenz"], 3)}
     elif k:

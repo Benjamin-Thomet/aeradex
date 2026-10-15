@@ -332,7 +332,8 @@ def read_bill(book: Book, meta: dict, text: str, cfg: dict, ask: set[str]) -> di
         a = answers.get(theirs)
         if theirs in questions and a and a.get("choice") in questions[theirs]["criteria"]:
             probs = sorted(((k, float(v)) for k, v in (a.get("probabilities") or {}).items()), key=lambda kv: -kv[1])
-            out[ours] = {"wert": a["choice"], "konfidenz": float(a.get("confidence") or 0), "alternativen": probs[1:4]}
+            out[ours] = {"wert": a["choice"], "konfidenz": float(a.get("confidence") or 0), "alternativen": probs[1:4],
+                         "wahrscheinlichkeiten": dict(probs)}
     return out
 
 

@@ -399,11 +399,21 @@ def test_jev_second_opinion_on_a_known_suppliers_account(book, monkeypatch):
     d = api.bill_draft_create(Book(book.root), "inbox/m.pdf")["entwurf"]
     assert "aufwandkonto" in sent[0] and d["konto"]["wert"] == "6600"
     warn = erfassung.warnings(Book(book.root), d)
-    assert any("Jev hält Konto 1500" in w and "eingesetzt ist 6600" in w for w in warn)
-    with pytest.raises(BookError, match="Jev hält Konto 1500"):
+    assert any("Jev hält Konto 6600 (Lieferant L0001) für unpassend, eher 1500" in w for w in warn)
+    with pytest.raises(BookError, match="Jev hält Konto 6600"):
         api.bill_draft_approve(Book(book.root), d["id"])
     erfassung.update(Book(book.root), d["id"], "Delia", konto="1500")          # changed: the warning is gone
     assert not any("Jev hält Konto" in w for w in erfassung.warnings(Book(book.root), erfassung.draft(Book(book.root), d["id"])))
+    # sure it is an asset, but split between two asset accounts: the supplier's account is unlikely → warn
+    answer.update(choice="1500", confidence=0.56, probabilities={"1500": 0.56, "1540": 0.43, "6600": 0.01})
+    text_pdf(book.root / "inbox" / "o.pdf")
+    d = api.bill_draft_create(Book(book.root), "inbox/o.pdf")["entwurf"]
+    assert any("unpassend (1%), eher 1500" in w and "1540" in w for w in erfassung.warnings(Book(book.root), d))
+    answer.update(choice="1500", confidence=0.5, probabilities={"1500": 0.5, "6600": 0.45})   # torn: no warning
+    text_pdf(book.root / "inbox" / "p.pdf")
+    d = api.bill_draft_create(Book(book.root), "inbox/p.pdf")["entwurf"]
+    assert not erfassung.warnings(Book(book.root), d)
+    answer.clear()
     answer.update(choice="6600", confidence=0.95)                               # agrees: nothing to see
     text_pdf(book.root / "inbox" / "n.pdf")
     d = api.bill_draft_create(Book(book.root), "inbox/n.pdf")["entwurf"]
