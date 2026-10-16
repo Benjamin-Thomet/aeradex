@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="style.css">
 <script type="application/ld+json">
 {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "aeradex", "url": "https://aeradex.ch/",
- "applicationCategory": "BusinessApplication", "operatingSystem": "Linux, macOS, Windows", "inLanguage": "de-CH",
+ "applicationCategory": "BusinessApplication", "operatingSystem": "Linux, macOS, Windows (WSL)", "inLanguage": "de-CH",
  "description": "Offenes, agentisches ERP für Schweizer KMU mit vollständiger Buchhaltung im Kern: Belege, QR-Rechnungen, Bank, MWST, Lohn, Offerten und Zeiterfassung mit Team-App als lesbare Dateien in git.",
  "license": "https://www.gnu.org/licenses/agpl-3.0.html", "codeRepository": "https://github.com/Benjamin-Thomet/aeradex",
  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CHF"}}
@@ -42,6 +42,7 @@
         <li><a href="#open-source">Open Source</a></li>
         <li><a href="#schweiz">Funktionen</a></li>
         <li><a href="#kontrolle">Kontrolle</a></li>
+        <li><a href="#preise">Preise</a></li>
         <li><a href="#roadmap">Roadmap</a></li>
         <li><a href="#start">Start</a></li>
       </ul>
@@ -423,11 +424,74 @@
   </div>
 </section>
 
-<!-- ============ 07 Roadmap ============ -->
+<!-- ============ 07 Preise ============ -->
+<section class="sec" id="preise" aria-labelledby="p-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="label"><span>07</span>Preise</p>
+      <h2 id="p-h">Die Software kostet nichts.<br><span class="dim">Gespart wird vor allem Zeit.</span></h2>
+      <p class="intro">aeradex ist Open Source, ohne Abo und ohne Grenzen bei Belegen, Firmen oder Mitarbeitenden. Wer nichts installieren will, bekommt bald eine Version, die wir für dich betreiben.</p>
+    </div>
+    <div class="paths even">
+      <article class="path price reveal">
+        <span class="card-tag">Open Source</span>
+        <h3>Selbst betreiben.</h3>
+        <p class="price-num"><span class="mono">CHF 0</span><span class="per">für immer</span></p>
+        <ul class="checks"><li>Alle Funktionen: Buchhaltung, MWST, Lohn, QR-Rechnung, Bank, Abschluss</li><li>Unbegrenzt Belege, Firmen und Mitarbeitende</li><li>Auf deinem Rechner oder deinem Server, Daten bleiben bei dir</li><li>KI optional, mit deinem eigenen Zugang</li></ul>
+        <a class="btn primary" href="#start">Installieren <span class="arrow" aria-hidden="true">→</span></a>
+      </article>
+      <article class="path price reveal">
+        <span class="card-tag">aeradex Cloud · bald</span>
+        <h3>Wir betreiben es für dich.</h3>
+        <p class="price-num"><span class="soon">Preis folgt</span></p>
+        <ul class="checks"><li>Im Browser, ohne Installation</li><li>Updates und Backups inklusive</li><li>Login für dein Team und deine Treuhand</li><li>Dieselben Dateien wie Open Source, jederzeit als eine Datei exportierbar</li></ul>
+        <a class="btn ghost" href="mailto:info@aeradex.ch?subject=aeradex%20Cloud">Interesse melden <span class="arrow" aria-hidden="true">→</span></a>
+      </article>
+    </div>
+
+    <div class="calc reveal" id="rechner">
+      <div class="calc-head">
+        <h3>Was kostet dich ein Buchhaltungsjahr?</h3>
+        <p class="small dim">Rechenbeispiel für eine kleine GmbH, die selbst bucht und den Jahresabschluss bei der Treuhand machen lässt. Verschiebe die Regler für deine Zahlen.</p>
+      </div>
+      <div class="calc-in">
+        <label><span>Belege pro Jahr <output class="mono" id="cBelegeOut">600</output></span><input type="range" id="cBelege" min="100" max="3000" step="50" value="600"></label>
+        <label><span>Mitarbeitende im Lohn <output class="mono" id="cMaOut">2</output></span><input type="range" id="cMa" min="0" max="20" step="1" value="2"></label>
+        <label><span>Wert deiner Stunde <output class="mono" id="cSatzOut">CHF 100</output></span><input type="range" id="cSatz" min="40" max="200" step="10" value="100"></label>
+      </div>
+      <div class="tablewrap"><table class="calc-table">
+        <thead><tr><th scope="col"></th><th scope="col" class="r">Klassisch<span>Cloud-Software + Treuhand</span></th><th scope="col" class="r ae">aeradex<span>Open Source + Agent</span></th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Software<span id="cSwNote">bexio Advanced + Lohn bis 5</span></th><td class="r mono" id="cSwK">804</td><td class="r mono ae">0</td></tr>
+          <tr><th scope="row">KI-Nutzung<span>ca. CHF 0.05 pro Beleg</span></th><td class="r mono">0</td><td class="r mono ae" id="cKiA">30</td></tr>
+          <tr><th scope="row">Belege erfassen und kontieren<span>3 Min. von Hand · 1 Min. prüfen und freigeben</span></th><td class="r mono" id="cBK">3'000</td><td class="r mono ae" id="cBA">1'000</td></tr>
+          <tr><th scope="row">Lohnläufe<span>15 Min. · 5 Min. pro Abrechnung</span></th><td class="r mono" id="cLK">600</td><td class="r mono ae" id="cLA">200</td></tr>
+          <tr><th scope="row">MWST-Abrechnungen<span>90 Min. · 20 Min. pro Quartal</span></th><td class="r mono" id="cMK">600</td><td class="r mono ae" id="cMA">133</td></tr>
+          <tr><th scope="row">Jahresabschluss Treuhand<span>GmbH ohne Revision · halber Aufwand, wenn die Treuhand auch mit aeradex arbeitet</span></th><td class="r mono">2'300</td><td class="r mono ae">1'150</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><th scope="row">Total pro Jahr (CHF)</th><td class="r mono" id="cTK">7'304</td><td class="r mono ae" id="cTA">2'513</td></tr>
+        </tfoot>
+      </table></div>
+      <p class="calc-sum">Mit aeradex sparst du rund <strong class="mono" id="cSave">CHF 4'791</strong> und <strong class="mono" id="cHours">29 Stunden</strong> pro Jahr.</p>
+      <details class="calc-notes"><summary>Annahmen und Quellen</summary>
+        <ul>
+          <li>Software: Preise von <a href="https://www.bexio.com/de-CH/pakete-preise">bexio.com</a>, Stand 8.10.2026, im Jahresabo, exklusive MWST. Advanced CHF 42 pro Monat, Lohn für 1 Person CHF 7, bis 5 Personen CHF 25; ab 6 Personen Ultimate CHF 119. Mit <a href="https://www.banana.ch/en/prices">Banana</a> (CHF 89–179 pro Jahr) ist die Software günstiger, der Zeitaufwand bleibt.</li>
+          <li>Jahresabschluss: Richtwert CHF 1'200–3'500 für eine GmbH ohne Revision (<a href="https://pfeffersack.ch/blog/treuhaender-kosten-schweiz-2026">Übersicht Treuhandkosten 2026</a>); gerechnet mit dem Mittel von CHF 2'300. Mit aeradex gerechnet ist der halbe Betrag: Das Buch ist laufend geprüft, und arbeitet auch die Treuhand mit aeradex und einem Agenten, übernimmt sie Buch und Abschluss-Dossier direkt, statt Daten zu exportieren und nachzubuchen. Das ist eine Annahme und kein Angebot; ohne aeradex bei der Treuhand fällt die Ersparnis kleiner aus.</li>
+          <li>Zeiten: Schätzungen für geübte Anwender, nicht gemessen. Mit aeradex liest der Agent den Beleg, wählt das Konto und gleicht mit der Bank ab; du prüfst und gibst frei.</li>
+          <li>KI-Nutzung: grobe Schätzung für einen Beleg mit einem aktuellen Modell über die API. Mit einem bestehenden Abo (Claude Code, Codex) fallen keine Zusatzkosten pro Beleg an. Ohne Agent ist aeradex kostenlos, der Zeitgewinn fällt dann kleiner aus.</li>
+          <li>Nicht eingerechnet: Server oder Rechner, Steuererklärung, MWST auf den Softwarepreisen.</li>
+        </ul>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 08 Roadmap ============ -->
 <section class="sec" id="roadmap" aria-labelledby="r-h">
   <div class="wrap">
     <div class="sec-head reveal">
-      <p class="label"><span>07</span>Roadmap und Plugins</p>
+      <p class="label"><span>08</span>Roadmap und Plugins</p>
       <h2 id="r-h">Was kommt, steht hier.<br><span class="dim">Was fehlt, kann ein Plugin sein.</span></h2>
     </div>
     <div class="paths even">
@@ -440,7 +504,7 @@
           <li>camt.054: Sammelgutschriften im Detail</li>
           <li>Lohnmeldungen über ELM, sofern eine Zertifizierung durch Swissdec gelingt</li>
         </ul>
-        <ul class="stack" aria-label="Heute in v0.8"><li>Finanzbuchhaltung</li><li>MWST + eMWST</li><li>Bank camt.053</li><li>QR-Rechnung CHF/EUR</li><li>Mahnwesen</li><li>Kreditoren + pain.001</li><li>Fremdwährungen</li><li>Lohn + Spesen</li><li>Abschluss-Dossier</li><li>Team-App</li><li>Telegram + Anruf</li><li>CLI + MCP</li><li>Server mit Login</li><li>Server-Vorlagen</li></ul>
+        <ul class="stack" aria-label="Heute in v0.8"><li>Finanzbuchhaltung</li><li>MWST + eMWST</li><li>Bank camt.053</li><li>QR-Rechnung CHF/EUR</li><li>Mahnwesen</li><li>Kreditoren + pain.001</li><li>Fremdwährungen</li><li>Lohn + Spesen</li><li>Abschluss-Dossier</li><li>Zeiterfassung (Plugin)</li><li>Team-App</li><li>Telegram + Anruf</li><li>CLI + MCP</li><li>Server mit Login</li><li>Server-Vorlagen</li></ul>
       </article>
       <article class="path reveal">
         <span class="card-tag">Plugins</span>
@@ -448,7 +512,7 @@
         <p>Ein Plugin ist ein gewöhnliches Python-Paket. Auch seine Buchungen müssen alle Prüfregeln bestehen.</p>
         <ul class="plugin-list">
           <li><b>aeradex-anlagen</b>Anlagenbuchhaltung: Abschreibungen, Abgänge, Anlagenspiegel</li>
-          <li><b>aeradex-leistungen</b>Offerten, Zeiterfassung, Projekte und Abrechnung an Kunden</li>
+          <li><b>aeradex-leistungen</b>Zeit und Material erfassen mit Stoppuhr und Wochenraster, Ferien und Überzeit, Offerten, Abrechnung als QR-Rechnung</li>
           <li><b>aeradex-revolut</b>Kontoauszüge von Revolut Business und Privat</li>
           <li><b>aeradex-team</b>Team-App: Zeit, Material und Abwesenheiten auf dem Handy, Lohndokumente verschlüsselt</li>
           <li><b>aeradex-anruf</b>Mit der Sekretärin telefonieren: Stimme, Gedächtnis, Karten zum Bestätigen</li>
@@ -465,7 +529,7 @@
 <section class="sec" id="start" aria-labelledby="q-h">
   <div class="wrap">
     <div class="sec-head reveal">
-      <p class="label"><span>08</span>Loslegen</p>
+      <p class="label"><span>09</span>Loslegen</p>
       <h2 id="q-h">Früh dabei sein.<br><span class="dim">Mit offenen Karten.</span></h2>
     </div>
     <div class="paths">
@@ -485,15 +549,21 @@
       </article>
       <article class="path path-dev reveal">
         <span class="card-tag">Für Entwickler</span>
-        <h3>Vier Zeilen bis zum ersten Buch.</h3>
+        <h3>Fünf Zeilen bis zum ersten Buch.</h3>
         <div class="term">
           <button class="copy" type="button" data-copy="termCode" aria-label="Befehle kopieren">Kopieren</button>
 <pre id="termCode"><span class="c-m">$</span> git clone https://github.com/Benjamin-Thomet/aeradex &amp;&amp; cd aeradex
-<span class="c-m">$</span> pip install -e ".[ui,mcp,scan]"
+<span class="c-m">$</span> pip install -e ".[all]"
 <span class="c-m">$</span> aeradex init ~/buchhaltung/muster --firma "Muster GmbH"
+<span class="c-m">$</span> aeradex --buch ~/buchhaltung/muster ui
 <span class="c-m">$</span> claude mcp add aeradex -- aeradex --buch ~/buchhaltung/muster mcp</pre>
         </div>
-        <p class="small">Python 3.11 oder neuer. Codex und opencode werden genauso angebunden. <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/server.md">Betrieb auf dem eigenen Server</a> · <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/plugins.md">Plugins schreiben</a></p>
+        <ul class="reqs small">
+          <li><b>Nötig</b>Python 3.11 oder neuer und git. Linux und macOS; unter Windows über WSL.</li>
+          <li><b>Für Scans und Fotos</b>Tesseract mit Deutsch, Französisch und Italienisch. PDFs mit Text und QR-Rechnungen liest aeradex auch ohne.<br><code>brew install tesseract tesseract-lang</code> · <code>apt install tesseract-ocr-deu tesseract-ocr-fra tesseract-ocr-ita</code></li>
+          <li><b>Optional</b>Ein Agent (Claude Code, Codex, opencode oder Claude API) und Jev für die Kontierung von Bankbewegungen.</li>
+        </ul>
+        <p class="small">Die Python-Pakete installiert pip selbst. Codex und opencode werden wie Claude Code angebunden. <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/server.md">Betrieb auf dem eigenen Server</a> · <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/plugins.md">Plugins schreiben</a></p>
         <ul class="stack" aria-label="Schnittstellen"><li>Web-Oberfläche</li><li>CLI mit <code>--json</code></li><li>MCP-Server</li><li>Plugin-API</li><li>Server mit Login</li></ul>
       </article>
     </div>
@@ -504,7 +574,8 @@
       <div>
       <details><summary>Brauche ich einen KI-Agenten?</summary><p>Nein. Du kannst alles selbst im Browser erledigen: Belege, Rechnungen, Bankabgleich, Lohn und Abschluss. Der Agent ist eine Abkürzung, keine Voraussetzung.</p></details>
       <details><summary>Wo liegen meine Daten?</summary><p>In einem Ordner auf deinem Rechner oder Server, versioniert mit git. Du bist für Betrieb und Backups verantwortlich. Nutzt du einen KI-Agenten, hängt die Verarbeitung der Daten, die er liest, vom gewählten Anbieter ab.</p></details>
-      <details><summary>Was kostet aeradex?</summary><p>Die Software selbst ist kostenlos und quelloffen. Kosten entstehen höchstens für deinen Server und für den KI-Anbieter, falls du einen Agenten nutzt.</p></details>
+      <details><summary>Was kostet aeradex?</summary><p>Die Software selbst ist kostenlos und quelloffen. Kosten entstehen höchstens für deinen Server und für den KI-Anbieter, falls du einen Agenten nutzt. Für eine betriebene Cloud-Version gibt es bald einen Preis; der <a href="#rechner">Rechner</a> zeigt, was ein Buchhaltungsjahr insgesamt kostet.</p></details>
+      <details><summary>Was muss ich installieren?</summary><p>Python 3.11 oder neuer und git, dann aeradex mit pip. Für Scans und Handyfotos zusätzlich Tesseract mit den Sprachen Deutsch, Französisch und Italienisch. aeradex läuft unter Linux und macOS, unter Windows über WSL. Details stehen in der <a href="https://github.com/Benjamin-Thomet/aeradex#voraussetzungen">Anleitung</a>.</p></details>
       <details><summary>Was heisst Open Source hier konkret?</summary><p>Der Quellcode steht unter der AGPL-3.0. Du kannst ihn einsehen, selbst betreiben und anpassen. Dateiformat, Plugin-Schnittstelle und Werkzeuge für Agenten sind <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/format.md">offen dokumentiert</a>.</p></details>
       <details><summary>Kann ich von Bexio, Banana oder Abacus wechseln?</summary><p>Ja, schrittweise. Du übernimmst Eröffnungsbilanz und offene Posten und buchst ein Quartal parallel, bis die Zahlen übereinstimmen. Die <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/parallelbetrieb.md">Checkliste</a> führt durch jeden Schritt.</p></details>
       <details><summary>Für welche Rechtsformen eignet sich aeradex?</summary><p>Für GmbH und AG, Einzelfirmen und Vereine. Beim Anlegen eines Buchs wählt aeradex den passenden Kontenplan, den du danach anpassen kannst.</p></details>

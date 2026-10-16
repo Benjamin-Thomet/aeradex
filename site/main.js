@@ -140,4 +140,36 @@
       });
     });
   }
+
+  // Cost calculator: everything is computed in the browser, nothing is sent anywhere.
+  const calc = document.querySelector('#rechner');
+  if (calc) {
+    const $ = id => document.getElementById(id);
+    const chf = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    const update = () => {
+      const belege = +$('cBelege').value, ma = +$('cMa').value, satz = +$('cSatz').value;
+      $('cBelegeOut').textContent = chf(belege);
+      $('cMaOut').textContent = ma;
+      $('cSatzOut').textContent = 'CHF ' + satz;
+      // bexio list prices (annual billing, excl. VAT, 8.10.2026): Advanced 42, payroll 7 (1) or 25 (≤5); Ultimate 119 above 5
+      let sw, note;
+      if (ma > 5) { sw = 119 * 12; note = 'bexio Ultimate, Lohn inklusive'; }
+      else { sw = (42 + (ma === 0 ? 0 : ma === 1 ? 7 : 25)) * 12; note = ma === 0 ? 'bexio Advanced' : ma === 1 ? 'bexio Advanced + Lohn für 1' : 'bexio Advanced + Lohn bis 5'; }
+      const hour = min => min / 60 * satz;
+      const k = { b: hour(belege * 3), l: hour(ma * 12 * 15), m: hour(4 * 90), t: 2300 };
+      const a = { ki: belege * 0.05, b: hour(belege * 1), l: hour(ma * 12 * 5), m: hour(4 * 20), t: 2300 * 0.5 };
+      const totalK = sw + k.b + k.l + k.m + k.t, totalA = a.ki + a.b + a.l + a.m + a.t;
+      const hours = (belege * 2 + ma * 12 * 10 + 4 * 70) / 60;
+      $('cSwNote').textContent = note; $('cSwK').textContent = chf(sw);
+      $('cKiA').textContent = chf(a.ki);
+      $('cBK').textContent = chf(k.b); $('cBA').textContent = chf(a.b);
+      $('cLK').textContent = chf(k.l); $('cLA').textContent = chf(a.l);
+      $('cMK').textContent = chf(k.m); $('cMA').textContent = chf(a.m);
+      $('cTK').textContent = chf(totalK); $('cTA').textContent = chf(totalA);
+      $('cSave').textContent = 'CHF ' + chf(totalK - totalA);
+      $('cHours').textContent = Math.round(hours) + ' Stunden';
+    };
+    calc.querySelectorAll('input[type=range]').forEach(input => input.addEventListener('input', update));
+    update();
+  }
 })();
