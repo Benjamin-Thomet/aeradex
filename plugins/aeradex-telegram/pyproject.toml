@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeradex-telegram"
+version = "0.1.0"
+description = "Telegram für aeradex-anruf: Chat, Sprachnachrichten und Anrufen aus Telegram"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+# httpx (bzw. httpx2) kommt mit dem anthropic-SDK aus aeradex[ui]
+dependencies = ["aeradex[ui]>=0.8", "aeradex-anruf>=0.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.entry-points."aeradex.plugins"]
+telegram = "aeradex_telegram"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aeradex_telegram = ["static/*"]

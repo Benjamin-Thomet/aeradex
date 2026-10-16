@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>aeradex Anruf</title>
+<script src="https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.25.0/dist/lib.iife.js"></script>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --fg: #1a1b1e; --muted: #6b6f76; --line: #e3e3df;
+    --accent: #c8102e; --ok: #1f8a4c; --warn: #b26b00; --card: #fbfaf7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111214; --panel: #191a1d; --fg: #eeeeec; --muted: #8d9198; --line: #2a2c31; --card: #1f2024;
+      --ok: #2fa864; --warn: #d79a2b; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 16px; max-width: 1180px;
+    margin: 0 auto; padding: 16px; min-height: 100vh; }
+  @media (max-width: 760px) { .wrap { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .call { display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; align-self: start;
+    position: sticky; top: 16px; }
+  h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .01em; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+  #orb { width: 132px; height: 132px; border-radius: 50%; margin-top: 6px;
+    background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--fg) 18%, var(--panel)), var(--panel));
+    border: 1px solid var(--line); transition: transform .25s ease, box-shadow .25s ease; }
+  #orb.listening { box-shadow: 0 0 0 10px color-mix(in srgb, var(--ok) 20%, transparent); }
+  #orb.speaking { transform: scale(1.06); box-shadow: 0 0 0 16px color-mix(in srgb, var(--accent) 22%, transparent); }
+  #status { color: var(--muted); min-height: 1.4em; }
+  button { appearance: none; border: 0; border-radius: 999px; padding: 13px 28px; font: inherit; font-weight: 650;
+    color: #fff; background: var(--ok); cursor: pointer; }
+  button.end { background: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  #transcript { width: 100%; text-align: left; max-height: 40vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  .say { padding: 7px 10px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); font-size: 14px; }
+  .say.user { align-self: flex-end; background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
+  #feed { display: flex; flex-direction: column; gap: 10px; }
+  .ev { font-size: 14px; display: flex; gap: 10px; align-items: baseline; }
+  .ev time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; min-width: 38px; }
+  .ev.tool { color: var(--muted); }
+  .ev.tool code { font-size: 12.5px; }
+  .ev.tool_error, .ev.warn { color: var(--warn); }
+  .karte { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--card); border-radius: 10px;
+    padding: 12px 14px; white-space: pre-wrap; }
+  .karte .knoepfe { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .karte button { padding: 9px 18px; font-size: 14px; }
+  .karte button.no { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  .karte.done { border-left-color: var(--line); opacity: .75; }
+  .datei a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .hinweis { white-space: pre-wrap; border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; }
+  .empty { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="call">
+    <h1><span>aeradex</span> · Buchhaltung</h1>
+    <div id="orb" aria-hidden="true"></div>
+    <div id="status">Bereit</div>
+    <button id="btn" type="button">📞 Anrufen</button>
+    <div id="transcript" aria-live="polite"></div>
+  </section>
+  <section>
+    <h2>Was der Agent tut</h2>
+    <div id="feed"><div class="empty" id="empty">Noch nichts. Ruf an und sag z.B. «Welche Rechnungen sind offen?» oder
+      «Mach eine Offerte für Kunde AG: 8 Stunden Malerarbeiten à 95 Franken».</div></div>
+  </section>
+</div>
+<script>
+  const key = new URLSearchParams(location.search).get("key") || "";
+  const $ = (id) => document.getElementById(id);
+  const btn = $("btn"), statusEl = $("status"), orb = $("orb"), transcript = $("transcript"), feed = $("feed");
+  let conversation = null, session = null;
+
+  const setStatus = (t) => { statusEl.textContent = t; };
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function say(source, text) {
+    const div = document.createElement("div");
+    div.className = "say" + (source === "user" ? " user" : "");
+    div.textContent = text;
+    transcript.appendChild(div);
+    transcript.scrollTop = transcript.scrollHeight;
+  }
+
+  function add(html, cls) {
+    $("empty")?.remove();
+    const div = document.createElement("div");
+    div.className = cls;
+    div.innerHTML = html;
+    feed.prepend(div);
+    return div;
+  }
+
+  async function act(data, card) {
+    card.querySelectorAll("button").forEach((b) => b.disabled = true);
+    const r = await fetch("/anruf/aktion", { method: "POST", headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ key, data }) });
+    if (r.ok) card.classList.add("done");
+    else card.querySelectorAll("button").forEach((b) => b.disabled = false);
+  }
+
+  function show(ev) {
+    const t = `<time>${esc(ev.zeit)}</time>`;
+    if (ev.type === "tool") add(`${t}<span>⚙︎ <code>${esc(ev.text)}</code></span>`, "ev tool");
+    else if (ev.type === "tool_error") add(`${t}<span>⚠︎ ${esc(ev.text)}</span>`, "ev tool_error");
+    else if (ev.type === "karte") {
+      const card = add(`${esc(ev.text)}<div class="knoepfe"></div>`, "karte");
+      card.dataset.aktion = (ev.knoepfe[0]?.data || "").split(":")[1] || "";
+      for (const k of ev.knoepfe) {
+        const b = document.createElement("button");
+        b.textContent = k.label;
+        if (k.data.startsWith("no:")) b.className = "no";
+        b.onclick = () => act(k.data, card);
+        card.querySelector(".knoepfe").appendChild(b);
+      }
+    } else if (ev.type === "erledigt") {
+      document.querySelectorAll(`.karte[data-aktion="${CSS.escape(ev.aktion || "")}"]`).forEach((c) => {
+        c.classList.add("done"); c.querySelectorAll("button").forEach((b) => b.remove()); });
+      add(`${t}<span>${esc(ev.text)}</span>`, "ev" + (ev.text.startsWith("⚠") ? " warn" : ""));
+    } else if (ev.type === "datei") {
+      const href = `/anruf/datei/${encodeURIComponent(ev.id)}?key=${encodeURIComponent(key)}`;
+      add(`${t}<span class="datei">📄 <a href="${href}" target="_blank" rel="noopener noreferrer">${esc(ev.name)}</a>
+           ${ev.text ? " · " + esc(ev.text) : ""}</span>`, "ev");
+    } else if (ev.type === "quellen") {
+      const links = ev.links.filter((l) => /^https?:\/\//.test(l.url))
+        .map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.titel)}</a>`).join(" · ");
+      add(`${t}<span class="datei">🔎 Quellen: ${links}</span>`, "ev");
+    } else if (ev.type === "hinweis" || ev.type === "text") add(esc(ev.text), "hinweis");
+  }
+
+  function follow() {
+    let last = 0;
+    const open = () => {
+      const es = new EventSource(`/anruf/events?key=${encodeURIComponent(key)}&ab=${last}`);
+      es.onmessage = (m) => { const ev = JSON.parse(m.data); last = ev.n + 1; show(ev); };
+      es.onerror = () => { es.close(); setTimeout(open, 2000); };
+    };
+    open();
+  }
+
+  async function start() {
+    btn.disabled = true;
+    try {
+      setStatus("Mikrofon …");
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      setStatus("Verbinde …");
+      const resp = await fetch("/anruf/session", { method: "POST", headers: { "X-Aeradex-Key": key } });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.fehler || "Nicht erlaubt");
+      session = data.session;
+      conversation = await ElevenLabsClient.Conversation.startSession({
+        signedUrl: data.signed_url,
+        dynamicVariables: { session: data.session, begruessung: data.begruessung },
+        customLlmExtraBody: { session: data.session },
+        onConnect: () => { setStatus("Verbunden – sprich einfach"); btn.textContent = "Auflegen"; btn.classList.add("end"); btn.disabled = false; },
+        onDisconnect: () => end(true),
+        onError: (e) => setStatus("Fehler: " + (e && e.message ? e.message : e)),
+        onModeChange: (m) => { const mode = m && m.mode; orb.className = mode === "speaking" ? "speaking" : "listening";
+                               setStatus(mode === "speaking" ? "Agent spricht …" : "Ich höre zu …"); },
+        onMessage: (m) => { if (m && m.message) say(m.source, m.message); },
+      });
+    } catch (e) {
+      setStatus(e.message || String(e));
+      btn.disabled = false;
+    }
+  }
+
+  async function end(fromRemote) {
+    const c = conversation; conversation = null;
+    if (session) {                        // she writes a note about the call for next time
+      fetch("/anruf/ende", { method: "POST", headers: { "Content-Type": "application/json" },
+                             body: JSON.stringify({ key, session }) }).catch(() => {});
+      session = null;
+    }
+    if (c && !fromRemote) { try { await c.endSession(); } catch (_) {} }
+    orb.className = ""; btn.textContent = "📞 Anrufen"; btn.classList.remove("end"); btn.disabled = false;
+    setStatus("Aufgelegt");
+  }
+
+  btn.addEventListener("click", () => conversation ? end(false) : start());
+  follow();
+</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>aeradex Anruf</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.25.0/dist/lib.iife.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #111214);
+    --fg: var(--tg-theme-text-color, #f2f2f2);
+    --muted: var(--tg-theme-hint-color, #8a8f98);
+    --accent: #c8102e;
+    --ok: #1f9d55;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 28px; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); text-align: center; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; }
+  #status { color: var(--muted); min-height: 1.4em; }
+  #orb { width: 148px; height: 148px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3a3d44, #1b1c20);
+    box-shadow: 0 0 0 0 rgba(200,16,46,.0); transition: transform .25s ease, box-shadow .25s ease; }
+  #orb.listening { box-shadow: 0 0 0 10px rgba(31,157,85,.18); }
+  #orb.speaking { transform: scale(1.06); box-shadow: 0 0 0 16px rgba(200,16,46,.22); }
+  button { appearance: none; border: 0; border-radius: 999px; padding: 16px 34px; font-size: 17px; font-weight: 600;
+    color: #fff; background: var(--ok); cursor: pointer; min-width: 200px; }
+  button.end { background: var(--accent); }
+  button:disabled { opacity: .5; }
+  #last { color: var(--muted); font-size: 14px; max-width: 34em; min-height: 2.8em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>aeradex Buchhaltung</h1>
+  <div id="orb" aria-hidden="true"></div>
+  <div id="status">Bereit</div>
+  <button id="btn" type="button">📞 Anrufen</button>
+  <div id="last"></div>
+</main>
+<script>
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+  const btn = document.getElementById("btn"), statusEl = document.getElementById("status"),
+        orb = document.getElementById("orb"), last = document.getElementById("last");
+  let conversation = null, session = null;
+
+  function setStatus(text) { statusEl.textContent = text; }
+
+  async function start() {
+    btn.disabled = true;
+    try {
+      if (!tg || !tg.initData) throw new Error("Bitte aus dem Telegram-Bot öffnen.");
+      setStatus("Mikrofon …");
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      setStatus("Verbinde …");
+      const resp = await fetch("/app/session", { method: "POST", headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ initData: tg.initData }) });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.fehler || "Nicht erlaubt");
+      session = data.session;
+      conversation = await ElevenLabsClient.Conversation.startSession({
+        signedUrl: data.signed_url,
+        dynamicVariables: { session: data.session, begruessung: data.begruessung },
+        customLlmExtraBody: { session: data.session },
+        onConnect: () => { setStatus("Verbunden – sprich einfach"); btn.textContent = "Auflegen"; btn.classList.add("end"); btn.disabled = false; },
+        onDisconnect: () => { end(true); },
+        onError: (e) => { setStatus("Fehler: " + (e && e.message ? e.message : e)); },
+        onModeChange: (m) => { const mode = m && m.mode; orb.className = mode === "speaking" ? "speaking" : "listening";
+                               setStatus(mode === "speaking" ? "Agent spricht …" : "Ich höre zu …"); },
+        onMessage: (m) => { if (m && m.message) last.textContent = (m.source === "user" ? "Du: " : "") + m.message; },
+      });
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("medium");
+    } catch (e) {
+      setStatus(e.message || String(e));
+      btn.disabled = false;
+    }
+  }
+
+  async function end(fromRemote) {
+    const c = conversation; conversation = null;
+    if (session) {                        // she writes a note about the call for next time
+      fetch("/app/ende", { method: "POST", headers: { "Content-Type": "application/json" },
+                           body: JSON.stringify({ initData: tg.initData, session }) }).catch(() => {});
+      session = null;
+    }
+    if (c && !fromRemote) { try { await c.endSession(); } catch (_) {} }
+    orb.className = ""; btn.textContent = "📞 Anrufen"; btn.classList.remove("end"); btn.disabled = false;
+    setStatus("Aufgelegt – Ergebnisse kommen in den Chat");
+  }
+
+  btn.addEventListener("click", () => conversation ? end(false) : start());
+</script>
+</body>
+</html>

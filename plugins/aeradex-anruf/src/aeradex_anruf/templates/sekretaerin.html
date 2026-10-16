@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}{{ name }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>{{ name }}</h1><div class="sub">Deine Sekretärin am Telefon und in Telegram · ElevenLabs-Stimme, Claude als Agent</div></div>
+  <div class="actions">
+    {% if dienst %}<form hx-post="/p/anruf/sekretaerin/anrufen" hx-target="find .errors" class="inline"><button class="btn primary" type="submit">📞 Anrufen</button>{{ errors() }}</form>
+    {% else %}<button class="btn primary" disabled title="Der Dienst läuft nicht">📞 Anrufen</button>{% endif %}
+  </div>
+</div>
+
+<div class="panel">
+  <header><h2>Dienst {% if dienst %}<span class="pill ok">läuft</span>{% else %}<span class="pill muted">aus</span>{% endif %}</h2></header>
+  <div class="body small">
+    {% if dienst %}
+      {{ name }} ist erreichbar, {{ dienst.seit_text }}{% if dienst.telegram %}, mit Telegram{% endif %}.
+      «Anrufen» öffnet die Anrufseite{% if dienst.telegram %}; in Telegram geht es über den Knopf «Anrufen» im Chat{% endif %}.
+    {% else %}
+      Starten im Terminal: <code>aeradex --buch &lt;buch&gt; telegram serve</code> (mit Telegram) oder
+      <code>aeradex --buch &lt;buch&gt; anruf serve</code> (nur Anrufseite).
+    {% endif %}
+    {% if fehlt %}<p class="muted">Noch offen in der Konfiguration: {{ fehlt|join('; ') }}</p>{% endif %}
+  </div>
+</div>
+
+{% if karten %}
+<div class="panel">
+  <header><h2>Wartet auf dich <span class="pill warn">{{ karten|length }}</span></h2></header>
+  {% for k in karten %}
+  <div class="body" style="border-top:1px solid var(--line)">
+    <div style="white-space:pre-wrap">{{ k.zusammenfassung }}</div>
+    <div class="actions" style="margin-top:10px">
+      <form hx-post="/p/anruf/sekretaerin/karte" hx-target="find .errors" hx-confirm="{{ 'Rechnung ausstellen und verbuchen?' if k.art == 'rechnung' else 'Vorschläge freigeben und buchen?' }}">
+        <input type="hidden" name="data" value="ok:{{ k.id }}"><button class="btn primary small" type="submit">{{ '✅ Ausstellen' if k.art == 'rechnung' else '✅ Freigeben' }}</button>{{ errors() }}</form>
+      <form hx-post="/p/anruf/sekretaerin/karte" hx-target="find .errors">
+        <input type="hidden" name="data" value="no:{{ k.id }}"><button class="btn small" type="submit">Verwerfen</button>{{ errors() }}</form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <header><h2>Was {{ name }} sich merkt</h2></header>
+  <form class="body" hx-post="/p/anruf/sekretaerin/notizen" hx-target="find .errors">
+    <p class="small muted">Eine Notiz pro Zeile. {{ name }} liest sie zu Beginn jedes Gesprächs; im Gespräch ergänzt sie sie mit «Merk dir …».</p>
+    <textarea class="input" name="notizen" rows="{{ [notizen|length + 2, 4]|max }}" style="width:100%;font:inherit">{{ notizen|join('\n') }}</textarea>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Liegt lokal beim Buch, nicht in der Buchhaltung und nicht in git.</span><button class="btn primary" type="submit">Speichern</button></div>
+  </form>
+</div>
+
+<div class="panel">
+  <header><h2>Letzte Gespräche</h2>
+    {% if gespraeche %}<form class="actions" hx-post="/p/anruf/sekretaerin/verlauf_leeren" hx-target="find .errors" hx-confirm="Alle Gesprächsnotizen löschen?"><button class="btn small" type="submit">Alle löschen</button>{{ errors() }}</form>{% endif %}</header>
+  {% if gespraeche %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th style="width:9.5em">Wann</th><th>Notiz von {{ name }}</th></tr></thead>
+    <tbody>{% for g in gespraeche %}{% set wann, _, text = g.partition(': ') %}<tr class="row"><td class="num small">{{ wann }}</td><td>{{ text }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="body small muted">Noch keine Gespräche. Nach jedem Anruf schreibt {{ name }} hier einen Satz dazu.</div>{% endif %}
+</div>
+
+<div class="panel">
+  <header><h2>Einstellungen</h2></header>
+  <div class="tablewrap"><table class="ledger">
+    <tbody>{% for label, wert in einstellungen %}<tr class="row"><td style="width:14em" class="muted">{{ label }}</td><td>{% if label == 'Konfiguration' %}<code>{{ wert }}</code>{% else %}{{ wert }}{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="body small muted">Weitere Werte in der Konfigurationsdatei (z.B. Modelle); die wichtigsten hier unten.</div>
+</div>
+
+<div class="panel" id="zugaenge">
+  <header><h2>Zugänge</h2></header>
+  <form class="body" hx-post="/p/anruf/sekretaerin/zugaenge" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label for="z-tt">Telegram-Bot-Token {% if zugang.telegram_token %}<span class="pill ok">{{ zugang.telegram_token }}</span>{% endif %}</label><input class="input" id="z-tt" type="password" name="telegram_token" autocomplete="off" placeholder="{{ 'leer = behalten' if zugang.telegram_token else 'von @BotFather' }}"></div>
+      <div class="field"><label for="z-ti">Telegram-IDs, die schreiben dürfen</label><input class="input" id="z-ti" name="telegram_ids" value="{{ zugang.telegram_ids }}" placeholder="von @userinfobot"></div>
+      <div class="field"><label for="z-ek">ElevenLabs-Schlüssel {% if zugang.elevenlabs_key %}<span class="pill ok">{{ zugang.elevenlabs_key }}</span>{% endif %}</label><input class="input" id="z-ek" type="password" name="elevenlabs_key" autocomplete="off" placeholder="{{ 'leer = behalten' if zugang.elevenlabs_key else 'für Sprache und Anrufe' }}"></div>
+      <div class="field"><label for="z-v">Stimme (ElevenLabs-ID)</label><input class="input" id="z-v" name="voice_id" value="{{ zugang.voice_id }}"></div>
+      <div class="field"><label for="z-n">Name der Sekretärin</label><input class="input" id="z-n" name="name" value="{{ zugang.name }}"></div>
+      <div class="field"><label for="z-c">Chef/Chefin</label><input class="input" id="z-c" name="chef" value="{{ zugang.chef }}"></div>
+      <div class="field" style="grid-column: span 2"><label for="z-b">Agent</label><select class="input" id="z-b" name="backend" style="width:100%">
+        {% for k, label in [("claude-code", "Claude Code (dein Abo, auf diesem Rechner)"), ("api", "Claude API (ANTHROPIC_API_KEY)"), ("openai", "OpenAI-kompatibel, z.B. Gemini (Einstellungen › Agent)")] %}<option value="{{ k }}" {{ 'selected' if zugang.backend == k }}>{{ label }}</option>{% endfor %}</select></div>
+    </div>
+    <p class="small muted">Gespeichert in <code>{{ zugang.datei }}</code> (Dateirechte 600), nie im Buch. Den Gemini-Zugang trägst du unter Einstellungen › Agent ein.</p>
+    {{ errors() }}<div class="formfoot"><span></span><button class="btn primary" type="submit">Zugänge speichern</button></div>
+  </form>
+</div>
+{% endblock %}

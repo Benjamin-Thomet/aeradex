@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeradex-anruf"
+version = "0.1.0"
+description = "Mit dem aeradex-Agenten sprechen: ElevenLabs-Stimme, Claude als Agent (Claude Code oder Claude API)"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+# httpx (bzw. httpx2) kommt mit dem anthropic-SDK aus aeradex[ui]
+dependencies = ["aeradex[ui,mcp]>=0.8"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.entry-points."aeradex.plugins"]
+anruf = "aeradex_anruf"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aeradex_anruf = ["static/*", "templates/*"]

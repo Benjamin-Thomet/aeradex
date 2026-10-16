@@ -1,0 +1,14 @@
+# ~/.config/systemd/user/aeradex-telegram.service
+# Pfade anpassen, dann: systemctl --user daemon-reload && systemctl --user enable --now aeradex-telegram
+[Unit]
+Description=aeradex Telegram-Bot und Anruf-Gateway
+After=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/aeradex/anruf.env
+ExecStart=%h/.venvs/aeradex/bin/python -m aeradex --buch %h/buchhaltung telegram serve
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
