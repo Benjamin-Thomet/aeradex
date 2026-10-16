@@ -7,7 +7,7 @@
 <meta name="description" content="aeradex ist ein offenes, agentisches ERP für Schweizer KMU, mit einer vollständigen Buchhaltung im Kern. Dein Agent bereitet vor, die Engine rechnet, du gibst frei. Open Source unter der AGPL.">
 <meta name="theme-color" content="#08090a">
 <meta property="og:title" content="aeradex — Das offene ERP, das dein Agent führen kann">
-<meta property="og:description" content="Offenes, agentisches ERP für Schweizer KMU, mit Buchhaltung im Kern. Belege, QR-Rechnungen, Bank, MWST, Lohn, Offerten — als lesbare Dateien in git. Im Browser, per Chat oder am Telefon.">
+<meta property="og:description" content="Offenes, agentisches ERP für Schweizer KMU, mit Buchhaltung im Kern. Belege, QR-Rechnungen, Bank, MWST, Lohn, Offerten, Zeiterfassung im Team — als lesbare Dateien in git. Im Browser, per Chat, am Telefon oder in Telegram.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="de_CH">
 <meta property="og:image" content="https://aeradex.ch/img/og.png">
@@ -21,7 +21,7 @@
 <script type="application/ld+json">
 {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "aeradex", "url": "https://aeradex.ch/",
  "applicationCategory": "BusinessApplication", "operatingSystem": "Linux, macOS, Windows", "inLanguage": "de-CH",
- "description": "Offenes, agentisches ERP für Schweizer KMU mit vollständiger Buchhaltung im Kern: Belege, QR-Rechnungen, Bank, MWST, Lohn, Offerten und Zeiterfassung als lesbare Dateien in git.",
+ "description": "Offenes, agentisches ERP für Schweizer KMU mit vollständiger Buchhaltung im Kern: Belege, QR-Rechnungen, Bank, MWST, Lohn, Offerten und Zeiterfassung mit Team-App als lesbare Dateien in git.",
  "license": "https://www.gnu.org/licenses/agpl-3.0.html", "codeRepository": "https://github.com/Benjamin-Thomet/aeradex",
  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CHF"}}
 </script>
@@ -38,6 +38,7 @@
         <li><a href="#anruf">Anruf</a></li>
         <li><a href="#agent">Agent</a></li>
         <li><a href="#produkt">Produkt</a></li>
+        <li><a href="#team">Team</a></li>
         <li><a href="#open-source">Open Source</a></li>
         <li><a href="#schweiz">Funktionen</a></li>
         <li><a href="#kontrolle">Kontrolle</a></li>
@@ -65,7 +66,7 @@
   <div class="wrap">
     <div class="hero-copy">
       <h1 id="hero-h">Das ERP, <br>das dein <em>Agent</em> führen kann.</h1>
-      <p class="lede">aeradex ist ein offenes, agentisches ERP für Schweizer KMU, mit einer vollständigen Buchhaltung als Herzstück. <strong>Dein Agent bereitet vor, die Engine rechnet, du gibst frei.</strong> Belege, Rechnungen, Bank, MWST, Lohn, Offerten und Zeiterfassung an einem Ort: im Browser, per Chat oder am Telefon.</p>
+      <p class="lede">aeradex ist ein offenes, agentisches ERP für Schweizer KMU, mit einer vollständigen Buchhaltung als Herzstück. <strong>Dein Agent bereitet vor, die Engine rechnet, du gibst frei.</strong> Belege, Rechnungen, Bank, MWST, Lohn, Offerten und Zeiterfassung an einem Ort: im Browser, per Chat, am Telefon oder in Telegram, und dein Team erfasst seine Stunden auf dem Handy.</p>
       <div class="cta">
         <a class="btn primary" href="https://github.com/Benjamin-Thomet/aeradex">Auf GitHub ansehen <span class="arrow" aria-hidden="true">→</span></a>
         <a class="btn ghost" href="#anruf"><span class="play" aria-hidden="true">▶</span> Demo ansehen</a>
@@ -97,7 +98,7 @@
     <div class="works-with" aria-label="Funktioniert mit">
       <span class="ww-label">Funktioniert mit</span>
       <ul>
-        <li>Claude&nbsp;Code</li><li>Codex</li><li>opencode</li><li>MCP</li><li>Claude&nbsp;API</li><li>git</li>
+        <li>Claude&nbsp;Code</li><li>Codex</li><li>opencode</li><li>MCP</li><li>Claude&nbsp;API</li><li>Telegram</li><li>git</li>
       </ul>
     </div>
   </div>
@@ -108,10 +109,10 @@
   <div class="wrap">
     <div class="sec-head split reveal">
       <div>
-        <p class="label"><span>Neu</span>Am Telefon</p>
-        <h2 id="call-h">Ruf deine Buchhaltung an.<br><span class="dim">Larissa erledigt den Rest.</span></h2>
+        <p class="label"><span>Neu</span>Am Telefon und in Telegram</p>
+        <h2 id="call-h">Ruf deine Buchhaltung an.<br><span class="dim">Deine Sekretärin erledigt den Rest.</span></h2>
       </div>
-      <p class="intro">Du sagst, was zu tun ist. Der Agent arbeitet mit denselben Werkzeugen wie im Browser, und du siehst live, was er tut. Eine Rechnung geht erst raus, wenn du Ja sagst; das PDF kommt aufs Handy. Plugin <b>aeradex-anruf</b>, bald öffentlich.</p>
+      <p class="intro">Du sagst, was zu tun ist, am Telefon oder per Telegram, auch als Sprachnachricht oder mit einem Foto der Quittung. Der Agent arbeitet mit denselben Werkzeugen wie im Browser, und du siehst live, was er tut. Eine Rechnung geht erst raus, wenn du Ja sagst; das PDF kommt aufs Handy. Name und Stimme wählst du selbst, auf dem eigenen Server ist sie rund um die Uhr erreichbar. Plugins <a href="https://github.com/Benjamin-Thomet/aeradex/tree/main/plugins/aeradex-anruf"><b>aeradex-anruf</b></a> und <a href="https://github.com/Benjamin-Thomet/aeradex/tree/main/plugins/aeradex-telegram"><b>aeradex-telegram</b></a>.</p>
     </div>
     <figure class="window call-video reveal">
       <video id="callVideo" controls muted playsinline preload="metadata" poster="img/larissa-poster.webp" width="1920" height="1080" aria-describedby="callScript">
@@ -119,7 +120,7 @@
         <source src="video/larissa-16x9.mp4" type="video/mp4">
       </video>
       <button class="btn small light sound-btn" id="callSound" type="button" hidden>Ton an</button>
-      <figcaption class="sr-only" id="callScript">Demo, 28 Sekunden, Gespräch mit Untertiteln. Larissa: «Hoi Marco! Lass mich raten … die Beispiel AG?» Marco: «Du kennst mich. Ja, zwölf Stunden Beratung, wie immer à 160.» Der Agent ruft die Werkzeuge customers und request_invoice auf und zeigt die Rechnung: Beispiel AG, 12 h × 160.00, Total CHF 1920.00. Larissa: «Hab sie. 1'920 Franken. Soll sie raus?» Marco: «Ja, schick sie raus.» Larissa: «Ist draussen. Das PDF hast du gleich auf dem Handy.»</figcaption>
+      <figcaption class="sr-only" id="callScript">Demo, 28 Sekunden, Gespräch mit Untertiteln; die Sekretärin heisst im Video Larissa. Larissa: «Hoi Marco! Lass mich raten … die Beispiel AG?» Marco: «Du kennst mich. Ja, zwölf Stunden Beratung, wie immer à 160.» Der Agent ruft die Werkzeuge customers und request_invoice auf und zeigt die Rechnung: Beispiel AG, 12 h × 160.00, Total CHF 1920.00. Larissa: «Hab sie. 1'920 Franken. Soll sie raus?» Marco: «Ja, schick sie raus.» Larissa: «Ist draussen. Das PDF hast du gleich auf dem Handy.»</figcaption>
     </figure>
   </div>
 </section>
@@ -192,6 +193,64 @@
   </div>
 </section>
 
+<!-- ============ Team ============ -->
+<section class="sec sec-team" id="team" aria-labelledby="t-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="label"><span>Neu</span>Team-App</p>
+      <h2 id="t-h">Dein Team erfasst auf dem Handy.<br><span class="dim">Das Buch entscheidet.</span></h2>
+      <p class="intro">Mitarbeitende tragen Zeit, Material und Abwesenheiten in einer App ein, auch ohne Empfang. Im Büro werden daraus normale Leistungen, geprüft und bereit zur Abrechnung an Kunden. Wer was erfasst hat, steht im Verlauf.</p>
+    </div>
+    <div class="team-grid">
+      <ul class="os-points team-points">
+        <li class="reveal"><h3>Erfassen in Sekunden</h3><p>Stunden oder von–bis, Kunde, Objekt, Material und Menge, zuletzt verwendete Kombinationen. Ohne Netz bleibt alles auf dem Handy und geht später raus.</p></li>
+        <li class="reveal"><h3>Überstunden und Ferien live</h3><p>Saldo des Monats und des Jahres, Ferienanspruch und Rest. Ferien werden als Antrag gesendet und im Büro bewilligt.</p></li>
+        <li class="reveal"><h3>Lohnabrechnung verschlüsselt</h3><p>Lohnabrechnungen, Lohnausweise und Arbeitszeitnachweise kommen Ende-zu-Ende verschlüsselt aufs Handy. Der Server sieht nur Chiffretext. Preise, Stundensätze und Löhne anderer sieht niemand.</p></li>
+        <li class="reveal"><h3>Im Büro geprüft</h3><p>Eine Prüfliste mit Hinweisen (über 10&nbsp;h, Wochenende, ohne Stundensatz), Anträge, Pensum und Abschluss bis zu einem Datum. Jeder Eintrag ist ein geprüfter Commit «Name (App)».</p></li>
+      </ul>
+      <figure class="phone reveal" aria-label="Beispiel: die Team-App auf dem Handy">
+        <div class="ph-top"><span class="ph-title">Team · Muster GmbH</span><span class="ph-who">Anna Muster</span></div>
+        <div class="ph-body">
+          <p class="ph-h">Erfassen</p>
+          <div class="ph-card">
+            <div class="ph-row"><span class="ph-k">Datum</span><span>heute</span></div>
+            <div class="ph-row"><span class="ph-k">Kunde</span><span>Beispiel AG</span></div>
+            <div class="ph-row"><span class="ph-k">Objekt</span><span>Fassade Seeweg</span></div>
+            <div class="ph-row"><span class="ph-k">Stunden</span><span class="mono">8.00</span></div>
+            <div class="ph-row"><span class="ph-k">Text</span><span>Fassade grundiert</span></div>
+            <span class="ph-btn">Speichern</span>
+          </div>
+          <div class="ph-stats">
+            <div><span class="ph-k">Saldo Monat</span><b class="mono ok">+3.50 h</b></div>
+            <div><span class="ph-k">Ferien frei</span><b class="mono">14 Tage</b></div>
+          </div>
+          <p class="ph-h">Diese Woche</p>
+          <ul class="ph-list">
+            <li><span>Mo · Beispiel AG</span><span class="mono">8.00</span><i class="st ok">übernommen</i></li>
+            <li><span>Di · Werkstatt</span><span class="mono">2.50</span><i class="st ok">übernommen</i></li>
+            <li><span>Di · Beispiel AG</span><span class="mono">6.00</span><i class="st">gesendet</i></li>
+          </ul>
+        </div>
+        <div class="ph-tabs" aria-hidden="true"><span class="on">Erfassen</span><span>Woche</span><span>Abwesend</span><span>Konto</span><span>Lohn</span></div>
+      </figure>
+    </div>
+    <div class="paths even team-paths">
+      <article class="path reveal">
+        <span class="card-tag">Eigener Server</span>
+        <h3>Ein Skript, alles läuft.</h3>
+        <p>Buchhaltung mit Login, Team-App, Telegram-Sekretärin, HTTPS und Schutz vor Anmeldeversuchen: <code>deploy/setup.sh</code> richtet es auf einem eigenen Server ein, <code>aeradex-update</code> hält es aktuell. Das Buch bleibt ein git-Ordner auf deinem Server.</p>
+        <a class="btn ghost" href="https://github.com/Benjamin-Thomet/aeradex/tree/main/deploy">Server-Vorlagen <span class="arrow" aria-hidden="true">→</span></a>
+      </article>
+      <article class="path reveal">
+        <span class="card-tag">Claude Code auf jedem PC</span>
+        <h3>Dein Agent, dein Abo, dein Buch.</h3>
+        <p>Liegt das Buch auf dem Server, arbeitet Claude Code vom eigenen PC aus direkt damit. Den SSH-Schlüssel trägst du in aeradex ein; er kann nur die Buchhaltungs-Werkzeuge starten und Belege in den Eingang legen, sonst nichts.</p>
+        <a class="btn ghost" href="https://github.com/Benjamin-Thomet/aeradex/tree/main/plugins/aeradex-zugriff">Zugriff einrichten <span class="arrow" aria-hidden="true">→</span></a>
+      </article>
+    </div>
+  </div>
+</section>
+
 <!-- ============ 03 Open Source ============ -->
 <section class="sec sec-os" id="open-source" aria-labelledby="o-h">
   <div class="wrap">
@@ -229,7 +288,7 @@
         <li class="reveal"><h3>Dateien statt Datenbank</h3><p>Journal, Kunden, Rechnungen und Löhne als Markdown und YAML. Lesbar in jedem Editor, auch in zwanzig Jahren und auch ohne aeradex.</p></li>
         <li class="reveal"><h3>git als Revisionsspur</h3><p>Jede Änderung ist ein Commit, mit Namen von Mensch oder Agent. Ein ungültiges Buch lässt sich gar nicht erst speichern.</p></li>
         <li class="reveal"><h3>Unveränderlich, wo es zählt</h3><p>Gesperrte Perioden sind gehasht, ausgestellte Rechnungen und Lohnabrechnungen tragen einen Fingerprint. Nachträgliche Änderungen fallen auf (GeBüV).</p></li>
-        <li class="reveal"><h3>AGPL und erweiterbar</h3><p>Quellcode offen, selbst betreibbar, ohne Abo. Was nicht in den Kern gehört, kommt als Plugin, etwa Revolut, Offerten mit Zeiterfassung oder Anlagen.</p></li>
+        <li class="reveal"><h3>AGPL und erweiterbar</h3><p>Quellcode offen, selbst betreibbar, ohne Abo. Was nicht in den Kern gehört, kommt als Plugin, etwa Revolut, Offerten mit Zeiterfassung, die Team-App oder Anlagen.</p></li>
       </ul>
     </div>
   </div>
@@ -325,6 +384,7 @@
         <li><b>Prüfung vor jedem Speichern.</b> Ob Mensch, Agent oder Kommandozeile: Ein Buch, das die Prüfregeln verletzt, lässt sich nicht speichern.</li>
         <li><b>Sichtbar im Verlauf.</b> Jeder Eintrag zeigt, ob ein Mensch oder welcher Agent ihn gemacht hat.</li>
         <li><b>Rollen im Team.</b> Auf dem eigenen Server mit Login: lesen, buchhaltung, admin.</li>
+        <li><b>Zugriff nur auf Werkzeuge.</b> Claude Code auf einem PC erreicht das Buch auf dem Server über einen Schlüssel, der nur die aeradex-Werkzeuge kann. Die Sekretärin stellt nichts aus ohne dein Ja.</li>
         <li><b>Regeln statt Hoffnung.</b> Soll gleich Haben, existierende Konten, Kasse nie negativ, gesperrte Monate unverändert, Rechnungen und Löhne passend zu ihrem Dokument. <a href="https://github.com/Benjamin-Thomet/aeradex#regeln-die-aeradex-check-durchsetzt">Alle Prüfregeln</a></li>
       </ul>
     </div>
@@ -380,7 +440,7 @@
           <li>camt.054: Sammelgutschriften im Detail</li>
           <li>Lohnmeldungen über ELM, sofern eine Zertifizierung durch Swissdec gelingt</li>
         </ul>
-        <ul class="stack" aria-label="Heute in v0.8"><li>Finanzbuchhaltung</li><li>MWST + eMWST</li><li>Bank camt.053</li><li>QR-Rechnung CHF/EUR</li><li>Mahnwesen</li><li>Kreditoren + pain.001</li><li>Fremdwährungen</li><li>Lohn + Spesen</li><li>Abschluss-Dossier</li><li>CLI + MCP</li><li>Server mit Login</li></ul>
+        <ul class="stack" aria-label="Heute in v0.8"><li>Finanzbuchhaltung</li><li>MWST + eMWST</li><li>Bank camt.053</li><li>QR-Rechnung CHF/EUR</li><li>Mahnwesen</li><li>Kreditoren + pain.001</li><li>Fremdwährungen</li><li>Lohn + Spesen</li><li>Abschluss-Dossier</li><li>Team-App</li><li>Telegram + Anruf</li><li>CLI + MCP</li><li>Server mit Login</li><li>Server-Vorlagen</li></ul>
       </article>
       <article class="path reveal">
         <span class="card-tag">Plugins</span>
@@ -390,7 +450,10 @@
           <li><b>aeradex-anlagen</b>Anlagenbuchhaltung: Abschreibungen, Abgänge, Anlagenspiegel</li>
           <li><b>aeradex-leistungen</b>Offerten, Zeiterfassung, Projekte und Abrechnung an Kunden</li>
           <li><b>aeradex-revolut</b>Kontoauszüge von Revolut Business und Privat</li>
-          <li><b>aeradex-anruf</b>Mit dem Agenten telefonieren oder per Telegram schreiben (bald öffentlich)</li>
+          <li><b>aeradex-team</b>Team-App: Zeit, Material und Abwesenheiten auf dem Handy, Lohndokumente verschlüsselt</li>
+          <li><b>aeradex-anruf</b>Mit der Sekretärin telefonieren: Stimme, Gedächtnis, Karten zum Bestätigen</li>
+          <li><b>aeradex-telegram</b>Chat, Sprachnachrichten und Belege per Telegram</li>
+          <li><b>aeradex-zugriff</b>Claude Code auf dem PC, das Buch auf dem Server</li>
         </ul>
         <p class="small">Gesucht: PostFinance, Wise, TWINT, Stripe und SumUp, weitere Kantone, Kontenpläne und Exporte für Banana, Bexio oder Abacus. <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/PLUGINS.md">Wunschliste</a> · <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/plugins.md">Plugin schreiben</a></p>
       </article>
@@ -409,7 +472,7 @@
       <article class="path reveal">
         <span class="card-tag">Für Unternehmen</span>
         <h3>Mit einem Testbuch ausprobieren.</h3>
-        <p>aeradex läuft auf deinem Rechner oder deinem eigenen Server und wird im Browser bedient. Die Einrichtung braucht heute noch technische Kenntnisse oder jemanden, der sie dir abnimmt.</p>
+        <p>aeradex läuft auf deinem Rechner oder deinem eigenen Server und wird im Browser bedient. Für den Server gibt es ein Einrichtungsskript; trotzdem braucht es heute noch technische Kenntnisse oder jemanden, der sie dir abnimmt.</p>
         <ul class="checks"><li>Keine Lizenzkosten, kein Abo</li><li>Daten bleiben bei dir</li><li>Export für die Treuhand jederzeit</li></ul>
         <a class="btn ghost" href="https://github.com/Benjamin-Thomet/aeradex/blob/main/README.md">Zur Anleitung <span class="arrow" aria-hidden="true">→</span></a>
       </article>
@@ -445,6 +508,8 @@
       <details><summary>Was heisst Open Source hier konkret?</summary><p>Der Quellcode steht unter der AGPL-3.0. Du kannst ihn einsehen, selbst betreiben und anpassen. Dateiformat, Plugin-Schnittstelle und Werkzeuge für Agenten sind <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/format.md">offen dokumentiert</a>.</p></details>
       <details><summary>Kann ich von Bexio, Banana oder Abacus wechseln?</summary><p>Ja, schrittweise. Du übernimmst Eröffnungsbilanz und offene Posten und buchst ein Quartal parallel, bis die Zahlen übereinstimmen. Die <a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/parallelbetrieb.md">Checkliste</a> führt durch jeden Schritt.</p></details>
       <details><summary>Für welche Rechtsformen eignet sich aeradex?</summary><p>Für GmbH und AG, Einzelfirmen und Vereine. Beim Anlegen eines Buchs wählt aeradex den passenden Kontenplan, den du danach anpassen kannst.</p></details>
+      <details><summary>Können meine Mitarbeitenden ihre Stunden erfassen?</summary><p>Ja, mit der Team-App auf dem Handy: Zeit, Material, Ferien und Krankheit. Sie sehen ihre Überstunden, ihre Ferien und ihre Lohnabrechnungen, aber keine Preise und keine Löhne anderer. Im Büro wird jeder Eintrag geprüft, bevor er verrechnet wird.</p></details>
+      <details><summary>Läuft aeradex auch, wenn mein PC aus ist?</summary><p>Ja, auf einem eigenen Server. Dort laufen Buchhaltung mit Login, Team-App und Telegram-Sekretärin rund um die Uhr; <a href="https://github.com/Benjamin-Thomet/aeradex/tree/main/deploy">die Server-Vorlagen</a> richten alles ein. Claude Code auf deinem PC arbeitet dann über einen eingeschränkten Zugang mit demselben Buch.</p></details>
       <details><summary>Kann ich mehrere Firmen führen?</summary><p>Ja, jede Firma ist ein eigenes Buch, also ein eigener Ordner. Mehrere Mandanten in einer Server-Instanz sind in Arbeit.</p></details>
       <details><summary>Wie sichere ich meine Daten?</summary><p>Das Buch ist ein git-Repository. Ein zweites Remote auf einem anderen Server oder ein gewöhnliches Backup des Ordners genügt. Zusätzlich lässt sich das ganze Buch als eine Datei exportieren, auf Wunsch verschlüsselt.</p></details>
       <details><summary>Was passiert, wenn es aeradex nicht mehr gibt?</summary><p>Deine Bücher bleiben Markdown- und YAML-Dateien, lesbar in jedem Editor. Der Quellcode bleibt unter der AGPL verfügbar und kann von allen weitergeführt werden.</p></details>
@@ -477,7 +542,7 @@
     </div>
     <div>
       <h4>Produkt</h4>
-      <ul><li><a href="#anruf">Anruf</a></li><li><a href="#agent">Agent</a></li><li><a href="#produkt">Oberfläche</a></li><li><a href="#schweiz">Funktionen</a></li><li><a href="#kontrolle">Kontrolle</a></li><li><a href="#umstieg">Umstieg</a></li><li><a href="#roadmap">Roadmap</a></li></ul>
+      <ul><li><a href="#anruf">Anruf</a></li><li><a href="#agent">Agent</a></li><li><a href="#produkt">Oberfläche</a></li><li><a href="#team">Team-App</a></li><li><a href="#schweiz">Funktionen</a></li><li><a href="#kontrolle">Kontrolle</a></li><li><a href="#umstieg">Umstieg</a></li><li><a href="#roadmap">Roadmap</a></li></ul>
     </div>
     <div>
       <h4>Dokumentation</h4>
@@ -485,6 +550,7 @@
         <li><a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/README.md">README</a></li>
         <li><a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/format.md">Dateiformat</a></li>
         <li><a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/server.md">Server</a></li>
+        <li><a href="https://github.com/Benjamin-Thomet/aeradex/tree/main/deploy">Server-Vorlagen</a></li>
         <li><a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/plugins.md">Plugins</a></li>
         <li><a href="https://github.com/Benjamin-Thomet/aeradex/blob/main/docs/parallelbetrieb.md">Parallelbetrieb</a></li>
       </ul>
