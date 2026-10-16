@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Team-App{% endblock %}
+{% macro hours(v) %}{% if v is none %}–{% else %}{{ v|qty }}{% endif %}{% endmacro %}
+{% block main %}
+<style>
+  .teamstatus { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+  .nowrap { white-space: nowrap; }
+  .teamactions { margin-top: 6px; gap: 6px; flex-wrap: nowrap; }
+</style>
+<div class="topbar">
+  <div><h1>Team-App</h1><div class="sub">Mitarbeitende erfassen Zeit, Material und Abwesenheiten auf dem Handy{% if portal %} · <a class="link" href="{{ portal }}/app/" target="_blank" rel="noopener">{{ portal }}/app</a>{% endif %}</div></div>
+  <form class="actions" hx-post="/p/team/team/sync" hx-target="find .errors"><button class="btn primary" type="submit">Jetzt abgleichen</button>{{ errors() }}</form>
+</div>
+
+<div class="panel"><div class="body">
+  {% if not portal %}<span class="pill warn">nicht verbunden</span> Portal einrichten: <code>aeradex team verbinden --url https://… --token …</code>
+  {% else %}<div class="teamstatus">
+    <div><div class="small muted">Letzter Abgleich</div><div>{{ zuletzt or "noch nie" }}{% if zustand.fehler %} <span class="pill bad" title="{{ zustand.fehler }}">Fehler</span>{% endif %}</div>
+      {% if zustand.fehler %}<div class="small">{{ zustand.fehler }}</div>{% elif zustand.ergebnis %}<div class="small muted">{{ zustand.ergebnis.uebernommen }} übernommen, {{ zustand.ergebnis.abgelehnt }} abgelehnt</div>{% endif %}</div>
+    <div><div class="small muted">Zeiterfassung</div><div>{% if abgeschlossen_bis %}abgeschlossen bis {{ abgeschlossen_bis|datum }}{% else %}offen{% endif %}</div></div>
+    <div><div class="small muted">Zu prüfen</div><div>{{ pruefen|length }} {{ 'Eintrag' if pruefen|length == 1 else 'Einträge' }}{% if antraege %} · {{ antraege|length }} {{ 'Antrag' if antraege|length == 1 else 'Anträge' }}{% endif %}</div></div>
+  </div>{% endif %}
+</div></div>
+
+{% if ohne_satz %}
+<div class="panel"><div class="body small"><span class="pill warn">{{ ohne_satz|length }} ohne Stundensatz</span>
+  Aus der App übernommene Stunden ohne Verrechnungssatz ({{ ohne_satz|join(", ") }}). Satz unter
+  <a class="link" href="/p/leistungen/leistungen?tab=stammdaten">Leistungen › Stammdaten</a> erfassen und die Einträge neu bewerten.</div></div>
+{% endif %}
+
+{% if antraege %}
+<div class="panel">
+  <header><h2>Anträge ({{ antraege|length }})</h2></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Nr.</th><th>Person</th><th>Art</th><th>Zeitraum</th><th>Bemerkung</th><th></th></tr></thead>
+    <tbody>{% for r in antraege %}<tr class="row">
+      <td>{{ r.id }}</td><td>{{ namen.get(r.wer, r.wer) }}</td><td>{{ r.art }}{% if r.halb %} (halbe Tage){% endif %}</td>
+      <td>{{ r.von|datum }}{% if r.bis != r.von %} – {{ r.bis|datum }}{% endif %}</td><td class="small">{{ r.notiz }}</td>
+      <td><form hx-post="/p/team/team/entscheiden" hx-target="find .errors" class="actions">
+        <input type="hidden" name="id" value="{{ r.id }}">
+        <input class="input" name="grund" placeholder="Grund (bei Ablehnung)" aria-label="Grund">
+        <button class="btn small primary" name="entscheid" value="bewilligen">Bewilligen</button>
+        <button class="btn small" name="entscheid" value="ablehnen">Ablehnen</button>{{ errors() }}</form></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="panel">
+  <header><h2>Zu prüfen ({{ pruefen|length }})</h2>
+    {% if pruefen %}<form class="actions" hx-post="/p/team/team/geprueft" hx-target="find .errors" hx-confirm="Alle {{ pruefen|length }} Einträge als geprüft markieren?">
+      <input type="hidden" name="alle" value="1"><button class="btn small">Alle als geprüft</button>{{ errors() }}</form>{% endif %}</header>
+  {% if pruefen %}
+  <form id="pruefform" hx-post="/p/team/team/geprueft" hx-target="find .errors">
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>✓</th><th>Datum</th><th>Person</th><th>Was</th><th class="right">Menge</th><th>Hinweise</th><th></th></tr></thead>
+    <tbody>{% for e in pruefen %}<tr class="row">
+      <td><input type="checkbox" name="ids" value="{{ e.id }}" aria-label="{{ e.id }} auswählen"></td>
+      <td class="num">{{ e.datum|datum }}{% if e.bis and e.bis != e.datum %} – {{ e.bis|datum }}{% endif %}</td>
+      <td>{{ e.name }}</td>
+      <td>{{ e.was }}{% if e.geaendert %} <span class="pill info">geändert</span>{% endif %}{% if e.text %}<div class="small muted">{{ e.text }}</div>{% endif %}
+        {% if e.original %}<div class="small"><span class="pill ok">Text korrigiert</span> <span class="muted">Original: «{{ e.original }}»</span></div>{% endif %}</td>
+      <td class="right num">{% if e.menge is not none %}{{ e.menge|qty }} {{ e.einheit }}{% endif %}</td>
+      <td>{% for f in e.flags %}<span class="pill warn">{{ f }}</span> {% endfor %}</td>
+      <td class="right"><a class="btn small" href="/p/leistungen/leistungen?tab={{ 'abwesenheiten' if e.art == 'Abwesenheit' else 'woche' }}&wer={{ e.wer }}&woche={{ e.datum.isoformat() }}">Bearbeiten</a></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="formfoot"><span class="small muted">Einträge aus der App zählen sofort für Soll und Ist. «Geprüft» ist deine Kontrolle; ändert die Person den Eintrag danach, erscheint er wieder hier.</span>
+    <button class="btn primary" type="submit">Markierte als geprüft</button></div>
+  {{ errors() }}
+  </form>
+  {% else %}<div class="body small muted">Alles geprüft.</div>{% endif %}
+</div>
+
+<div class="panel">
+  <header><h2>Team</h2></header>
+  <div id="code"></div>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Person</th><th class="right">Pensum</th><th class="right">Saldo Monat</th><th class="right">Saldo Jahr</th><th class="right">Ferien frei</th><th>Offen</th><th>App</th></tr></thead>
+    <tbody>{% for p in team %}<tr class="row">
+      <td><a class="link" href="/p/leistungen/leistungen?tab=auswertung&wer={{ p.nummer }}">{{ p.name }}</a>
+        <div class="small muted nowrap">{{ p.nummer }}{% if p.konto %} · {{ p.konto.benutzer }}{% endif %}{% if p.stundenlohn %} · Stundenlohn{% endif %}</div></td>
+      <td class="right num nowrap">{% if p.pensum.wert is not none %}{{ p.pensum.wert|qty }} {{ p.pensum.einheit }}{% else %}–{% endif %}
+        {% if p.pensum.verlauf|length > 1 %}{% for h in p.pensum.verlauf %}<div class="small muted">ab {{ h.ab|datum }}: {{ h.wert|qty }}</div>{% endfor %}{% endif %}</td>
+      <td class="right num nowrap">{% if p.saldo is not none %}<span class="{{ 'neg' if p.saldo < 0 }}">{{ hours(p.saldo) }}</span><div class="small muted">{{ hours(p.ist) }} / {{ hours(p.soll) }} h</div>{% else %}<span class="muted">ohne Soll</span><div class="small muted">{{ hours(p.ist) }} h erfasst</div>{% endif %}</td>
+      <td class="right num nowrap">{% if p.saldo_jahr is not none %}<span class="{{ 'neg' if p.saldo_jahr < 0 }}">{{ hours(p.saldo_jahr) }}</span>{% else %}–{% endif %}</td>
+      <td class="right num nowrap {{ 'neg' if p.ferien_rest < 0 }}">{{ p.ferien_rest|qty }} Tage</td>
+      <td class="nowrap">{% if p.antraege %}<span class="pill warn">{{ p.antraege }} Antrag</span> {% endif %}{% if p.zu_pruefen %}<span class="pill info">{{ p.zu_pruefen }} zu prüfen</span>{% endif %}{% if not p.antraege and not p.zu_pruefen %}<span class="muted">–</span>{% endif %}</td>
+      <td>
+        <div class="nowrap">{% if p.app == "aktiv" %}<span class="pill ok">aktiv</span>{% elif p.app == "nicht aktiviert" %}<span class="pill info">nicht aktiviert</span>{% else %}<span class="pill muted">{{ p.app }}</span>{% endif %}{% if p.letzte_app %} <span class="small muted">zuletzt {{ p.letzte_app }}</span>{% endif %}</div>
+        {% set reset = p.konto and p.konto.aktiv and p.app == "aktiv" %}
+        <div class="actions teamactions">
+        <form hx-post="/p/team/team/einladen" hx-target="#code" hx-confirm="{{ 'Neuen Code erstellen? Das bisherige Passwort von ' ~ p.name ~ ' wird ungültig.' if reset else 'Code für ' ~ p.name ~ ' erstellen und anzeigen?' }}">
+          <input type="hidden" name="person" value="{{ p.nummer }}"><button class="btn small {{ '' if reset else 'primary' }}">{{ 'Neuer Code' if reset else 'Einladen' }}</button></form>
+        {% if p.konto and p.konto.aktiv %}<form hx-post="/p/team/team/konto" hx-target="find .errors" hx-confirm="App-Zugang von {{ p.name }} sperren?">
+          <input type="hidden" name="person" value="{{ p.nummer }}"><input type="hidden" name="aktiv" value="0"><button class="btn small">Sperren</button>{{ errors() }}</form>{% endif %}
+        </div>
+      </td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="body small muted">Saldo Monat: Soll bis heute (Tage, die noch kommen, fehlen nicht). Soll = Wochenstunden × Pensum ÷ 5 je Arbeitstag, ab Eintritt; Ist inklusive Ferien, Krankheit usw. Ferien frei = Anspruch + Vortrag − bezogen − geplant.</div>
+</div>
+
+<div class="panel">
+  <header><h2>Abschliessen und Pensum</h2></header>
+  <div class="body">
+    <form hx-post="/p/team/team/abschliessen" hx-target="find .errors" hx-confirm="Zeiterfassung bis zum gewählten Datum abschliessen? Danach können Mitarbeitende Einträge bis dahin nicht mehr ändern.">
+      <div class="form four">
+        <div class="field"><label for="bis">Zeiterfassung abgeschlossen bis</label><input class="input" type="date" id="bis" name="bis" value="{{ abgeschlossen_bis.isoformat() if abgeschlossen_bis else '' }}"></div>
+        <div class="field" style="grid-column: span 3"><label>&nbsp;</label><span class="small muted">Bis zu diesem Tag können Mitarbeitende in der App nichts mehr erfassen, ändern oder löschen. In aeradex kannst du weiterhin korrigieren. Leer = alles offen.</span></div>
+      </div>
+      {{ errors() }}<div class="formfoot"><span></span><button class="btn" type="submit">Speichern</button></div>
+    </form>
+    <form hx-post="/p/team/team/textkorrektur" hx-target="find .errors">
+      <div class="formfoot"><span class="small">
+        <strong>Rechtschreibung und Stil</strong> der Texte aus der App {{ 'werden' if textkorrektur else 'werden nicht' }} vor dem Buchen korrigiert
+        {% if textkorrektur %}({% if agent %}durch den Agenten: {{ agent }}{% else %}<span class="pill warn">kein Agent eingerichtet, Texte bleiben unverändert</span>{% endif %}){% endif %}.
+        Zahlen und Masse bleiben immer unverändert, das Original steht in der Prüfliste.</span>
+        <input type="hidden" name="an" value="{{ '0' if textkorrektur else '1' }}"><button class="btn" type="submit">{{ 'Ausschalten' if textkorrektur else 'Einschalten' }}</button></div>
+      {{ errors() }}
+    </form>
+    <form hx-post="/p/team/team/leistungsart" hx-target="find .errors">
+      <div class="form four">
+        <div class="field"><label for="la">Leistungsart der Stunden aus der App</label><select class="input" id="la" name="leistungsart">
+          <option value="" {{ 'selected' if not leistungsart }}>Mitarbeitende wählen sie</option>
+          {% for nr, text in leistungsarten.items() %}<option value="{{ nr }}" {{ 'selected' if nr == leistungsart }}>immer {{ text }}</option>{% endfor %}
+        </select></div>
+        <div class="field" style="grid-column: span 3"><label>&nbsp;</label><span class="small muted">Mit einer festen Leistungsart fragt die App nicht danach; jede Stunde für einen Kunden wird so verbucht.</span></div>
+      </div>
+      {{ errors() }}<div class="formfoot"><span></span><button class="btn" type="submit">Speichern</button></div>
+    </form>
+    <form hx-post="/p/team/team/pensum" hx-target="find .errors">
+      <div class="form four">
+        <div class="field"><label for="pw">Person</label><select class="input" id="pw" name="wer" style="width:100%">{% for p in team %}<option value="{{ p.nummer }}">{{ p.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="pab">Gültig ab</label><input class="input" type="date" id="pab" name="ab" required></div>
+        <div class="field"><label for="pwert">Pensum % (ohne Lohn: Stunden/Woche)</label><input class="input num" id="pwert" name="wert" inputmode="decimal" placeholder="80"></div>
+        <div class="field"><label class="check" style="margin-top:22px"><input type="checkbox" name="entfernen" value="1"> Änderung an diesem Datum entfernen</label></div>
+      </div>
+      {{ errors() }}<div class="formfoot"><span class="small muted">Das Soll jedes Tages folgt dem dann gültigen Pensum; frühere Monate behalten ihr Soll. Den Lohn passt du unter Lohn › Mitarbeitende an.</span><button class="btn" type="submit">Pensum speichern</button></div>
+    </form>
+  </div>
+</div>
+
+{% if entschieden %}
+<div class="panel">
+  <header><h2>Entschiedene Anträge</h2></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Nr.</th><th>Person</th><th>Art</th><th>Zeitraum</th><th>Entscheid</th></tr></thead>
+    <tbody>{% for r in entschieden %}<tr class="row"><td>{{ r.id }}</td><td>{{ namen.get(r.wer, r.wer) }}</td><td>{{ r.art }}</td>
+      <td>{{ r.von|datum }}{% if r.bis != r.von %} – {{ r.bis|datum }}{% endif %}</td>
+      <td><span class="pill {{ 'ok' if r.status == 'bewilligt' else 'muted' }}">{{ {'zurueckgezogen': 'zurückgezogen'}.get(r.status, r.status) }}</span> {{ r.grund }}{% if r.abwesenheit %} · {{ r.abwesenheit }}{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

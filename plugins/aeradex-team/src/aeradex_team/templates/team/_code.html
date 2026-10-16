@@ -1,0 +1,12 @@
+<div class="body">
+  <div class="panel">
+    <header><h2>Zugang für {{ namen.get(einladung.person, einladung.person) }}</h2></header>
+    <div class="body">
+      <p>Bitte so weitergeben (nur einmal sichtbar):</p>
+      <p>Adresse: <strong>{{ einladung.portal or "https://…" }}/app</strong> → «Mit dem Code aktivieren»<br>
+        Benutzername: <strong>{{ einladung.benutzer }}</strong><br>
+        Code: <strong class="num">{{ einladung.code }}</strong> (gültig bis {{ einladung.gueltig_bis }})</p>
+      {% if not einladung.zugestellt %}<p><span class="pill warn">Portal nicht erreicht</span> Der Code wird beim nächsten Abgleich übertragen und funktioniert erst danach.</p>{% endif %}
+    </div>
+  </div>
+</div>

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeradex-team"
+version = "0.1.0"
+description = "Team-App für aeradex: Mitarbeitende erfassen Zeit, Material und Abwesenheiten auf dem Handy (aeradex-team-portal)"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+dependencies = ["aeradex[crypt]>=0.8", "aeradex-leistungen>=0.1", "PyYAML>=6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "aeradex-team-portal[dev]>=0.1"]
+
+[project.entry-points."aeradex.plugins"]
+team = "aeradex_team"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aeradex_team = ["templates/*.html", "templates/team/*.html"]

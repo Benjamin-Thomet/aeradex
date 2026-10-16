@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeradex-team-portal"
+version = "0.1.0"
+description = "Team-App für aeradex: Handy-App für Mitarbeitende (Zeit, Material, Abwesenheiten, Lohndokumente) und Sync-API"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+dependencies = ["starlette>=0.37", "uvicorn>=0.30"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "cryptography>=42"]
+
+[project.scripts]
+aeradex-team-portal = "aeradex_team_portal.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aeradex_team_portal = ["static/*"]
