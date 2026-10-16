@@ -11,7 +11,7 @@ mit *index* (Verzeichnis).
 
 | Wo | Name | Stand |
 |---|---|---|
-| PyPI | `aeradex`, `aeradex-anlagen`, `aeradex-leistungen`, `aeradex-revolut` | frei |
+| PyPI | `aeradex`, `aeradex-anlagen`, `aeradex-leistungen`, `aeradex-revolut`, `aeradex-team`, `aeradex-team-portal`, `aeradex-zugriff`, `aeradex-anruf`, `aeradex-telegram` | frei (die neuen noch zu prüfen) |
 | GitHub | Repository `Benjamin-Thomet/aeradex` (öffentlich) | gehört uns |
 | GitHub | Organisation `Aeradex` | **gehört nicht uns** (angelegt 30.06.2026, vor der Namenswahl — vermutlich die Aviation-Firma unten) |
 | Domain | `aeradex.com` | **gehört nicht uns**: «Aeradex – The Modern Aviation Directory» (Stand 8.10.2026) |

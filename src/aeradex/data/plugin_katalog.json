@@ -43,6 +43,62 @@
       "art": "code",
       "hooks": ["bank_formats", "check", "commands", "instructions"],
       "status": "ungeprüft"
+    },
+    {
+      "name": "team",
+      "paket": "aeradex-team",
+      "version": "0.1.0",
+      "beschreibung": "Team-App: Mitarbeitende erfassen Zeit, Material und Abwesenheiten auf dem Handy; Abgleich in die Leistungen, Anträge, Prüfliste, Überstunden und Ferien, Lohndokumente Ende-zu-Ende verschlüsselt. Braucht das Portal aeradex-team-portal.",
+      "autor": "aeradex",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "https://github.com/Benjamin-Thomet/aeradex/tree/main/plugins/aeradex-team",
+      "repo_pfad": "plugins/aeradex-team",
+      "aeradex": ">=0.8",
+      "art": "code",
+      "hooks": ["check", "commands", "dienste", "instructions", "pages", "tools"],
+      "status": "ungeprüft"
+    },
+    {
+      "name": "zugriff",
+      "paket": "aeradex-zugriff",
+      "version": "0.1.0",
+      "beschreibung": "Zugriff für Claude Code auf ein Buch auf dem Server: SSH-Schlüssel in aeradex eintragen, beschränkt auf die Buchhaltungs-Werkzeuge und den Belegeingang.",
+      "autor": "aeradex",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "https://github.com/Benjamin-Thomet/aeradex/tree/main/plugins/aeradex-zugriff",
+      "repo_pfad": "plugins/aeradex-zugriff",
+      "aeradex": ">=0.8",
+      "art": "code",
+      "hooks": ["commands", "pages"],
+      "status": "ungeprüft"
+    },
+    {
+      "name": "anruf",
+      "paket": "aeradex-anruf",
+      "version": "0.1.0",
+      "beschreibung": "Mit dem aeradex-Agenten sprechen: Sekretärin mit Stimme (ElevenLabs), Gedächtnis und Karten zum Bestätigen; Claude Code, Claude API oder ein OpenAI-kompatibles Modell.",
+      "autor": "aeradex",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "https://github.com/Benjamin-Thomet/aeradex/tree/main/plugins/aeradex-anruf",
+      "repo_pfad": "plugins/aeradex-anruf",
+      "aeradex": ">=0.8",
+      "art": "code",
+      "hooks": ["commands", "pages", "tools"],
+      "status": "ungeprüft"
+    },
+    {
+      "name": "telegram",
+      "paket": "aeradex-telegram",
+      "version": "0.1.0",
+      "beschreibung": "Telegram-Bot für aeradex-anruf: Chat, Sprachnachrichten, Belege als Foto/PDF und Anrufen aus Telegram.",
+      "autor": "aeradex",
+      "lizenz": "AGPL-3.0-or-later",
+      "quelle": "https://github.com/Benjamin-Thomet/aeradex/tree/main/plugins/aeradex-telegram",
+      "repo_pfad": "plugins/aeradex-telegram",
+      "aeradex": ">=0.8",
+      "art": "code",
+      "hooks": ["commands"],
+      "status": "ungeprüft"
     }
   ]
 }

@@ -11,7 +11,7 @@ on:
         description: "Welches Paket veröffentlichen"
         required: true
         type: choice
-        options: [aeradex, aeradex-anlagen, aeradex-revolut, aeradex-kontenplan-verein]
+        options: [aeradex, aeradex-anlagen, aeradex-leistungen, aeradex-revolut, aeradex-team, aeradex-team-portal, aeradex-zugriff, aeradex-anruf, aeradex-telegram]
 
 permissions:
   contents: read

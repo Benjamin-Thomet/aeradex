@@ -1,0 +1,18 @@
+# Team-App on its own (sub)domain. On an existing website instead: put the `handle /app*` block into that site's
+# block, before its own reverse_proxy (the portal expects the path /app).
+{{PORTAL_DOMAIN}} {
+	handle /app* {
+		reverse_proxy 127.0.0.1:{{PORTAL_PORT}}
+		request_body {
+			max_size 2MB
+		}
+	}
+	handle {
+		redir /app/ 302
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+}

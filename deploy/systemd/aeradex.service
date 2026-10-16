@@ -1,0 +1,34 @@
+[Unit]
+Description=aeradex Buchhaltung {{FIRMA}} ({{DOMAIN}}, mit Login)
+After=network.target
+
+[Service]
+User={{BENUTZER}}
+Group={{BENUTZER}}
+Environment=AERADEX_CONFIG={{BASIS}}/config
+Environment=AERADEX_ANRUF_ENV={{BASIS}}/config/bot.env
+# Claude API when config/anthropic.env has ANTHROPIC_API_KEY; else the agent set in aeradex (Einstellungen › Agent)
+EnvironmentFile=-{{BASIS}}/config/anthropic.env
+# aeradex › Plugins › Zugriff writes the ssh keys (each locked to the forced command)
+Environment=AERADEX_ZUGRIFF_KEYS={{BASIS}}/.ssh/authorized_keys
+Environment=AERADEX_ZUGRIFF_SERVER={{DOMAIN}}
+Environment=AERADEX_ZUGRIFF_BENUTZER={{BENUTZER}}
+WorkingDirectory={{BASIS}}/buch
+ExecStart={{BASIS}}/venv/bin/aeradex --buch {{BASIS}}/buch serve --port {{BUCH_PORT}} --https --config {{BASIS}}/config
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+ReadWritePaths={{BASIS}}/buch {{BASIS}}/config {{BASIS}}/.cache {{BASIS}}/.ssh
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

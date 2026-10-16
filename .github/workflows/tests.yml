@@ -36,6 +36,11 @@ jobs:
           git config --global user.email "ci@example.org"
       - name: Tests
         run: pytest -q
+      - name: Skripte (Team-App, Server)
+        run: |
+          node --check plugins/aeradex-team-portal/src/aeradex_team_portal/static/app.js
+          node --check plugins/aeradex-team-portal/src/aeradex_team_portal/static/sw.js
+          for f in deploy/setup.sh deploy/aeradex-update plugins/aeradex-zugriff/src/aeradex_zugriff/aeradex-ssh; do bash -n "$f"; done
 
   build:
     # Prüft, dass sich alle Pakete bauen lassen und ihre Daten enthalten.
@@ -55,3 +60,6 @@ jobs:
           unzip -l dist/aeradex-*.whl | grep -q "web/templates/journal.html"
           unzip -l dist/aeradex-*.whl | grep -q "data/forms/lohnausweis_form11_de.pdf"
           unzip -l dist/aeradex_anlagen-*.whl | grep -q "templates/anlagen.html"
+          unzip -l dist/aeradex_team-0*.whl | grep -q "templates/team/_code.html"
+          unzip -l dist/aeradex_team_portal-*.whl | grep -q "static/app.js"
+          unzip -l dist/aeradex_zugriff-*.whl | grep -q "aeradex_zugriff/aeradex-ssh"

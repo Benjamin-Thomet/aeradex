@@ -1,0 +1,50 @@
+# Stammdaten für ein Muster-Buch mit Team-App (fiktive Firma). `einrichten.py` legt damit ein neues Buch an.
+# Leere oder fehlende Angaben listet das Skript am Ende als «noch zu ergänzen» auf.
+
+firma:
+  name: Muster Malerei AG
+  rechtsform: AG
+  strasse: Musterweg
+  nr: 1
+  plz: 3600
+  ort: Thun
+  telefon: ""
+  email: ""
+  uid: ""            # CHE-…
+  iban: ""
+  jahr: 2026
+
+mwst: keine          # keine | effektiv | saldo
+
+leistungen:
+  feiertage_kanton: BE
+  wochenstunden: 42    # Vollzeit laut Arbeitsvertrag bzw. GAV
+  ferien_tage: 25
+  kontrolle_ab: 2026-11-01   # ab wann Überstunden gezählt werden (Start der App)
+  kategorien: [Intern, Werkstatt, Büro, Berufsschule, Weiterbildung, Garantie, Ferien, Krank, Feiertag]
+  # Leistungsarten (Einheit h) und Material, Verrechnungspreise exkl. MWST; 0 = noch nicht festgelegt
+  leistungsarten:
+    - {text: Malerarbeiten, preis: 0}
+    - {text: Vorarbeiten, preis: 0}
+    - {text: Regiearbeiten, preis: 0}
+    - {text: Fahrzeit, preis: 0}
+  leistungsart_fest: ""      # z.B. «Regiearbeiten»: die App fragt nicht danach, jede Kundenstunde wird so gebucht
+  objekte: true              # Projekte heissen «Objekt», Pflicht wenn der Kunde welche hat; eine Rechnung je Objekt
+  material:
+    - {text: Dispersionsfarbe, einheit: l, preis: 0}
+    - {text: Grundierung, einheit: l, preis: 0}
+    - {text: Kleinmaterial, einheit: Pauschal, preis: 0}
+
+team:                        # team/einstellungen.yaml: was App und Textkorrektur über die Branche wissen
+  branche: Malergeschäft
+  text_beispiel: Wände gespachtelt, 2. Anstrich
+  arztzeugnis_ab_tag: 4      # 0 = kein Hinweis in der App
+
+# Wer im Büro mitarbeitet und Zeit erfasst, ohne Lohn und ohne Überstundenkontrolle
+inhaber:
+  name: Petra Muster
+  benutzer: petra
+
+mitarbeitende:
+  - {vorname: Anna, nachname: Muster, benutzer: anna}
+  - {vorname: Luca, nachname: Beispiel, benutzer: luca, ferien_tage: 27}   # z.B. Lernende/r

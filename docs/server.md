@@ -3,6 +3,9 @@
 `aeradex ui` ist für den eigenen Rechner gedacht (ein Benutzer, Zugangsschlüssel im Link).
 `aeradex serve` ist der Mehrbenutzer-Betrieb mit Login: für einen eigenen Server, erreichbar über HTTPS.
 
+Fertige Vorlagen für alles zusammen (systemd, Caddy, fail2ban, Team-App für Mitarbeitende, Telegram-Bot, Zugriff für
+Claude Code per SSH) und ein Einrichtungsskript: [deploy/](../deploy). Diese Seite erklärt die Teile einzeln.
+
 ## Grundsätze
 
 - **Ein Buch pro Instanz.** Für mehrere Mandanten mehrere Instanzen auf verschiedenen Ports bzw. Subdomains

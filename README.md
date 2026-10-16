@@ -153,7 +153,8 @@ aeradex user add treuhand --rolle lesen
 aeradex --buch /srv/buecher/muster serve --port 8080 --https     # hinter Caddy/nginx mit HTTPS
 ```
 Rollen `lesen`, `buchhaltung`, `admin`; jede Änderung trägt im git-Verlauf den Namen der angemeldeten Person.
-Anleitung mit systemd, Caddy und Datensicherung: [docs/server.md](docs/server.md).
+Anleitung mit systemd, Caddy und Datensicherung: [docs/server.md](docs/server.md). Alles auf einmal (Buch mit
+Login, Team-App für Mitarbeitende, Telegram-Bot, Claude Code auf den PCs per SSH): [deploy/](deploy).
 
 ### Debitoren und QR-Rechnungen
 ```bash
@@ -488,7 +489,8 @@ Fremdwährungskonten) mit automatischem Abgleich und Bankregeln, Fremdwährungen
 Stichtagsbewertung, Belegeingang mit OCR und Agent (Quittungen, Lieferantenrechnungen, extern erstellte Rechnungen),
 Debitoren mit QR-Rechnung (CHF/EUR) und Mahnwesen, Kreditoren mit QR-Scan und pain.001 (auch Fremdwährung),
 Dividende mit Verrechnungssteuer, Lohn mit Spesen, Anlagenbuchhaltung (Plugin), Zeit- und Materialerfassung mit
-Abwesenheiten und Abrechnung an Kunden (Plugin), Plugin-System mit eigenen Seiten, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit
+Abwesenheiten und Abrechnung an Kunden (Plugin), Team-App fürs Handy der Mitarbeitenden (Plugin), Sekretärin mit
+Stimme und Telegram (Plugin), Plugin-System mit eigenen Seiten, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit
 eingebautem Agenten, lokal oder als Server mit Login.
 
 Als Nächstes:

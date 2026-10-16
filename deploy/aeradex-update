@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Programme des Buchs auf dem Server aktualisieren (aeradex, Plugins, Team-App) und die Dienste neu starten.
+# Das Buch selbst wird nie angefasst. Als root: sudo aeradex-update   (liest /etc/aeradex-server.conf)
+set -euo pipefail
+[ "$(id -u)" = 0 ] || { echo "bitte mit sudo"; exit 1; }
+CONF="${AERADEX_SERVER_CONF:-/etc/aeradex-server.conf}"
+# shellcheck source=/dev/null
+. "$CONF"
+U=$BENUTZER; VENV=$BASIS/venv
+pkg() {
+  local name="$1" extras="${2:-}" dir="${3:-}"
+  if [[ "$QUELLE" == git+* || "$QUELLE" == http* ]]; then
+    printf '%s%s @ %s%s' "$name" "$extras" "$QUELLE" "${dir:+#subdirectory=$dir}"
+  else
+    printf '%s%s' "$QUELLE${dir:+/$dir}" "$extras"
+  fi
+}
+PKGS=("$(pkg aeradex "[ui,mcp,crypt,scan]")")
+for p in leistungen team zugriff anruf telegram; do PKGS+=("$(pkg "aeradex-$p" "" "plugins/aeradex-$p")"); done
+sudo -u "$U" "$VENV/bin/pip" install -q --upgrade "${PKGS[@]}"
+# pip skips a git install whose version number did not change: reinstall our own packages every time
+sudo -u "$U" "$VENV/bin/pip" install -q --upgrade --force-reinstall --no-deps "${PKGS[@]}"
+
+if [ -n "${PORTAL_DOMAIN:-}" ]; then
+  P=/srv/aeradex-team-portal/venv
+  [ -d "$P" ] || python3 -m venv "$P"
+  "$P/bin/pip" install -q --upgrade pip
+  "$P/bin/pip" install -q --upgrade --force-reinstall "$(pkg aeradex-team-portal "" plugins/aeradex-team-portal)"
+fi
+if [ -x /usr/local/sbin/aeradex-ssh ]; then   # the forced command follows the plugin
+  sudo -u "$U" "$VENV/bin/aeradex" zugriff skript > /tmp/aeradex-ssh.$$
+  install -o root -g root -m 755 /tmp/aeradex-ssh.$$ /usr/local/sbin/aeradex-ssh; rm -f /tmp/aeradex-ssh.$$
+fi
+[ "${1:-}" = "--ohne-neustart" ] && exit 0
+
+sudo -u "$U" "$VENV/bin/aeradex" --buch "$BASIS/buch" check | tail -1
+UNITS=()
+for unit in aeradex aeradex-team-portal aeradex-team aeradex-telegram; do
+  systemctl is-enabled --quiet "$unit" 2>/dev/null && { systemctl restart "$unit"; UNITS+=("$unit"); }
+done
+systemctl --no-pager --lines=0 status "${UNITS[@]}" | grep -E "●|Active:"

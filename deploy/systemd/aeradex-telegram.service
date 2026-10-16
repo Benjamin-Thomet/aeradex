@@ -1,0 +1,27 @@
+[Unit]
+Description=Telegram-Bot und Anruf-Gateway der Buchhaltung (arbeitet auch, wenn kein PC an ist)
+After=network-online.target aeradex.service
+Wants=network-online.target
+
+[Service]
+User={{BENUTZER}}
+Group={{BENUTZER}}
+Environment=AERADEX_CONFIG={{BASIS}}/config
+Environment=AERADEX_ANRUF_ENV={{BASIS}}/config/bot.env
+EnvironmentFile=-{{BASIS}}/config/anthropic.env
+WorkingDirectory={{BASIS}}/buch
+# waits until the bot's access is entered in aeradex and restarts by itself when it changes
+ExecStart={{BASIS}}/venv/bin/aeradex --buch {{BASIS}}/buch telegram serve --dienst
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths={{BASIS}}/buch {{BASIS}}/config {{BASIS}}/.cache
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

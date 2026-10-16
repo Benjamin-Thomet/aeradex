@@ -1,0 +1,33 @@
+[Unit]
+Description=Team-App für Mitarbeitende ({{PORTAL_DOMAIN}}/app)
+After=network.target
+
+[Service]
+User=aeradex-portal
+Group=aeradex-portal
+EnvironmentFile=/etc/aeradex-team-portal/portal.env
+Environment=AERADEX_PORTAL_DATA=/var/lib/aeradex-team-portal
+WorkingDirectory=/var/lib/aeradex-team-portal
+ExecStart=/srv/aeradex-team-portal/venv/bin/aeradex-team-portal serve --host 127.0.0.1 --port {{PORTAL_PORT}}
+Restart=on-failure
+RestartSec=3
+
+# Code read-only, only the data folder writable
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/aeradex-team-portal
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,35 @@
+{{DOMAIN}} {
+	# Telegram/call gateway (aeradex telegram serve): only what ElevenLabs, the Telegram Mini App and the call page
+	# need. Each path checks its own secret (LLM bearer, webhook signature, Telegram initData, the call page's cookie
+	# from a one-time ticket that aeradex hands out behind its login); /anruf/ticket and /health stay local.
+	@anruf path /llm/v1 /llm/v1/chat/completions /elevenlabs/webhook /app /app/session /app/ende /anruf /anruf/session /anruf/events /anruf/aktion /anruf/ende /anruf/datei/*
+	@miniapp path /app
+	@notminiapp not path /app
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+	header @notminiapp X-Frame-Options "DENY"
+	header @miniapp Content-Security-Policy "frame-ancestors https://web.telegram.org"
+	request_body {
+		max_size 30MB
+	}
+	handle @anruf {
+		reverse_proxy 127.0.0.1:{{GATEWAY_PORT}} {
+			flush_interval -1
+		}
+	}
+	handle {
+		encode zstd gzip      # not on the call paths: compression would hold back the streamed answer
+		reverse_proxy 127.0.0.1:{{BUCH_PORT}}
+	}
+	log {
+		output file /var/log/caddy/aeradex.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

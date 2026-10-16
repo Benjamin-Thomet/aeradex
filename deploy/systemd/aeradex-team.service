@@ -1,0 +1,25 @@
+[Unit]
+Description=Team-App: Abgleich Buch ↔ Portal ({{PORTAL_DOMAIN}}/app)
+After=network.target aeradex-team-portal.service
+
+[Service]
+User={{BENUTZER}}
+Group={{BENUTZER}}
+Environment=AERADEX_CONFIG={{BASIS}}/config
+EnvironmentFile=-{{BASIS}}/config/anthropic.env
+WorkingDirectory={{BASIS}}/buch
+# sync at once when the book changes or entries wait on the portal (checked every 15 s), at the latest every 5 min
+ExecStart={{BASIS}}/venv/bin/aeradex --buch {{BASIS}}/buch team sync --wiederholen 300 --pruefen 15
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths={{BASIS}}/buch {{BASIS}}/config {{BASIS}}/.cache
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

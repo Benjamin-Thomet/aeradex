@@ -1,0 +1,21 @@
+# Server mit einem aeradex-Buch. Kopieren nach /etc/aeradex-server.conf (root, 600) und anpassen; setup.sh liest es.
+# Nur Pfade und Namen, keine Schlüssel: die trägt man danach in aeradex ein (Einstellungen › Agent, Plugins).
+
+DOMAIN=buch.example.ch            # aeradex mit Login (aeradex serve)
+PORTAL_DOMAIN=team.example.ch     # Team-App für Mitarbeitende (leer = ohne Team-App); Adresse: https://PORTAL_DOMAIN/app
+FIRMA="Muster AG"                 # nur für ein neues Buch (aeradex init) und den Titel der Team-App
+RECHTSFORM=AG                     # Einzelfirma, GmbH, AG …
+JAHR=2026
+
+BENUTZER=aeradex                  # Systembenutzer des Buchs (Login nur per SSH-Schlüssel, Zugang aus aeradex › Zugriff)
+BASIS=/srv/aeradex                # darunter: buch/ venv/ config/ (config: Logins, Sitzungen, Zugänge, nur der Dienst)
+PLUGINS="leistungen team zugriff" # eingeschaltet in einem neuen Buch; dazu z.B. «anruf telegram»
+
+BUCH_PORT=4200                    # aeradex serve (nur 127.0.0.1)
+PORTAL_PORT=4100                  # Team-App (nur 127.0.0.1)
+GATEWAY_PORT=8765                 # Telegram/Anruf-Gateway (nur 127.0.0.1)
+
+PORTAL_KENNUNG=aeradex            # Kennung der Team-App (Cookie, Schlüssel); nach dem Start nie mehr ändern
+PORTAL_BRANDING=                  # optional: Ordner mit logo.png, icon-192.png, icon-512.png, branding.css, Schriften
+
+QUELLE="git+https://github.com/Benjamin-Thomet/aeradex"   # woher aeradex und die Plugins kommen (auch ein Ordner)

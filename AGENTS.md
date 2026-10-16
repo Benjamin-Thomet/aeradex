@@ -27,6 +27,12 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   `aeradex.yaml → plugins`). `builtin.py` provides the core's own data and the camt.053 format through the same hooks.
   `testing.py`: helpers for plugin tests. Example plugins and the template live in `plugins/`; docs in `docs/plugins.md`.
   When a feature could be a plugin (a bank, a canton, an export), prefer a plugin over growing the core.
+- Plugins for a book with a team and a server: `aeradex-team` (sync of the employees' phone app into Leistungen,
+  requests, check list, encrypted payroll documents; protocol in its `PROTOCOL.md`) with `aeradex-team-portal`
+  (the phone app + sync API, Starlette/SQLite, no aeradex dependency; one `kennung` per installation names cookie,
+  header and key salts), `aeradex-zugriff` (ssh keys for Claude Code, locked to the forced command `aeradex-ssh`),
+  `aeradex-anruf` + `aeradex-telegram` (voice/Telegram assistant over `web/chat.py`). Server templates: `deploy/`.
+  Nothing customer-specific in them: names, domains, logos and trade rules are settings or branding.
 - `erfassung.py`: Belegeingang → drafts (`eingang/`) of three kinds (kreditor, quittung, debitor; legacy drafts in
   `kreditoren/entwuerfe/` are still read). Receipts are matched with open bank movements / existing bookings so
   nothing is booked twice; own invoices from outside aeradex become `invoices.record_external`. Reader chain (QR, PDF text, Tesseract OCR,

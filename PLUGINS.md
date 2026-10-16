@@ -9,6 +9,10 @@ eigenes Plugin per Pull Request dort eintragen, ein Maintainer prüft es (siehe 
 | [aeradex-anlagen](plugins/aeradex-anlagen) | Dokumente, Seite | Anlagenbuchhaltung: Abschreibungen, Abgänge, Anlagenspiegel | ungeprüft |
 | [aeradex-leistungen](plugins/aeradex-leistungen) | Seiten, Werkzeuge | Zeit und Material (Schnellerfassung, Stoppuhr, Wochenraster), Ferien und Überzeit mit kantonalen Feiertagen, Arbeitszeitnachweis, Offerten, Projekte, Abrechnung als QR-Rechnung | ungeprüft |
 | [aeradex-revolut](plugins/aeradex-revolut) | Bankformat | Revolut-Kontoauszüge (CSV, Business und Privat) | ungeprüft, mit echtem Export zu prüfen |
+| [aeradex-team](plugins/aeradex-team) | Seite, Werkzeuge, Dienst | Team-App: Mitarbeitende erfassen Zeit, Material und Abwesenheiten auf dem Handy (Portal [aeradex-team-portal](plugins/aeradex-team-portal)), Anträge, Prüfliste, Überstunden, Lohndokumente Ende-zu-Ende verschlüsselt | ungeprüft |
+| [aeradex-zugriff](plugins/aeradex-zugriff) | Seite | Zugriff für Claude Code auf ein Buch auf dem Server: SSH-Schlüssel, beschränkt auf die Werkzeuge und den Belegeingang | ungeprüft |
+| [aeradex-anruf](plugins/aeradex-anruf) | Seite, Werkzeuge | Sekretärin mit Stimme (ElevenLabs), Gedächtnis und Karten zum Bestätigen | ungeprüft |
+| [aeradex-telegram](plugins/aeradex-telegram) | Befehl | Telegram-Bot für aeradex-anruf: Chat, Sprachnachrichten, Belege, Anrufen | ungeprüft |
 
 ## Gesucht
 
