@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Forced command for the SSH keys of the book's user (install root:root 0755 as /usr/local/sbin/aeradex-ssh).
+#
+#   authorized_keys:  restrict,command="/usr/local/sbin/aeradex-ssh anna" ssh-ed25519 AAAA… anna-buchhaltung
+#
+# The key can do exactly two things, whatever the client asks for:
+#   mcp            the aeradex tools for Claude Code/Codex on the person's PC (stdio), commits named after the person
+#   inbox NAME     a file on stdin goes into the book's inbox/ (receipts from the PC), at most 25 MB
+# Everything else is refused. No shell, no forwarding (restrict), no other files.
+#
+# Paths come from /etc/aeradex-ssh.conf (root-owned, sourced; ssh clients cannot set env):
+#   BUCH=/srv/aeradex/buch  VENV=/srv/aeradex/venv  CONFIG=/srv/aeradex/config  DOMAIN=buch.example.ch
+set -euo pipefail
+
+CONF="${AERADEX_SSH_CONF:-/etc/aeradex-ssh.conf}"   # overridable only by root (tests)
+BUCH=/srv/aeradex/buch
+VENV=/srv/aeradex/venv
+CONFIG=/srv/aeradex/config
+DOMAIN="$(hostname -f 2>/dev/null || hostname)"
+# shellcheck source=/dev/null
+[ -r "$CONF" ] && . "$CONF"
+MAX_BYTES=$((25 * 1024 * 1024))
+
+who="${1:-}"
+[[ "$who" =~ ^[a-z][a-z0-9]{1,19}$ ]] || { echo "aeradex-ssh: unbekannte Person '$who'" >&2; exit 1; }
+# the display name comes from aeradex › Zugriff (config/zugriff.yaml: «who: Name»)
+name="$(sed -n "s/^$who: *//p" "$CONFIG/zugriff.yaml" 2>/dev/null | head -1 | tr -d '"<>')"
+author="${name:-$who} (Claude Code) <$who@$DOMAIN>"
+
+read -r -a req <<< "${SSH_ORIGINAL_COMMAND:-}"
+case "${req[0]:-}" in
+  mcp)
+    export AERADEX_CONFIG="$CONFIG" AERADEX_AUTHOR="$author"
+    exec "$VENV/bin/aeradex" --buch "$BUCH" mcp
+    ;;
+  inbox)
+    raw="${req[*]:1}"                     # the rest is the name (may contain spaces)
+    raw="${raw//\"/}"; raw="${raw//\'/}"    # Windows quotes names with spaces: «inbox "Quittung Migros.pdf"»
+    raw="${raw:-beleg}"
+    # only a plain file name: letters, digits, . - _ ; no paths, no hidden files
+    name="$(printf '%s' "$raw" | tr -c 'A-Za-z0-9._-' '_' | sed 's/^[._]*//' | cut -c1-80)"
+    [ -n "$name" ] || name="beleg"
+    case "${name,,}" in
+      *.pdf|*.jpg|*.jpeg|*.png|*.heic|*.webp|*.xml|*.csv|*.xlsx) ;;
+      *) echo "aeradex-ssh: nur PDF, Bilder, XML, CSV, XLSX" >&2; exit 1 ;;
+    esac
+    mkdir -p "$BUCH/inbox"
+    target="$BUCH/inbox/$name"
+    n=1
+    while [ -e "$target" ]; do target="$BUCH/inbox/${name%.*}-$n.${name##*.}"; n=$((n + 1)); done
+    tmp="$(mktemp "$BUCH/inbox/.upload-XXXXXX")"
+    trap 'rm -f "$tmp"' EXIT
+    head -c $((MAX_BYTES + 1)) > "$tmp"
+    if [ "$(stat -c %s "$tmp")" -gt "$MAX_BYTES" ]; then echo "aeradex-ssh: Datei grösser als 25 MB" >&2; exit 1; fi
+    if [ ! -s "$tmp" ]; then echo "aeradex-ssh: leere Datei" >&2; exit 1; fi
+    chmod 640 "$tmp"
+    mv "$tmp" "$target"
+    trap - EXIT
+    echo "inbox/$(basename "$target")"
+    ;;
+  *)
+    echo "aeradex-ssh: nicht erlaubt (nur «mcp» oder «inbox NAME»)" >&2
+    exit 1
+    ;;
+esac

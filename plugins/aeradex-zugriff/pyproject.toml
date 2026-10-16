@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeradex-zugriff"
+version = "0.1.0"
+description = "Zugriff für Claude Code auf ein aeradex-Buch auf dem Server: SSH-Schlüssel, beschränkt auf die Buchhaltungs-Werkzeuge"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+dependencies = ["aeradex>=0.8"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.entry-points."aeradex.plugins"]
+zugriff = "aeradex_zugriff"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aeradex_zugriff = ["templates/*.html", "aeradex-ssh"]

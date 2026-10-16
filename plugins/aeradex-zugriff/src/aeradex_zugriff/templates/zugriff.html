@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Zugriff{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Zugriff für Claude Code</h1><div class="sub">Wer von seinem eigenen PC mit Claude Code oder Codex (eigenes Abo) an diesem Buch arbeiten darf</div></div>
+</div>
+{% if not aktiv %}
+<div class="panel"><div class="body small">Nur auf dem Server: Die Zugänge stehen beim Benutzer des Buchs auf dem VPS (AERADEX_ZUGRIFF_KEYS ist hier nicht gesetzt; siehe deploy/README.md).</div></div>
+{% else %}
+<div class="panel">
+  <header><h2>Eingetragene Schlüssel ({{ schluessel|length }})</h2></header>
+  {% if schluessel %}<div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Person</th><th>Kürzel</th><th>Schlüssel</th><th>Bezeichnung</th><th></th></tr></thead>
+    <tbody>{% for k in schluessel %}<tr class="row"><td>{{ k.name }}</td><td><code>{{ k.wer }}</code></td><td class="small"><code>{{ k.fingerprint }}</code><div class="muted">{{ k.typ }}</div></td><td class="small">{{ k.kommentar }}</td>
+      <td class="right"><form hx-post="/p/zugriff/schluessel/weg" hx-target="find .errors" hx-confirm="Zugang von {{ k.name }} entfernen? Claude Code auf diesem PC kann danach nicht mehr auf das Buch zugreifen.">
+        <input type="hidden" name="fingerprint" value="{{ k.fingerprint }}"><button class="btn small">Entfernen</button>{{ errors() }}</form></td></tr>{% endfor %}</tbody>
+  </table></div>{% else %}<div class="body small muted">Noch niemand.</div>{% endif %}
+</div>
+
+<div class="panel">
+  <header><h2>Zugang hinzufügen</h2></header>
+  <form class="body" hx-post="/p/zugriff/schluessel/neu" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label for="z-w">Kürzel</label><input class="input" id="z-w" name="wer" placeholder="anna" required></div>
+      <div class="field"><label for="z-n">Name (im Verlauf)</label><input class="input" id="z-n" name="name" placeholder="Anna Muster" required></div>
+      <div class="field" style="grid-column: span 2"><label for="z-k">Öffentlicher Schlüssel</label><input class="input" id="z-k" name="schluessel" placeholder="ssh-ed25519 AAAA… anna-buchhaltung" spellcheck="false" required></div>
+    </div>
+    <p class="small muted">Jeder hier eingetragene Schlüssel kann nur die Buchhaltungs-Werkzeuge dieses Buchs starten und Belege in den Eingang legen, sonst nichts auf dem Server. Seine Änderungen stehen im Verlauf als «Name (Claude Code)».</p>
+    {{ errors() }}<div class="formfoot"><span></span><button class="btn primary" type="submit">Eintragen</button></div>
+  </form>
+</div>
+
+<div class="panel">
+  <header><h2>Einrichten auf dem PC</h2></header>
+  <div class="body small">
+    <p><strong>Windows</strong>: <code>install.ps1 -Server {{ s.server }} -Benutzer {{ s.benutzer }} -Url &lt;Adresse dieses Buchs&gt;</code> aus <code>plugins/aeradex-zugriff/windows</code> ausführen; den ausgegebenen Schlüssel oben eintragen.</p>
+    <p><strong>Linux/Mac</strong>: Schlüssel erzeugen, oben eintragen, dann SSH und Claude Code verbinden:</p>
+<pre class="small">ssh-keygen -t ed25519 -f ~/.ssh/{{ s.alias }} -N "" -C "$(whoami)-buchhaltung"
+cat ~/.ssh/{{ s.alias }}.pub
+printf 'Host {{ s.alias }}\n    HostName {{ s.server }}\n    User {{ s.benutzer }}\n    IdentityFile ~/.ssh/{{ s.alias }}\n    IdentitiesOnly yes\n' >> ~/.ssh/config
+claude mcp add --scope user aeradex -- ssh {{ s.alias }} mcp</pre>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
