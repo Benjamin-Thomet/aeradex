@@ -23,8 +23,11 @@ from . import daten
 ZERO = Decimal("0")
 
 
-def _opt_date(value) -> date | None:
+def opt_date(value) -> date | None:
     return parse_date(value) if value not in (None, "") else None
+
+
+_opt_date = opt_date
 
 
 def workdays(year: int, month: int, holidays: set[date], start: date | None = None, end: date | None = None) -> int:

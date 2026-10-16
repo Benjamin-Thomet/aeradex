@@ -36,6 +36,7 @@ RECHTE = {
     "sources": "bucht eigene Dokumente ins Journal", "check": "eigene Prüfregeln",
     "tools": "Werkzeuge für Agenten", "instructions": "Hinweise an Agenten",
     "commands": "Befehle in der Kommandozeile", "pages": "eigene Seiten in der Oberfläche",
+    "dienste": "Hintergrunddienste mit der Oberfläche",
 }
 DATA_ONLY = {"kontenplaene", "qst_tarife"}
 SOURCE_SUFFIXES = {".py", ".html", ".yaml", ".yml", ".json", ".csv", ".txt", ".md", ".js", ".css"}

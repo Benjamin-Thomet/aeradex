@@ -54,6 +54,9 @@ def _guard(book: Book) -> None:
                         "\n".join(f"  {e}" for e in errors[:10]))
 
 
+guard = _guard   # public: plugins that write several documents stop early on a book with errors
+
+
 def _done(book: Book, message: str, paths: list[Path], **data) -> dict:
     from .storage import in_transaction
     book.reload()
