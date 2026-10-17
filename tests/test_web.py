@@ -76,7 +76,7 @@ PAGES = ["/", "/pruefen", "/journal", "/journal?monat=alle&q=Lohn", "/journal?oh
          "/konten/saldenliste?periode=q1", "/konten/1020", "/debitoren", "/debitoren/neu", "/debitoren/kunden",
          "/debitoren/kunden?edit=K0001", "/debitoren/offene-posten", "/debitoren/rechnung/R-2026-0001", "/lohn",
          "/lohn/abrechnung/2026-03/M0002", "/lohn/mitarbeiter?edit=M0001", "/lohn/lohnkonto/2026/M0001",
-         "/abschluss", "/verlauf", "/einstellungen", "/pdf/jahresrechnung", "/pdf/journal", "/pdf/debitoren",
+         "/lohn/lohnkonto?jahr=2026", "/lohn/lohnmeldungen?jahr=2026", "/abschluss", "/verlauf", "/einstellungen", "/pdf/jahresrechnung", "/pdf/journal", "/pdf/debitoren",
          "/pdf/kontoblatt?konto=1020"]
 
 
@@ -589,7 +589,8 @@ def test_top_navigation():
         assert nv["aktiv"]["key"] == "plugins" and on(nv) == [label]
     nv, _ = at("/abschluss")
     assert not any(t["label"] == "Anlagen" for t in nv["aktiv"]["tabs"])
-    assert on(at("/lohn/lohnkonto/2026/M0001")[0]) == ["Mitarbeitende"]
+    assert on(at("/lohn/lohnkonto/2026/M0001")[0]) == ["Lohnkonto"]
+    assert on(at("/lohn/lohnmeldungen")[0]) == ["Lohnmeldungen"]
     assert on(at("/bank/regeln")[0]) == ["Regeln"] and on(at("/bank")[0]) == ["Abgleichen"]
     nv, s = at("/mwst", "keine")
     assert nv["aktiv"]["key"] == "buchhaltung" and "MWST" not in [t["label"] for t in nv["aktiv"]["tabs"]]
@@ -763,3 +764,16 @@ def test_login_failures_are_logged_with_the_proxied_address(tmp_path, caplog):
             self.client = type("C", (), {"host": peer})()
             self.headers = {"x-forwarded-for": fwd} if fwd else {}
     assert client_address(Req("198.51.100.4", "6.6.6.6")) == "198.51.100.4"     # not from the proxy: ignore header
+
+
+def test_lohnkonto_firma_and_lohnmeldungen(client):
+    page = client.get("/lohn/lohnkonto?jahr=2026").text
+    assert "Lohnkonto Ganze Firma 2026" in page and "Total Arbeitgeberkosten" in page
+    r = client.get("/lohn/lohnkonto?jahr=2026&bereich=M0001", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/lohn/lohnkonto/2026/M0001"
+    assert "Lohnmeldungen 2026" in client.get("/lohn/lohnmeldungen?jahr=2026").text
+    pdf = client.get("/lohn/lohnkonto/datei.pdf?jahr=2026&bereich=firma")
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    csv = client.get("/lohn/meldungen/datei.csv?jahr=2026")
+    assert csv.status_code == 200 and "Ausgleichskasse" in csv.content.decode("utf-8-sig")
+    assert client.get("/lohn/abrechnung/datei.pdf?jahr=2026").status_code == 404

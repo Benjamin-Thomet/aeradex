@@ -16,11 +16,12 @@
         <div class="field"><label>Nachname *</label><input class="input" name="nachname" value="{{ e.nachname or '' }}" required></div>
         <div class="field"><label>AHV-Nr.</label><input class="input" name="ahv_nr" value="{{ e.ahv_nr or '' }}" placeholder="756.0000.0000.00"></div>
         <div class="field"><label>Geburtsdatum</label><input class="input" type="date" name="geburtsdatum" value="{{ e.geburtsdatum or '' }}"></div>
+        <div class="field"><label>Geschlecht</label><select class="input" name="geschlecht" style="width:100%"><option value="" {{ 'selected' if not e.geschlecht }}>— für Lohnmeldungen —</option><option value="w" {{ 'selected' if e.geschlecht == 'w' }}>weiblich</option><option value="m" {{ 'selected' if e.geschlecht == 'm' }}>männlich</option></select></div>
         <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ a.strasse or '' }}"></div>
         <div class="field"><label>Nr.</label><input class="input" name="nr" value="{{ a.nr or '' }}"></div>
         <div class="field"><label>Land</label><select class="input" name="land" style="width:100%">{% for k, l in [("CH", "Schweiz"), ("DE", "Deutschland"), ("FR", "Frankreich"), ("IT", "Italien"), ("AT", "Österreich"), ("LI", "Liechtenstein")] %}<option value="{{ k }}" {{ 'selected' if (a.land or 'CH') == k }}>{{ l }}</option>{% endfor %}{% if a.land and a.land not in ("CH","DE","FR","IT","AT","LI") %}<option selected>{{ a.land }}</option>{% endif %}</select></div>
         <div class="field"><label>PLZ</label><input class="input" name="plz" value="{{ a.plz or '' }}" inputmode="numeric"></div>
-        <div class="field" style="grid-column: span 2"><label>Ort</label><input class="input" name="ort" value="{{ a.ort or '' }}"></div>
+        <div class="field"><label>Ort</label><input class="input" name="ort" value="{{ a.ort or '' }}"></div>
         <div class="field"><label>Aufenthaltsstatus</label><select class="input" name="aufenthalt" style="width:100%"><option value="" {{ 'selected' if not e.aufenthalt }}>— bitte wählen —</option>{% for k, l in aufenthalt.items() %}<option value="{{ k }}" {{ 'selected' if e.aufenthalt == k }}>{{ l }}</option>{% endfor %}</select></div>
       </div>
     </section>

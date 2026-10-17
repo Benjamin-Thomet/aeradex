@@ -69,7 +69,16 @@ def _period(emp: dict, year: int, months: list[int]) -> tuple[date | None, date 
     return start, end
 
 
-def _person(year: int, nr: str, emp: dict, slips: list[dict]) -> dict:
+def _canton(book: Book, emp: dict) -> str:
+    """The QST canton for payslips that did not store one (closed before the canton was recorded)."""
+    from .payroll import qst_kanton
+    try:
+        return qst_kanton(book, emp)[0]
+    except (BookError, KeyError):
+        return ""
+
+
+def _person(book: Book, year: int, nr: str, emp: dict, slips: list[dict]) -> dict:
     closed = sorted((p for p in slips if p.get("status") == "abgeschlossen"), key=lambda p: int(p["monat"]))
     months = [int(p["monat"]) for p in closed]
 
@@ -101,7 +110,7 @@ def _person(year: int, nr: str, emp: dict, slips: list[dict]) -> dict:
         "an": {k: total(k) for k in ("ahv", "alv", "uvg", "ktg", "bvg", "quellensteuer")},
         "ag": {code: ag(code) for code in AG_ORDER},
         "kinderzulagen": total("kinderzulagen"), "korrektur": total("korrektur"),
-        "qst": [{"monat": int(p["monat"]), "kanton": p["werte"].get("qst_kanton") or "",
+        "qst": [{"monat": int(p["monat"]), "kanton": p["werte"].get("qst_kanton") or _canton(book, emp),
                  "tarif": p["werte"].get("qst_code") or "", "basis": D(p["werte"].get("qst_basis")),
                  "satz": D(p["werte"].get("qst_satz")), "betrag": D(p["werte"].get("quellensteuer"))}
                 for p in closed if D(p["werte"].get("quellensteuer")) or p["werte"].get("qst_code")],
@@ -190,7 +199,7 @@ def jahresmeldung(book: Book, year: int) -> dict:
     for nr in sorted({p["mitarbeiter"] for p in slips}):
         emp = emps.get(nr) or {"nummer": nr}
         own = [p for p in slips if p["mitarbeiter"] == nr]
-        person = _person(year, nr, emp, own)
+        person = _person(book, year, nr, emp, own)
         totals = lohnausweis.annual_totals(book, year, nr) if nr in emps else \
             {"fehlende_monate": [], "offene_monate": []}
         hints += _hints(year, emp, person, cfg, totals)
@@ -218,7 +227,8 @@ def jahresmeldung(book: Book, year: int) -> dict:
     qst_rows = [dict(q, nummer=p["nummer"], name=p["name"], ahv_nr=p["ahv_nr"]) for p in people for q in p["qst"]]
     qst_kantone: dict[str, Decimal] = {}
     for q in qst_rows:
-        qst_kantone[q["kanton"] or "?"] = qst_kantone.get(q["kanton"] or "?", ZERO) + q["betrag"]
+        kt = q["kanton"] or "Kanton unbekannt"
+        qst_kantone[kt] = qst_kantone.get(kt, ZERO) + q["betrag"]
     check = _ledger_check(book, year, cfg, people) if people else []
     for c in check:
         if c["differenz"]:

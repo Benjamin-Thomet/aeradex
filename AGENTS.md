@@ -11,6 +11,9 @@ This file is for developing aeradex itself. Agents *operating a book* read the
 - `journal.py`: posting, Beleg numbers, lock check, storno, proposals.
 - `invoices.py`, `qrbill_ch.py`: customers, frozen invoices, payments/credit notes as `Quelle` rows, Swiss QR-bill.
 - `payroll.py`, `qst.py`, `qst_import.py`, `lohnausweis.py`: payroll.
+- `lohnmeldung.py`: company Lohnkonto (`payroll.lohnkonto_matrix`, month matrix like the Command Station) and the
+  annual wage declarations (Ausgleichskasse, UVG, KTG, BVG, QST) from closed payslips, with Prüfhinweise for what
+  the calculation does not model (Rentnerfreibetrag, Jugendliche, Höchstlohn, NBU < 8 h) and a ledger check.
 - `check.py`: every invariant + period lock hashes. `api.py`: the operations (guard → write → check → git commit).
 - `cli.py`, `mcp_server.py` and `web/` are thin layers over `api.py`. New features go into `api.py` first.
 - `tools.py`: the one agent tool registry, used by the MCP server and the UI's chat panel.

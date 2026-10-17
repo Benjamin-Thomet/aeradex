@@ -487,3 +487,11 @@ body[data-dragseite="erfolg"] .dropzone[data-seite="bilanz"] { opacity: .35; }
 .dz-leer { padding: 4px 6px; }
 @media (hover: hover) and (pointer: fine) { .dz-move { display: none; } .dz-konto:hover .dz-move, .dz-konto:focus-within .dz-move { display: flex; } }
 @media (max-width: 720px) { .jr-doc { padding: 22px 16px; } .jr-signrow { grid-template-columns: 1fr; } }
+
+/* Lohnkonto: month matrix with a fixed first column */
+.ledger.matrix th, .ledger.matrix td { white-space: nowrap; padding: 6px 8px; }
+.ledger.matrix th:first-child, .ledger.matrix td:first-child { position: sticky; left: 0; z-index: 1; background: var(--sheet); padding-left: 12px; }
+.ledger.matrix .jt { border-left: 1px solid var(--rule-strong); font-weight: 600; }
+.ledger.matrix tr.abzug td.num { color: var(--muted); }
+.ledger.matrix tr.stunden td { color: var(--faint); }
+.ledger.matrix tr.kopf td { padding-top: 16px; font-family: var(--f-num); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-bottom-color: var(--rule-strong); }
