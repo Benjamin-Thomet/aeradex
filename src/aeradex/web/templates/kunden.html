@@ -12,6 +12,8 @@
     <div class="field"><label>PLZ</label><input class="input" name="plz" value="{{ (c.adresse or {}).plz or '' }}"></div>
     <div class="field"><label>Ort</label><input class="input" name="ort" value="{{ (c.adresse or {}).ort or '' }}"></div>
     <div class="field" style="grid-column: span 2"><label>E-Mail</label><input class="input" name="email" type="email" value="{{ c.email or '' }}"></div>
+    <div class="field"><label>Telefon</label><input class="input" name="telefon" type="tel" value="{{ c.telefon or '' }}"></div>
+    <div class="field"><label>Mobile</label><input class="input" name="mobil" type="tel" value="{{ c.mobil or '' }}"></div>
     <div class="field wide"><span class="lbl">Rechnung adressieren an</span><span class="actions"><label class="check"><input type="radio" name="rechnung_an" value="firma" {{ 'checked' if c.rechnung_an != 'person' }}> Firma</label><label class="check"><input type="radio" name="rechnung_an" value="person" {{ 'checked' if c.rechnung_an == 'person' }}> Person</label></span></div>
     <div class="field wide"><label>Notizen</label><textarea class="input" name="notizen" style="min-height:60px">{{ c._notizen or '' }}</textarea></div>
   </div>
@@ -23,14 +25,14 @@
 <div class="panel">
   {% if customers %}
   <div class="filters"><input class="input search" type="search" id="q" name="q" value="{{ q }}" autocomplete="off"
-      data-filter="#kunden" placeholder="Suchen: Name, Firma, Strasse, Ort, E-Mail, Notizen …  ( / )" aria-label="Kunden suchen">
+      data-filter="#kunden" placeholder="Suchen: Name, Firma, Strasse, Ort, E-Mail, Telefon, Notizen …  ( / )" aria-label="Kunden suchen">
     <span class="small muted" data-filter-count></span></div>
   <div class="empty" data-filter-empty hidden>Kein Kunde gefunden.</div>
   <div class="tablewrap"><table class="ledger" id="kunden">
     <thead><tr><th>Nr.</th><th>Kunde</th><th>Ort</th><th class="right">Rechnungen</th><th class="right">Offen</th><th></th></tr></thead>
     <tbody>
     {% for nr, c in customers.items() %}
-      <tr class="row" data-suche="{{ suche[nr] }}"><td class="acc">{{ nr }}</td><td><strong>{{ c.firma or c.name }}</strong>{% if c.firma %}<br><span class="small muted">{{ c.name }}</span>{% endif %}</td><td>{{ (c.adresse or {}).ort }}</td>
+      <tr class="row" data-suche="{{ suche[nr] }}"><td class="acc">{{ nr }}</td><td><strong>{{ c.firma or c.name }}</strong>{% if c.firma %}<br><span class="small muted">{{ c.name }}</span>{% endif %}{% for tel in (c.telefon, c.mobil) if tel %}<br><a class="small muted" href="tel:{{ tel|replace(' ', '') }}">{{ tel }}</a>{% endfor %}</td><td>{{ (c.adresse or {}).ort }}</td>
         <td class="right num">{{ states[nr].anzahl }}</td><td class="right num">{{ states[nr].offen|chf(true) }}</td>
         <td class="right"><span class="rowactions"><a class="btn small" href="/debitoren/neu?kunde={{ nr }}">Rechnung</a><a class="btn small ghost" href="/debitoren/kunden?edit={{ nr }}#edit">Bearbeiten</a></span></td></tr>
       {% if edit == nr %}<tr><td colspan="6" id="edit" style="padding:0">{{ kundenform(c, "/debitoren/kunden/" ~ nr) }}</td></tr>{% endif %}

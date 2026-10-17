@@ -472,7 +472,7 @@ def _nachweis(book, f):
 
 
 def _kunde(book, f):
-    fields = {k: f.get(k) for k in ("name", "firma", "strasse", "nr", "plz", "ort", "email", "stundensatz")}
+    fields = {k: f.get(k) for k in ("name", "firma", "strasse", "nr", "plz", "ort", "email", "telefon", "mobil", "stundensatz")}
     return api.write(book, f"Kunde {f.get('firma') or f.get('name')} angelegt", daten.add_customer, **fields)
 
 

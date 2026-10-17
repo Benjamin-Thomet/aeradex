@@ -713,7 +713,7 @@ def customer_update(book: Book, nummer: str, notizen: str | None = None, **field
     _guard(book)
     nr = nummer
     cust = invoices.customer(book, nr)
-    allowed = {"name", "firma", "rechnung_an", "email", "stundensatz", *_ADDRESS_KEYS}
+    allowed = {"name", "firma", "rechnung_an", "email", "telefon", "mobil", "stundensatz", *_ADDRESS_KEYS}
     unknown = set(fields) - allowed
     if unknown:
         raise BookError(f"Unbekannte Felder: {', '.join(sorted(unknown))}")

@@ -150,6 +150,8 @@ firma: Beispiel AG
 rechnung_an: firma           # firma | person
 adresse: {strasse: Marktgasse, nr: '5', plz: '3011', ort: Bern, land: CH}
 email: anna@example.ch
+telefon: 031 123 45 67     # optional
+mobil: 079 123 45 67       # optional
 ---
 Freie Notizen.
 ```

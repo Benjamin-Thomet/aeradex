@@ -703,7 +703,8 @@ def invoice_search_text(row: dict, meta: dict) -> str:
 def customer_search_text(nr: str, c: dict) -> str:
     a = c.get("adresse") or {}
     return " ".join(str(x) for x in (nr, c.get("firma"), c.get("name"), a.get("strasse"), a.get("nr"), a.get("plz"),
-                                     a.get("ort"), c.get("email"), c.get("_notizen")) if x)
+                                     a.get("ort"), c.get("email"), c.get("telefon"), c.get("mobil"),
+                                     c.get("_notizen")) if x)
 
 
 async def mahnungen_page(ui: UI, request: Request):
@@ -846,7 +847,8 @@ async def kunden(ui: UI, request: Request):
 
 async def kunde_speichern(ui: UI, request: Request):
     f = await request.form()
-    fields = {k: (f.get(k) or "").strip() for k in ("name", "firma", "strasse", "nr", "plz", "ort", "land", "email")}
+    fields = {k: (f.get(k) or "").strip() for k in ("name", "firma", "strasse", "nr", "plz", "ort", "land", "email",
+                                                    "telefon", "mobil")}
     fields["rechnung_an"] = f.get("rechnung_an") or "firma"
     nr = request.path_params.get("nr")
     if not fields["name"]:

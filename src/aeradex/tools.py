@@ -432,7 +432,8 @@ def _same_customer(book: Book, name: str, firma: str) -> list[str]:
 
 
 def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", plz: str = "", ort: str = "",
-                 land: str = "CH", email: str = "", rechnung_an: str = "firma", trotzdem_neu: bool = False) -> dict:
+                 land: str = "CH", email: str = "", telefon: str = "", mobil: str = "", rechnung_an: str = "firma",
+                 trotzdem_neu: bool = False) -> dict:
     """Kunde anlegen. Gibt es den Kunden schon (gleiche Firma bzw. gleicher Name), wird nichts angelegt:
     dann update_customer verwenden, um Angaben zu ergänzen oder zu korrigieren.
 
@@ -445,6 +446,8 @@ def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", pl
         ort: Ort.
         land: Ländercode, Standard CH.
         email: E-Mail.
+        telefon: Telefonnummer (Festnetz oder Geschäft), wie genannt.
+        mobil: Mobile-/Natelnummer, wie genannt.
         rechnung_an: "firma" oder "person".
         trotzdem_neu: nur wenn der Mensch ausdrücklich einen zweiten Kunden gleichen Namens will (z.B. andere Filiale).
     """
@@ -456,12 +459,12 @@ def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", pl
         return {"ok": False, "fehler": f"Diesen Kunden gibt es schon: {', '.join(same)}. Angaben mit update_customer "
                                        "ergänzen oder korrigieren statt neu anlegen.", "vorhanden": same}
     return _call(api.customer_add, name=name, firma=firma, strasse=strasse, nr=nr, plz=plz, ort=ort,
-                 land=land, email=email, rechnung_an=rechnung_an)
+                 land=land, email=email, telefon=telefon, mobil=mobil, rechnung_an=rechnung_an)
 
 
 def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str = "", nr: str = "", plz: str = "",
-                    ort: str = "", land: str = "", email: str = "", rechnung_an: str = "",
-                    leeren: list[str] | None = None) -> dict:
+                    ort: str = "", land: str = "", email: str = "", telefon: str = "", mobil: str = "",
+                    rechnung_an: str = "", leeren: list[str] | None = None) -> dict:
     """Angaben eines bestehenden Kunden ergänzen, korrigieren oder entfernen (nur die mitgegebenen Felder; leer =
     unverändert; was weg soll, in «leeren» nennen). Bereits ausgestellte Rechnungen behalten die Adresse, die beim
     Ausstellen galt; Offerten-Entwürfe mit update_quote(adresse_neu=True) nachführen.
@@ -476,12 +479,15 @@ def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str =
         ort: Ort.
         land: Ländercode.
         email: E-Mail.
+        telefon: Telefonnummer (Festnetz oder Geschäft).
+        mobil: Mobile-/Natelnummer.
         rechnung_an: "firma" oder "person".
         leeren: Felder, die entfernt werden sollen, z.B. ["name"] für eine Kontaktperson oder ["email"].
     """
     fields = {k: v for k, v in {"name": name, "firma": firma, "strasse": strasse, "nr": nr, "plz": plz, "ort": ort,
-                                "land": land, "email": email, "rechnung_an": rechnung_an}.items() if str(v).strip()}
-    clearable = {"name", "firma", "strasse", "nr", "plz", "ort", "email"}
+                                "land": land, "email": email, "telefon": telefon, "mobil": mobil,
+                                "rechnung_an": rechnung_an}.items() if str(v).strip()}
+    clearable = {"name", "firma", "strasse", "nr", "plz", "ort", "email", "telefon", "mobil"}
     for key in leeren or []:
         if key not in clearable:
             return {"ok": False, "fehler": f"«{key}» kann nicht geleert werden (möglich: {', '.join(sorted(clearable))})"}

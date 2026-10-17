@@ -54,7 +54,8 @@ def customer(book: Book, nr: str) -> dict:
 
 def add_customer(book: Book, name: str, firma: str = "", strasse: str = "", nr: str = "",
                  plz: str = "", ort: str = "", land: str = "CH", email: str = "",
-                 rechnung_an: str = "firma", stundensatz=None, notizen: str = "") -> tuple[dict, Path]:
+                 rechnung_an: str = "firma", stundensatz=None, notizen: str = "",
+                 telefon: str = "", mobil: str = "") -> tuple[dict, Path]:
     existing = customers(book)
     nums = [int(k[1:]) for k in existing if re.fullmatch(r"K\d+", k)]
     number = f"K{max(nums, default=0) + 1:04d}"
@@ -62,6 +63,9 @@ def add_customer(book: Book, name: str, firma: str = "", strasse: str = "", nr: 
             "rechnung_an": rechnung_an,
             "adresse": {"strasse": strasse, "nr": str(nr), "plz": str(plz), "ort": ort, "land": land},
             "email": email}
+    for key, value in (("telefon", telefon), ("mobil", mobil)):    # only when given: older files stay as they are
+        if str(value or "").strip():
+            meta[key] = str(value).strip()
     if stundensatz is not None:
         meta["stundensatz"] = money(stundensatz)
     path = book.root / "kunden" / f"{number}-{slug(firma or name)}.md"

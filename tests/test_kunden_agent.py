@@ -52,3 +52,16 @@ def test_customer_details_show_contact_and_address(tmp_path, monkeypatch):
     assert d["name"] == "Pascal Mühlberg" and d["adresse"]["strasse"] == "Hagmattstrasse" and d["email"] == "info@torfix.ch"
     assert not any(k.startswith("_") for k in d)
     assert tools.customer_details("K9999")["ok"] is False
+
+
+def test_customer_phone_numbers(tmp_path, monkeypatch):
+    b = make_book(tmp_path)
+    monkeypatch.setenv("AERADEX_BUCH", str(b.root))
+    plain = tools.add_customer(name="Peter Huber", ort="Thun")["kunde"]
+    assert "telefon" not in plain and "mobil" not in plain                 # only written when given
+    nr = tools.add_customer(name="Anna Meier", ort="Bern", telefon="031 123 45 67", mobil=" 079 765 43 21 ")["kunde"]["nummer"]
+    d = tools.customer_details(nr)
+    assert d["telefon"] == "031 123 45 67" and d["mobil"] == "079 765 43 21"
+    res = tools.update_customer(nr, mobil="078 111 22 33", leeren=["telefon"])
+    assert res["ok"] and res["kunde"]["mobil"] == "078 111 22 33" and res["kunde"]["telefon"] == ""
+    assert_clean(Book(b.root))

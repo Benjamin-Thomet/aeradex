@@ -184,6 +184,10 @@ def test_customer_add_and_edit(client, root):
                                                  "notizen": "VIP"}))
     text = next((root / "kunden").glob("K0003-*.md")).read_text()
     assert "plz: '8001'" in text and "rechnung_an: person" in text and "VIP" in text
+    ok(post(client, "/debitoren/kunden/K0003", {"name": "Neu Kunde", "firma": "Neu AG", "plz": "8001", "ort": "Zürich",
+                                                 "telefon": "044 123 45 67", "mobil": "079 123 45 67"}))
+    page = client.get("/debitoren/kunden").text
+    assert 'href="tel:0441234567"' in page and "079 123 45 67" in page
 
 
 def test_payroll_inputs_close_reopen(client, root):

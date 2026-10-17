@@ -142,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
     cs.add_parser("list")
     c = cs.add_parser("add")
     c.add_argument("--name", required=True)
-    for f in ("firma", "strasse", "nr", "plz", "ort", "email"):
+    for f in ("firma", "strasse", "nr", "plz", "ort", "email", "telefon", "mobil"):
         c.add_argument(f"--{f}", default="")
     c.add_argument("--land", default="CH")
     c.add_argument("--rechnung-an", choices=["firma", "person"], default="firma")
@@ -712,8 +712,8 @@ def dispatch(a, book_path: Path | None):
         if a.sub == "list":
             return api.customer_list(book())
         return api.customer_add(book(), name=a.name, firma=a.firma, strasse=a.strasse, nr=a.nr, plz=a.plz,
-                                ort=a.ort, land=a.land, email=a.email, rechnung_an=a.rechnung_an,
-                                stundensatz=a.stundensatz)
+                                ort=a.ort, land=a.land, email=a.email, telefon=a.telefon, mobil=a.mobil,
+                                rechnung_an=a.rechnung_an, stundensatz=a.stundensatz)
     if c == "invoice":
         b = book()
         if a.sub == "list":
