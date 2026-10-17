@@ -35,6 +35,16 @@
     {{ errors() }}<div class="formfoot"><span class="small muted">Gilt für neue Rechnungen; ausgestellte bleiben eingefroren.</span><button class="btn primary" type="submit">Speichern</button></div>
   </div>
 </form>
+<form class="panel" hx-post="/einstellungen/logo" hx-encoding="multipart/form-data" hx-target="find .errors">
+  <header><h2>Logo im Briefkopf</h2>{% if settings.get('logo') %}<span class="pill ok">hinterlegt</span>{% endif %}</header>
+  <div class="body">
+    {% if settings.get('logo') %}<p><img src="/einstellungen/logo.bild" alt="Logo" style="max-height:48px;max-width:260px;background:#fff;padding:6px;border-radius:6px"></p>{% endif %}
+    <p class="small muted">Erscheint oben links auf Rechnungen, Mahnungen, Offerten und Lohnabrechnungen, statt des Firmennamens. PNG mit durchsichtigem Hintergrund oder JPEG, höchstens 2 MB; das Papier ist weiss.</p>
+    <div class="actions"><input class="input" type="file" name="logo" accept="image/png,image/jpeg"><button class="btn primary" type="submit">Hochladen</button>
+      {% if settings.get('logo') %}<button class="btn" type="submit" name="entfernen" value="1" hx-confirm="Logo entfernen?">Entfernen</button>{% endif %}</div>
+    {{ errors() }}
+  </div>
+</form>
 </section>
 
 <section data-tab="buchhaltung" id="buchhaltung">

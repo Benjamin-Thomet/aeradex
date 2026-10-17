@@ -2121,6 +2121,27 @@ async def einstellungen_speichern(ui: UI, request: Request):
                      mwst=vat if f.get("mwst_methode") is not None else None, **fields)
 
 
+async def logo_einstellung(ui: UI, request: Request):
+    f = await request.form()
+    if f.get("entfernen") == "1":
+        return await act(request, api.logo_remove, "/einstellungen#firma", ui.book())
+    upload = f.get("logo")
+    if not upload or not getattr(upload, "filename", ""):
+        return fail("Keine Datei gewählt.")
+    return await act(request, api.logo_set, "/einstellungen#firma", ui.book(), upload.filename, await upload.read())
+
+
+async def logo_bild(ui: UI, request: Request):
+    """The stored logo, for the preview in Einstellungen."""
+    book = ui.book()
+    rel = str(book.settings.get("logo") or "")
+    path = (book.root / rel).resolve() if rel else None
+    if not path or not path.is_file() or not path.is_relative_to(book.root.resolve()):
+        return Response(status_code=404)
+    return Response(path.read_bytes(), media_type="image/png" if path.suffix == ".png" else "image/jpeg",
+                    headers={"Cache-Control": "no-store"})
+
+
 async def agent_einstellung(ui: UI, request: Request):
     f = await request.form()
     return await act(request, api.settings_update, "/einstellungen#agent", ui.book(),
@@ -2373,6 +2394,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/einstellungen", h(einstellungen_speichern), methods=["POST"]),
         Route("/einstellungen/lohn", h(lohn_einstellungen), methods=["POST"]),
         Route("/einstellungen/buch-export", h(buch_export), methods=["POST"]),
+        Route("/einstellungen/logo", h(logo_einstellung), methods=["POST"]),
+        Route("/einstellungen/logo.bild", h(logo_bild)),
         Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),
         Route("/einstellungen/jev", h(jev_einstellung), methods=["POST"]),
         Route("/einstellungen/jev/schluessel", h(jev_schluessel), methods=["POST"]),

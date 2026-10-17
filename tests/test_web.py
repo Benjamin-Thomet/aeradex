@@ -289,6 +289,36 @@ def test_settings_jev_key_never_in_book(client, root):
     assert jev.api_key() == ("", "")
 
 
+def test_settings_logo_in_letterhead(client, root):
+    from aeradex import api, invoices, pdf
+    png = _tiny_png()
+    assert "PNG oder JPEG" in post(client, "/einstellungen/logo", files={"logo": ("x.txt", b"hallo")}).text
+    ok(post(client, "/einstellungen/logo", files={"logo": ("Firmenlogo.PNG", png)}))
+    b = Book(root)
+    assert b.settings.get("logo") == "briefkopf/logo.png" and (root / "briefkopf/logo.png").read_bytes() == png
+    assert errors(root) == [] and "Logo" in last_commit(root)
+    assert client.get("/einstellungen/logo.bild").content == png
+    assert "/einstellungen/logo.bild" in client.get("/einstellungen").text
+    meta = invoices.invoices(b)["R-2026-0001"]
+    with_logo = pdf.invoice_pdf(b, meta, invoices.customer(b, meta["kunde"]))
+    assert b"/Subtype /Image" in with_logo
+    ok(post(client, "/einstellungen/logo", {"entfernen": "1"}))
+    b = Book(root)
+    assert not b.settings.get("logo") and not (root / "briefkopf/logo.png").exists() and errors(root) == []
+    assert b"/Subtype /Image" not in pdf.invoice_pdf(b, meta, invoices.customer(b, meta["kunde"]))
+
+
+def _tiny_png() -> bytes:
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    raw = b"".join(b"\x00" + b"\xff\x00\x00" * 40 for _ in range(10))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 40, 10, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
 def test_settings_accounts_and_closing(client, root):
     ok(post(client, "/einstellungen", {"firma": "Muster GmbH", "rechtsform": "GmbH", "uid": "", "telefon": "031 000 00 00",
                                         "email": "", "iban": "CH93 0076 2011 6238 5295 7", "qr_referenz_praefix": "",

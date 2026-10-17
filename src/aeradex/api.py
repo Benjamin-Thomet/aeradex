@@ -955,6 +955,52 @@ for _name in WRITES:
 
 # ---------- files from the UI ----------
 
+LOGO_MAX_BYTES = 2_000_000
+
+
+def logo_set(book: Book, filename: str, data: bytes) -> dict:
+    """The company logo for the letterhead (invoices, reminders, offers, payslips): PNG or JPEG, stored in the
+    book as briefkopf/logo.<ext> and named in aeradex.yaml (`logo`). Issued invoices keep their PDF."""
+    _guard(book)
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        suffix = ".png"
+    elif data.startswith(b"\xff\xd8\xff"):
+        suffix = ".jpg"
+    else:
+        raise BookError("Logo: bitte PNG oder JPEG (am besten PNG mit durchsichtigem Hintergrund)")
+    if len(data) > LOGO_MAX_BYTES:
+        raise BookError("Logo: höchstens 2 MB")
+    from io import BytesIO
+    from reportlab.lib.utils import ImageReader
+    try:
+        w, h = ImageReader(BytesIO(data)).getSize()
+    except Exception:
+        raise BookError("Logo: die Bilddatei lässt sich nicht lesen") from None
+    if not (w and h):
+        raise BookError("Logo: leeres Bild")
+    folder = book.root / "briefkopf"
+    folder.mkdir(exist_ok=True)
+    old = [f for f in folder.glob("logo.*")]
+    for f in old:
+        f.unlink()
+    target = folder / f"logo{suffix}"
+    target.write_bytes(data)
+    book.settings.data["logo"] = book.rel(target)
+    book.save_settings()
+    return _done(book, "Logo für den Briefkopf gespeichert", [target, *old, book.root / "aeradex.yaml"],
+                 logo=book.rel(target))
+
+
+def logo_remove(book: Book) -> dict:
+    _guard(book)
+    old = [f for f in (book.root / "briefkopf").glob("logo.*")] if (book.root / "briefkopf").exists() else []
+    for f in old:
+        f.unlink()
+    book.settings.data.pop("logo", None)
+    book.save_settings()
+    return _done(book, "Logo entfernt", [*old, book.root / "aeradex.yaml"])
+
+
 def inbox_add(book: Book, filename: str, data: bytes) -> dict:
     """Store an uploaded file in inbox/ (never overwrites)."""
     from .files import slug

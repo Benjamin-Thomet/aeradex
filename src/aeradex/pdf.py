@@ -152,10 +152,33 @@ FLUSH = [("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1)
          ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]
 
 
+LOGO_MAX_H = 10 * mm         # with three lines below it the block still ends above the address window
+LOGO_MAX_W = 70 * mm
+
+
+def _logo(book: Book, width: float):
+    """The logo from aeradex.yaml (`logo`, set in Einstellungen), scaled into the letterhead; None without one."""
+    rel = str(book.settings.get("logo") or "").strip()
+    path = (book.root / rel).resolve() if rel else None
+    if not path or not path.is_file() or not path.is_relative_to(book.root.resolve()):
+        return None
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import Image
+    try:
+        iw, ih = ImageReader(str(path)).getSize()
+    except Exception:
+        return None
+    scale = min(LOGO_MAX_H / ih, min(LOGO_MAX_W, width) / iw)
+    img = Image(str(path), width=iw * scale, height=ih * scale, mask="auto")   # keep PNG transparency
+    img.hAlign = "LEFT"
+    return img
+
+
 def _firm_block(book: Book, width: float) -> Table:
-    """The company once, top left: name, address on one line, contact and UID/MWST-Nr."""
+    """The company once, top left: logo or name, address on one line, contact and UID/MWST-Nr."""
     s = book.settings
-    rows = [[P(s.firma, "lh_firm")]]
+    logo = _logo(book, width)
+    rows = [[logo], [Spacer(1, 2 * mm)]] if logo else [[P(s.firma, "lh_firm")]]
     if s.address_lines:
         rows.append([P(" · ".join(s.address_lines), "lh_line")])
     contact = [x for x in (s.get("telefon"), s.get("email"), s.get("web")) if x]
