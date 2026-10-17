@@ -1147,8 +1147,53 @@ async def abschluss(ui: UI, request: Request):
                      div=(read_yaml(statements.dividend_path(book, year)) if statements.dividend_path(book, year).exists()
                           else None),
                      jahreswechsel=jahreswechsel.checklist(book, year), naechstes_jahr=jahreswechsel.next_year(book),
-                     **_abgrenzungen(book, year),
+                     **_abgrenzungen(book, year), mwst_jahr=_mwst_year(book, year),
                      kann_eroeffnen=jahreswechsel.next_year(book) <= date.today().year + 1)
+
+
+def _mwst_year(book: Book, year: int) -> dict | None:
+    """The VAT part of the year-end: Abrechnungen of the year and the Umsatzabstimmung. The running
+    quarters stay on /mwst; none of it for a book without VAT."""
+    from .. import mwst
+    if mwst.config(book)["methode"] == "keine":
+        return None
+    try:
+        return mwst.abstimmung(book, year)
+    except BookError as exc:
+        return {"fehler": str(exc), "perioden": [], "hinweise": [], "ok": False}
+
+
+def _statement_view(book: Book, st: dict) -> dict:
+    """What the preview prints besides the figures, as in pdf.statement_pdf: prior-year column, signing body."""
+    s = book.settings
+    rows = st["aktiven"] + st["passiven"] + st["erfolg"]
+    art = s.rechtsform_art
+    return {"prior": st["jahr"] > s.erstes_jahr or any(r["vorjahr"] for r in rows),
+            "organ": {"einzelfirma": "Inhaber/in", "verein": "Vorstand"}.get(
+                art, "Verwaltungsrat" if str(s.get("rechtsform") or "").strip().upper() == "AG" else "Geschäftsführung"),
+            "ort": s.adresse.get("ort") or "", "rechtsform": s.get("rechtsform") or "",
+            "uid": (s.get("uid") or "").replace(" MWST", "")}
+
+
+async def abschluss_vorschau(ui: UI, request: Request):
+    """The Jahresrechnung as it will be printed (Bilanz, Erfolgsrechnung, Verwendung des Ergebnisses, Anhang),
+    and with ?gliederung=1 every group of both sides as a place to move accounts to."""
+    book = ui.book()
+    year = year_param(request, book)
+    st = statements.year_end_statement(book, year)
+    gliederung = request.query_params.get("gliederung") == "1"
+    alle = request.query_params.get("alle") == "1"
+    layout = {seite: statements.layout(book, year, seite, alle=alle) for seite in ("bilanz", "erfolg")} if gliederung else None
+    return ui.render(request, "abschluss_vorschau.html", book=book, year=year, st=st, years=book.years(),
+                     view=_statement_view(book, st), gliederung=gliederung, alle=alle, layout=layout,
+                     groups=statements.GROUPS, anhang=statements.parse_anhang(statements.anhang(book, year)))
+
+
+async def abschluss_gruppe(ui: UI, request: Request):
+    f = await request.form()
+    year = int(f.get("jahr") or current_year(ui.book()))
+    back = request.headers.get("hx-current-url") or f"/abschluss/vorschau?jahr={year}&gliederung=1"
+    return await act(request, api.account_group_set, back, ui.book(), f.get("konto", ""), f.get("gruppe", ""), year)
 
 
 def _abgrenzungen(book: Book, year: int) -> dict:
@@ -2414,6 +2459,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/abschluss", h(abschluss)),
         Route("/abschluss/unterlagen.zip", h(unterlagen_zip)),
         Route("/abschluss/unterlagen/{teil:str}", h(unterlagen_teil)),
+        Route("/abschluss/vorschau", h(abschluss_vorschau)),
+        Route("/abschluss/gruppe", h(abschluss_gruppe), methods=["POST"]),
         Route("/abschluss/{aktion:str}", h(abschluss_aktion), methods=["POST"]),
         Route("/mwst", h(mwst_page)),
         Route("/mwst/buchen", h(mwst_buchen), methods=["POST"]),

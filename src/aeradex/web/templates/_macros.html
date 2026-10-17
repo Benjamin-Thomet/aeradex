@@ -61,3 +61,34 @@
   {% if dnav.prev %}<a class="btn small ghost" href="{{ dnav.prev }}" title="Voriger Entwurf" aria-label="Voriger Entwurf">‹</a>{% endif %}{% if dnav.next %}<a class="btn small ghost" href="{{ dnav.next }}" title="Nächster Entwurf" aria-label="Nächster Entwurf">›</a>{% endif %}</div>
 {% else %}<div class="crumbs"><a href="{{ fallback_url }}">{{ fallback_label }}</a> /</div>{% endif %}{% endmacro %}
 {% macro approve_buttons(dnav, label="Erfassen und buchen") %}{% if dnav %}<span class="actions">{% if dnav.total > 1 %}<button class="btn" type="submit" name="weiter" value="1" title="Freigeben und gleich den nächsten Entwurf öffnen">Freigeben &amp; nächster</button>{% endif %}<button class="btn primary" type="submit" title="Bucht den Beleg und legt die Datei ab">Freigeben</button></span>{% else %}<button class="btn primary" type="submit">{{ label }}</button>{% endif %}{% endmacro %}
+{% macro stmt(title, rows, st, prior=true) %}
+<div class="panel">
+  <div class="tablewrap"><table class="ledger stmt">
+    <thead><tr><th>{{ title }}</th><th class="right">{{ st.jahr }}</th>{% if prior %}<th class="right">{{ st.vorjahr }}</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in rows %}{% set gid = title[:3] ~ loop.index %}
+      <tr class="{{ {'zwischentotal': 'zw', 'total': 'total'}.get(r.stil, 'row') }} {{ 'group' if r.konten }}" data-group="{{ gid }}">
+        <td>{% if r.konten %}<span class="caret">▸</span> {% endif %}{{ r.label }}</td><td class="right num">{{ r.aktuell|chf }}</td>{% if prior %}<td class="right num">{{ r.vorjahr|chf }}</td>{% endif %}</tr>
+      {% for k in r.konten %}<tr class="member sub" data-of="{{ gid }}" hidden><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ st.jahr }}">{{ k.konto }}</a> {{ k.name }}{% if k.fw %} <span class="small muted">({{ k.fw }})</span>{% endif %}</td><td class="right num">{{ k.aktuell|chf }}</td>{% if prior %}<td class="right num">{{ k.vorjahr|chf }}</td>{% endif %}</tr>{% endfor %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endmacro %}
+{% macro ergebnis_tabelle(st) %}{% set ek = st.eigenkapital %}{% set g = st.gewinnverwendung %}
+<div class="tablewrap"><table class="ledger"><tbody>
+{% if ek %}
+  <tr><td>{{ ek.name }} 31.12. vor Abschluss</td><td class="right num">{{ ek.bestand|chf }}</td></tr>
+  {% for p in ek.privat %}<tr><td>{{ p.konto }} {{ p.name }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}
+  <tr><td>Jahresergebnis</td><td class="right num">{{ ek.jahresergebnis|chf }}</td></tr>
+  <tr class="total"><td>{{ ek.name }} nach Abschluss</td><td class="right num">{{ ek.neu|chf }}</td></tr>
+{% elif g %}
+  <tr><td>{{ "Verlustvortrag" if g.gewinnvortrag|neg else "Gewinnvortrag" }}</td><td class="right num">{{ g.gewinnvortrag|chf }}</td></tr>
+  <tr><td>{{ "Jahresverlust" if g.jahresgewinn|neg else "Jahresgewinn" }}</td><td class="right num">{{ g.jahresgewinn|chf }}</td></tr>
+  <tr class="zw"><td>{{ "Bilanzverlust" if g.bilanzgewinn|neg else "Bilanzgewinn" }}</td><td class="right num">{{ g.bilanzgewinn|chf }}</td></tr>
+  <tr><td>Dividende</td><td class="right num">{{ g.dividende|minus }}</td></tr>
+  <tr><td>Zuweisung gesetzliche Gewinnreserve</td><td class="right num">{{ g.reserve|minus }}</td></tr>
+  <tr class="total"><td>Vortrag auf neue Rechnung</td><td class="right num">{{ g.vortrag_neu|chf }}</td></tr>
+{% endif %}
+</tbody></table></div>
+{% endmacro %}

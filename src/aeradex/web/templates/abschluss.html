@@ -1,27 +1,14 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors %}
+{% from "_macros.html" import errors, stmt, ergebnis_tabelle %}
 {% block title %}Abschluss {{ year }}{% endblock %}
-{% macro stmt(title, rows) %}
-<div class="panel">
-  <div class="tablewrap"><table class="ledger stmt">
-    <thead><tr><th>{{ title }}</th><th class="right">{{ st.jahr }}</th><th class="right">{{ st.vorjahr }}</th></tr></thead>
-    <tbody>
-    {% for r in rows %}{% set gid = title[:3] ~ loop.index %}
-      <tr class="{{ {'zwischentotal': 'zw', 'total': 'total'}.get(r.stil, 'row') }} {{ 'group' if r.konten }}" data-group="{{ gid }}">
-        <td>{% if r.konten %}<span class="caret">▸</span> {% endif %}{{ r.label }}</td><td class="right num">{{ r.aktuell|chf }}</td><td class="right num">{{ r.vorjahr|chf }}</td></tr>
-      {% for k in r.konten %}<tr class="member sub" data-of="{{ gid }}" hidden><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ st.jahr }}">{{ k.konto }}</a> {{ k.name }}{% if k.fw %} <span class="small muted">({{ k.fw }})</span>{% endif %}</td><td class="right num">{{ k.aktuell|chf }}</td><td class="right num">{{ k.vorjahr|chf }}</td></tr>{% endfor %}
-    {% endfor %}
-    </tbody>
-  </table></div>
-</div>
-{% endmacro %}
 {% block main %}
 {% set g = st.gewinnverwendung %}
 <div class="topbar">
   <div><h1>Jahresrechnung {{ year }}</h1><div class="sub">{{ st.firma }} · Bilanz und Erfolgsrechnung nach OR 959a/959b · {% if st.abgeschlossen %}<span class="pill lock">🔒 gesperrt</span>{% else %}<span class="pill info">offen</span>{% endif %}</div></div>
   <div class="actions">
     <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in years|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
-    <a class="btn primary" href="/pdf/jahresrechnung?jahr={{ year }}" target="_blank">Jahresrechnung PDF</a>
+    <a class="btn primary" href="/abschluss/vorschau?jahr={{ year }}">Vorschau</a>
+    <a class="btn" href="/pdf/jahresrechnung?jahr={{ year }}" target="_blank">Jahresrechnung PDF</a>
     {% if year == years|max and kann_eroeffnen %}<form hx-post="/abschluss/jahr-eroeffnen" hx-target="find .errors" hx-confirm="Geschäftsjahr {{ naechstes_jahr }} eröffnen? Die Salden per 31.12.{{ year }} werden vorgetragen; {{ year }} bleibt bearbeitbar, bis du es sperrst.">
       <button class="btn" type="submit" title="Das nächste Geschäftsjahr anlegen, auch vor der ersten Buchung">Neues Geschäftsjahr {{ naechstes_jahr }}</button>{{ errors() }}</form>{% endif %}
   </div>
@@ -75,6 +62,19 @@
   <div class="body"><span class="small muted">Keine Buchung mit Leistungszeitraum über den Jahreswechsel. Erfasse «Leistung von/bis» bei Rechnungen und Belegen (Abo, Miete, Versicherung, Lizenz) — oder schreibe «· Leistung 01.10.{{ year }}–30.09.{{ year + 1 }}» in den Buchungstext.</span></div>
   {% endif %}
 </div>
+{% if mwst_jahr %}{% set mj = mwst_jahr %}
+<div class="panel" id="mwst">
+  <header><h2>MWST-Jahresabschluss {{ year }}</h2>{% if mj.ok %}<span class="pill ok">abgestimmt</span>{% elif not mj.fehler %}<span class="pill warn">offen</span>{% endif %}
+    <span class="hint">die laufenden Abrechnungen unter Buchhaltung › MWST</span></header>
+  <div class="body">
+    {% if mj.fehler %}<div class="alert warn">{{ mj.fehler }}</div>{% endif %}
+    {% if mj.perioden %}<div class="actions">{% for p in mj.perioden %}<a class="pill {{ 'ok' if p.gebucht and not p.veraendert else 'warn' }}" href="/mwst?jahr={{ year }}&periode={{ p.periode }}">{{ p.periode }} · {{ 'gebucht' if p.gebucht else 'nicht gebucht' }}{{ ', geändert' if p.veraendert }}</a>{% endfor %}</div>{% endif %}
+    {% for h in mj.hinweise %}<div class="small">· {{ h }}</div>{% endfor %}
+    <div class="formfoot"><span class="small muted">Umsatzabstimmung, Abrechnungen und eMWST des Jahres liegen auch in den Unterlagen (Teil MWST).</span>
+      <span class="actions"><a class="btn" href="/mwst/abstimmung?jahr={{ year }}">Umsatzabstimmung</a><a class="btn" href="/abschluss/unterlagen/mwst?jahr={{ year }}&format=pdf">MWST-Unterlagen PDF</a></span></div>
+  </div>
+</div>
+{% endif %}
 <div class="panel" id="unterlagen">
   <header><h2>Unterlagen {{ year }}</h2><span class="hint">für Treuhand, Revision und Archiv (10 Jahre) · {% if st.abgeschlossen %}gesperrtes Jahr{% else %}ohne Sperre mit Vermerk «ENTWURF»{% endif %}</span></header>
   <form method="get" action="/abschluss/unterlagen.zip">
@@ -152,31 +152,19 @@
   {% endif %}
 </div>
 {% endif %}
-<div class="grid2 even">{{ stmt("Aktiven", st.aktiven) }}{{ stmt("Passiven", st.passiven) }}</div>
-{{ stmt("Erfolgsrechnung", st.erfolg) }}
+<div class="grid2 even">{{ stmt("Aktiven", st.aktiven, st) }}{{ stmt("Passiven", st.passiven, st) }}</div>
+{{ stmt("Erfolgsrechnung", st.erfolg, st) }}
 
 <div class="grid2 even">
   {% if st.eigenkapital %}{% set ek = st.eigenkapital %}
   <div class="panel">
     <header><h2>{{ ek.name }} {{ year }}</h2><span class="hint">geht bei der Eröffnung {{ year + 1 }} ins Konto {{ ek.konto }}</span></header>
-    <div class="tablewrap"><table class="ledger"><tbody>
-      <tr><td>{{ ek.name }} 31.12. vor Abschluss</td><td class="right num">{{ ek.bestand|chf }}</td></tr>
-      {% for p in ek.privat %}<tr><td>{{ p.konto }} {{ p.name }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}
-      <tr><td>Jahresergebnis</td><td class="right num">{{ ek.jahresergebnis|chf }}</td></tr>
-      <tr class="total"><td>{{ ek.name }} nach Abschluss</td><td class="right num">{{ ek.neu|chf }}</td></tr>
-    </tbody></table></div>
+    {{ ergebnis_tabelle(st) }}
   </div>
   {% else %}
   <div class="panel">
     <header><h2>Gewinnverwendung {{ year }}</h2>{% if g.gebucht %}<span class="pill ok">gebucht</span>{% endif %}</header>
-    <div class="tablewrap"><table class="ledger"><tbody>
-      <tr><td>Gewinnvortrag</td><td class="right num">{{ g.gewinnvortrag|chf }}</td></tr>
-      <tr><td>Jahresergebnis</td><td class="right num">{{ g.jahresgewinn|chf }}</td></tr>
-      <tr class="zw"><td>{{ "Bilanzverlust" if g.bilanzgewinn|neg else "Bilanzgewinn" }}</td><td class="right num">{{ g.bilanzgewinn|chf }}</td></tr>
-      <tr><td>Dividende</td><td class="right num">{{ g.dividende|minus }}</td></tr>
-      <tr><td>Zuweisung gesetzliche Gewinnreserve</td><td class="right num">{{ g.reserve|minus }}</td></tr>
-      <tr class="total"><td>Vortrag auf neue Rechnung</td><td class="right num">{{ g.vortrag_neu|chf }}</td></tr>
-    </tbody></table></div>
+    {{ ergebnis_tabelle(st) }}
     {% if not g.gebucht %}
     <form class="body" hx-post="/abschluss/gewinnverwendung" hx-target="find .errors">
       <input type="hidden" name="jahr" value="{{ year }}">
@@ -221,7 +209,7 @@
   </div>
 </div>
 
-<div class="panel">
+<div class="panel" id="anhang">
   <header><h2>Anhang {{ year }} (Art. 959c OR)</h2><span class="hint">## Überschrift, darunter Text</span></header>
   <form class="body" hx-post="/abschluss/anhang" hx-target="find .errors">
     <input type="hidden" name="jahr" value="{{ year }}">

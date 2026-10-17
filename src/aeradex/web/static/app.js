@@ -63,6 +63,43 @@
       const inputs = $$("input", list); if (inputs.length) inputs[inputs.length - 5 >= 0 ? inputs.length - 5 : 0].focus();
     }));
     $$(".splitrows, .posrows", root).forEach(bindRemove);
+    // Gliederung of the Jahresrechnung: drag an account onto another group of the same side
+    $$(".dz-konto[draggable=true]", root).forEach(el => {
+      el.addEventListener("dragstart", e => {
+        e.dataTransfer.setData("text/plain", el.dataset.konto); e.dataTransfer.effectAllowed = "move";
+        document.body.dataset.dragseite = el.dataset.seite; el.classList.add("dragging");
+      });
+      el.addEventListener("dragend", () => {
+        el.classList.remove("dragging"); delete document.body.dataset.dragseite;
+        $$(".dropzone.over").forEach(z => z.classList.remove("over"));
+      });
+    });
+    $$("[data-dropgruppe]", root).forEach(zone => {
+      const fits = () => document.body.dataset.dragseite === zone.dataset.seite;
+      zone.addEventListener("dragover", e => { if (!fits()) return; e.preventDefault(); zone.classList.add("over"); });
+      zone.addEventListener("dragleave", e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove("over"); });
+      zone.addEventListener("drop", async e => {
+        e.preventDefault(); zone.classList.remove("over");
+        const konto = e.dataTransfer.getData("text/plain");
+        const from = konto && $('.dz-konto[data-konto="' + konto + '"]', root);
+        if (!from || from.closest("[data-dropgruppe]") === zone) return;
+        const body = new FormData();
+        body.append("konto", konto); body.append("gruppe", zone.dataset.dropgruppe); body.append("jahr", zone.dataset.jahr);
+        const csrf = JSON.parse(document.body.getAttribute("hx-headers") || "{}")["X-CSRF"];
+        zone.appendChild(from);                       // show it there at once; the page reload brings the totals
+        let res;
+        try { res = await fetch("/abschluss/gruppe", { method: "POST", body, headers: { "X-CSRF": csrf, "HX-Request": "true" } }); }
+        catch (x) { toast("Verschieben fehlgeschlagen", true); }
+        if (res && res.status === 204) {
+          ownWriteUntil = Date.now() + 2500;
+          toast("Konto " + konto + " verschoben");
+        } else if (res) {
+          const box = document.createElement("div"); box.innerHTML = await res.text();
+          toast(box.textContent.trim() || "Verschieben fehlgeschlagen", true);
+        }
+        htmx.ajax("GET", location.pathname + location.search, { target: "#page", select: "#page", swap: "outerHTML" });
+      });
+    });
     $$("[data-mode]", root).forEach(radio => radio.addEventListener("change", () => {
       const form = radio.closest("form");
       $$("[data-show]", form).forEach(el => { el.hidden = el.dataset.show !== radio.value; });

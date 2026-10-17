@@ -117,6 +117,52 @@ def _effective_group(acct, balance: Decimal) -> str:
     return acct.gruppe
 
 
+def same_side(klasse: str, gruppe: str) -> bool:
+    """Whether a group fits an account of `klasse`: both on the Bilanz or both on the Erfolgsrechnung.
+    (GROUP_KLASSE tags most Erfolgsrechnung groups «aufwand» although they hold income too.)"""
+    return (klasse in ("aktiv", "passiv")) == (GROUP_KLASSE.get(gruppe) in ("aktiv", "passiv"))
+
+
+SECTIONS = {"bilanz": [("Umlaufvermögen", _UMLAUF), ("Anlagevermögen", _ANLAGE),
+                       ("Kurzfristiges Fremdkapital", _FK_KURZ), ("Langfristiges Fremdkapital", _FK_LANG),
+                       ("Eigenkapital", ["eigenkapital"])],
+            "erfolg": [("Erfolgsrechnung", _PL)]}
+
+
+def _members(book: Book, year: int, engine: BalanceEngine) -> dict[str, list[dict]]:
+    """Every account with its balances, by the group it shows in for `year`."""
+    members: dict[str, list[dict]] = {}
+    for nr, acct in sorted(book.accounts.items()):
+        cur, pri = engine.balance(nr, year), engine.prior(nr, year)
+        code = _effective_group(acct, cur)
+        standard = default_group(nr, acct.klasse)
+        members.setdefault(code, []).append({"konto": nr, "name": acct.name, "cur": cur, "pri": pri,
+                                             "standard": standard, "verschoben": acct.gruppe != standard})
+    return members
+
+
+def layout(book: Book, year: int, seite: str, alle: bool = False, engine: BalanceEngine | None = None) -> list[dict]:
+    """The groups of one side («bilanz» or «erfolg») in print order, empty ones too, each with its accounts:
+    where an account can be moved to. Figures in reading convention like the statement. Accounts without
+    a balance in the year or the year before are left out unless moved or `alle`. The result account and
+    the account the Privat accounts close into stay where they are («fest»)."""
+    engine = engine or BalanceEngine(book)
+    members = _members(book, year, engine)
+    fixed = {book.settings.konto("jahresergebnis")} | {a.abschluss for a in book.accounts.values() if a.abschluss}
+    out = []
+    for abschnitt, codes in SECTIONS[seite]:
+        for code in codes:
+            sign = 1 if GROUP_KLASSE[code] == "aktiv" else -1
+            konten = [{"konto": m["konto"], "name": m["name"], "aktuell": m["cur"] * sign, "vorjahr": m["pri"] * sign,
+                       "standard": m["standard"], "standard_label": GROUP_LABEL.get(m["standard"], m["standard"]),
+                       "verschoben": m["verschoben"], "fest": m["konto"] in fixed}
+                      for m in members.get(code, [])
+                      if alle or m["cur"] or m["pri"] or m["verschoben"]]
+            out.append({"gruppe": code, "label": GROUP_LABEL[code], "abschnitt": abschnitt, "konten": konten,
+                        "aktuell": sum((k["aktuell"] for k in konten), ZERO)})
+    return out
+
+
 def year_end_statement(book: Book, year: int, engine: BalanceEngine | None = None) -> dict:
     """Bilanz and Erfolgsrechnung for `year` with the prior-year column.
 
@@ -125,11 +171,7 @@ def year_end_statement(book: Book, year: int, engine: BalanceEngine | None = Non
     engine = engine or BalanceEngine(book)
     result_acct = book.settings.konto("jahresergebnis")
 
-    members: dict[str, list[dict]] = {}
-    for nr, acct in sorted(book.accounts.items()):
-        cur, pri = engine.balance(nr, year), engine.prior(nr, year)
-        code = _effective_group(acct, cur)
-        members.setdefault(code, []).append({"konto": nr, "name": acct.name, "cur": cur, "pri": pri})
+    members = _members(book, year, engine)
 
     def col(codes, exclude=()):
         c = p = ZERO
@@ -149,9 +191,10 @@ def year_end_statement(book: Book, year: int, engine: BalanceEngine | None = Non
             for m in members.get(code, []):
                 if m["konto"] in exclude or (not m["cur"] and not m["pri"]):
                     continue
-                detail.append({"konto": m["konto"], "name": m["name"],
+                detail.append({"konto": m["konto"], "name": m["name"], "verschoben": m["verschoben"],
                                "aktuell": m["cur"] * sign, "vorjahr": m["pri"] * sign, **fw_note(m["konto"])})
-        rows.append({"label": label, "aktuell": cur, "vorjahr": pri, "stil": style, "konten": detail})
+        rows.append({"label": label, "aktuell": cur, "vorjahr": pri, "stil": style, "konten": detail,
+                     "gruppe": codes[0] if codes and len(codes) == 1 else ""})
 
     from .ledger import fw_balance
     stichtag = date(year, 12, 31)

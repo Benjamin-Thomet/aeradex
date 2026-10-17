@@ -178,6 +178,8 @@ def add_account(book: Book, nr: str, name: str, klasse: str = "", gruppe: str = 
     waehrung = _currency(waehrung)
     if waehrung != "CHF" and klasse not in ("aktiv", "passiv"):
         raise BookError("Fremdwährung nur für Bilanzkonten (Bank, Debitoren, Kreditoren …)")
+    if gruppe:
+        _check_group(nr, klasse, gruppe)
     book.accounts[nr] = Account(nr=nr, name=name, klasse=klasse,
                                 gruppe=gruppe or statements.default_group(nr, klasse), waehrung=waehrung)
     book.save_accounts()
@@ -750,6 +752,36 @@ def employee_update(book: Book, nummer: str, **fields) -> dict:
     return _done(book, f"Mitarbeiter {nr} geändert", [emp["_pfad"]], mitarbeiter=meta)
 
 
+def _check_group(nr: str, klasse: str, gruppe: str) -> None:
+    if gruppe not in statements.GROUP_LABEL:
+        raise BookError(f"Unbekannte Gruppe {gruppe}")
+    if not statements.same_side(klasse, gruppe):
+        side = "ein Bilanzkonto" if klasse in ("aktiv", "passiv") else "ein Erfolgskonto"
+        raise BookError(f"Konto {nr} ist {side} und kann nicht in die Gruppe «{statements.GROUP_LABEL[gruppe]}»")
+
+
+def account_group_set(book: Book, nr: str, gruppe: str = "", jahr: int | None = None) -> dict:
+    """Put an account into another statement group of the same side (leer = back to the group of its number).
+    The group is part of the chart, so it applies to every year; refused while `jahr` is locked, because a
+    released Jahresrechnung must not change its look."""
+    _guard(book)
+    acct = book.account(nr)
+    lock = book.settings.sperre_bis
+    if jahr is not None and lock and lock >= date(int(jahr), 12, 31):
+        raise BookError(f"Das Jahr {jahr} ist gesperrt — die Gliederung seiner Jahresrechnung bleibt, wie sie ist")
+    target = gruppe or statements.default_group(nr, acct.klasse)
+    _check_group(nr, acct.klasse, target)
+    fixed = {book.settings.konto("jahresergebnis")} | {a.abschluss for a in book.accounts.values() if a.abschluss}
+    if nr in fixed and target != acct.gruppe:
+        raise BookError(f"Konto {nr} ist ein Abschlusskonto des Eigenkapitals und bleibt in seiner Gruppe")
+    if target == acct.gruppe:
+        return {"ok": True, "konto": nr, "gruppe": target, "unveraendert": True}
+    acct.gruppe = target
+    book.save_accounts()
+    return _done(book, f"Konto {nr} {acct.name} → {statements.GROUP_LABEL[target]}", [book.root / "kontenplan.yaml"],
+                 konto=nr, gruppe=target)
+
+
 def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | None = None,
                    aktiv: bool | None = None, eroeffnung=None, vorjahr=None,
                    waehrung: str | None = None, eroeffnung_fw=None) -> dict:
@@ -758,8 +790,7 @@ def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | N
     if name is not None:
         acct.name = name.strip() or acct.name
     if gruppe:
-        if gruppe not in statements.GROUP_LABEL:
-            raise BookError(f"Unbekannte Gruppe {gruppe}")
+        _check_group(nr, acct.klasse, gruppe)
         acct.gruppe = gruppe
     if aktiv is not None:
         acct.aktiv_ = bool(aktiv)

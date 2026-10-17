@@ -78,6 +78,13 @@ def run(book: Book) -> list[Issue]:
             f"Eröffnungsbilanz geht nicht auf: Aktiven + Passiven = {opening} (muss 0 sein)")
     if any(a.eroeffnung for a in accounts.values() if a.is_pl):
         add("fehler", "kontenplan.yaml", "Erfolgskonten dürfen keinen Eröffnungssaldo haben")
+    from .statements import GROUP_LABEL, same_side
+    for a in accounts.values():
+        if a.gruppe in GROUP_LABEL and not same_side(a.klasse, a.gruppe):
+            add("warnung", "kontenplan.yaml", f"Konto {a.nr} steht in der Gruppe «{GROUP_LABEL[a.gruppe]}» der "
+                f"{'Erfolgsrechnung' if a.is_balance_sheet else 'Bilanz'} — Gruppe im Kontenplan korrigieren")
+        elif a.gruppe not in GROUP_LABEL:
+            add("warnung", "kontenplan.yaml", f"Konto {a.nr}: unbekannte Gruppe «{a.gruppe}»")
     for a in accounts.values():
         if not a.abschluss:
             continue

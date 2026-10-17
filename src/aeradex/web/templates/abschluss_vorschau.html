@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, stmt, ergebnis_tabelle %}
+{% block title %}Jahresrechnung {{ year }}{% endblock %}
+{% block main %}
+{% set locked = st.abgeschlossen %}{% set g = st.gewinnverwendung %}
+<div class="topbar">
+  <div><div class="crumbs"><a href="/abschluss?jahr={{ year }}">Abschluss {{ year }}</a> /</div>
+    <h1>{{ 'Gliederung der Jahresrechnung' if gliederung else 'Jahresrechnung' }} {{ year }}</h1>
+    <div class="sub">{{ st.firma }} · {% if gliederung %}Konten in die Gruppen nach OR 959a/959b einordnen{% else %}Vorschau, so wie sie im PDF steht{% endif %} ·
+      {% if locked %}<span class="pill lock">🔒 gesperrt</span>{% else %}<span class="pill info">Entwurf</span>{% endif %}</div></div>
+  <div class="actions">
+    <form method="get">{% if gliederung %}<input type="hidden" name="gliederung" value="1">{% endif %}<select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in years|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
+    {% if gliederung %}<a class="btn" href="/abschluss/vorschau?jahr={{ year }}">Vorschau</a>
+    {% else %}<a class="btn" href="/abschluss/vorschau?jahr={{ year }}&gliederung=1">Gliederung anpassen</a>{% endif %}
+    <a class="btn primary" href="/pdf/jahresrechnung?jahr={{ year }}" target="_blank">PDF herunterladen</a>
+  </div>
+</div>
+{% if st.differenz|float %}<div class="alert error">Die Bilanz geht nicht auf: Differenz {{ st.differenz|chf }}.</div>{% endif %}
+
+{% if gliederung %}
+<div class="alert info">Ein Konto in eine andere Gruppe ziehen, oder die Gruppe in der Liste beim Konto wählen. Die Gliederung gehört
+  zum Kontenplan und gilt für alle offenen Jahre; die Summen hier und in der Vorschau folgen sofort.{% if locked %}
+  <strong>{{ year }} ist gesperrt — die Gliederung dieses Jahres lässt sich nicht mehr ändern.</strong>{% endif %}</div>
+<div class="glied-tools small"><a class="link" href="/abschluss/vorschau?jahr={{ year }}&gliederung=1{{ '' if alle else '&alle=1' }}">{{ 'Nur Konten mit Saldo zeigen' if alle else 'Alle Konten zeigen (auch ohne Saldo)' }}</a></div>
+<div class="grid2 even glied">
+{% for seite, titel in [("bilanz", "Bilanz"), ("erfolg", "Erfolgsrechnung")] %}
+  <div class="panel">
+    <header><h2>{{ titel }}</h2><span class="hint">{{ 'Aktiven positiv, Passiven positiv' if seite == 'bilanz' else 'Ertrag positiv, Aufwand negativ' }}</span></header>
+    <div class="body">
+    {% set ns = namespace(abschnitt="") %}
+    {% for grp in layout[seite] %}
+      {% if seite == "bilanz" and grp.abschnitt != ns.abschnitt %}<div class="glied-abschnitt">{{ grp.abschnitt }}</div>{% set ns.abschnitt = grp.abschnitt %}{% endif %}
+      <div class="dropzone{{ ' leer' if not grp.konten }}" data-dropgruppe="{{ grp.gruppe }}" data-seite="{{ seite }}" data-jahr="{{ year }}">
+        <div class="dz-head"><span>{{ grp.label }}</span><span class="num">{{ grp.aktuell|chf if grp.konten }}</span></div>
+        {% for k in grp.konten %}{% set movable = not k.fest and not locked %}
+        <div class="dz-konto{{ ' fest' if k.fest }}" data-konto="{{ k.konto }}" data-seite="{{ seite }}" {% if movable %}draggable="true"{% endif %}>
+          <span class="grip" aria-hidden="true">{{ '⠿' if movable else '' }}</span>
+          <span class="dz-name"><a class="acc link" href="/konten/{{ k.konto }}?jahr={{ year }}">{{ k.konto }}</a> {{ k.name }}
+            {% if k.verschoben %}<span class="pill info" title="Standard nach Kontonummer: {{ k.standard_label }}">verschoben</span>{% endif %}
+            {% if k.fest %}<span class="pill muted" title="Abschlusskonto des Eigenkapitals">fest</span>{% endif %}</span>
+          <span class="num">{{ k.aktuell|chf }}</span>
+          {% if movable %}
+          <span class="dz-move">
+            <form hx-post="/abschluss/gruppe" hx-trigger="change" hx-target="find .errors">
+              <input type="hidden" name="konto" value="{{ k.konto }}"><input type="hidden" name="jahr" value="{{ year }}">
+              <select class="input small" name="gruppe" aria-label="Gruppe von Konto {{ k.konto }}">
+                {% for code, label, kl in groups if (kl in ('aktiv', 'passiv')) == (seite == 'bilanz') %}<option value="{{ code }}" {{ 'selected' if code == grp.gruppe }}>{{ label }}</option>{% endfor %}
+              </select>{{ errors() }}</form>
+            {% if k.verschoben %}<form hx-post="/abschluss/gruppe" hx-target="find .errors">
+              <input type="hidden" name="konto" value="{{ k.konto }}"><input type="hidden" name="jahr" value="{{ year }}"><input type="hidden" name="gruppe" value="">
+              <button class="btn small ghost" type="submit" title="Zurück zu «{{ k.standard_label }}»">↺ Standard</button>{{ errors() }}</form>{% endif %}
+          </span>
+          {% endif %}
+        </div>
+        {% else %}<div class="dz-leer small muted">{{ 'leer' if locked else 'leer — Konto hierher ziehen' }}</div>{% endfor %}
+      </div>
+    {% endfor %}
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+{% else %}
+<article class="jr-doc">
+  <header class="jr-cover">
+    <div class="jr-firma">{{ st.firma }}</div>
+    <h2>Jahresrechnung {{ year }}</h2>
+    <div class="muted">Geschäftsjahr vom 1. Januar bis 31. Dezember {{ year }}</div>
+    <dl class="jr-facts">
+      {% if view.ort %}<dt>Sitz</dt><dd>{{ view.ort }}</dd>{% endif %}
+      {% if view.rechtsform %}<dt>Rechtsform</dt><dd>{{ view.rechtsform }}</dd>{% endif %}
+      {% if view.uid %}<dt>UID</dt><dd>{{ view.uid }}</dd>{% endif %}
+      <dt>Inhalt</dt><dd>Bilanz · Erfolgsrechnung · Anhang{{ ' · Antrag über die Verwendung des Bilanzergebnisses' if g }}</dd>
+    </dl>
+    {% if not locked %}<p class="small muted">Entwurf — das Geschäftsjahr ist noch nicht abgeschlossen.</p>{% endif %}
+  </header>
+
+  <section>
+    <h3>Bilanz per 31. Dezember {{ year }}</h3><p class="small muted">in CHF · Klick auf eine Zeile zeigt die Konten</p>
+    {{ stmt("Aktiven", st.aktiven, st, view.prior) }}
+    {{ stmt("Passiven", st.passiven, st, view.prior) }}
+  </section>
+
+  <section>
+    <h3>Erfolgsrechnung {{ year }}</h3><p class="small muted">1. Januar bis 31. Dezember {{ year }} · in CHF</p>
+    {{ stmt("Erfolgsrechnung", st.erfolg, st, view.prior) }}
+    {% if st.eigenkapital %}<h4>Veränderung {{ st.eigenkapital.name }}</h4>
+    <p class="small muted">Bei der {{ view.rechtsform or 'Einzelfirma' }} gibt es keine Gewinnverwendung: das Ergebnis und die Privatkonten gehen bei der Eröffnung {{ year + 1 }} ins Eigenkapital.</p>
+    {{ ergebnis_tabelle(st) }}{% endif %}
+  </section>
+
+  <section>
+    <h3>Anhang zur Jahresrechnung {{ year }}</h3><p class="small muted">Angaben nach Art. 959c OR · <a class="link" href="/abschluss?jahr={{ year }}#anhang">Anhang bearbeiten</a></p>
+    {% set ns = namespace(nr=0) %}
+    {% for kind, text in anhang %}
+      {% if kind == "heading" %}{% set ns.nr = ns.nr + 1 %}<h4>{{ ns.nr }}. {{ text }}</h4>
+      {% elif text.startswith("- ") or text.startswith("* ") %}<p class="jr-bullet">• {{ text[2:] }}</p>
+      {% else %}<p>{{ text }}</p>{% endif %}
+    {% endfor %}
+  </section>
+
+  {% if g %}
+  <section>
+    <h3>Antrag über die Verwendung des {{ 'Bilanzverlustes' if g.bilanzgewinn|neg else 'Bilanzgewinns' }}</h3><p class="small muted">per 31. Dezember {{ year }}</p>
+    <p>{{ 'Der Verwaltungsrat beantragt der Generalversammlung' if view.organ == 'Verwaltungsrat' else 'Die Geschäftsführung beantragt der Gesellschafterversammlung' }},
+      den {{ 'Bilanzverlust' if g.bilanzgewinn|neg else 'Bilanzgewinn' }} wie folgt zu verwenden:</p>
+    {{ ergebnis_tabelle(st) }}
+    {% if not g.gebucht %}<p class="small muted"><a class="link" href="/abschluss?jahr={{ year }}">Dividende und Reserve im Abschluss festlegen</a></p>{% endif %}
+  </section>
+  {% endif %}
+
+  <section class="jr-sign">
+    <p class="small muted">Unterzeichnet gemäss Art. 958 Abs. 3 OR</p>
+    <div class="jr-signrow"><div><span class="lbl">Ort, Datum</span><span>{{ view.ort ~ ', ' if view.ort }}</span></div>
+      <div><span class="lbl">{{ view.organ }}</span><span></span></div>
+      <div><span class="lbl">Verantwortlich für die Rechnungslegung</span><span></span></div></div>
+  </section>
+</article>
+{% endif %}
+{% endblock %}
