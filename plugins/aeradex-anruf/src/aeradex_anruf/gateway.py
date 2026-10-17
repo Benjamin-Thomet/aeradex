@@ -126,6 +126,44 @@ def _chunk(text: str = "", finish: str | None = None, first: bool = False) -> st
                                  ensure_ascii=False) + "\n\n"
 
 
+def _same_sentence(text: str) -> str:
+    """What two requests must share to be the same sentence: the words, without case and punctuation."""
+    return " ".join(re.findall(r"\w+", text.lower()))
+
+
+class Turn:
+    """One answer of the agent that several requests may stream: the events so far are replayed to a late subscriber."""
+
+    def __init__(self, key: str):
+        self.key, self.done = key, False
+        self.events: list[dict] = []
+        self.subscribers: list = []
+        self.lock = threading.Lock()
+
+    def subscribe(self, deliver) -> None:
+        with self.lock:
+            for ev in self.events:
+                deliver(ev)
+            if self.done:
+                deliver({"type": "end"})
+            else:
+                self.subscribers.append(deliver)
+
+    def publish(self, ev: dict) -> None:
+        with self.lock:
+            self.events.append(ev)
+            subscribers = list(self.subscribers)
+        for deliver in subscribers:
+            deliver(ev)
+
+    def finish(self) -> None:
+        with self.lock:
+            self.done = True
+            subscribers, self.subscribers = self.subscribers, []
+        for deliver in subscribers:
+            deliver({"type": "end"})
+
+
 GREETINGS = {"morgen": ["Guten Morgen {chef}!", "Morgen {chef}, schön dich zu hören."],
              "tag": ["Hoi {chef}, was kann ich für dich tun?", "Hallo {chef}! Was steht an?"],
              "abend": ["Guten Abend {chef}, noch fleissig?", "Hoi {chef}, so spät noch dran?"]}
@@ -339,6 +377,10 @@ def create_app(root: Path, cfg: Config, feed: Feed | None = None, page_key: str 
         to_page = is_page(uid)
         loop = asyncio.get_running_loop()
         out: asyncio.Queue = asyncio.Queue()
+        started = time.time()
+
+        def deliver(ev: dict) -> None:
+            loop.call_soon_threadsafe(out.put_nowait, ev)
 
         def on_event(ev: dict) -> None:
             if to_page and ev.get("type") in ("tool", "tool_error"):
@@ -347,13 +389,23 @@ def create_app(root: Path, cfg: Config, feed: Feed | None = None, page_key: str 
                 _, sources = split_sources(ev["raw"])
                 if sources:          # shown on the page, not read out
                     feed.push({"type": "quellen", "links": [{"titel": t, "url": u} for t, u in sources]})
-            loop.call_soon_threadsafe(out.put_nowait, ev)
 
         # Latest wins: while the caller keeps talking, ElevenLabs sends the growing sentence again and drops the
         # earlier request. Only the newest one is answered; older ones that are still waiting are skipped.
+        # The same sentence again (speculative turns: ElevenLabs asks before it is sure the caller is done, then
+        # once more) joins the answer that is already running instead of waiting for it in silence.
+        key = _same_sentence(prompt)
         with agent.lock:
-            agent.request_seq = getattr(agent, "request_seq", 0) + 1
-            seq = agent.request_seq
+            running = getattr(agent, "turn", None)
+            joined = bool(key) and running is not None and not running.done and running.key == key
+            if joined:
+                running.subscribe(deliver)       # does not supersede a newer sentence that waits for its turn
+                seq = getattr(agent, "request_seq", 0)
+            else:
+                agent.request_seq = seq = getattr(agent, "request_seq", 0) + 1
+        tag = f"Anruf {call_id[:6]} #{seq}"
+        log.info("%s: Anfrage «%s»%s", tag, prompt[:60], " → hängt sich an die laufende Antwort" if joined
+                 else " (wartet, Agent beschäftigt)" if agent.busy else "")
 
         def work() -> None:
             deadline = time.time() + BUSY_WAIT
@@ -361,55 +413,74 @@ def create_app(root: Path, cfg: Config, feed: Feed | None = None, page_key: str 
                 time.sleep(0.1)
             try:
                 if agent.request_seq != seq:
-                    pass                                         # superseded by a newer request: say nothing
+                    log.info("%s: übersprungen, neuere Anfrage", tag)       # superseded: say nothing
                 elif agent.busy:
-                    on_event({"type": "text", "raw": "Einen Moment, ich bin noch an der letzten Sache."})
+                    log.warning("%s: Agent nach %.0f s noch beschäftigt", tag, BUSY_WAIT)
+                    deliver({"type": "text", "raw": "Einen Moment, ich bin noch an der letzten Sache."})
                 elif prompt:
-                    agent.ask(prompt, on_event)
+                    turn = Turn(key)
+                    turn.subscribe(deliver)
+                    with agent.lock:
+                        agent.turn = turn
+                    try:
+                        agent.ask(prompt, lambda ev: (on_event(ev), turn.publish(ev)))
+                    except Exception as exc:
+                        log.warning("%s: Fehler: %s", tag, exc)
+                        turn.publish({"type": "error", "text": str(exc)[:200]})
+                        tell(uid, f"⚠️ Anruf: {str(exc)[:200]}")
+                    finally:
+                        turn.finish()
+                    return
             except Exception as exc:
-                on_event({"type": "error", "text": str(exc)[:200]})
-            finally:
-                loop.call_soon_threadsafe(out.put_nowait, {"type": "end"})
+                log.warning("%s: Fehler: %s", tag, exc)
+            deliver({"type": "end"})
 
-        threading.Thread(target=work, daemon=True).start()
+        if not joined:
+            threading.Thread(target=work, daemon=True).start()
 
         async def stream():
             # ElevenLabs gives up when the first words take too long (about 7 s, then it retries the turn),
             # so say a short filler when Claude needs a moment, and once more if it takes much longer.
             yield _chunk(first=True)
             fillers = 0
+            first_words = None
             announced: set[str] = set()
             timeout = FIRST_WORDS
-            while True:
-                try:
-                    ev = await asyncio.wait_for(out.get(), timeout=timeout)
-                except asyncio.TimeoutError:
-                    if fillers < MAX_FILLERS:
-                        line = FILLER if fillers == 0 else STILL_WORKING_LINES[(fillers - 1) % len(STILL_WORKING_LINES)]
-                        fillers += 1
-                        yield _chunk(line + " ")
-                    timeout = STILL_WORKING
-                    continue
-                timeout = STILL_WORKING
-                kind = ev.get("type")
-                if kind == "end":
-                    break
-                if kind == "text" and ev.get("raw"):
-                    yield _chunk(speakable(ev["raw"]).strip() + " ")
-                elif kind == "tool":
-                    tool = str(ev.get("text", "")).split("(", 1)[0]
-                    if tool in TOOL_LINES and tool not in announced:     # say what takes long, once per kind
-                        announced.add(tool)
-                        fillers += 1
-                        yield _chunk(TOOL_LINES[tool] + " ")
-                elif kind == "error":
-                    yield _chunk("Das hat leider nicht geklappt, die Details siehst du auf dem Bildschirm. ")
+            finished = False
+            try:
+                while True:
                     try:
-                        await asyncio.to_thread(tell, uid, f"⚠️ Anruf: {ev.get('text', '')}")
-                    except Exception:
-                        pass
-            yield _chunk(finish="stop")
-            yield "data: [DONE]\n\n"
+                        ev = await asyncio.wait_for(out.get(), timeout=timeout)
+                    except asyncio.TimeoutError:
+                        if fillers < MAX_FILLERS:
+                            line = FILLER if fillers == 0 else STILL_WORKING_LINES[(fillers - 1) % len(STILL_WORKING_LINES)]
+                            fillers += 1
+                            yield _chunk(line + " ")
+                        timeout = STILL_WORKING
+                        continue
+                    timeout = STILL_WORKING
+                    kind = ev.get("type")
+                    if kind == "end":
+                        break
+                    if kind == "text" and ev.get("raw"):
+                        if first_words is None:
+                            first_words = time.time() - started
+                        yield _chunk(speakable(ev["raw"]).strip() + " ")
+                    elif kind == "tool":
+                        tool = str(ev.get("text", "")).split("(", 1)[0]
+                        if tool in TOOL_LINES and tool not in announced:     # say what takes long, once per kind
+                            announced.add(tool)
+                            fillers += 1
+                            yield _chunk(TOOL_LINES[tool] + " ")
+                    elif kind == "error":
+                        yield _chunk("Das hat leider nicht geklappt, die Details siehst du auf dem Bildschirm. ")
+                yield _chunk(finish="stop")
+                yield "data: [DONE]\n\n"
+                finished = True
+            finally:
+                words = f"erste Worte nach {first_words:.1f} s" if first_words is not None else "ohne Antworttext"
+                log.info("%s: %s nach %.1f s, %s, %d Füller", tag, "fertig" if finished else "von ElevenLabs abgebrochen",
+                         time.time() - started, words, fillers)
 
         return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 

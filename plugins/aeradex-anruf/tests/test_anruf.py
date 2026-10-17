@@ -267,3 +267,59 @@ def test_only_the_newest_request_is_answered(app, cfg, monkeypatch):
     assert asked == ["eins", "eins zwei drei"]                 # the middle one was superseded while waiting
     assert "Antwort auf eins zwei drei" in results["eins zwei drei"]
     assert "Antwort" not in results["eins zwei"]
+
+
+def test_the_same_sentence_again_joins_the_running_answer(app, cfg, monkeypatch):
+    """Speculative turns: ElevenLabs asks, then asks the same sentence again; the second request streams the answer
+    that is already being written instead of waiting in silence (and nothing is asked twice)."""
+    app, _ = app
+    monkeypatch.setattr(gateway, "FIRST_WORDS", 5.0)
+    asked = []
+
+    def slow_ask(self, prompt, on_event=None):
+        with self.lock:
+            self.busy = True
+        try:
+            asked.append(prompt)
+            on_event({"type": "text", "raw": "Gern."})
+            time.sleep(0.6)
+            on_event({"type": "text", "raw": "Wie heisst der Kunde?"})
+        finally:
+            self.busy = False
+        return ""
+    monkeypatch.setattr(RemoteAgent, "ask", slow_ask)
+    session = gateway.make_session(cfg, gateway.LOCAL_USER)
+
+    def body(text):
+        return {"messages": [{"role": "system", "content": f"Sitzung: {session}"}, {"role": "user", "content": text}]}
+    import threading as th
+    results, took = {}, {}
+    with TestClient(app) as c:
+        headers = {"Authorization": f"Bearer {cfg.llm_secret}"}
+        def post(name, text, delay):
+            time.sleep(delay)
+            t = time.time()
+            results[name] = c.post("/llm/v1", json=body(text), headers=headers).text
+            took[name] = time.time() - t
+        threads = [th.Thread(target=post, args=a) for a in
+                   [("a", "Kannst du mir einen neuen Kunden erfassen?", 0), ("b", "kannst du mir einen neuen Kunden erfassen", 0.2)]]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+    said = {k: "".join(json.loads(line[6:])["choices"][0]["delta"].get("content", "")
+                       for line in v.splitlines() if line.startswith("data: {")) for k, v in results.items()}
+    assert asked == ["Kannst du mir einen neuen Kunden erfassen?"]
+    assert said["a"].strip() == said["b"].strip() == "Gern. Wie heisst der Kunde?"
+    assert took["b"] < 0.6                                     # replayed what was said, then followed along
+
+
+def test_turn_replays_to_late_subscribers():
+    turn = gateway.Turn("x")
+    early, late = [], []
+    turn.subscribe(early.append)
+    turn.publish({"type": "text", "raw": "eins"})
+    turn.subscribe(late.append)
+    turn.publish({"type": "text", "raw": "zwei"})
+    turn.finish()
+    after = []
+    turn.subscribe(after.append)
+    assert early == late == after == [{"type": "text", "raw": "eins"}, {"type": "text", "raw": "zwei"}, {"type": "end"}]
