@@ -423,7 +423,9 @@ def serve_file(ui: UI):
         # carry script (SVG, XML/XHTML, HTML …) is a download, and nothing may be sniffed into something else.
         inline = media in INLINE_MEDIA
         headers = {"Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{quote(target.name)}"',
-                   "X-Content-Type-Options": "nosniff"}
+                   "X-Content-Type-Options": "nosniff",
+                   # revalidate every time (a 304 via ETag): no heuristic caching of an old file or of old headers
+                   "Cache-Control": "private, no-cache"}
         if media != "application/pdf":            # a sandbox would block the browser's own PDF viewer
             headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
         return FileResponse(target, media_type=media if inline else "application/octet-stream", headers=headers)

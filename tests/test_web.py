@@ -619,6 +619,7 @@ def test_salary_bank_file_download(client, root):
     info = active(Book(root), 2026, 3)
     r = client.get('/datei/' + info['datei'])
     assert r.status_code == 200 and b'pain.001.001.09' in r.content
+    assert r.headers['cache-control'] == 'private, no-cache'                  # never an old file from the cache
     assert client.post('/lohn/zahlung/erstellen', data={'monat': '2026-03'}).status_code == 403
 
 
