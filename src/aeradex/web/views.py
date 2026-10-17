@@ -1585,7 +1585,8 @@ async def kreditoren_page(ui: UI, request: Request):
     return ui.render(request, "kreditoren.html", book=book, rows=rows, status=status, op=kred.open_payables(book),
                      default_date=_next_workday().isoformat(), drafts=drafts,
                      auto_agent=erfassung.agent_auto(book), jev=jev.config(book),
-                     ocr=bool(erfassung.ocr_languages()), dv=erfassung.value, vat_of=draft_vat)
+                     ocr=bool(erfassung.ocr_languages()), dv=erfassung.value, vat_of=draft_vat,
+                     hold_of=lambda d: api.bill_draft_hold(book, d))
 
 
 # ---------- Kreditoren drafts: upload → read → account (supplier, Jev, agent) ----------
@@ -1856,7 +1857,8 @@ async def kreditor_neu(ui: UI, request: Request):
                          scan_error=None, suppliers=sups, chosen=v["lieferant"] if v["lieferant"] in sups else "",
                          accounts=account_options(book), today=date.today().isoformat(),
                          entwurf=meta, ev=v, quellen_felder=meta.get("felder") or {}, currencies=currencies(book),
-                         warnungen=erfassung.warnings(book, meta), dnav=draft_nav(book, meta))
+                         warnungen=erfassung.warnings(book, meta), dnav=draft_nav(book, meta),
+                         iban_pruefen=any("IBAN" in w for w in erfassung.warnings(book, meta)))
     if datei:
         try:
             scan = kred.scan(book, datei)

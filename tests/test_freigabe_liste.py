@@ -83,6 +83,11 @@ def test_list_shows_vat_and_approves_ticked_drafts(book):
         c.get("/?t=tok", follow_redirects=False)
         page = c.get("/kreditoren?status=entwurf").text
         assert "Ausgewählte freigeben" in page and "<th>MWST</th>" in page
+        assert f'value="{q["id"]}" checked' in page                  # can go from the list
+        assert f'value="{r["id"]}"' not in page and "einzeln prüfen" in page    # new supplier: shown before, not after
+        assert f'href="/kreditoren/neu?entwurf={r["id"]}" title="IBAN stammt aus' in page
+        review = c.get(f"/kreditoren/neu?entwurf={r['id']}").text
+        assert "mit der Rechnung vergleichen" in review               # the IBAN came from text, not from a QR bill
         assert "I81</span> 3.41" in page and "I81</span> 36.45" in page
         h = {"X-CSRF": app.state.ui.csrf, "HX-Request": "true", "HX-Current-URL": "/kreditoren?status=entwurf"}
         res = c.post("/eingang/freigeben", headers=h, data={"entwurf": [q["id"], r["id"]]})

@@ -1587,19 +1587,32 @@ def bill_draft_agent(book: Book, entwurf: str) -> dict:
                      "agent": said})
 
 
+def bill_draft_hold(book: Book, meta: dict) -> str:
+    """Why a «bereit» draft cannot be booked from the list and needs its review page («» = it can)."""
+    from . import erfassung, kreditoren as kred
+    if meta.get("art") not in ("kreditor", "quittung"):
+        return ""
+    warn = erfassung.warnings(book, meta)
+    if warn:
+        return warn[0]
+    if meta.get("art") == "kreditor" and erfassung.form_values(meta)["lieferant"] not in kred.suppliers(book):
+        return f"Lieferant «{erfassung.value(meta, 'name') or '?'}» ist neu — einmal prüfen und anlegen"
+    return ""
+
+
 def bill_draft_approve(book: Book, entwurf: str) -> dict:
     """Book a ready draft as it stands, with the values its review page would show («Freigeben» from the list).
     Refused when a person still has to look: not «bereit», a warning (IBAN), or a supplier not yet on file."""
-    from . import erfassung, kreditoren as kred
+    from . import erfassung
     meta = erfassung.draft(book, entwurf)
     if meta.get("status") != "bereit":
         raise BookError(f"{entwurf} ist nicht bereit — einzeln prüfen")
+    hold = bill_draft_hold(book, meta)
+    if hold:
+        raise BookError(f"{entwurf}: {hold} — einzeln prüfen")
     v = erfassung.form_values(meta)
     cur = (v["waehrung"] or "CHF").upper()
     if meta.get("art") == "quittung":
-        warn = erfassung.warnings(book, meta)
-        if warn:
-            raise BookError(f"{entwurf}: {warn[0]} — einzeln prüfen")
         pay = dict(meta.get("zahlung") or {})
         if pay.get("art") not in ("bank", "buchung", "spesen"):
             pay = {"art": "konto", "konto": pay.get("konto") or book.settings.konto("bank")}
@@ -1609,11 +1622,6 @@ def bill_draft_approve(book: Book, entwurf: str) -> dict:
                             v["leistung_von"] or None, v["leistung_bis"] or None)
     if meta.get("art") != "kreditor":
         raise BookError(f"{entwurf}: nur Lieferantenrechnungen und Quittungen lassen sich aus der Liste freigeben")
-    warn = erfassung.warnings(book, meta)
-    if warn:
-        raise BookError(f"{entwurf}: {warn[0]} — einzeln prüfen")
-    if v["lieferant"] not in kred.suppliers(book):
-        raise BookError(f"{entwurf}: Lieferant «{v['name'] or '?'}» ist neu — einzeln prüfen und anlegen")
     fields = {k: v[k] for k in ("datum", "faellig", "rechnungsnr", "referenz", "referenz_typ", "mitteilung", "iban",
                                 "leistung_von", "leistung_bis", "konto") if v[k]}
     fields["mwst"] = v["mwst"] or ""

@@ -56,7 +56,7 @@
           <button class="btn small" type="button" data-addrow="#posrows" style="margin-top:6px">+ Position</button>
           <p class="small muted">Sind Positionen ausgefüllt, gelten sie statt Aufwandkonto und MWST-Code oben; ihre Summe muss dem Betrag entsprechen.</p>
         </details>
-        <div class="field wide"><label for="k-i">IBAN / QR-IBAN (leer = vom Lieferanten){{ src('iban') }}</label><input class="input num" id="k-i" name="iban" value="{{ sc.iban or '' }}" style="text-align:left"></div>
+        <div class="field wide{{ ' check' if iban_pruefen }}"><label for="k-i">IBAN / QR-IBAN (leer = vom Lieferanten){{ src('iban') }}{% if iban_pruefen %} <span class="pill warn">mit der Rechnung vergleichen</span>{% endif %}</label><input class="input num" id="k-i" name="iban" value="{{ sc.iban or '' }}" style="text-align:left{{ '; border-color: var(--warn); box-shadow: 0 0 0 2px var(--warn-soft)' if iban_pruefen }}"></div>
         <div class="field"><label for="k-rt">Referenzart</label><select class="input" id="k-rt" name="referenz_typ" style="width:100%">{% for t in ["", "QRR", "SCOR", "NON"] %}<option value="{{ t }}" {{ 'selected' if t == (sc.referenz_typ or '') }}>{{ t or 'automatisch' }}</option>{% endfor %}</select></div>
         <div class="field"><label for="k-ref">Referenz{{ src('referenz') }}</label><input class="input num" id="k-ref" name="referenz" value="{{ sc.referenz or '' }}" style="text-align:left"></div>
         <div class="field wide"><label for="k-mi">Mitteilung (ohne Referenz)</label><input class="input" id="k-mi" name="mitteilung" value="{{ sc.mitteilung or '' }}"></div>

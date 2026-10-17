@@ -10,7 +10,7 @@
 
 {% if status == 'entwurf' %}
 <div class="panel" id="entwuerfe">
-  {% if drafts %}{{ eingang_table(drafts, book, dv, true, vat_of) }}
+  {% if drafts %}{{ eingang_table(drafts, book, dv, true, vat_of, hold_of) }}
   {% else %}<div class="empty">Keine Entwürfe. Rechnungen und Quittungen oben rechts unter <strong>Beleg hochladen</strong> einlesen, oder unten hineinziehen.</div>{% endif %}
 </div>
 <details class="panel drawer" {{ 'open' if not drafts }}>
