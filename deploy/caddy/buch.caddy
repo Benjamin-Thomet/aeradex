@@ -12,7 +12,7 @@
 		X-Robots-Tag "noindex, nofollow"
 		-Server
 	}
-	header @notminiapp X-Frame-Options "DENY"
+	header @notminiapp X-Frame-Options "SAMEORIGIN"   # framed only by its own pages: the PDF preview is an iframe
 	header @miniapp Content-Security-Policy "frame-ancestors https://web.telegram.org"
 	request_body {
 		max_size 30MB
