@@ -126,6 +126,7 @@ def add_employee(book: Book, vorname: str, nachname: str, **fields) -> tuple[dic
                         "plz": str(fields.pop("plz", "") or ""), "ort": fields.pop("ort", ""),
                         "land": fields.pop("land", "CH")},
             "ahv_nr": fields.pop("ahv_nr", ""), "geburtsdatum": fields.pop("geburtsdatum", None),
+            "geschlecht": fields.pop("geschlecht", ""),
             "eintritt": fields.pop("eintritt", None), "austritt": None,
             "lohnart": fields.pop("lohnart", "monat"),
             "monatslohn": fields.pop("monatslohn", 0), "pensum": fields.pop("pensum", 100),
@@ -147,12 +148,18 @@ def add_employee(book: Book, vorname: str, nachname: str, **fields) -> tuple[dic
                 "ferienzuschlag_satz", "bvg_betrag", "ag_bvg_betrag", "kinderzulagen", "qst_satz"):
         meta[key] = Decimal(str(meta[key] or 0))
     meta["qst"] = normalize_qst(meta["qst"])
+    check_geschlecht(meta)
     check_qst_fields(meta)
     check_dates(meta)
     meta["ferien_inbegriffen"] = bool(meta["ferien_inbegriffen"])
     path = book.root / "personal" / f"{number}-{slug(vorname + ' ' + nachname)}.md"
     write_frontmatter(path, meta, "Notizen zum Arbeitsverhältnis.")
     return meta, path
+
+
+def check_geschlecht(emp: dict) -> None:
+    if (emp.get("geschlecht") or "") not in ("", "w", "m"):
+        raise BookError("geschlecht muss 'w', 'm' oder leer sein")
 
 
 def is_hourly(emp: dict) -> bool:
@@ -753,3 +760,64 @@ def lohnkonto(book: Book, year: int, nr: str) -> dict:
     return {"mitarbeiter": nr, "jahr": year,
             "monate": {m: {k: D(p["werte"].get(k)) for k in keys} for m, p in sorted(months.items())},
             "total": totals, "ag_total": ag_totals}
+
+
+# Lohnkonto rows: (werte key, label, style). Styles: lohn, brutto, abzug, zwischentotal, zuschlag, netto.
+LOHNKONTO_ROWS = [
+    ("grundlohn", "Grundlohn", "lohn"),
+    ("ferienzuschlag", "Ferienzuschlag", "lohn"),
+    ("bruttolohn", "Bruttolohn", "brutto"),
+    ("ahv", "AHV/IV/EO", "abzug"),
+    ("alv", "ALV", "abzug"),
+    ("bvg", "BVG", "abzug"),
+    ("ktg", "KTG", "abzug"),
+    ("uvg", "NBU", "abzug"),
+    ("quellensteuer", "Quellensteuer", "abzug"),
+    ("total_abzuege", "Total Abzüge", "zwischentotal"),
+    ("kinderzulagen", "Kinderzulagen", "zuschlag"),
+    ("korrektur", "Korrektur", "zuschlag"),
+    ("nettolohn", "Nettolohn", "netto"),
+    ("spesen", "Spesen", "zuschlag"),
+    ("auszahlung", "Auszahlung", "zwischentotal"),
+]
+
+
+def lohnkonto_matrix(book: Book, year: int, nr: str | None = None) -> dict:
+    """Lohnkonto as a matrix: one row per wage type, deduction and employer contribution, one column per
+    month plus the year total — for one employee or, without `nr`, the whole company. Only closed payslips
+    count, with the figures frozen at closing (so it matches what was booked even if rates changed since)."""
+    slips = [p for p in payslips(book, year) if nr is None or p["mitarbeiter"] == nr]
+    closed = [p for p in slips if p.get("status") == "abgeschlossen"]
+
+    def blank():
+        return {m: ZERO for m in range(1, 13)}
+
+    data = {key: blank() for key, _, _ in LOHNKONTO_ROWS}
+    hours, ag, ag_total, cost = blank(), {code: blank() for code in AG_ORDER}, blank(), blank()
+    for p in closed:
+        m, w, frozen = int(p["monat"]), p["werte"], p.get("ag") or {}
+        for key, _, _ in LOHNKONTO_ROWS:
+            data[key][m] += D(w.get(key))
+        if not w.get("auszahlung"):           # no expenses: paid out = net wage
+            data["auszahlung"][m] += D(w.get("nettolohn"))
+        if w.get("lohnart") == "stunde":
+            hours[m] += D(w.get("stunden"))
+        for code in AG_ORDER:
+            ag[code][m] += D(frozen.get(code))
+            ag_total[m] += D(frozen.get(code))
+        # Kinderzulagen are left out: the Familienausgleichskasse funds them, the employer only passes them on.
+        cost[m] += D(w.get("bruttolohn")) + D(w.get("korrektur")) + sum((D(frozen.get(c)) for c in AG_ORDER), ZERO)
+
+    def row(key, label, style, months):
+        return {"key": key, "label": label, "stil": style, "monate": months,
+                "total": sum(months.values(), ZERO)}
+
+    rows = [row(key, label, style, data[key]) for key, label, style in LOHNKONTO_ROWS]
+    if any(hours.values()):
+        rows.insert(0, row("stunden", "Stunden (h)", "stunden", hours))
+    ag_rows = [row(code, AG_LABEL[code], "ag", ag[code]) for code in AG_ORDER]
+    ag_rows.append(row("ag_total", "Total Arbeitgeberbeiträge", "zwischentotal", ag_total))
+    ag_rows.append(row("ag_kosten", "Total Arbeitgeberkosten", "netto", cost))
+    return {"jahr": year, "mitarbeiter": nr, "bereich": display_name(employee(book, nr)) if nr else "Ganze Firma",
+            "zeilen": rows, "ag_zeilen": ag_rows, "abrechnungen": len(closed), "entwuerfe": len(slips) - len(closed),
+            "personen": sorted({p["mitarbeiter"] for p in closed})}

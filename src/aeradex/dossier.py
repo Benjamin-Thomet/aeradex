@@ -547,8 +547,15 @@ def _lohn(k: Kontext, fmt: str) -> list[tuple[str, bytes]]:
     values = [[f"{int(p['monat']):02d}", p["mitarbeiter"], p.get("name") or ""] +
               [Decimal(str((p.get("werte") or {}).get(key) or 0)) for key, _ in LOHN_COLS] for p in slips]
     head = ["Monat", "Nr", "Name"] + [label for _, label in LOHN_COLS]
+    from . import lohnmeldung
+    extra = []
+    if slips:
+        with k.draft():
+            extra = [(f"Lohn {k.year}/{name}", data) for name, data in (
+                lohnmeldung.lohnkonto_document(k.book, k.year, None, fmt),
+                lohnmeldung.meldung_document(k.book, k.year, fmt))]
     if fmt == "csv":
-        return [(f"Lohn {k.year}/Lohnjournal {k.year}.csv", csv_bytes(head, values))]
+        return [(f"Lohn {k.year}/Lohnjournal {k.year}.csv", csv_bytes(head, values))] + extra
     totals = ["", "", "Total"] + [sum((v[i] for v in values), ZERO) for i in range(3, 3 + len(LOHN_COLS))]
     rows = [r[:3] + [pdfmod.chf(x, True) for x in r[3:]] for r in values + [totals]]
     with k.draft():
@@ -558,7 +565,7 @@ def _lohn(k: Kontext, fmt: str) -> list[tuple[str, bytes]]:
               {"right": tuple(range(3, 3 + len(LOHN_COLS))), "totals": (len(rows) - 1,), "wrap": (2,),
                "zebra": True})],
             subtitle="Abgeschlossene Lohnabrechnungen, Beträge in CHF", wide=True)
-    out = [(f"Lohn {k.year}/Lohnjournal {k.year}.pdf", data)]
+    out = [(f"Lohn {k.year}/Lohnjournal {k.year}.pdf", data)] + extra
     from . import lohnausweis
     for nr in sorted({p["mitarbeiter"] for p in slips}):
         try:

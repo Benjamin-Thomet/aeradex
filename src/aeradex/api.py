@@ -546,6 +546,33 @@ def lohnkonto(book: Book, jahr: int, mitarbeiter: str) -> dict:
     return jsonable(payroll.lohnkonto(book, jahr, mitarbeiter))
 
 
+def lohnkonto_firma(book: Book, jahr: int, mitarbeiter: str | None = None) -> dict:
+    """Lohnkonto as a month matrix for the whole company (or one employee), closed payslips only."""
+    return jsonable(payroll.lohnkonto_matrix(book, jahr, mitarbeiter or None))
+
+
+def lohnmeldungen(book: Book, jahr: int) -> dict:
+    """Figures for the annual wage declarations (Ausgleichskasse, UVG, KTG, BVG, QST) with Prüfhinweise."""
+    from . import lohnmeldung
+    return jsonable(lohnmeldung.jahresmeldung(book, jahr))
+
+
+def lohn_dokument(book: Book, art: str, jahr: int, fmt: str = "pdf", mitarbeiter: str | None = None,
+                  ziel: str | None = None) -> dict:
+    """Write the Lohnkonto (art 'lohnkonto') or the Lohnmeldungen ('meldungen') as pdf/xlsx/csv to `ziel`
+    (a folder; default the current directory). Not part of the book, so nothing is committed."""
+    from . import lohnmeldung
+    if art == "lohnkonto":
+        name, data = lohnmeldung.lohnkonto_document(book, jahr, mitarbeiter or None, fmt)
+    elif art == "meldungen":
+        name, data = lohnmeldung.meldung_document(book, jahr, fmt)
+    else:
+        raise BookError("art muss 'lohnkonto' oder 'meldungen' sein")
+    path = Path(ziel or ".") / name
+    path.write_bytes(data)
+    return {"ok": True, "datei": str(path)}
+
+
 def lohnausweis_create(book: Book, jahr: int, mitarbeiter: str) -> dict:
     _guard(book)
     totals = lohnausweis.annual_totals(book, jahr, mitarbeiter)
@@ -733,7 +760,7 @@ def employee_update(book: Book, nummer: str, **fields) -> dict:
     _guard(book)
     nr = nummer
     emp = payroll.employee(book, nr)
-    allowed = {"vorname", "nachname", "ahv_nr", "geburtsdatum", "eintritt", "austritt", "lohnart",
+    allowed = {"vorname", "nachname", "ahv_nr", "geburtsdatum", "geschlecht", "eintritt", "austritt", "lohnart",
                "ferien_inbegriffen", "qst", "aktiv", "iban", "aufenthalt", "qst_pflicht",
                *EMPLOYEE_NUMERIC, *_ADDRESS_KEYS}
     unknown = set(fields) - allowed
@@ -746,6 +773,7 @@ def employee_update(book: Book, nummer: str, **fields) -> dict:
             fields[key] = parse_date(fields[key], key).isoformat() if fields[key] else None
     if "qst" in fields:
         fields["qst"] = payroll.normalize_qst(fields["qst"])
+    payroll.check_geschlecht({**emp, **fields})
     payroll.check_qst_fields({**emp, **fields})
     payroll.check_dates({**emp, **fields})
     meta = _update_record(emp["_pfad"], fields, numeric=EMPLOYEE_NUMERIC, nullable=("qst", "austritt"))

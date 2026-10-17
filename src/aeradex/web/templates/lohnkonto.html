@@ -1,38 +1,66 @@
 {% extends "base.html" %}
 {% from "_macros.html" import errors %}
-{% block title %}Lohnkonto {{ emp.vorname }} {{ year }}{% endblock %}
+{% block title %}Lohnkonto {{ (emp.vorname ~ ' ') if emp }}{{ year }}{% endblock %}
 {% block main %}
+{% set bereich = emp.nummer if emp else 'firma' %}
 <div class="topbar">
-  <div><div class="crumbs"><a href="/lohn/mitarbeiter?jahr={{ year }}">Mitarbeitende</a> /</div><h1>Lohnkonto {{ emp.vorname }} {{ emp.nachname }} {{ year }}</h1><div class="sub">Beträge aus abgeschlossenen Abrechnungen · {{ la.entwuerfe }} Entwurf/Entwürfe nicht enthalten</div></div>
+  <div>{% if emp %}<div class="crumbs"><a href="/lohn/lohnkonto?jahr={{ year }}">Lohnkonto</a> /</div>{% endif %}
+    <h1>Lohnkonto {{ lk.bereich }} {{ year }}</h1>
+    <div class="sub">Beträge aus abgeschlossenen Abrechnungen{% if lk.entwuerfe %} · {{ lk.entwuerfe }} Entwurf/Entwürfe nicht enthalten{% endif %}</div></div>
   <div class="actions">
-    <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in years|reverse %}<option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
+    <form method="get" action="/lohn/lohnkonto">
+      <select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in years|reverse %}<option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select>
+      <select class="input" name="bereich" onchange="this.form.submit()" aria-label="Bereich">
+        <option value="firma" {{ 'selected' if not emp }}>Ganze Firma</option>
+        {% for nr, e in emps.items() %}<option value="{{ nr }}" {{ 'selected' if emp and nr == emp.nummer }}>{{ e.vorname }} {{ e.nachname }}</option>{% endfor %}
+      </select>
+    </form>
+    {% if lk.abrechnungen %}
+    <a class="btn" href="/lohn/lohnkonto/datei.pdf?jahr={{ year }}&bereich={{ bereich }}" target="_blank">PDF</a>
+    <a class="btn" href="/lohn/lohnkonto/datei.xlsx?jahr={{ year }}&bereich={{ bereich }}">Excel</a>
+    {% endif %}
+    {% if emp %}
     {% if la_pdf %}<a class="btn" href="/datei/{{ la_pdf|urlq }}" target="_blank">Lohnausweis {{ year }} öffnen</a>{% endif %}
     <form hx-post="/lohn/lohnausweis/{{ year }}/{{ emp.nummer }}" hx-target="find .errors"><button class="btn primary" type="submit" {{ 'disabled' if not la.vollstaendig }}>Lohnausweis {{ 'neu ' if la_pdf }}erstellen</button>{{ errors() }}</form>
+    {% else %}
+    <a class="btn primary" href="/lohn/lohnmeldungen?jahr={{ year }}">Lohnmeldungen {{ year }}</a>
+    {% endif %}
   </div>
 </div>
-{% if not la.vollstaendig %}<div class="alert warn">
+{% if emp and not la.vollstaendig %}<div class="alert warn">
   <strong>Lohnausweis noch nicht bereit.</strong> Alle Abrechnungen der Anstellung im gewählten Jahr müssen vorhanden und abgeschlossen sein.
   {% if la.fehlende_monate %}<p>Nicht gerechnet: {% for mo in la.fehlende_monate %}<a class="link" href="/lohn?monat={{ year }}-{{ '%02d'|format(mo) }}">{{ MONTHS[mo] }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
   {% if la.offene_monate %}<p>Nicht abgeschlossen: {% for mo in la.offene_monate %}<a class="link" href="/lohn/abrechnung/{{ year }}-{{ '%02d'|format(mo) }}/{{ emp.nummer }}">{{ MONTHS[mo] }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
   {% if not la.monate %}<p>Noch keine abgeschlossenen Abrechnungen.</p>{% endif %}
   {% if la_pdf %}<p>Der vorhandene PDF-Lohnausweis wurde früher erstellt. Er bestätigt den aktuellen Abschlussstand nicht.</p>{% endif %}
 </div>{% endif %}
-{% set keys = [("bruttolohn","Brutto"),("ahv","AHV"),("alv","ALV"),("uvg","NBU"),("ktg","KTG"),("bvg","BVG"),("quellensteuer","QST"),("kinderzulagen","KZ"),("korrektur","Korr."),("nettolohn","Netto")] %}
+{% macro matrix_rows(rows) %}{% for r in rows %}<tr class="{{ {"brutto": "sum", "zwischentotal": "zw", "netto": "total"}.get(r.stil, '') }} {{ r.stil }}"><td>{{ r.label }}</td>{% for m in range(1, 13) %}<td class="right num">{{ r.monate[m]|chf(true) }}</td>{% endfor %}<td class="right num jt">{{ r.total|chf(true) }}</td></tr>{% endfor %}{% endmacro %}
 <div class="panel">
-  <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Monat</th><th>Status</th>{% for k, l in keys %}<th class="right">{{ l }}</th>{% endfor %}</tr></thead>
-    <tbody>{% for mo in la.monatsstatus %}{% set vals = lk.monate.get(mo.monat) %}<tr class="row"><td>{% if mo.status == 'ausserhalb Anstellung' %}{{ MONTHS[mo.monat] }}{% else %}<a class="link" href="{% if mo.status == 'nicht gerechnet' %}/lohn?monat={{ year }}-{{ '%02d'|format(mo.monat) }}{% else %}/lohn/abrechnung/{{ year }}-{{ '%02d'|format(mo.monat) }}/{{ emp.nummer }}{% endif %}">{{ MONTHS[mo.monat] }}</a>{% endif %}</td><td><span class="pill {{ 'ok' if mo.status == 'abgeschlossen' else 'muted' if mo.status == 'ausserhalb Anstellung' else 'warn' }}">{{ mo.status }}</span></td>{% for k, l in keys %}<td class="right num">{{ vals[k]|chf(true) if vals else '' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
-    <tfoot><tr><td colspan="2">Total abgeschlossen</td>{% for k, l in keys %}<td class="right num {{ 'total' if k == 'nettolohn' }}">{{ lk.total[k]|chf(true) }}</td>{% endfor %}</tr></tfoot>
+  {% if lk.abrechnungen %}
+  <div class="tablewrap"><table class="ledger matrix">
+    <thead><tr><th>Lohnart / Abzug</th>{% for m in range(1, 13) %}<th class="right">{% if emp %}<a class="link" href="/lohn/abrechnung/{{ year }}-{{ '%02d'|format(m) }}/{{ emp.nummer }}">{{ MONTHS[m][:3] }}</a>{% else %}<a class="link" href="/lohn?monat={{ year }}-{{ '%02d'|format(m) }}">{{ MONTHS[m][:3] }}</a>{% endif %}</th>{% endfor %}<th class="right jt">Total {{ year }}</th></tr></thead>
+    <tbody>
+      {{ matrix_rows(lk.zeilen) }}
+      <tr class="kopf"><td colspan="14">Arbeitgeberbeiträge</td></tr>
+      {{ matrix_rows(lk.ag_zeilen) }}
+    </tbody>
   </table></div>
+  <p class="small muted" style="padding: 0 12px 12px">Total Arbeitgeberkosten = Bruttolohn + Korrektur + Arbeitgeberbeiträge, ohne Kinderzulagen: diese finanziert die Familienausgleichskasse, der Arbeitgeber schiesst sie nur vor. Leere Felder sind null.</p>
+  {% else %}
+  <p class="muted" style="padding: 16px">Keine abgeschlossenen Lohnabrechnungen {{ year }}{% if emp %} für {{ emp.vorname }} {{ emp.nachname }}{% endif %}.</p>
+  {% endif %}
 </div>
+{% if emp %}
 <div class="grid2 even">
+  <div class="panel"><header><h2>Monatsstatus {{ year }}</h2></header>
+    <div class="tablewrap"><table class="ledger"><tbody>{% for mo in la.monatsstatus %}<tr class="row"><td>{% if mo.status == 'ausserhalb Anstellung' %}{{ MONTHS[mo.monat] }}{% else %}<a class="link" href="{% if mo.status == 'nicht gerechnet' %}/lohn?monat={{ year }}-{{ '%02d'|format(mo.monat) }}{% else %}/lohn/abrechnung/{{ year }}-{{ '%02d'|format(mo.monat) }}/{{ emp.nummer }}{% endif %}">{{ MONTHS[mo.monat] }}</a>{% endif %}</td><td class="right"><span class="pill {{ 'ok' if mo.status == 'abgeschlossen' else 'muted' if mo.status == 'ausserhalb Anstellung' else 'warn' }}">{{ mo.status }}</span></td></tr>{% endfor %}</tbody></table></div></div>
   <div class="panel"><header><h2>Lohnausweis {{ year }} (Formular 11)</h2><span class="hint">ganze Franken</span></header>
     <div class="tablewrap"><table class="ledger"><tbody>
-      <tr><td>Ziffer 1 Lohn</td><td class="right num">{{ la.z1 }}</td></tr><tr><td>Ziffer 8 Bruttolohn total</td><td class="right num">{{ la.z8 }}</td></tr>
-      <tr><td>Ziffer 9 AHV/IV/EO/ALV/NBUV</td><td class="right num">{{ la.z9 }}</td></tr><tr><td>Ziffer 10.1 BVG</td><td class="right num">{{ la.z10_1 }}</td></tr>
-      <tr class="total"><td>Ziffer 11 Nettolohn</td><td class="right num">{{ la.z11 }}</td></tr><tr><td>Ziffer 12 Quellensteuer</td><td class="right num">{{ la.z12 }}</td></tr>
-    </tbody></table></div></div>
-  <div class="panel"><header><h2>Arbeitgeberbeiträge {{ year }}</h2></header>
-    <div class="tablewrap"><table class="ledger"><tbody>{% for code in ag_order %}{% if lk.ag_total[code]|float %}<tr><td>{{ ag_label[code] }}</td><td class="right num">{{ lk.ag_total[code]|chf }}</td></tr>{% endif %}{% endfor %}</tbody></table></div></div>
+      <tr><td>Ziffer 1 Lohn</td><td class="small muted">Bruttolohn + Kinderzulagen + Korrektur</td><td class="right num">{{ la.z1 }}</td></tr><tr><td>Ziffer 8 Bruttolohn total</td><td></td><td class="right num">{{ la.z8 }}</td></tr>
+      <tr><td>Ziffer 9 AHV/IV/EO/ALV/NBUV</td><td class="small muted">AHV + ALV + NBU</td><td class="right num">{{ la.z9 }}</td></tr><tr><td>Ziffer 10.1 BVG</td><td></td><td class="right num">{{ la.z10_1 }}</td></tr>
+      <tr class="total"><td>Ziffer 11 Nettolohn</td><td class="small muted">Ziffer 8 − 9 − 10.1</td><td class="right num">{{ la.z11 }}</td></tr><tr><td>Ziffer 12 Quellensteuer</td><td></td><td class="right num">{{ la.z12 }}</td></tr>
+    </tbody></table></div>
+    <p class="small muted" style="padding: 0 12px 12px">Ziffer 11 ist nicht der ausbezahlte Nettolohn: Quellensteuer steht unter Ziffer 12, KTG-Abzüge{% if la.ktg %} ({{ la.ktg }}){% endif %} haben keine eigene Ziffer.</p></div>
 </div>
+{% endif %}
 {% endblock %}

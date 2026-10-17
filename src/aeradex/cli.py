@@ -217,9 +217,13 @@ def build_parser() -> argparse.ArgumentParser:
     c = ps.add_parser("qst-sync", help="Offizielle ESTV-Tarife laden")
     c.add_argument("kanton", help="Kantonskürzel oder ALLE")
     c.add_argument("jahr", type=int)
-    c = ps.add_parser("lohnkonto")
+    c = ps.add_parser("lohnkonto", help="Lohnkonto: ohne Mitarbeiter die ganze Firma als Monatsmatrix")
     c.add_argument("jahr", type=int)
-    c.add_argument("mitarbeiter")
+    c.add_argument("mitarbeiter", nargs="?")
+    c.add_argument("--format", choices=["pdf", "xlsx", "csv"], help="als Datei ins aktuelle Verzeichnis")
+    c = ps.add_parser("meldungen", help="Zahlen für die Jahres-Lohnmeldungen (AHV/FAK, UVG, KTG, BVG, QST)")
+    c.add_argument("jahr", type=int)
+    c.add_argument("--format", choices=["pdf", "xlsx", "csv"], help="als Datei ins aktuelle Verzeichnis")
     c = ps.add_parser("lohnausweis")
     c.add_argument("jahr", type=int)
     c.add_argument("mitarbeiter")
@@ -766,7 +770,15 @@ def dispatch(a, book_path: Path | None):
         if a.sub == "reopen":
             return api.payslip_reopen(b, a.monat, a.mitarbeiter)
         if a.sub == "lohnkonto":
-            return api.lohnkonto(b, a.jahr, a.mitarbeiter)
+            if a.format:
+                return api.lohn_dokument(b, "lohnkonto", a.jahr, a.format, a.mitarbeiter)
+            if a.mitarbeiter:
+                return api.lohnkonto(b, a.jahr, a.mitarbeiter)
+            return api.lohnkonto_firma(b, a.jahr)
+        if a.sub == "meldungen":
+            if a.format:
+                return api.lohn_dokument(b, "meldungen", a.jahr, a.format)
+            return api.lohnmeldungen(b, a.jahr)
         if a.sub == "lohnausweis":
             return api.lohnausweis_create(b, a.jahr, a.mitarbeiter)
     if c == "report":

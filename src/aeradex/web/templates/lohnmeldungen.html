@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Lohnmeldungen {{ year }}{% endblock %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Lohnmeldungen {{ year }}</h1><div class="sub">Zahlen für Ausgleichskasse, UVG, KTG, BVG und Quellensteuer · nur abgeschlossene Abrechnungen</div></div>
+  <div class="actions">
+    <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in years|reverse %}<option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
+    {% if m.personen %}
+    <a class="btn" href="/lohn/meldungen/datei.pdf?jahr={{ year }}" target="_blank">PDF</a>
+    <a class="btn" href="/lohn/meldungen/datei.xlsx?jahr={{ year }}">Excel</a>
+    <a class="btn" href="/lohn/meldungen/datei.csv?jahr={{ year }}">CSV</a>
+    {% endif %}
+    <a class="btn" href="/lohn/lohnkonto?jahr={{ year }}">Lohnkonto {{ year }}</a>
+  </div>
+</div>
+{% if m.hinweise %}<div class="alert warn">
+  <strong>Vor dem Einreichen prüfen</strong>
+  <ul>{% for h in m.hinweise %}<li>{{ h }}</li>{% endfor %}</ul>
+</div>{% endif %}
+{% if not m.personen %}
+<div class="panel"><p class="muted" style="padding: 16px">Keine abgeschlossenen Lohnabrechnungen {{ year }}.</p></div>
+{% else %}
+<div class="grid2 even">
+  <div class="panel"><header><h2>Ausgleichskasse</h2><span class="hint">AHV/IV/EO · ALV · FAK</span></header>
+    <div class="tablewrap"><table class="ledger"><tbody>
+      <tr><td>AHV-Lohnsumme</td><td class="right num">{{ m.ausgleichskasse.ahv_lohn|chf }}</td></tr>
+      <tr><td>ALV-Lohnsumme</td><td class="right num">{{ m.ausgleichskasse.alv_lohn|chf }}</td></tr>
+      <tr><td>FAK-Lohnsumme</td><td class="right num">{{ m.ausgleichskasse.fak_lohn|chf }}</td></tr>
+      <tr><td>Ausbezahlte Kinderzulagen</td><td class="right num">{{ m.ausgleichskasse.kinderzulagen|chf }}</td></tr>
+      <tr class="total"><td>Saldo Beiträge abzüglich Zulagen</td><td class="right num">{{ m.ausgleichskasse.saldo|chf }}</td></tr>
+    </tbody></table></div></div>
+  <div class="panel"><header><h2>Versicherungen</h2><span class="hint">Lohnsummen</span></header>
+    <div class="tablewrap"><table class="ledger"><tbody>
+      <tr><td>UVG-Lohn BU (max. CHF {{ m.hoechstlohn|chf }} pro Person)</td><td class="right num">{{ m.uvg.uvg_lohn|chf }}</td></tr>
+      <tr><td>UVG-Lohn NBU</td><td class="right num">{{ m.uvg.nbu_lohn|chf }}</td></tr>
+      <tr><td>KTG-Lohn</td><td class="right num">{{ m.ktg.ktg_lohn|chf }}</td></tr>
+      <tr><td>BVG-Beiträge AN + AG</td><td class="right num">{{ (m.bvg.beitraege.an + m.bvg.beitraege.ag)|chf }}</td></tr>
+      <tr><td>Quellensteuer</td><td class="right num">{{ m.quellensteuer.total|chf }}</td></tr>
+    </tbody></table></div></div>
+</div>
+{% for t in tables %}
+<div class="panel"><header><h2>{{ t.titel }}</h2></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr>{% for h in t.kopf %}<th class="{{ 'right' if t.zeilen and t.zeilen[0][loop.index0] is number }}">{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in t.zeilen %}<tr class="row {{ 'total' if loop.index0 in t.totals }}">{% for v in r %}{% if v is number %}<td class="right num">{{ v|chf(true) }}</td>{% else %}<td>{{ v }}</td>{% endif %}{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endfor %}
+<p class="small muted">Gemeldet ist der Lohn, auf dem der Abzug gemacht wurde. Rentner-Freibetrag, Jugendliche und Höchstlohn rechnet die Lohnabrechnung nicht selbst; trifft ein Fall zu, steht er oben unter «Vor dem Einreichen prüfen». G. = Geschlecht (w/m, im Personalstamm erfassen).</p>
+{% endif %}
+{% endblock %}

@@ -1050,7 +1050,7 @@ async def qst_status(ui: UI, request: Request):
     return HTMLResponse(f'<div class="qstline info">{" · ".join(parts)}</div>')
 
 
-EMP_TEXT = ("vorname", "nachname", "strasse", "nr", "plz", "ort", "ahv_nr", "geburtsdatum", "eintritt", "austritt", "lohnart", "iban", "land")
+EMP_TEXT = ("vorname", "nachname", "strasse", "nr", "plz", "ort", "ahv_nr", "geburtsdatum", "geschlecht", "eintritt", "austritt", "lohnart", "iban", "land")
 # the Quellensteuer fields are read in mitarbeiter_speichern (_qst_from_form)
 EMP_NUM = ("monatslohn", "pensum", "stundenlohn", "standard_stunden", "vollzeit_stunden_woche", "bvg_betrag",
            "ag_bvg_betrag", "kinderzulagen", "qst_satz")
@@ -1094,15 +1094,59 @@ async def lohnkonto(ui: UI, request: Request):
     selected = int(request.query_params.get("jahr") or year)
     if selected != year:
         return RedirectResponse(f"/lohn/lohnkonto/{selected}/{nr}", status_code=303)
-    lk = payroll.lohnkonto(book, year, nr)
     emp = payroll.employee(book, nr)
     from .. import lohnausweis
     la = lohnausweis.annual_totals(book, year, nr)
     la_path = book.root / "lohnausweise" / str(year) / f"{nr}.pdf"
-    return ui.render(request, "lohnkonto.html", book=book, lk=lk, emp=emp, year=year, la=la,
-                     years=payroll_years(book, year),
-                     la_pdf=book.rel(la_path) if la_path.exists() else None,
-                     ag_order=payroll.AG_ORDER, ag_label=payroll.AG_LABEL)
+    return ui.render(request, "lohnkonto.html", book=book, lk=payroll.lohnkonto_matrix(book, year, nr), emp=emp,
+                     year=year, la=la, years=payroll_years(book, year), emps=payroll.employees(book),
+                     la_pdf=book.rel(la_path) if la_path.exists() else None)
+
+
+async def lohnkonto_firma(ui: UI, request: Request):
+    """Lohnkonto of the whole company; choosing a person leads to that person's Lohnkonto."""
+    book = ui.book()
+    q = request.query_params
+    year = int(q.get("jahr") or date.today().year)
+    bereich = q.get("bereich") or "firma"
+    if bereich != "firma":
+        return RedirectResponse(f"/lohn/lohnkonto/{year}/{bereich}", status_code=303)
+    return ui.render(request, "lohnkonto.html", book=book, lk=payroll.lohnkonto_matrix(book, year), emp=None,
+                     year=year, years=payroll_years(book, year), emps=payroll.employees(book))
+
+
+async def lohnmeldungen(ui: UI, request: Request):
+    from .. import lohnmeldung
+    book = ui.book()
+    year = int(request.query_params.get("jahr") or date.today().year - (date.today().month < 4))
+    m = lohnmeldung.jahresmeldung(book, year)
+    return ui.render(request, "lohnmeldungen.html", book=book, m=m, year=year, years=payroll_years(book, year),
+                     tables=lohnmeldung.meldung_tables(m))
+
+
+async def lohn_datei(ui: UI, request: Request):
+    """PDF/Excel/CSV of the Lohnkonto (art=lohnkonto, bereich=firma|M0001) or the Lohnmeldungen (art=meldungen)."""
+    from urllib.parse import quote
+    from .. import lohnmeldung
+    book = ui.book()
+    q = request.query_params
+    fmt, year = request.path_params["fmt"], int(q.get("jahr") or date.today().year)
+    if request.path_params["art"] not in ("lohnkonto", "meldungen") or fmt not in ("pdf", "xlsx", "csv"):
+        return PlainTextResponse("Nicht gefunden", status_code=404)
+    try:
+        if request.path_params["art"] == "meldungen":
+            name, data = await asyncio.to_thread(lohnmeldung.meldung_document, book, year, fmt)
+        else:
+            nr = q.get("bereich") or "firma"
+            name, data = await asyncio.to_thread(lohnmeldung.lohnkonto_document, book, year,
+                                                 None if nr == "firma" else nr, fmt)
+    except (BookError, ValueError) as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    media = {"pdf": "application/pdf", "csv": "text/csv; charset=utf-8",
+             "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}[fmt]
+    disposition = "inline" if fmt == "pdf" else "attachment"
+    return Response(data, media_type=media,
+                    headers={"Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(name)}"})
 
 
 async def lohnausweis_erstellen(ui: UI, request: Request):
@@ -2454,6 +2498,9 @@ def routes(ui: UI) -> list[Route]:
         Route("/lohn/qst-status", h(qst_status)),
         Route("/lohn/mitarbeiter/neu", h(mitarbeiter_speichern), methods=["POST"]),
         Route("/lohn/mitarbeiter/{nr:str}", h(mitarbeiter_speichern), methods=["POST"]),
+        Route("/lohn/lohnkonto", h(lohnkonto_firma)),
+        Route("/lohn/lohnmeldungen", h(lohnmeldungen)),
+        Route("/lohn/{art:str}/datei.{fmt:str}", h(lohn_datei)),
         Route("/lohn/lohnkonto/{jahr:int}/{nr:str}", h(lohnkonto)),
         Route("/lohn/lohnausweis/{jahr:int}/{nr:str}", h(lohnausweis_erstellen), methods=["POST"]),
         Route("/abschluss", h(abschluss)),

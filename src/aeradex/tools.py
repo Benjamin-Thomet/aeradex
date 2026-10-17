@@ -33,7 +33,9 @@ Regeln:
 - status() liefert revision. Bei Schreibtools mit expected_revision diesen Stand mitgeben; nach Konflikten neu lesen.
 - Bei Schreibtools mit idempotency_key einen eindeutigen Schlüssel verwenden und bei Timeout/Wiederholung beibehalten.
 - Kunden: vor add_customer mit customers() prüfen, ob es ihn schon gibt; fehlende oder falsche Angaben eines
-  bestehenden Kunden mit update_customer ergänzen, nie einen zweiten anlegen.
+  bestehenden Kunden mit update_customer ergänzen, nie einen zweiten anlegen. Was der Mensch über den Kunden sagt
+  und kein eigenes Feld hat (Objekt, Zugang/Schlüssel, Wünsche, wie erreichbar, wer ihn empfohlen hat …), nicht
+  weglassen, sondern in notizen bzw. notiz festhalten.
 - Beträge als Text mit Punkt: "1234.50". Datum als JJJJ-MM-TT.
 - MWST: status() nennt die mwst_methode. Bei "effektiv" und einem Beleg mit ausgewiesener MWST den Code mitgeben
   (V81/I81 Vorsteuer, U81 Umsatz …) und den BRUTTO-Betrag buchen; die Steuer wird automatisch abgespalten.
@@ -433,7 +435,7 @@ def _same_customer(book: Book, name: str, firma: str) -> list[str]:
 
 def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", plz: str = "", ort: str = "",
                  land: str = "CH", email: str = "", telefon: str = "", mobil: str = "", rechnung_an: str = "firma",
-                 trotzdem_neu: bool = False) -> dict:
+                 notizen: str = "", trotzdem_neu: bool = False) -> dict:
     """Kunde anlegen. Gibt es den Kunden schon (gleiche Firma bzw. gleicher Name), wird nichts angelegt:
     dann update_customer verwenden, um Angaben zu ergänzen oder zu korrigieren.
 
@@ -449,6 +451,8 @@ def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", pl
         telefon: Telefonnummer (Festnetz oder Geschäft), wie genannt.
         mobil: Mobile-/Natelnummer, wie genannt.
         rechnung_an: "firma" oder "person".
+        notizen: alles Weitere, das genannt wurde und kein eigenes Feld hat (Objekt/Baustelle, Zugang, Wünsche,
+            Erreichbarkeit, Herkunft des Kontakts …), in ganzen Sätzen; nichts Genanntes weglassen.
         trotzdem_neu: nur wenn der Mensch ausdrücklich einen zweiten Kunden gleichen Namens will (z.B. andere Filiale).
     """
     try:
@@ -459,12 +463,13 @@ def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", pl
         return {"ok": False, "fehler": f"Diesen Kunden gibt es schon: {', '.join(same)}. Angaben mit update_customer "
                                        "ergänzen oder korrigieren statt neu anlegen.", "vorhanden": same}
     return _call(api.customer_add, name=name, firma=firma, strasse=strasse, nr=nr, plz=plz, ort=ort,
-                 land=land, email=email, telefon=telefon, mobil=mobil, rechnung_an=rechnung_an)
+                 land=land, email=email, telefon=telefon, mobil=mobil, rechnung_an=rechnung_an,
+                 notizen=notizen.strip())
 
 
 def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str = "", nr: str = "", plz: str = "",
                     ort: str = "", land: str = "", email: str = "", telefon: str = "", mobil: str = "",
-                    rechnung_an: str = "", leeren: list[str] | None = None) -> dict:
+                    rechnung_an: str = "", notiz: str = "", leeren: list[str] | None = None) -> dict:
     """Angaben eines bestehenden Kunden ergänzen, korrigieren oder entfernen (nur die mitgegebenen Felder; leer =
     unverändert; was weg soll, in «leeren» nennen). Bereits ausgestellte Rechnungen behalten die Adresse, die beim
     Ausstellen galt; Offerten-Entwürfe mit update_quote(adresse_neu=True) nachführen.
@@ -482,6 +487,7 @@ def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str =
         telefon: Telefonnummer (Festnetz oder Geschäft).
         mobil: Mobile-/Natelnummer.
         rechnung_an: "firma" oder "person".
+        notiz: wird an die Notizen des Kunden angehängt (bestehende bleiben stehen): weitere Angaben ohne eigenes Feld.
         leeren: Felder, die entfernt werden sollen, z.B. ["name"] für eine Kontaktperson oder ["email"].
     """
     fields = {k: v for k, v in {"name": name, "firma": firma, "strasse": strasse, "nr": nr, "plz": plz, "ort": ort,
@@ -492,9 +498,19 @@ def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str =
         if key not in clearable:
             return {"ok": False, "fehler": f"«{key}» kann nicht geleert werden (möglich: {', '.join(sorted(clearable))})"}
         fields[key] = ""
-    if not fields:
+    notizen = None
+    if notiz.strip():
+        def current(b):
+            from . import invoices as inv
+            return inv.customer(b, nummer).get("_notizen", "")
+        try:
+            before = current(book()).strip()
+        except BookError as exc:
+            return {"ok": False, "fehler": str(exc)}
+        notizen = (before + "\n\n" if before else "") + notiz.strip() + "\n"
+    if not fields and notizen is None:
         return {"ok": False, "fehler": "Keine Änderung angegeben"}
-    return _call(api.customer_update, nummer, **fields)
+    return _call(api.customer_update, nummer, notizen=notizen, **fields)
 
 
 def invoices(status: str = "") -> list | dict:
@@ -1031,6 +1047,28 @@ def lohnausweis(jahr: int, mitarbeiter: str) -> dict:
     return _call(api.lohnausweis_create, jahr, mitarbeiter)
 
 
+def payroll_account(jahr: int, mitarbeiter: str = "") -> dict:
+    """Lohnkonto als Monatsmatrix (Lohnarten, Abzüge, Arbeitgeberbeiträge, Jahrestotal), nur abgeschlossene
+    Abrechnungen. Ohne mitarbeiter die ganze Firma.
+
+    Args:
+        jahr: Kalenderjahr.
+        mitarbeiter: z.B. "M0001"; leer = ganze Firma.
+    """
+    return _call(api.lohnkonto_firma, jahr, mitarbeiter or None)
+
+
+def wage_declarations(jahr: int) -> dict:
+    """Zahlen für die Jahres-Lohnmeldungen: Ausgleichskasse (AHV/IV/EO, ALV, FAK), UVG, KTG, BVG und
+    Quellensteuer, pro Person und total (nach Geschlecht), Abgleich mit der Buchhaltung und Prüfhinweise
+    (fehlende Angaben, Rentner, Jugendliche, Höchstlohn). Nur lesen; die Hinweise vor dem Einreichen klären.
+
+    Args:
+        jahr: Kalenderjahr.
+    """
+    return _call(api.lohnmeldungen, jahr)
+
+
 # ---------- chat only: let Claude look at a receipt ----------
 
 def read_inbox_file(datei: str) -> list[dict] | str:
@@ -1156,6 +1194,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
           book_bank_transaction, employees, payroll_run, payroll_payment_export, qst_sync, payslip, close_payroll, close_payslip, lohnausweis,
+          payroll_account, wage_declarations,
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
           closing_documents, mwst_details,
           period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year]

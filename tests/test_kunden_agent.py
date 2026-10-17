@@ -65,3 +65,16 @@ def test_customer_phone_numbers(tmp_path, monkeypatch):
     res = tools.update_customer(nr, mobil="078 111 22 33", leeren=["telefon"])
     assert res["ok"] and res["kunde"]["mobil"] == "078 111 22 33" and res["kunde"]["telefon"] == ""
     assert_clean(Book(b.root))
+
+
+def test_what_has_no_field_goes_to_the_notes(tmp_path, monkeypatch):
+    b = make_book(tmp_path)
+    monkeypatch.setenv("AERADEX_BUCH", str(b.root))
+    nr = tools.add_customer(name="Anna Meier", ort="Bern", notizen="Neubau Schlossweg 4, Schlüssel beim Nachbarn.")["kunde"]["nummer"]
+    assert tools.customer_details(nr)["notizen"].strip() == "Neubau Schlossweg 4, Schlüssel beim Nachbarn."
+    assert tools.update_customer(nr, notiz="Will helle Farbtöne, erreichbar ab 17 Uhr.")["ok"]
+    notes = tools.customer_details(nr)["notizen"]
+    assert "Schlüssel beim Nachbarn" in notes and "ab 17 Uhr" in notes                     # appended, nothing lost
+    assert tools.update_customer(nr, mobil="079 111 22 33")["ok"]
+    assert "ab 17 Uhr" in tools.customer_details(nr)["notizen"]                           # other changes keep them
+    assert_clean(Book(b.root))

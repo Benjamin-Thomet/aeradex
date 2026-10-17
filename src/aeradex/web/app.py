@@ -210,7 +210,9 @@ SECTIONS = [
         ("regeln", "Regeln", "/bank/regeln", ()), ("abstimmung", "Abstimmung", "/bank/abstimmung", ())]),
     ("lohn", "Lohn", "/lohn", "entwuerfe", "l", [
         ("lauf", "Lohnlauf", "/lohn", ()),
-        ("mitarbeiter", "Mitarbeitende", "/lohn/mitarbeiter", ("/lohn/lohnkonto", "/lohn/lohnausweis"))]),
+        ("mitarbeiter", "Mitarbeitende", "/lohn/mitarbeiter", ("/lohn/lohnausweis",)),
+        ("lohnkonto", "Lohnkonto", "/lohn/lohnkonto", ()),
+        ("meldungen", "Lohnmeldungen", "/lohn/lohnmeldungen", ())]),
     ("buchhaltung", "Buchhaltung", "/journal", "vorschlaege", "j", [
         ("journal", "Journal", "/journal", ()), ("vorschlaege", "Vorschläge", "/vorschlaege", (), "vorschlaege"),
         ("kontenplan", "Kontenplan", "/konten", ()), ("saldenliste", "Saldenliste", "/konten/saldenliste", ()),
