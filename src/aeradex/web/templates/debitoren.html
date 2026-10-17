@@ -20,11 +20,15 @@
 {% else %}
 <div class="panel">
   {% if rows %}
-  <div class="tablewrap"><table class="ledger">
+  <div class="filters"><input class="input search" type="search" id="q" name="q" value="{{ q }}" autocomplete="off"
+      data-filter="#rechnungen" placeholder="Suchen: Kunde, Nummer, Betrag, Text der Rechnung …  ( / )" aria-label="Rechnungen suchen">
+    <span class="small muted" data-filter-count></span></div>
+  <div class="empty" data-filter-empty hidden>Keine Rechnung gefunden{% if status != 'alle' %} unter «{{ {"offen": "Offen", "bezahlt": "Bezahlt", "teilbezahlt": "Teilbezahlt", "storniert": "Storniert"}[status] }}». <a class="link" data-filter-link href="/debitoren?status=alle">In allen Rechnungen suchen</a>{% else %}.{% endif %}</div>
+  <div class="tablewrap"><table class="ledger" id="rechnungen">
     <thead><tr><th>Rechnung</th><th>Datum</th><th>Kunde</th><th class="right">Total</th><th class="right">Offen</th><th>Status</th></tr></thead>
     <tbody>
     {% for r in rows %}
-      <tr class="row"><td><a class="beleg" href="/debitoren/rechnung/{{ r.nummer }}">{{ r.nummer }}</a></td><td class="num">{{ r.datum|datum }}</td><td>{{ r.name }}</td>
+      <tr class="row" data-suche="{{ r.suche }}"><td><a class="beleg" href="/debitoren/rechnung/{{ r.nummer }}">{{ r.nummer }}</a></td><td class="num">{{ r.datum|datum }}</td><td>{{ r.name }}</td>
         <td class="right num">{% if r.waehrung and r.waehrung != 'CHF' %}<span class="small muted">{{ r.waehrung }}</span> {% endif %}{{ r.total|chf }}</td><td class="right num">{{ r.offen|chf(true) }}</td>
         <td>{{ status_pill(r.status) }}{% if r.status in ('offen','teilbezahlt') and r.faellig < today().isoformat() %} <span class="pill red">überfällig</span>{% endif %}</td></tr>
     {% endfor %}

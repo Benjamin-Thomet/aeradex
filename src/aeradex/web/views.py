@@ -20,7 +20,7 @@ from .. import api, check as checks, invoices, jahreswechsel, journal, payroll, 
 from ..book import Book, BookError
 from ..files import FormatError, parse_amount, parse_date
 from ..ledger import BalanceEngine, account_ledger, movements, resolve_period, trial_balance
-from .app import UI, acct, act, done, fail
+from .app import UI, acct, act, datum, done, fail
 
 ZERO = Decimal("0")
 QUELLEN = {"": "Alle Quellen", "manuell": "Manuell", "rechnung": "Rechnungen", "zahlung": "Zahlungen",
@@ -670,11 +670,40 @@ async def debitoren(ui: UI, request: Request):
     wanted = VERKAUF_TABS.get(status)
     rows = [r for r in api.invoice_list(book) if wanted is None or r["status"] in wanted] if status != "entwurf" else []
     rows.sort(key=lambda r: r["nummer"], reverse=True)
+    metas = invoices.invoices(book) if rows else {}
+    for r in rows:
+        r["suche"] = invoice_search_text(r, metas.get(r["nummer"], {}))
     ar = invoices.aged_receivables(book)
     from .. import erfassung, jev
     return ui.render(request, "debitoren.html", book=book, rows=rows, status=status, ar=ar,
-                     drafts=drafts, dv=erfassung.value,
+                     q=request.query_params.get("q", ""), drafts=drafts, dv=erfassung.value,
                      ocr=bool(erfassung.ocr_languages()), jev=jev.config(book))
+
+
+def _amount_words(value) -> list[str]:
+    """An amount as people type it: 1920, 1920.00, 1'920.00."""
+    if value in (None, ""):
+        return []
+    v = Decimal(str(value))
+    return [f"{v:.2f}", f"{v:,.2f}".replace(",", "'")] + ([f"{v:.0f}"] if v == v.to_integral_value() else [])
+
+
+def invoice_search_text(row: dict, meta: dict) -> str:
+    """Everything the invoice list search looks in: number, customer, dates, amounts, reference, the
+    invoice text and every position."""
+    an = meta.get("an") or {}
+    parts = [row.get("nummer"), row.get("kunde"), row.get("name"), an.get("zusatz"), an.get("ort"), row.get("status"),
+             row.get("referenz"), row.get("extern"), meta.get("_text"),
+             *(datum(row.get(k)) for k in ("datum", "faellig") if row.get(k)),
+             *_amount_words(row.get("total")),
+             *(str(p.get("text") or "") for p in meta.get("positionen") or [])]
+    return " ".join(str(x) for x in parts if x)
+
+
+def customer_search_text(nr: str, c: dict) -> str:
+    a = c.get("adresse") or {}
+    return " ".join(str(x) for x in (nr, c.get("firma"), c.get("name"), a.get("strasse"), a.get("nr"), a.get("plz"),
+                                     a.get("ort"), c.get("email"), c.get("_notizen")) if x)
 
 
 async def mahnungen_page(ui: UI, request: Request):
@@ -811,7 +840,8 @@ async def kunden(ui: UI, request: Request):
         states[meta.get("kunde")]["anzahl"] += 1
         states[meta.get("kunde")]["offen"] += st["offen"]
     return ui.render(request, "kunden.html", book=book, customers=custs, states=states,
-                     edit=request.query_params.get("edit"))
+                     suche={nr: customer_search_text(nr, c) for nr, c in custs.items()},
+                     q=request.query_params.get("q", ""), edit=request.query_params.get("edit"))
 
 
 async def kunde_speichern(ui: UI, request: Request):

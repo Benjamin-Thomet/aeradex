@@ -68,7 +68,38 @@
       $$("[data-show]", form).forEach(el => { el.hidden = el.dataset.show !== radio.value; });
     }));
     $$("form", root).forEach(f => f.addEventListener("input", () => { f.dataset.dirty = "1"; }));
+    $$("input[data-filter]", root).forEach(bindFilter);
   }
+  // ---- instant list search: every word must appear in a row's data-suche (or its text) ----
+  const fold = v => String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  function bindFilter(input) {
+    const table = $(input.dataset.filter);
+    if (!table) return;
+    const panel = input.closest(".panel") || document;
+    const rows = $$("tbody tr.row", table).map(tr => ({tr, hay: fold(tr.dataset.suche || tr.textContent)}));
+    const count = $("[data-filter-count]", panel), empty = $("[data-filter-empty]", panel), link = $("[data-filter-link]", panel);
+    const apply = () => {
+      const words = fold(input.value).split(/\s+/).filter(Boolean);
+      let shown = 0;
+      for (const r of rows) {
+        const hit = words.every(w => r.hay.includes(w));
+        r.tr.hidden = !hit;
+        if (hit) shown++;
+      }
+      table.closest(".tablewrap").hidden = !shown;
+      if (empty) empty.hidden = !!shown;
+      if (count) count.textContent = words.length ? `${shown} von ${rows.length}` : "";
+      if (link) link.href = "/debitoren?status=alle&q=" + encodeURIComponent(input.value.trim());
+      // the URL keeps the search: a live refresh, the back button or a shared link show the same list
+      const url = new URL(location.href);
+      if (input.value.trim()) url.searchParams.set("q", input.value.trim()); else url.searchParams.delete("q");
+      history.replaceState(history.state, "", url);
+    };
+    input.addEventListener("input", apply);
+    input.addEventListener("keydown", e => { if (e.key === "Escape" && input.value) { input.value = ""; apply(); } });
+    if (input.value) apply();
+  }
+
   function bindRemove(list) {
     $$("[data-removerow]", list).forEach(b => { b.onclick = () => { b.closest(".splitrow, .posrow").remove(); list.dispatchEvent(new Event("input", { bubbles: true })); }; });
   }
@@ -227,7 +258,7 @@
   // only typed, unsaved text blocks a refresh; a focused file picker, checkbox or untouched field does not
   function typing() {
     const el = document.activeElement;
-    if (!el || !el.matches("textarea, select, input:not([type=file]):not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]):not([type=hidden])")) return false;
+    if (!el || el.matches("[data-filter]") || !el.matches("textarea, select, input:not([type=file]):not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]):not([type=hidden])")) return false;
     if (el.tagName === "SELECT") return [...el.options].some(o => o.selected !== o.defaultSelected);
     return el.value !== el.defaultValue;
   }

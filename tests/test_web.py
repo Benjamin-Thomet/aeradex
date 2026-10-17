@@ -289,6 +289,20 @@ def test_settings_jev_key_never_in_book(client, root):
     assert jev.api_key() == ("", "")
 
 
+def test_search_fields_for_invoices_and_customers(client, root):
+    import html
+    page = client.get("/debitoren?status=alle&q=prozesse").text
+    assert 'data-filter="#rechnungen"' in page and 'value="prozesse"' in page
+    rows = [html.unescape(r) for r in __import__("re").findall(r'<tr class="row" data-suche="([^"]*)"', page)]
+    hit = next(r for r in rows if r.startswith("R-2026-0001 "))
+    for word in ("Beratung Buchhaltungsprozesse", "Spesenpauschale", "2000.00", "2'000.00", "10.02.2026", "K0001"):
+        assert word in hit, word
+    page = client.get("/debitoren/kunden").text
+    assert 'data-filter="#kunden"' in page
+    rows = [html.unescape(r) for r in __import__("re").findall(r'<tr class="row" data-suche="([^"]*)"', page)]
+    assert any("Marktgasse" in r and "3011" in r and "Bern" in r for r in rows)
+
+
 def test_settings_logo_in_letterhead(client, root):
     from aeradex import api, invoices, pdf
     png = _tiny_png()

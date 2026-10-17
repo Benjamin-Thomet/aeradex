@@ -22,11 +22,15 @@
 <div class="topbar"><div><h1>Debitoren</h1><div class="sub">{{ customers|length }} Kunden</div></div></div>
 <div class="panel">
   {% if customers %}
-  <div class="tablewrap"><table class="ledger">
+  <div class="filters"><input class="input search" type="search" id="q" name="q" value="{{ q }}" autocomplete="off"
+      data-filter="#kunden" placeholder="Suchen: Name, Firma, Strasse, Ort, E-Mail, Notizen …  ( / )" aria-label="Kunden suchen">
+    <span class="small muted" data-filter-count></span></div>
+  <div class="empty" data-filter-empty hidden>Kein Kunde gefunden.</div>
+  <div class="tablewrap"><table class="ledger" id="kunden">
     <thead><tr><th>Nr.</th><th>Kunde</th><th>Ort</th><th class="right">Rechnungen</th><th class="right">Offen</th><th></th></tr></thead>
     <tbody>
     {% for nr, c in customers.items() %}
-      <tr class="row"><td class="acc">{{ nr }}</td><td><strong>{{ c.firma or c.name }}</strong>{% if c.firma %}<br><span class="small muted">{{ c.name }}</span>{% endif %}</td><td>{{ (c.adresse or {}).ort }}</td>
+      <tr class="row" data-suche="{{ suche[nr] }}"><td class="acc">{{ nr }}</td><td><strong>{{ c.firma or c.name }}</strong>{% if c.firma %}<br><span class="small muted">{{ c.name }}</span>{% endif %}</td><td>{{ (c.adresse or {}).ort }}</td>
         <td class="right num">{{ states[nr].anzahl }}</td><td class="right num">{{ states[nr].offen|chf(true) }}</td>
         <td class="right"><span class="rowactions"><a class="btn small" href="/debitoren/neu?kunde={{ nr }}">Rechnung</a><a class="btn small ghost" href="/debitoren/kunden?edit={{ nr }}#edit">Bearbeiten</a></span></td></tr>
       {% if edit == nr %}<tr><td colspan="6" id="edit" style="padding:0">{{ kundenform(c, "/debitoren/kunden/" ~ nr) }}</td></tr>{% endif %}
