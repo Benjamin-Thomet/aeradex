@@ -50,7 +50,9 @@ Ordner), danach `systemctl --user enable --now aeradex-telegram`.
 
 - **Text:** «Welche Rechnungen sind überfällig?», «Offerte für K0001: 8 Stunden Malerarbeiten à 95 Franken»,
   «Stell Kunde AG die Rechnung über die Offerte O-2026-003».
-- **Sprachnachricht:** wird mit ElevenLabs Scribe transkribiert und wie Text behandelt.
+- **Sprachnachricht:** wird abgeschrieben und wie Text behandelt: mit ElevenLabs Scribe, wenn `ELEVENLABS_API_KEY`
+  gesetzt ist, sonst mit dem Sprachmodell des Agenten (Gemini, `AERADEX_OPENAI_…`). Schweizerdeutsch kommt als
+  Hochdeutsch an. Was verstanden wurde, steht zuerst im Chat («🎙 …»).
 - **Foto/PDF:** landet in `inbox/`, wird als Belegentwurf angelegt und kontiert. Gebucht wird erst nach deiner
   Freigabe in aeradex.
 - **Anrufen:** Menü-Knopf im Chat oder `/anrufen`. Das funktioniert in Telegram auf dem Handy; Telegram Desktop

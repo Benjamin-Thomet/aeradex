@@ -13,7 +13,7 @@ from aeradex.book import Book, BookError
 import json
 from importlib import resources
 
-from aeradex_anruf import actions, elevenlabs, gateway
+from aeradex_anruf import actions, elevenlabs, gateway, transkript
 from aeradex_anruf.agent import Registry, RemoteAgent, make_agent, speakable as _speakable
 from aeradex_anruf.config import Config
 from starlette.requests import Request
@@ -215,12 +215,18 @@ class TelegramBot:
                 log.warning("TTS: %s", exc)
 
     def on_voice(self, chat_id: int, voice: dict) -> None:
-        if not self.cfg.elevenlabs_key:
-            self.bot.send_text(chat_id, "Sprachnachrichten brauchen ELEVENLABS_API_KEY.")
+        if not transkript.available(self.cfg):
+            self.bot.send_text(chat_id, "Sprachnachrichten sind noch nicht eingerichtet (ElevenLabs oder Gemini). "
+                                        "Schreib mir solange.")
             return
         self.bot.typing(chat_id)
         audio, name = self.bot.download(voice["file_id"])
-        text = elevenlabs.transcribe(self.cfg, audio, name)
+        try:
+            text = transkript.transcribe(self.cfg, audio, name)
+        except transkript.TranscriptionError as exc:
+            log.warning("Sprachnachricht: %s", exc)
+            self.bot.send_text(chat_id, "Die Sprachnachricht konnte ich nicht abhören. Versuch es nochmals oder schreib mir.")
+            return
         if not text:
             self.bot.send_text(chat_id, "Ich habe nichts verstanden.")
             return

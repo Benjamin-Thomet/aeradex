@@ -242,3 +242,49 @@ def test_message_during_warm_up_waits_instead_of_refusing(book, cfg, monkeypatch
     monkeypatch.setattr(type(agent), "ask", lambda self, prompt, on_event=None: f"Hoi! ({prompt})")
     tg.handle({"message": {"from": {"id": USER}, "chat": {"id": USER, "type": "private"}, "text": "hallo"}})
     assert fake.sent[-1][1] == "Hoi! (hallo)"
+
+
+def test_voice_note_via_gemini_without_elevenlabs(book, cfg, monkeypatch):
+    from dataclasses import replace
+
+    from aeradex_anruf import transkript
+    monkeypatch.setenv("AERADEX_OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+    monkeypatch.setenv("AERADEX_OPENAI_API_KEY", "gem-key")
+    monkeypatch.setenv("AERADEX_OPENAI_MODEL", "gemini-test")
+    seen = {}
+
+    def fake_post(url, headers, payload, model):
+        seen["url"], seen["headers"] = url, headers
+        seen["inline"] = payload["contents"][0]["parts"][1]["inline_data"]
+        return {"candidates": [{"content": {"parts": [{"text": "Wie viel ist auf der Bank?\n"}]}}]}
+    monkeypatch.setattr(transkript, "_post", fake_post)
+    tg, fake = _bot(book, replace(cfg, elevenlabs_key=""))
+    fake.download = lambda file_id: (b"OggS-voice", "file_7.oga")
+    monkeypatch.setattr(RemoteAgent, "ask", lambda self, prompt, on_event=None: f"Antwort auf: {prompt}")
+    tg.handle({"message": {"from": {"id": USER}, "chat": {"id": USER, "type": "private"},
+                           "voice": {"file_id": "v1", "duration": 3}}})
+    assert seen["url"] == "https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent"
+    assert seen["headers"] == {"x-goog-api-key": "gem-key"}
+    assert seen["inline"]["mime_type"] == "audio/ogg"
+    assert [t for _, t, _ in fake.sent] == ["🎙 «Wie viel ist auf der Bank?»", "Antwort auf: Wie viel ist auf der Bank?"]
+
+    monkeypatch.setattr(transkript, "_post", lambda *a: {"candidates": [{"content": {"parts": [{"text": "-"}]}}]})
+    tg.handle({"message": {"from": {"id": USER}, "chat": {"id": USER, "type": "private"}, "voice": {"file_id": "v2"}}})
+    assert fake.sent[-1][1] == "Ich habe nichts verstanden."
+
+    def broken(*a):
+        raise transkript.TranscriptionError("gemini-test: HTTP 500")
+    monkeypatch.setattr(transkript, "_post", broken)
+    tg.handle({"message": {"from": {"id": USER}, "chat": {"id": USER, "type": "private"}, "voice": {"file_id": "v3"}}})
+    assert "nicht abhören" in fake.sent[-1][1]
+
+
+def test_voice_note_without_any_transcriber(book, cfg, monkeypatch):
+    from dataclasses import replace
+
+    from aeradex.web import chat
+    monkeypatch.setattr(chat, "openai_settings", lambda: None)
+    tg, fake = _bot(book, replace(cfg, elevenlabs_key=""))
+    fake.download = lambda file_id: pytest.fail("nothing to transcribe with")
+    tg.handle({"message": {"from": {"id": USER}, "chat": {"id": USER, "type": "private"}, "voice": {"file_id": "v1"}}})
+    assert "noch nicht eingerichtet" in fake.sent[-1][1]
