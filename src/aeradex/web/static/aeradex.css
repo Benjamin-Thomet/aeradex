@@ -470,11 +470,24 @@ form.suggest > div { min-width: 0; }
 .glied-abschnitt { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 6px; }
 .glied-abschnitt:first-child { margin-top: 0; }
 .dropzone { text-align: left; border: 1px solid var(--rule); border-radius: 10px; padding: 6px 8px; margin-bottom: 8px; transition: background .15s var(--ease), border-color .15s var(--ease); }
-.dropzone.leer { border-style: dashed; }
+.dropzone.leer { border-style: dashed; padding: 3px 8px; margin-bottom: 5px; }
+.dropzone.leer .dz-head { font-weight: 500; color: var(--muted); padding: 1px 0; }
+.dropzone.leer .dz-leer { display: none; }
+body[data-dragseite] .dropzone.leer .dz-leer { display: block; }
 .dropzone.over { background: var(--info-soft); border-color: var(--info); }
 body[data-dragseite="bilanz"] .dropzone[data-seite="erfolg"],
 body[data-dragseite="erfolg"] .dropzone[data-seite="bilanz"] { opacity: .35; }
 .dz-head { display: flex; justify-content: space-between; gap: 10px; font-weight: 600; font-size: 13px; padding: 2px 0 4px; }
+.glied-paar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; margin-bottom: 18px; }
+.glied-vorschau { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; background: var(--sheet); box-shadow: var(--shadow); border-radius: var(--r); padding: 14px 18px; }
+.glied-vorschau .panel { box-shadow: none; background: transparent; border: 0; margin: 0 0 14px; }
+.glied-vorschau-kopf { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; margin-bottom: 4px; }
+.flash, .flash td { animation: flash 2.4s var(--ease); }
+@keyframes flash { 0%, 30% { background: var(--info-soft); } 100% { background: transparent; } }
+@media (max-width: 900px) { .glied-paar { grid-template-columns: minmax(0, 1fr); } .glied-vorschau { position: static; max-height: none; } }
+.glied.mit-vorjahr .dz-konto { grid-template-columns: 14px minmax(0, 1fr) auto auto; }
+.glied.mit-vorjahr .dz-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
+.glied .num.muted { min-width: 84px; text-align: right; }
 .dz-konto { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; padding: 4px 6px; border-radius: 8px; font-size: 13px; }
 .dz-konto[draggable="true"] { cursor: grab; }
 .dz-konto[draggable="true"]:hover { background: var(--hover); }
@@ -484,6 +497,7 @@ body[data-dragseite="erfolg"] .dropzone[data-seite="bilanz"] { opacity: .35; }
 .dz-move { grid-column: 2 / -1; display: flex; gap: 6px; align-items: center; min-width: 0; }
 .dz-move form:first-child { flex: 1; min-width: 0; }
 .dz-move select { width: 100%; min-width: 0; }
+.dz-negativ form { display: flex; gap: 6px; align-items: center; } .dz-negativ label { white-space: nowrap; }
 .dz-leer { padding: 4px 6px; }
 @media (hover: hover) and (pointer: fine) { .dz-move { display: none; } .dz-konto:hover .dz-move, .dz-konto:focus-within .dz-move { display: flex; } }
 @media (max-width: 720px) { .jr-doc { padding: 22px 16px; } .jr-signrow { grid-template-columns: 1fr; } }

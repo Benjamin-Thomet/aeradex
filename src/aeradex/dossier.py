@@ -399,7 +399,7 @@ def _jahresrechnung(k: Kontext, fmt: str) -> list[tuple[str, bytes]]:
     from . import statements
     st = statements.year_end_statement(k.book, k.year, k.engine)
     if fmt == "pdf":
-        blocks = statements.parse_anhang(statements.anhang(k.book, k.year))
+        blocks = statements.anhang_blocks(k.book, k.year)
         return [(f"Jahresrechnung {k.year}.pdf", k.report(pdfmod.statement_pdf, k.book, st, blocks))]
     head = ["Position", "Art", str(k.year), str(k.year - 1)]
     bilanz = [[r["label"], "Aktiven/" + r["stil"], r["aktuell"], r["vorjahr"]] for r in st["aktiven"]] + \

@@ -600,7 +600,7 @@ def statement(book: Book, jahr: int | None = None, pdf_out: str | None = None, a
     st = statements.year_end_statement(book, year)
     out = jsonable(st)
     if pdf_out or als_pdf:
-        blocks = statements.parse_anhang(statements.anhang(book, year))
+        blocks = statements.anhang_blocks(book, year)
         out["pdf"] = _write_report(book, pdf_out, pdf.statement_pdf(book, st, blocks), f"Jahresrechnung {year}.pdf")
     return out
 
@@ -788,15 +788,19 @@ def _check_group(nr: str, klasse: str, gruppe: str) -> None:
         raise BookError(f"Konto {nr} ist {side} und kann nicht in die Gruppe «{statements.GROUP_LABEL[gruppe]}»")
 
 
+def _gliederung_open(book: Book, jahr: int | None) -> None:
+    lock = book.settings.sperre_bis
+    if jahr is not None and lock and lock >= date(int(jahr), 12, 31):
+        raise BookError(f"Das Jahr {jahr} ist gesperrt — die Gliederung seiner Jahresrechnung bleibt, wie sie ist")
+
+
 def account_group_set(book: Book, nr: str, gruppe: str = "", jahr: int | None = None) -> dict:
     """Put an account into another statement group of the same side (leer = back to the group of its number).
     The group is part of the chart, so it applies to every year; refused while `jahr` is locked, because a
     released Jahresrechnung must not change its look."""
     _guard(book)
     acct = book.account(nr)
-    lock = book.settings.sperre_bis
-    if jahr is not None and lock and lock >= date(int(jahr), 12, 31):
-        raise BookError(f"Das Jahr {jahr} ist gesperrt — die Gliederung seiner Jahresrechnung bleibt, wie sie ist")
+    _gliederung_open(book, jahr)
     target = gruppe or statements.default_group(nr, acct.klasse)
     _check_group(nr, acct.klasse, target)
     fixed = {book.settings.konto("jahresergebnis")} | {a.abschluss for a in book.accounts.values() if a.abschluss}
@@ -808,6 +812,39 @@ def account_group_set(book: Book, nr: str, gruppe: str = "", jahr: int | None = 
     book.save_accounts()
     return _done(book, f"Konto {nr} {acct.name} → {statements.GROUP_LABEL[target]}", [book.root / "kontenplan.yaml"],
                  konto=nr, gruppe=target)
+
+
+def account_negative_group_set(book: Book, nr: str, gruppe: str = "", jahr: int | None = None) -> dict:
+    """Where a balance-sheet account shows in a year its balance is on the other side, e.g. the bank in the
+    minus as a bank debt (no offsetting, Art. 958c Abs. 1 Ziff. 7 OR). Leer = it stays in its group."""
+    _guard(book)
+    acct = book.account(nr)
+    _gliederung_open(book, jahr)
+    if not acct.is_balance_sheet:
+        raise BookError(f"Konto {nr} ist ein Erfolgskonto — nur Bilanzkonten wechseln bei einem Minus die Seite")
+    if gruppe:
+        if gruppe not in statements.GROUP_LABEL or not statements.same_side(acct.klasse, gruppe):
+            raise BookError(f"«{gruppe}» ist keine Bilanzgruppe")
+        if gruppe == acct.gruppe:
+            gruppe = ""
+    if gruppe == acct.gruppe_negativ:
+        return {"ok": True, "konto": nr, "gruppe_negativ": gruppe, "unveraendert": True}
+    acct.gruppe_negativ = gruppe
+    book.save_accounts()
+    wo = statements.GROUP_LABEL[gruppe] if gruppe else "bleibt in der eigenen Gruppe"
+    return _done(book, f"Konto {nr} {acct.name} bei Minus → {wo}", [book.root / "kontenplan.yaml"],
+                 konto=nr, gruppe_negativ=gruppe)
+
+
+def anhang_enable(book: Book, an: bool) -> dict:
+    """Print the Anhang in the Jahresrechnung or leave it out (only an Einzelunternehmen may, Art. 959c Abs. 3 OR)."""
+    _guard(book)
+    if not an and book.settings.rechtsform_art != "einzelfirma":
+        raise BookError("Ohne Anhang geht es nur beim Einzelunternehmen — Gesellschaften brauchen ihn (Art. 959c OR)")
+    book.settings.data.setdefault("abschluss", {})["anhang"] = bool(an)
+    book.save_settings()
+    return _done(book, "Anhang in der Jahresrechnung " + ("eingeschaltet" if an else "weggelassen"),
+                 [book.root / "aeradex.yaml"])
 
 
 def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | None = None,

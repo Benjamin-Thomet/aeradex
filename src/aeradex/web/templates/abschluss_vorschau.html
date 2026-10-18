@@ -18,27 +18,33 @@
 {% if st.differenz|float %}<div class="alert error">Die Bilanz geht nicht auf: Differenz {{ st.differenz|chf }}.</div>{% endif %}
 
 {% if gliederung %}
-<div class="alert info">Ein Konto in eine andere Gruppe ziehen, oder die Gruppe in der Liste beim Konto wählen. Die Gliederung gehört
-  zum Kontenplan und gilt für alle offenen Jahre; die Summen hier und in der Vorschau folgen sofort.{% if locked %}
+<div class="alert info">Ein Konto in eine andere Gruppe ziehen, oder die Gruppe in der Liste beim Konto wählen; daneben steht
+  die Jahresrechnung, wie sie danach aussieht. Die Gliederung gehört zum Kontenplan und gilt für alle offenen Jahre — auch die
+  Vorjahresspalte wird so gezeigt, damit beide Jahre vergleichbar bleiben.{% if prior_locked %} Der Abschluss {{ year - 1 }} ist
+  gesperrt und wurde mit der damaligen Gliederung freigegeben: eine wesentliche Umgliederung gegenüber dem Vorjahr gehört in den
+  Anhang.{% endif %}{% if locked %}
   <strong>{{ year }} ist gesperrt — die Gliederung dieses Jahres lässt sich nicht mehr ändern.</strong>{% endif %}</div>
 <div class="glied-tools small"><a class="link" href="/abschluss/vorschau?jahr={{ year }}&gliederung=1{{ '' if alle else '&alle=1' }}">{{ 'Nur Konten mit Saldo zeigen' if alle else 'Alle Konten zeigen (auch ohne Saldo)' }}</a></div>
-<div class="grid2 even glied">
 {% for seite, titel in [("bilanz", "Bilanz"), ("erfolg", "Erfolgsrechnung")] %}
+<div class="glied-paar glied{{ ' mit-vorjahr' if view.prior }}">
   <div class="panel">
-    <header><h2>{{ titel }}</h2><span class="hint">{{ 'Aktiven positiv, Passiven positiv' if seite == 'bilanz' else 'Ertrag positiv, Aufwand negativ' }}</span></header>
+    <header><h2>{{ titel }} · Gliederung</h2><span class="hint">{% if view.prior %}{{ year }} · {{ year - 1 }}{% else %}{{ 'Aktiven positiv, Passiven positiv' if seite == 'bilanz' else 'Ertrag positiv, Aufwand negativ' }}{% endif %}</span></header>
     <div class="body">
     {% set ns = namespace(abschnitt="") %}
     {% for grp in layout[seite] %}
       {% if seite == "bilanz" and grp.abschnitt != ns.abschnitt %}<div class="glied-abschnitt">{{ grp.abschnitt }}</div>{% set ns.abschnitt = grp.abschnitt %}{% endif %}
       <div class="dropzone{{ ' leer' if not grp.konten }}" data-dropgruppe="{{ grp.gruppe }}" data-seite="{{ seite }}" data-jahr="{{ year }}">
-        <div class="dz-head"><span>{{ grp.label }}</span><span class="num">{{ grp.aktuell|chf if grp.konten }}</span></div>
-        {% for k in grp.konten %}{% set movable = not k.fest and not locked %}
-        <div class="dz-konto{{ ' fest' if k.fest }}" data-konto="{{ k.konto }}" data-seite="{{ seite }}" {% if movable %}draggable="true"{% endif %}>
+        <div class="dz-head"><span>{{ grp.label }}</span><span class="num">{{ grp.aktuell|chf if grp.konten }}</span>{% if view.prior %}<span class="num muted">{{ grp.vorjahr|chf if grp.konten }}</span>{% endif %}</div>
+        {% for k in grp.konten %}{% set movable = not k.fest and not locked and not k.gespiegelt %}
+        <div class="dz-konto{{ ' fest' if k.fest or k.gespiegelt }}" {% if not k.gespiegelt %}data-konto="{{ k.konto }}"{% endif %} data-seite="{{ seite }}" {% if movable %}draggable="true"{% endif %}>
           <span class="grip" aria-hidden="true">{{ '⠿' if movable else '' }}</span>
           <span class="dz-name"><a class="acc link" href="/konten/{{ k.konto }}?jahr={{ year }}">{{ k.konto }}</a> {{ k.name }}
-            {% if k.verschoben %}<span class="pill info" title="Standard nach Kontonummer: {{ k.standard_label }}">verschoben</span>{% endif %}
+            {% if k.gespiegelt %}<span class="pill info" title="Das Konto gehört zu «{{ k.heimat }}»; in diesem Jahr steht sein Saldo auf der Gegenseite und darum hier">im Minus</span>
+            {% elif k.verschoben %}<span class="pill info" title="Standard nach Kontonummer: {{ k.standard_label }}">verschoben</span>{% endif %}
+            {% if k.gegenseite %}<span class="pill warn" title="Der Saldo steht auf der Gegenseite (z.B. Bank im Minus). Aktiven und Schulden dürfen nicht verrechnet werden (Art. 958c Abs. 1 Ziff. 7 OR): unter «Bei Minus» die Gruppe wählen, in der es dann steht.">Gegenseite</span>{% endif %}
+            {% if k.negativ and not k.gespiegelt %}<span class="pill muted" title="Steht in einem Jahr mit Saldo auf der Gegenseite unter «{{ k.negativ_label }}»">bei Minus umgegliedert</span>{% endif %}
             {% if k.fest %}<span class="pill muted" title="Abschlusskonto des Eigenkapitals">fest</span>{% endif %}</span>
-          <span class="num">{{ k.aktuell|chf }}</span>
+          <span class="num">{{ k.aktuell|chf }}</span>{% if view.prior %}<span class="num muted">{{ k.vorjahr|chf }}</span>{% endif %}
           {% if movable %}
           <span class="dz-move">
             <form hx-post="/abschluss/gruppe" hx-trigger="change" hx-target="find .errors">
@@ -50,6 +56,17 @@
               <input type="hidden" name="konto" value="{{ k.konto }}"><input type="hidden" name="jahr" value="{{ year }}"><input type="hidden" name="gruppe" value="">
               <button class="btn small ghost" type="submit" title="Zurück zu «{{ k.standard_label }}»">↺ Standard</button>{{ errors() }}</form>{% endif %}
           </span>
+          {% if seite == "bilanz" and (k.gegenseite or k.negativ) %}
+          <span class="dz-move dz-negativ">
+            <form hx-post="/abschluss/gruppe" hx-trigger="change" hx-target="find .errors">
+              <input type="hidden" name="konto" value="{{ k.konto }}"><input type="hidden" name="jahr" value="{{ year }}">
+              <label class="small muted" for="neg-{{ k.konto }}">Bei Minus</label>
+              <select class="input small" name="negativ" id="neg-{{ k.konto }}">
+                <option value="">in der eigenen Gruppe lassen</option>
+                {% for code, label, kl in groups if kl in ('aktiv', 'passiv') and code != grp.gruppe %}<option value="{{ code }}" {{ 'selected' if code == k.negativ }}>{{ label }}</option>{% endfor %}
+              </select>{{ errors() }}</form>
+          </span>
+          {% endif %}
           {% endif %}
         </div>
         {% else %}<div class="dz-leer small muted">{{ 'leer' if locked else 'leer — Konto hierher ziehen' }}</div>{% endfor %}
@@ -57,8 +74,13 @@
     {% endfor %}
     </div>
   </div>
-{% endfor %}
+  <div class="glied-vorschau">
+    <div class="glied-vorschau-kopf small muted">So steht es in der Jahresrechnung</div>
+    {% if seite == "bilanz" %}{{ stmt("Aktiven", st.aktiven, st, view.prior) }}{{ stmt("Passiven", st.passiven, st, view.prior) }}
+    {% else %}{{ stmt("Erfolgsrechnung", st.erfolg, st, view.prior) }}{% endif %}
+  </div>
 </div>
+{% endfor %}
 
 {% else %}
 <article class="jr-doc">
@@ -70,7 +92,7 @@
       {% if view.ort %}<dt>Sitz</dt><dd>{{ view.ort }}</dd>{% endif %}
       {% if view.rechtsform %}<dt>Rechtsform</dt><dd>{{ view.rechtsform }}</dd>{% endif %}
       {% if view.uid %}<dt>UID</dt><dd>{{ view.uid }}</dd>{% endif %}
-      <dt>Inhalt</dt><dd>Bilanz · Erfolgsrechnung · Anhang{{ ' · Antrag über die Verwendung des Bilanzergebnisses' if g }}</dd>
+      <dt>Inhalt</dt><dd>Bilanz · Erfolgsrechnung{{ ' · Anhang' if anhang }}{{ ' · Antrag über die Verwendung des Bilanzergebnisses' if g }}</dd>
     </dl>
     {% if not locked %}<p class="small muted">Entwurf — das Geschäftsjahr ist noch nicht abgeschlossen.</p>{% endif %}
   </header>
@@ -89,6 +111,7 @@
     {{ ergebnis_tabelle(st) }}{% endif %}
   </section>
 
+  {% if anhang %}
   <section>
     <h3>Anhang zur Jahresrechnung {{ year }}</h3><p class="small muted">Angaben nach Art. 959c OR · <a class="link" href="/abschluss?jahr={{ year }}#anhang">Anhang bearbeiten</a></p>
     {% set ns = namespace(nr=0) %}
@@ -98,6 +121,10 @@
       {% else %}<p>{{ text }}</p>{% endif %}
     {% endfor %}
   </section>
+  {% else %}
+  <p class="small muted">Ohne Anhang: ein Einzelunternehmen darf ihn weglassen (Art. 959c Abs. 3 OR) ·
+    <a class="link" href="/abschluss?jahr={{ year }}#anhang">trotzdem beifügen</a></p>
+  {% endif %}
 
   {% if g %}
   <section>

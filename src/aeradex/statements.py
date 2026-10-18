@@ -134,10 +134,14 @@ def _members(book: Book, year: int, engine: BalanceEngine) -> dict[str, list[dic
     members: dict[str, list[dict]] = {}
     for nr, acct in sorted(book.accounts.items()):
         cur, pri = engine.balance(nr, year), engine.prior(nr, year)
-        code = _effective_group(acct, cur)
         standard = default_group(nr, acct.klasse)
-        members.setdefault(code, []).append({"konto": nr, "name": acct.name, "cur": cur, "pri": pri,
-                                             "standard": standard, "verschoben": acct.gruppe != standard})
+        base = {"konto": nr, "name": acct.name, "standard": standard, "verschoben": acct.gruppe != standard}
+        # each year's balance goes where its own sign puts it (gruppe_negativ), so a bank account in the plus
+        # last year and in the minus now shows under Flüssige Mittel for the Vorjahr and as a debt for this year
+        code_c = _effective_group(acct, cur if cur else pri)
+        code_p = _effective_group(acct, pri) if pri else code_c
+        for code, c, p in ([(code_c, cur, pri)] if code_c == code_p else [(code_c, cur, ZERO), (code_p, ZERO, pri)]):
+            members.setdefault(code, []).append({**base, "cur": c, "pri": p, "gespiegelt": code != acct.gruppe})
     return members
 
 
@@ -153,13 +157,25 @@ def layout(book: Book, year: int, seite: str, alle: bool = False, engine: Balanc
     for abschnitt, codes in SECTIONS[seite]:
         for code in codes:
             sign = 1 if GROUP_KLASSE[code] == "aktiv" else -1
-            konten = [{"konto": m["konto"], "name": m["name"], "aktuell": m["cur"] * sign, "vorjahr": m["pri"] * sign,
-                       "standard": m["standard"], "standard_label": GROUP_LABEL.get(m["standard"], m["standard"]),
-                       "verschoben": m["verschoben"], "fest": m["konto"] in fixed}
-                      for m in members.get(code, [])
-                      if alle or m["cur"] or m["pri"] or m["verschoben"]]
+            konten = []
+            for m in members.get(code, []):
+                if not (alle or m["cur"] or m["pri"] or (m["verschoben"] and not m["gespiegelt"])):
+                    continue
+                acct = book.accounts[m["konto"]]
+                flip = acct.gruppe_negativ if acct.gruppe_negativ in GROUP_LABEL else ""
+                wrong = acct.is_balance_sheet and any(
+                    (acct.klasse == "aktiv" and v < 0) or (acct.klasse == "passiv" and v > 0) for v in (m["cur"], m["pri"]))
+                konten.append({"konto": m["konto"], "name": m["name"], "aktuell": m["cur"] * sign, "vorjahr": m["pri"] * sign,
+                               "standard": m["standard"], "standard_label": GROUP_LABEL.get(m["standard"], m["standard"]),
+                               "verschoben": m["verschoben"], "fest": m["konto"] in fixed,
+                               # shown here only because its sign flipped: it lives in `heimat`
+                               "gespiegelt": m["gespiegelt"], "heimat": GROUP_LABEL.get(acct.gruppe, acct.gruppe),
+                               "negativ": flip, "negativ_label": GROUP_LABEL.get(flip, ""),
+                               # a balance on the other side (bank in the minus) without a group for it
+                               "gegenseite": wrong and not flip and not m["gespiegelt"]})
             out.append({"gruppe": code, "label": GROUP_LABEL[code], "abschnitt": abschnitt, "konten": konten,
-                        "aktuell": sum((k["aktuell"] for k in konten), ZERO)})
+                        "aktuell": sum((k["aktuell"] for k in konten), ZERO),
+                        "vorjahr": sum((k["vorjahr"] for k in konten), ZERO)})
     return out
 
 
@@ -365,6 +381,21 @@ def anhang(book: Book, year: int) -> str:
     if path.exists() and path.read_text(encoding="utf-8").strip():
         return path.read_text(encoding="utf-8")
     return default_anhang(book, year)
+
+
+def anhang_enabled(book: Book) -> bool:
+    """Whether the Jahresrechnung has an Anhang. Companies must (Art. 959c OR); an Einzelunternehmen that is not
+    bound to the rules for larger companies may leave it out (Art. 959c Abs. 3 OR), so it is off there unless
+    `abschluss.anhang` in aeradex.yaml turns it on."""
+    wanted = (book.settings.get("abschluss") or {}).get("anhang")
+    if wanted is not None:
+        return bool(wanted)
+    return book.settings.rechtsform_art != "einzelfirma"
+
+
+def anhang_blocks(book: Book, year: int) -> list[tuple[str, str]]:
+    """The Anhang as printed: nothing when the book leaves it out."""
+    return parse_anhang(anhang(book, year)) if anhang_enabled(book) else []
 
 
 def parse_anhang(text: str) -> list[tuple[str, str]]:

@@ -113,3 +113,70 @@ def test_vat_year_end_box_only_with_vat(tmp_path):
         page = c.get("/abschluss?jahr=2026").text
     assert "MWST-Jahresabschluss 2026" in page and "/mwst/abstimmung?jahr=2026" in page
     assert "/abschluss/unterlagen/mwst?jahr=2026&amp;format=pdf" in page or "/abschluss/unterlagen/mwst?jahr=2026&format=pdf" in page
+
+
+def test_a_sign_flip_between_the_years_puts_each_year_where_it_belongs(tmp_path):
+    """Bank in the minus at the end of 2026, in the plus in 2027: with «bei Minus → Bankverbindlichkeiten» the
+    Vorjahr column shows it as a debt and the current year as Flüssige Mittel — never a negative asset."""
+    b = make_book(tmp_path, eroeffnung={"1020": 5000, "2800": -5000}, git=True)
+    api.post_entry(Book(b.root), "2026-05-01", "6500", "1020", "6000", "Büro")
+    api.account_negative_group_set(Book(b.root), "1020", "verb_verzinsl_kf", 2026)
+    api.year_open(Book(b.root), 2027)
+    api.post_entry(Book(b.root), "2027-02-01", "1020", "3400", "2000", "Einnahme")
+    st = statements.year_end_statement(Book(b.root), 2027)
+    row = lambda side, code: next(r for r in st[side] if r.get("gruppe") == code)
+    assert (row("aktiven", "fluessige")["aktuell"], row("aktiven", "fluessige")["vorjahr"]) == (1000, 0)
+    assert (row("passiven", "verb_verzinsl_kf")["aktuell"], row("passiven", "verb_verzinsl_kf")["vorjahr"]) == (0, 1000)
+    tot = lambda side: next(r for r in st[side] if r["stil"] == "total")
+    assert tot("aktiven")["vorjahr"] == tot("passiven")["vorjahr"] and tot("aktiven")["aktuell"] == tot("passiven")["aktuell"]
+    lay = {g["gruppe"]: g for g in statements.layout(Book(b.root), 2027, "bilanz")}
+    home = next(k for k in lay["fluessige"]["konten"] if k["konto"] == "1020")
+    away = next(k for k in lay["verb_verzinsl_kf"]["konten"] if k["konto"] == "1020")
+    assert not home["gespiegelt"] and home["negativ"] == "verb_verzinsl_kf"
+    assert away["gespiegelt"] and away["vorjahr"] == 1000 and away["aktuell"] == 0
+    assert_clean(Book(b.root))
+
+
+def test_an_asset_in_the_minus_without_a_group_for_it_is_flagged(book):
+    api.post_entry(Book(book.root), "2026-04-01", "6500", "1020", "20000", "Grosser Einkauf")
+    k = next(k for g in statements.layout(Book(book.root), 2026, "bilanz") for k in g["konten"] if k["konto"] == "1020")
+    assert k["gegenseite"] and k["aktuell"] < 0
+    with pytest.raises(BookError, match="Erfolgskonto"):
+        api.account_negative_group_set(Book(book.root), "6500", "verb_ll", 2026)
+    api.account_negative_group_set(Book(book.root), "1020", "verb_verzinsl_kf", 2026)
+    k = next(k for g in statements.layout(Book(book.root), 2026, "bilanz") for k in g["konten"] if k["konto"] == "1020")
+    assert k["gespiegelt"] and not k["gegenseite"]
+    api.account_negative_group_set(Book(book.root), "1020", "", 2026)
+    assert Book(book.root).accounts["1020"].gruppe_negativ == ""
+
+
+def test_einzelfirma_leaves_the_anhang_out_unless_switched_on(tmp_path):
+    from aeradex import pdf
+    b = make_book(tmp_path, firma="Maler Muster", rechtsform="Einzelfirma", eroeffnung={"1020": 5000, "2800": -5000}, git=True)
+    assert statements.anhang_blocks(Book(b.root), 2026) == []
+    with pytest.raises(BookError, match="Einzelunternehmen"):
+        api.anhang_enable(Book(make_book(tmp_path / "g", git=True).root), False)
+    api.anhang_enable(Book(b.root), True)
+    assert statements.anhang_blocks(Book(b.root), 2026)[0] == ("heading", "Firma, Rechtsform und Sitz")
+    st = statements.year_end_statement(Book(b.root), 2026)
+    assert pdf.statement_pdf(Book(b.root), st, statements.anhang_blocks(Book(b.root), 2026))[:4] == b"%PDF"
+
+
+def test_side_by_side_and_the_anhang_switch_in_the_ui(tmp_path):
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+    from aeradex.web.app import create_app
+    b = make_book(tmp_path, firma="Maler Muster", rechtsform="Einzelfirma", eroeffnung={"1020": 5000, "2800": -5000}, git=True)
+    app = create_app(b.root, token="tok")
+    with TestClient(app) as c:
+        c.get("/?t=tok", follow_redirects=False)
+        assert "Anhang zur Jahresrechnung" not in c.get("/abschluss/vorschau").text
+        glied = c.get("/abschluss/vorschau?gliederung=1").text
+        assert glied.count('class="glied-vorschau"') == 2 and 'data-gruppe="fluessige"' in glied
+        h = {"X-CSRF": app.state.ui.csrf, "HX-Request": "true"}
+        assert c.post("/abschluss/anhang-an", headers=h, data={"jahr": "2026"}).status_code == 204
+        assert "Anhang zur Jahresrechnung" in c.get("/abschluss/vorschau").text
+        assert "Anhang weglassen" in c.get("/abschluss").text
+        r = c.post("/abschluss/gruppe", headers=h, data={"konto": "1020", "negativ": "verb_verzinsl_kf", "jahr": "2026"})
+        assert r.status_code == 204, r.text
+    assert Book(b.root).accounts["1020"].gruppe_negativ == "verb_verzinsl_kf"

@@ -67,7 +67,7 @@
     <thead><tr><th>{{ title }}</th><th class="right">{{ st.jahr }}</th>{% if prior %}<th class="right">{{ st.vorjahr }}</th>{% endif %}</tr></thead>
     <tbody>
     {% for r in rows %}{% set gid = title[:3] ~ loop.index %}
-      <tr class="{{ {'zwischentotal': 'zw', 'total': 'total'}.get(r.stil, 'row') }} {{ 'group' if r.konten }}" data-group="{{ gid }}">
+      <tr class="{{ {'zwischentotal': 'zw', 'total': 'total'}.get(r.stil, 'row') }} {{ 'group' if r.konten }}" data-group="{{ gid }}"{% if r.gruppe %} data-gruppe="{{ r.gruppe }}"{% endif %}>
         <td>{% if r.konten %}<span class="caret">▸</span> {% endif %}{{ r.label }}</td><td class="right num">{{ r.aktuell|chf }}</td>{% if prior %}<td class="right num">{{ r.vorjahr|chf }}</td>{% endif %}</tr>
       {% for k in r.konten %}<tr class="member sub" data-of="{{ gid }}" hidden><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ st.jahr }}">{{ k.konto }}</a> {{ k.name }}{% if k.fw %} <span class="small muted">({{ k.fw }})</span>{% endif %}</td><td class="right num">{{ k.aktuell|chf }}</td>{% if prior %}<td class="right num">{{ k.vorjahr|chf }}</td>{% endif %}</tr>{% endfor %}
     {% endfor %}

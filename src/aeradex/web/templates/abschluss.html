@@ -210,11 +210,17 @@
 </div>
 
 <div class="panel" id="anhang">
-  <header><h2>Anhang {{ year }} (Art. 959c OR)</h2><span class="hint">## Überschrift, darunter Text</span></header>
-  <form class="body" hx-post="/abschluss/anhang" hx-target="find .errors">
+  <header><h2>Anhang {{ year }} (Art. 959c OR)</h2><span class="hint">{{ '## Überschrift, darunter Text' if anhang_an else 'weggelassen' }}</span></header>
+  {% if einzelfirma %}<form class="body" hx-post="/abschluss/{{ 'anhang-aus' if anhang_an else 'anhang-an' }}" hx-target="find .errors">
+    <input type="hidden" name="jahr" value="{{ year }}">
+    <div class="formfoot"><span class="small muted">Ein Einzelunternehmen braucht keinen Anhang, solange es nicht nach den Regeln für grössere
+      Unternehmen abschliessen muss (Art. 959c Abs. 3 OR). {{ 'Er steht zurzeit in der Jahresrechnung.' if anhang_an else 'Die Jahresrechnung kommt ohne Anhang.' }}</span>
+      <button class="btn{{ ' ghost' if anhang_an }}" type="submit">{{ 'Anhang weglassen' if anhang_an else 'Anhang trotzdem beifügen' }}</button></div>{{ errors() }}
+  </form>{% endif %}
+  {% if anhang_an %}<form class="body" hx-post="/abschluss/anhang" hx-target="find .errors">
     <input type="hidden" name="jahr" value="{{ year }}">
     <textarea class="input" name="text" style="min-height:280px;font-family:var(--f-num);font-size:12.5px" aria-label="Anhang">{{ anhang }}</textarea>
     {{ errors() }}<div class="formfoot"><span class="small muted">Wird in abschluss/{{ year }}/anhang.md gespeichert und erscheint in der Jahresrechnung.</span><button class="btn" type="submit">Anhang speichern</button></div>
-  </form>
+  </form>{% endif %}
 </div>
 {% endblock %}

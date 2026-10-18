@@ -97,7 +97,13 @@
           const box = document.createElement("div"); box.innerHTML = await res.text();
           toast(box.textContent.trim() || "Verschieben fehlgeschlagen", true);
         }
-        htmx.ajax("GET", location.pathname + location.search, { target: "#page", select: "#page", swap: "outerHTML" });
+        // reload both halves, then flash the group the account landed in and its line in the statement
+        const gruppe = zone.dataset.dropgruppe;
+        htmx.ajax("GET", location.pathname + location.search, { target: "#page", select: "#page", swap: "outerHTML" })
+          .then(() => $$('[data-dropgruppe="' + gruppe + '"], tr[data-gruppe="' + gruppe + '"]').forEach(el => {
+            el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+            if (el.tagName === "TR") el.scrollIntoView({ block: "nearest" });
+          }));
       });
     });
     $$("[data-mode]", root).forEach(radio => radio.addEventListener("change", () => {

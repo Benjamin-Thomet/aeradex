@@ -565,7 +565,7 @@ def statement_pdf(book: Book, st: dict, anhang_blocks: list) -> bytes:
         art, "Verwaltungsrat" if str(s.get("rechtsform") or "").strip().upper() == "AG" else "Geschäftsführung")
 
     # Cover
-    parts = ["Bilanz", "Erfolgsrechnung", "Anhang"]
+    parts = ["Bilanz", "Erfolgsrechnung"] + (["Anhang"] if anhang_blocks else [])
     if st.get("gewinnverwendung"):
         parts.append("Antrag über die Verwendung des Bilanzergebnisses")
     cover = [Spacer(1, 62 * mm), P(s.firma, "cover"), Spacer(1, 3 * mm), P(title, "coversub"), Spacer(1, 2 * mm),

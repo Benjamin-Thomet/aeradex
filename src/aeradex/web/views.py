@@ -1186,7 +1186,8 @@ async def abschluss(ui: UI, request: Request):
     luecken = dossier.belegluecken(book, year)
     return ui.render(request, "abschluss.html", book=book, year=year, st=st, years=book.years(),
                      unterlagen=unterlagen, luecken=luecken,
-                     anhang=statements.anhang(book, year), verlauf=list(reversed(verlauf))[:5],
+                     anhang=statements.anhang(book, year), anhang_an=statements.anhang_enabled(book),
+                     einzelfirma=book.settings.rechtsform_art == "einzelfirma", verlauf=list(reversed(verlauf))[:5],
                      gv_date=date(year + 1, 6, 30).isoformat(), fx=fx_view,
                      div=(read_yaml(statements.dividend_path(book, year)) if statements.dividend_path(book, year).exists()
                           else None),
@@ -1228,15 +1229,21 @@ async def abschluss_vorschau(ui: UI, request: Request):
     gliederung = request.query_params.get("gliederung") == "1"
     alle = request.query_params.get("alle") == "1"
     layout = {seite: statements.layout(book, year, seite, alle=alle) for seite in ("bilanz", "erfolg")} if gliederung else None
+    prior_locked = bool(book.settings.sperre_bis and book.settings.sperre_bis >= date(year - 1, 12, 31)) \
+        and year - 1 in book.years()
     return ui.render(request, "abschluss_vorschau.html", book=book, year=year, st=st, years=book.years(),
+                     prior_locked=prior_locked,
                      view=_statement_view(book, st), gliederung=gliederung, alle=alle, layout=layout,
-                     groups=statements.GROUPS, anhang=statements.parse_anhang(statements.anhang(book, year)))
+                     groups=statements.GROUPS, anhang=statements.anhang_blocks(book, year))
 
 
 async def abschluss_gruppe(ui: UI, request: Request):
     f = await request.form()
     year = int(f.get("jahr") or current_year(ui.book()))
     back = request.headers.get("hx-current-url") or f"/abschluss/vorschau?jahr={year}&gliederung=1"
+    if "negativ" in f:
+        return await act(request, api.account_negative_group_set, back, ui.book(), f.get("konto", ""),
+                         f.get("negativ", ""), year)
     return await act(request, api.account_group_set, back, ui.book(), f.get("konto", ""), f.get("gruppe", ""), year)
 
 
@@ -1264,6 +1271,8 @@ async def abschluss_aktion(ui: UI, request: Request):
         return await act(request, api.dividend_pay, to, book, year, f.get("datum") or None, f.get("konto") or "")
     if aktion == "anhang":
         return await act(request, api.anhang_save, to, book, year, f.get("text", ""))
+    if aktion in ("anhang-an", "anhang-aus"):
+        return await act(request, api.anhang_enable, to + "#anhang", book, aktion == "anhang-an")
     if aktion == "abgrenzungen":
         return await act(request, api.accruals_book, to + "#abgrenzungen", book, year, f.getlist("id"))
     if aktion == "jahr-eroeffnen":
@@ -2317,7 +2326,7 @@ async def pdf_report(ui: UI, request: Request):
     year = year_param(request, book)
     if kind == "jahresrechnung":
         st = statements.year_end_statement(book, year)
-        data = pdfmod.statement_pdf(book, st, statements.parse_anhang(statements.anhang(book, year)))
+        data = pdfmod.statement_pdf(book, st, statements.anhang_blocks(book, year))
         name = f"Jahresrechnung {year}.pdf"
     elif kind == "journal":
         data = pdfmod.journal_pdf(book, [r for r in book.rows if r.datum.year == year], f"Journal {year}")
