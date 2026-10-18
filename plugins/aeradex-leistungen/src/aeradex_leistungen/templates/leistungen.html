@@ -88,6 +88,10 @@
       <div class="field" style="grid-column: span 2"><label>Einleitung (leer = «Unsere Leistungen vom …»)</label><input class="input" name="text"></div>
       <div class="field"><label>Leistungsrapport</label><label class="check"><input type="checkbox" name="rapport" value="1" checked> als PDF beilegen</label></div>
     </div>
+    <div class="form four" style="margin-top:12px">
+      <div class="field"><label>Rabatt % <span class="muted">(ganze Rechnung)</span></label><input class="input num" name="rabatt" placeholder="0" inputmode="decimal"></div>
+    </div>
+    {% with offen = vorschau.offen_akonto if vorschau else [] %}{% include "_akonto_box.html" %}{% endwith %}
     {{ errors() }}<div class="formfoot"><span class="small muted">QR-Rechnung, verbucht 1100 an Ertrag; die Einträge tragen danach die Rechnungsnummer. Storno macht sie wieder offen.</span><button class="btn primary" type="submit">Rechnung ausstellen</button></div>
     {% endif %}
   </form>

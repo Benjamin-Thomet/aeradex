@@ -57,6 +57,8 @@ DEFAULT_SYSTEM_ACCOUNTS = {
     "kursverlust": "6942",
     "verrechnungssteuer": "2206",
     "spesen": "2210",
+    "anzahlungen": "2030",      # Akontorechnungen until the Schlussrechnung takes them over
+    "rabatt": "3800",           # invoice discounts (Erlösminderungen)
 }
 
 # Legal forms aeradex knows, and the kind of equity they keep. Anything else counts as a company.

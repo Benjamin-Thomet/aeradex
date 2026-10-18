@@ -160,6 +160,12 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--datum")
     c.add_argument("--text", default="")
     c.add_argument("--zahlungsfrist", type=int)
+    c.add_argument("--rabatt", help="Rabatt auf die ganze Rechnung in Prozent (auf Erlösminderungen)")
+    c.add_argument("--akonto-rechnung", action="store_true", help="Akontorechnung (auf Erhaltene Anzahlungen)")
+    c.add_argument("--akonto", action="append", default=[],
+                   help="Akontorechnung anrechnen (Nummer, mehrfach) oder 'alle' für alle offenen des Kunden")
+    c = ins.add_parser("akonto", help="Akontorechnungen, die noch nicht angerechnet sind")
+    c.add_argument("--kunde", default="")
     c = ins.add_parser("void")
     c.add_argument("nr")
     c.add_argument("--grund", default="")
@@ -725,7 +731,12 @@ def dispatch(a, book_path: Path | None):
         if a.sub == "show":
             return api.invoice_show(b, a.nr)
         if a.sub == "create":
-            return api.invoice_create(b, a.kunde, _positions(a.pos), a.datum, a.text, a.zahlungsfrist)
+            akonto = "alle" if a.akonto == ["alle"] else a.akonto
+            return api.invoice_create(b, a.kunde, _positions(a.pos), a.datum, a.text, a.zahlungsfrist,
+                                      rabatt=a.rabatt, art="akonto" if a.akonto_rechnung else "rechnung",
+                                      akonto=akonto)
+        if a.sub == "akonto":
+            return api.invoice_open_akonto(b, a.kunde)
         if a.sub == "void":
             return api.invoice_void(b, a.nr, a.grund)
         if a.sub == "pay":

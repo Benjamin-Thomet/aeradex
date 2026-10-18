@@ -24,7 +24,9 @@ Du arbeitest damit über das CLI `aeradex` (immer mit `--json`) oder den MCP-Ser
    **Quittungen nicht zusätzlich mit `propose` buchen** — sonst steht der Aufwand doppelt im Journal.
 
 **Rechnung stellen**: `aeradex invoice create --kunde K0001 --pos "Beratung;10 h;150" --text "…"`
-→ PDF mit QR-Einzahlungsschein unter `rechnungen/<Jahr>/`.
+→ PDF mit QR-Einzahlungsschein unter `rechnungen/<Jahr>/`. Rabatt: `--rabatt 10` (Prozent, auf 3800).
+Anzahlung verlangen: `--akonto-rechnung` (auf 2030). Die Schlussrechnung zieht sie ab: `--akonto alle` bzw.
+`--akonto R-…`; offene zeigt `aeradex invoice akonto --kunde K0001`. Im Zweifel fragen, ob es die Schlussrechnung ist.
 
 **Lieferantenrechnungen** laufen ebenfalls über den Eingang (Art `kreditor`); bekannte Lieferanten bringen ihr Konto
 mit. Fremdwährung: Betrag in der Rechnungswährung, gebucht zum BAZG-Kurs. Dienstleistungen aus dem Ausland in

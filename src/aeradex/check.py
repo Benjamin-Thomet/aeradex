@@ -35,6 +35,38 @@ class Issue:
         return f"[{self.level}] {self.where}: {self.message}"
 
 
+def _check_akonto(all_inv: dict, book, add) -> None:
+    """Every credited Akonto points to a live Akontorechnung of the same customer, once, with its own figures;
+    Akontorechnungen not credited yet are listed so none is forgotten at the Schlussrechnung."""
+    credited: dict[str, str] = {}
+    for nr, meta in all_inv.items():
+        if meta.get("status") == "storniert":
+            continue
+        where = book.rel(meta["_pfad"])
+        lines: dict[str, dict[str, Decimal]] = defaultdict(lambda: defaultdict(lambda: ZERO))
+        for p in meta.get("positionen") or []:
+            if p.get("akonto"):
+                lines[str(p["akonto"])][str(p.get("mwst") or "")] -= Decimal(str(p.get("betrag") or 0))
+        for ref, per in lines.items():
+            src = all_inv.get(ref)
+            if src is None or not inv.is_akonto(src):
+                add("fehler", where, f"rechnet {ref} an, das ist keine Akontorechnung")
+            elif src.get("status") == "storniert":
+                add("fehler", where, f"rechnet die stornierte Akontorechnung {ref} an")
+            elif src.get("kunde") != meta.get("kunde"):
+                add("fehler", where, f"rechnet die Akontorechnung {ref} eines anderen Kunden an")
+            elif {k: v for k, v in per.items() if v} != {k: v for k, v in inv.akonto_net(src).items() if v}:
+                add("fehler", where, f"Abzug für Akontorechnung {ref} passt nicht zu deren Beträgen")
+            if ref in credited:
+                add("fehler", where, f"Akontorechnung {ref} ist schon in {credited[ref]} angerechnet")
+            credited.setdefault(ref, nr)
+    for nr, meta in all_inv.items():
+        if inv.is_akonto(meta) and meta.get("status") != "storniert" and nr not in credited:
+            name = (meta.get("an") or {}).get("name") or meta.get("kunde")
+            add("hinweis", book.rel(meta["_pfad"]),
+                f"Akontorechnung {nr} ({name}) noch nicht angerechnet — bei der Schlussrechnung abziehen")
+
+
 def _key(r: Row) -> tuple:
     return (r.datum, r.beleg, r.soll, r.haben, r.betrag, r.quelle, r.mwst, r.waehrung, r.fw, r.kurs)
 
@@ -190,6 +222,7 @@ def run(book: Book) -> list[Issue]:
             add("fehler", where, "stornierte Rechnung hat Zahlungen/Gutschriften")
         elif total > Decimal(str(meta.get("total") or 0)):
             add("fehler", where, f"Zahlungen {total} übersteigen das Total {Decimal(str(meta.get('total'))):.2f}")
+    _check_akonto(all_inv, book, add)
     for quelle, group in owned.items():
         kind, _, ref = quelle.partition(":")
         if kind in ("rechnung", "zahlung", "gutschrift") and ref not in all_inv:
@@ -503,8 +536,11 @@ def check_mwst(book: Book, rows: list[Row], by_beleg: dict) -> list[Issue]:
                     tax = sum((x.betrag for x in crows if x.haben in tax_accounts and not x.soll), ZERO)
                     net = sum((x.betrag for x in crows if x.soll and x.haben), ZERO)
                 else:
-                    tax = sum((x.betrag for x in crows if (x.soll or x.haben) in tax_accounts), ZERO)
-                    net = sum((x.betrag for x in crows if (x.soll or x.haben) not in tax_accounts), ZERO)
+                    # signed by side, so a discount or an Akonto taken off (Soll on a revenue line) reduces the net
+                    revenue = mwst.CODES[c].kind in ("umsatz", "befreit", "ausgenommen")
+                    sign = lambda x: 1 if (x.soll and x.haben) or bool(x.haben) == revenue else -1  # noqa: E731
+                    tax = abs(sum((sign(x) * x.betrag for x in crows if (x.soll or x.haben) in tax_accounts), ZERO))
+                    net = abs(sum((sign(x) * x.betrag for x in crows if (x.soll or x.haben) not in tax_accounts), ZERO))
                 expected = mwst.tax_from_net(net, mwst.CODES[c].rate)
                 if net and abs(tax - expected) > Decimal("0.02"):
                     out.append(Issue("warnung", crows[0].where,

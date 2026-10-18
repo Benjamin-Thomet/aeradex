@@ -350,3 +350,26 @@ def test_objects_required_and_invoice_with_the_days(book):
     text = PdfReader(io.BytesIO((book.root / res["pdf"]).read_bytes())).pages[0].extract_text()
     assert "13.10. Abdecken, Wände grundiert" in text and "14.10. Decken 2× gestrichen" in text
     assert_clean(Book(book.root))
+
+
+def test_billing_takes_off_the_akonto_and_gives_a_discount(book):
+    ak = api.invoice_create(Book(book.root), "K0001", [{"text": "1. Akonto", "preis": "300"}], "2026-09-15",
+                            art="akonto")["rechnung"]["nummer"]
+    W(book, daten.add_time, "2026-10-01", "M0001", "10", "Fassade", "K0001")
+    ids = [e["id"] for e in abrechnung.select(Book(book.root), "K0001")]
+    pv = abrechnung.preview(Book(book.root), ids, rabatt="10")
+    assert [a["nummer"] for a in pv["offen_akonto"]] == [ak]
+    assert pv["total"] == Decimal("780.00")                       # 1200 − 10 % − 300
+    res = W(book, abrechnung.bill, ids, datum="2026-10-31", rabatt="10", akonto=[ak])
+    assert res["total"] == Decimal("780.00") and "warnung" not in res
+    b = Book(book.root)
+    assert saldo(b, "2030") == 0 and saldo(b, "3800") == Decimal("120.00")
+    assert invoices.open_akonto(b) == []
+    assert_clean(b)
+
+
+def test_month_end_billing_leaves_the_akonto_open_and_says_so(book):
+    api.invoice_create(Book(book.root), "K0001", [{"text": "Akonto", "preis": "300"}], "2026-09-15", art="akonto")
+    W(book, daten.add_time, "2026-10-01", "M0001", "2", "Fassade", "K0001")
+    res = W(book, abrechnung.bill_all, "2026-10-31")
+    assert len(res["warnungen"]) == 1 and len(invoices.open_akonto(Book(book.root))) == 1

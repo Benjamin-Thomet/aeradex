@@ -737,7 +737,10 @@ async def rechnung(ui: UI, request: Request):
     if meta.get("extern") and meta.get("datei"):        # issued outside aeradex: show the original
         pdf = book.root / meta["datei"]
     from .. import mahnungen
+    from .. import pdf as pdfmod
     return ui.render(request, "rechnung.html", book=book, meta=meta, state=state, paid=paid,
+                     abzuege=pdfmod.invoice_deductions(book, meta), art=pdfmod.invoice_kind(meta),
+                     angerechnet_in=invoices.angerechnet(book).get(nr) if invoices.is_akonto(meta) else None,
                      reminders=mahnungen.history(book, nr),
                      pdf=book.rel(pdf) if pdf.exists() else None,
                      today=date.today().isoformat(), bank=book.settings.konto("bank"))
@@ -746,8 +749,11 @@ async def rechnung(ui: UI, request: Request):
 async def rechnung_neu(ui: UI, request: Request):
     book = ui.book()
     custs = invoices.customers(book)
+    kunde = request.query_params.get("kunde", "")
+    first = kunde if kunde in custs else next(iter(custs), "")
     return ui.render(request, "rechnung_neu.html", book=book, customers=custs, accounts=account_options(book),
-                     kunde=request.query_params.get("kunde", ""), default_konto=book.settings.konto("ertrag"),
+                     kunde=kunde, offen=invoices.open_akonto(book, first) if first else [],
+                     default_konto=book.settings.konto("ertrag"),
                      today=date.today().isoformat())
 
 
@@ -764,25 +770,45 @@ def _positions(form) -> list[dict]:
     return out
 
 
+def _art(f) -> tuple[str, str | None, list[str]]:
+    """Art, Rabatt and the ticked Akontorechnungen of the invoice form (an Akontorechnung has neither)."""
+    art = f.get("art") or "rechnung"
+    if art == "akonto":
+        return art, None, []
+    return art, f.get("rabatt") or None, f.getlist("akonto")
+
+
 async def rechnung_vorschau(ui: UI, request: Request):
     f = await request.form()
     positions = _positions(f)
     if not positions:
         return ui.partial("_vorschau.html")
+    art, rabatt, akonto = _art(f)
+    book = ui.book()
     try:
-        prev = api.invoice_preview(ui.book(), positions)
+        prev = api.invoice_preview(book, positions, f.get("kunde") or "", rabatt, art, akonto)
     except (BookError, ValueError, ArithmeticError) as exc:
         return ui.partial("_vorschau.html", error=str(exc))
-    return ui.partial("_vorschau.html", prev=prev)
+    from .. import pdf as pdfmod
+    return ui.partial("_vorschau.html", prev=prev, art=art, abzuege=pdfmod.invoice_deductions(book, prev),
+                      anzahl=sum(1 for p in prev["positionen"] if not p.get("rabatt") and not p.get("akonto")))
+
+
+async def rechnung_akonto(ui: UI, request: Request):
+    """The open Akontorechnungen of the customer picked in the invoice form, ticked to be credited."""
+    kunde = request.query_params.get("kunde") or ""
+    offen = invoices.open_akonto(ui.book(), kunde) if kunde else []
+    return ui.partial("_akonto_box.html", offen=offen)
 
 
 async def rechnung_erstellen(ui: UI, request: Request):
     f = await request.form()
+    art, rabatt, akonto = _art(f)
     return await act(request, api.invoice_create, lambda r: f"/debitoren/rechnung/{r['rechnung']['nummer']}",
                      ui.book(), f.get("kunde"), _positions(f), f.get("datum") or None, f.get("text", ""),
                      int(f.get("zahlungsfrist")) if f.get("zahlungsfrist") else None,
                      "" if (f.get("waehrung") or "CHF") == "CHF" else f.get("waehrung"), f.get("kurs") or None,
-                     f.get("leistung_von") or None, f.get("leistung_bis") or None)
+                     f.get("leistung_von") or None, f.get("leistung_bis") or None, rabatt, art, akonto)
 
 
 async def rechnung_aktion(ui: UI, request: Request):
@@ -840,6 +866,8 @@ async def kunden(ui: UI, request: Request):
         st = invoices.invoice_state(book, meta, paid.get(meta["nummer"], []))
         states[meta.get("kunde")]["anzahl"] += 1
         states[meta.get("kunde")]["offen"] += st["offen"]
+    for a in invoices.open_akonto(book):
+        states[a["kunde"]]["akonto"] = states[a["kunde"]].get("akonto", ZERO) + a["total"]
     return ui.render(request, "kunden.html", book=book, customers=custs, states=states,
                      suche={nr: customer_search_text(nr, c) for nr, c in custs.items()},
                      q=request.query_params.get("q", ""), edit=request.query_params.get("edit"))
@@ -2441,6 +2469,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/debitoren/neu", h(rechnung_neu)),
         Route("/debitoren/neu", h(rechnung_erstellen), methods=["POST"]),
         Route("/debitoren/vorschau", h(rechnung_vorschau), methods=["POST"]),
+        Route("/debitoren/akonto", h(rechnung_akonto)),
         Route("/debitoren/zuordnen", h(zuordnen), methods=["POST"]),
         Route("/debitoren/offene-posten", h(offene_posten)),
         Route("/kreditoren/offene-posten", h(kreditoren_offene_posten)),

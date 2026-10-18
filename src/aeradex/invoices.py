@@ -79,7 +79,8 @@ FROZEN = ("nummer", "kunde", "an", "datum", "faellig", "waehrung", "positionen",
           "referenz_typ", "referenz", "debitorenkonto")
 # Added with MWST support; part of the fingerprint only when present, so
 # invoices issued before keep their fingerprint.
-FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto", "extern", "kurs", "leistung_von", "leistung_bis")
+FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto", "extern", "kurs", "leistung_von", "leistung_bis",
+                   "art", "rabatt")
 QR_CURRENCIES = ("CHF", "EUR")          # what a Swiss QR-bill can carry
 
 
@@ -224,14 +225,140 @@ def _leistung(meta: dict, von, bis) -> None:
         meta["leistung_bis"] = b.isoformat()
 
 
-def _compute(book: Book, kunde: str, positionen: list[dict], datum=None, waehrung: str = "", kurs=None):
-    """Validate an invoice and compute its figures — shared by issue_invoice and preview_invoice."""
+# ---------- Rabatt and Akonto ----------
+
+def is_akonto(meta: dict) -> bool:
+    return meta.get("art") == "akonto"
+
+
+def _rabatt_percent(value) -> Decimal | None:
+    if value in (None, "", 0, "0"):
+        return None
+    try:
+        pct = Decimal(str(value).replace("%", "").replace(",", ".").strip())
+    except Exception:
+        raise BookError(f"Rabatt «{value}»: in Prozent angeben, z.B. 10") from None
+    if not (0 < pct <= 100) or pct != pct.quantize(Decimal("0.01")):
+        raise BookError(f"Rabatt {value} %: zwischen 0 und 100, höchstens zwei Nachkommastellen")
+    return pct.normalize()
+
+
+def _pct_text(pct: Decimal) -> str:
+    return format(pct, "f").replace(".", ",")
+
+
+def rabatt_positions(book: Book, pos: list[dict], pct: Decimal) -> list[dict]:
+    """One discount line per (account, code) of the ordinary positions, booked on the Rabatt account
+    (Erlösminderungen) with the group's code, so the tax is computed on the discounted amount."""
+    per: dict[tuple[str, str], Decimal] = defaultdict(lambda: ZERO)
+    for p in pos:
+        if not p.get("akonto") and not p.get("rabatt"):
+            per[(p["konto"], p.get("mwst") or "")] += money(p["betrag"])
+    konto = book.settings.konto("rabatt")
+    book.account(konto)
+    out = []
+    for (_, code), net in per.items():
+        cut = money(net * pct / 100)
+        if not cut:
+            continue
+        item = {"text": f"Rabatt {_pct_text(pct)} %", "menge": Decimal(1), "einheit": "", "preis": -cut,
+                "betrag": -cut, "konto": konto, "rabatt": True}
+        if code:
+            item["mwst"] = code
+        out.append(item)
+    return out
+
+
+def angerechnet(book: Book, metas: dict | None = None) -> dict[str, str]:
+    """Akontorechnung → the active invoice that credits it."""
+    metas = invoices(book) if metas is None else metas
+    out = {}
+    for nr, m in metas.items():
+        if m.get("status") == "storniert":
+            continue
+        for p in m.get("positionen") or []:
+            if p.get("akonto"):
+                out.setdefault(str(p["akonto"]), nr)
+    return out
+
+
+def akonto_net(meta: dict) -> dict[str, Decimal]:
+    """Net per MWST code ("" = none) of an Akontorechnung."""
+    per: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    for p in meta.get("positionen") or []:
+        per[str(p.get("mwst") or "")] += money(p["betrag"])
+    return dict(per)
+
+
+def open_akonto(book: Book, kunde: str | None = None) -> list[dict]:
+    """Akontorechnungen not yet credited on an active invoice, oldest first."""
+    metas = invoices(book)
+    done = angerechnet(book, metas)
+    out = []
+    for nr, m in sorted(metas.items(), key=lambda kv: (str(kv[1].get("datum")), kv[0])):
+        if not is_akonto(m) or m.get("status") == "storniert" or nr in done:
+            continue
+        if kunde and m.get("kunde") != kunde:
+            continue
+        st = invoice_state(book, m)
+        out.append({"nummer": nr, "kunde": m.get("kunde"), "name": (m.get("an") or {}).get("name") or "",
+                    "datum": str(m.get("datum")), "waehrung": currency(m), "netto": sum(akonto_net(m).values(), ZERO),
+                    "total": money(m["total"]), "offen": st["offen"], "status": st["status"],
+                    "text": (m.get("positionen") or [{}])[0].get("text", "")})
+    return out
+
+
+def akonto_positions(book: Book, kunde: str, nummern: list[str], cur: str) -> list[dict]:
+    """The deduction lines of a Schlussrechnung: per Akontorechnung and code its net, on the Anzahlungen
+    account (Soll), so 2030 is cleared and the tax of the Akonto is taken off the Schlussrechnung."""
+    metas = invoices(book)
+    done = angerechnet(book, metas)
+    out = []
+    for nr in dict.fromkeys(str(n).strip() for n in nummern if str(n).strip()):
+        m = metas.get(nr)
+        if m is None:
+            raise BookError(f"Akontorechnung {nr} nicht gefunden")
+        if not is_akonto(m):
+            raise BookError(f"{nr} ist keine Akontorechnung")
+        if m.get("status") == "storniert":
+            raise BookError(f"Akontorechnung {nr} ist storniert")
+        if m.get("kunde") != kunde:
+            raise BookError(f"Akontorechnung {nr} gehört zu Kunde {m.get('kunde')}, nicht zu {kunde}")
+        if nr in done:
+            raise BookError(f"Akontorechnung {nr} ist bereits in {done[nr]} angerechnet")
+        if currency(m) != cur:
+            raise BookError(f"Akontorechnung {nr} ist in {currency(m)}, die Rechnung in {cur}")
+        datum = parse_date(m["datum"]).strftime("%d.%m.%Y")
+        for code, net in akonto_net(m).items():
+            if not net:
+                continue
+            out.append({"text": f"abzüglich Akontorechnung {nr} vom {datum}", "menge": Decimal(1), "einheit": "",
+                        "preis": -net, "betrag": -net, "konto": str((m.get("positionen") or [{}])[0].get("konto")),
+                        "mwst": code, "akonto": nr})
+    return out
+
+
+def _compute(book: Book, kunde: str, positionen: list[dict], datum=None, waehrung: str = "", kurs=None,
+             rabatt=None, art: str = "rechnung", akonto=None):
+    """Validate an invoice and compute its figures — shared by issue_invoice and preview_invoice.
+    `rabatt` (percent) adds discount lines, `art="akonto"` makes an Akontorechnung (on Anzahlungen),
+    `akonto` lists the Akontorechnungen this invoice credits."""
     from . import mwst as vat
     cust = customer(book, kunde)
     d = parse_date(datum, "datum") if datum else date.today()
     ensure_open(book, d)
     s = book.settings
     cfg = vat.config(book)
+    art = (art or "rechnung").strip().lower()
+    if art not in ("rechnung", "akonto"):
+        raise BookError("Art der Rechnung: rechnung oder akonto")
+    pct = _rabatt_percent(rabatt)
+    if art == "akonto":
+        if pct or akonto:
+            raise BookError("Eine Akontorechnung hat keinen Rabatt und rechnet kein Akonto an")
+        konto = s.konto("anzahlungen")
+        book.account(konto)
+        positionen = [{**p, "konto": konto} for p in positionen]
     pos = normalize_positions(positionen, s.konto("ertrag"), "U81" if cfg["methode"] != "keine" else "")
     if cfg["methode"] == "keine" and any(p.get("mwst") for p in pos):
         raise BookError("Dieses Buch ist nicht MWST-pflichtig — Positionen ohne MWST-Code erfassen")
@@ -241,28 +368,64 @@ def _compute(book: Book, kunde: str, positionen: list[dict], datum=None, waehrun
     if cur not in QR_CURRENCIES:
         raise BookError(f"Eine QR-Rechnung gibt es nur in CHF oder EUR, nicht in {cur}")
     rate = _rate(book, cur, d, kurs)
+    if pct:
+        pos += rabatt_positions(book, pos, pct)
+    if akonto:
+        for p in akonto_positions(book, cust["nummer"], list(akonto), cur):
+            if not p["mwst"]:
+                p.pop("mwst")
+            pos.append(p)
     netto = sum((p["betrag"] for p in pos), ZERO)
     breakdown = mwst_breakdown(pos)
     total = netto + sum((b["steuer"] for b in breakdown), ZERO)
     if total <= 0:
-        raise BookError("Rechnungstotal muss positiv sein")
-    return cust, d, pos, cur, rate, netto, breakdown, total, cfg
+        raise BookError("Die angerechneten Akontos sind höher als die Rechnung — weniger Akontos anrechnen "
+                        "und den Rest gutschreiben" if akonto else "Rechnungstotal muss positiv sein")
+    extra = {}
+    if art == "akonto":
+        extra["art"] = "akonto"
+    elif akonto:
+        extra["art"] = "schluss"
+    if pct:
+        extra["rabatt"] = format(pct, "f")
+    return cust, d, pos, cur, rate, netto, breakdown, total, cfg, extra
 
 
-def preview_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, waehrung: str = "", kurs=None) -> dict:
+def unanrechnet_warnung(book: Book, kunde: str, meta: dict) -> str:
+    """A note when a customer has Akontorechnungen this (ordinary) invoice does not credit."""
+    if is_akonto(meta):
+        return ""
+    offen = open_akonto(book, kunde)
+    if not offen:
+        return ""
+    liste = ", ".join(f"{a['nummer']} ({a['waehrung']} {a['total']:.2f})" for a in offen)
+    return (f"Nicht angerechnet: Akontorechnung {liste} von diesem Kunden bleibt offen. Ist das die "
+            "Schlussrechnung, stornieren und mit Akonto-Anrechnung neu ausstellen.")
+
+
+def preview_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, waehrung: str = "", kurs=None,
+                    rabatt=None, art: str = "rechnung", akonto=None) -> dict:
     """What issue_invoice would issue, without writing anything (no number is reserved)."""
-    cust, d, pos, cur, rate, netto, breakdown, total, _ = _compute(book, kunde, positionen, datum, waehrung, kurs)
-    return {"kunde": cust["nummer"], "an": _snapshot_address(cust), "datum": d.isoformat(), "waehrung": cur,
-            "positionen": [{**p, "menge": _num(p["menge"])} for p in pos], "netto": netto, "mwst": breakdown,
-            "total": total}
+    cust, d, pos, cur, rate, netto, breakdown, total, _, extra = _compute(
+        book, kunde, positionen, datum, waehrung, kurs, rabatt, art, akonto)
+    out = {"kunde": cust["nummer"], "an": _snapshot_address(cust), "datum": d.isoformat(), "waehrung": cur,
+           "positionen": [{**p, "menge": _num(p["menge"])} for p in pos], "netto": netto, "mwst": breakdown,
+           "total": total, **extra}
+    warn = unanrechnet_warnung(book, cust["nummer"], {**extra, "positionen": pos}) if not akonto else ""
+    if warn:
+        out["warnung"] = warn
+    return out
 
 
 def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
                   zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
-                  leistung_von=None, leistung_bis=None) -> tuple[dict, list[Path]]:
+                  leistung_von=None, leistung_bis=None, rabatt=None, art: str = "rechnung",
+                  akonto=None) -> tuple[dict, list[Path]]:
     """Issue and book an invoice: DR Debitoren / CR Ertrag (per position account),
-    with MWST per rate when the book is MWST-pflichtig."""
-    cust, d, pos, cur, rate, netto, breakdown, total, cfg = _compute(book, kunde, positionen, datum, waehrung, kurs)
+    with MWST per rate when the book is MWST-pflichtig. A discount goes to the Rabatt account,
+    an Akontorechnung to Anzahlungen, credited Akontos come off Anzahlungen (Soll)."""
+    cust, d, pos, cur, rate, netto, breakdown, total, cfg, extra = _compute(
+        book, kunde, positionen, datum, waehrung, kurs, rabatt, art, akonto)
     s = book.settings
     # The PDF always carries a QR slip; fail here with a clear message instead of deep inside the PDF renderer.
     problem = qr.iban_problem(s.get("iban"))
@@ -282,6 +445,7 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
         "referenz": qr.make_reference(ref_type, nummer, s.get("qr_referenz_praefix") or ""),
         "debitorenkonto": s.konto("debitoren"),
         "status": "aktiv",
+        **extra,
     }
     if breakdown:
         meta.update({"netto": netto, "mwst": breakdown, "mwst_methode": cfg["methode"],
@@ -386,7 +550,7 @@ def _canonical(meta: dict) -> dict:
                          for p in meta.get("positionen") or []]
     for key in ("datum", "faellig"):
         out[key] = str(meta.get(key))
-    for key in ("leistung_von", "leistung_bis"):
+    for key in ("leistung_von", "leistung_bis", "art", "rabatt"):
         if key in meta:
             out[key] = str(meta.get(key))
     return out
@@ -426,12 +590,19 @@ def _booking_rows(meta: dict) -> list[Row]:
     for p in meta["positionen"]:
         per[(str(p.get("konto")), str(p.get("mwst") or ""))] += money(p["betrag"])
     total = money(meta["total"])
+
+    def line(konto: str, amount: Decimal, code: str = "") -> Row:
+        # revenue in Haben; a negative group (discount on Erlösminderungen, an Akonto taken off) in Soll
+        if amount < 0:
+            return Row(d, nummer, text, konto, "", -amount, quelle, mwst=code)
+        return Row(d, nummer, text, "", konto, amount, quelle, mwst=code)
+
     if not meta.get("mwst"):
         if len(per) == 1:
             (konto, _), amount = next(iter(per.items()))
             return [Row(d, nummer, text, deb, konto, amount, quelle)]
         rows = [Row(d, nummer, text, deb, "", total, quelle)]
-        return rows + [Row(d, nummer, text, "", k, a, quelle) for (k, _), a in per.items()]
+        return rows + [line(k, a) for (k, _), a in per.items() if a]
     tax = {b["code"]: money(b["steuer"]) for b in meta["mwst"]}
     rows = [Row(d, nummer, text, deb, "", total, quelle)]
     if meta.get("mwst_methode") == "saldo":
@@ -445,13 +616,15 @@ def _booking_rows(meta: dict) -> list[Row]:
             for i, (konto, net) in enumerate(items):
                 share = remaining if i == len(items) - 1 else money(tax.get(code, ZERO) * net / net_sum) if net_sum else ZERO
                 remaining -= share
-                rows.append(Row(d, nummer, text, "", konto, net + share, quelle, mwst=code))
+                if net + share:
+                    rows.append(line(konto, net + share, code))
         return rows
     for (konto, code), net in per.items():
-        rows.append(Row(d, nummer, text, "", konto, net, quelle, mwst=code))
+        if net:
+            rows.append(line(konto, net, code))
     for code, amount in tax.items():
         if amount:
-            rows.append(Row(d, nummer, text, "", str(meta.get("mwst_konto")), amount, quelle, mwst=code))
+            rows.append(line(str(meta.get("mwst_konto")), amount, code))
     return rows
 
 
@@ -483,7 +656,7 @@ def invoice_state(book: Book, meta: dict, paid_rows: list[Row] | None = None,
             "name": (meta.get("an") or {}).get("name"), "datum": str(meta.get("datum")),
             "faellig": str(meta.get("faellig")), "total": total, "bezahlt": paid,
             "gutgeschrieben": credited, "offen": open_amount, "status": state,
-            "referenz": meta.get("referenz") or "",
+            "referenz": meta.get("referenz") or "", "art": meta.get("art") or "",
             "extern": (meta.get("extern") or {}).get("rechnungsnr", "") if meta.get("extern") else None,
             "waehrung": currency(meta),
             "offen_chf": (book_value(book, meta, as_of, rows) if is_foreign(meta) else open_amount)
@@ -508,6 +681,8 @@ def void_invoice(book: Book, nr: str, grund: str = "") -> tuple[dict, list[Path]
     if meta.get("status") == "storniert":
         raise BookError(f"{nr} ist bereits storniert")
     ensure_open(book, parse_date(meta["datum"]))
+    if is_akonto(meta) and nr in angerechnet(book):
+        raise BookError(f"Akontorechnung {nr} ist in {angerechnet(book)[nr]} angerechnet — zuerst diese Rechnung stornieren")
     if settlements(book).get(nr):
         raise BookError(f"{nr} hat Zahlungen oder Gutschriften — stattdessen gutschreiben "
                         "(aeradex invoice credit) oder die Zahlungen zuerst stornieren")

@@ -36,6 +36,9 @@ Regeln:
   bestehenden Kunden mit update_customer ergänzen, nie einen zweiten anlegen. Was der Mensch über den Kunden sagt
   und kein eigenes Feld hat (Objekt, Zugang/Schlüssel, Wünsche, wie erreichbar, wer ihn empfohlen hat …), nicht
   weglassen, sondern in notizen bzw. notiz festhalten.
+- Rechnungen: Rabatt nur über rabatt_prozent. Hat der Kunde offene Akontorechnungen (open_akonto) und ist
+  nicht klar, ob das die Schlussrechnung dazu ist, zuerst fragen; create_invoice zieht sonst alle ab (akonto="alle").
+  Eine Anzahlung verlangen = create_invoice mit art="akonto".
 - Beträge als Text mit Punkt: "1234.50". Datum als JJJJ-MM-TT.
 - MWST: status() nennt die mwst_methode. Bei "effektiv" und einem Beleg mit ausgewiesener MWST den Code mitgeben
   (V81/I81 Vorsteuer, U81 Umsatz …) und den BRUTTO-Betrag buchen; die Steuer wird automatisch abgespalten.
@@ -523,9 +526,11 @@ def invoices(status: str = "") -> list | dict:
 
 
 def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: str = "",
-                   leistung_von: str = "", leistung_bis: str = "",
+                   leistung_von: str = "", leistung_bis: str = "", rabatt_prozent: str = "",
+                   art: str = "rechnung", akonto: str = "alle",
                    expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """QR-Rechnung ausstellen und verbuchen; erzeugt die PDF mit QR-Einzahlungsschein.
+    Auch Akontorechnungen (art="akonto") und Schlussrechnungen, die offene Akontos abziehen.
 
     Args:
         kunde: Kundennummer, z.B. "K0001".
@@ -535,12 +540,27 @@ def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: st
         leistung_von: Leistungsdatum bzw. Beginn des Leistungszeitraums JJJJ-MM-TT, wenn er vom Rechnungsdatum
             abweicht (MWST-Rechnungen müssen ihn nennen, Art. 26 MWSTG).
         leistung_bis: Ende des Leistungszeitraums JJJJ-MM-TT; leer bei einem einzelnen Tag.
+        rabatt_prozent: Rabatt auf die ganze Rechnung in Prozent, z.B. "10"; wird auf 3800 Erlösminderungen
+            gebucht. Nie selbst als negative Position rechnen.
+        art: "rechnung" oder "akonto" (Akontorechnung: Anzahlung, gebucht auf Erhaltene Anzahlungen).
+        akonto: Welche offenen Akontorechnungen dieses Kunden abgezogen werden: "alle", "keine" oder
+            Nummern "R-2026-0012,R-2026-0015". Siehe open_akonto.
         expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
         idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
     return _call(api.invoice_create, kunde, positionen, datum or None, text, None, "", None,
-                 leistung_von or None, leistung_bis or None,
+                 leistung_von or None, leistung_bis or None, rabatt=rabatt_prozent or None,
+                 art=art or "rechnung", akonto=None if art == "akonto" else (akonto or "alle"),
                  expected_revision=expected_revision, idempotency_key=idempotency_key)
+
+
+def open_akonto(kunde: str = "") -> list | dict:
+    """Akontorechnungen, die noch in keiner Schlussrechnung angerechnet sind (bezahlt oder offen).
+
+    Args:
+        kunde: Kundennummer; leer = alle Kunden.
+    """
+    return _call(api.invoice_open_akonto, kunde)
 
 
 def match_payment(betrag: str, text: str = "") -> dict:
@@ -1190,7 +1210,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           accrual_proposals, book_accruals,
           exchange_rate, revaluation_preview,
           bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices, bank_rules, expenses,
-          customers, customer_details, add_customer, update_customer, invoices, create_invoice, match_payment, pay_invoice, credit_invoice,
+          customers, customer_details, add_customer, update_customer, invoices, create_invoice, open_akonto, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
           book_bank_transaction, employees, payroll_run, payroll_payment_export, qst_sync, payslip, close_payroll, close_payslip, lohnausweis,

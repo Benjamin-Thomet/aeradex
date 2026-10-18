@@ -400,7 +400,8 @@ def _loeschen(book, f):
 def _rechnung(book, f):
     ids = _list(f, "ids")
     res = api.write(book, f"Leistungen verrechnet ({len(ids)} Einträge)", abrechnung.bill, ids,
-                    f.get("detail") == "1", f.get("datum") or None, f.get("text") or "", None, f.get("rapport") == "1")
+                    f.get("detail") == "1", f.get("datum") or None, f.get("text") or "", None, f.get("rapport") == "1",
+                    f.get("rabatt") or None, _list(f, "akonto"))
     return {**res, "weiter": f"/debitoren/rechnung/{res['ergebnis']['rechnung']}"}
 
 
@@ -410,7 +411,9 @@ def _alle_abrechnen(book, f):
                     f.get("bis") or None, f.get("je") or cfg["abrechnen_je"], f.get("datum") or None, True)
     n = res["ergebnis"]["anzahl"]
     total = Decimal(str(res["ergebnis"]["total"]))
-    return {**res, "meldung": f"{n} Rechnung(en) über CHF {total:,.2f} ausgestellt".replace(",", "'"),
+    warn = " ".join(res["ergebnis"].get("warnungen") or [])
+    return {**res, "meldung": f"{n} Rechnung(en) über CHF {total:,.2f} ausgestellt".replace(",", "'")
+            + (f". {warn}" if warn else ""),
             "weiter": "/debitoren?status=offen"}
 
 

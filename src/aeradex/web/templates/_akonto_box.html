@@ -1,0 +1,9 @@
+{% if offen %}<div class="akonto-box">
+  <div class="lbl">Offene Akontorechnungen — werden angerechnet</div>
+  {% for a in offen %}<label class="akonto-item"><input type="checkbox" name="akonto" value="{{ a.nummer }}" checked>
+    <span><a class="link" href="/debitoren/rechnung/{{ a.nummer }}" target="_blank">{{ a.nummer }}</a> vom {{ a.datum|datum }} · {{ a.text }}</span>
+    <span class="num">{{ a.waehrung }} {{ a.total|chf }}</span>
+    {% if a.status == 'bezahlt' %}<span class="pill ok">bezahlt</span>{% else %}<span class="pill warn" title="Wird trotzdem abgezogen: die Akontorechnung bleibt offen und wird separat bezahlt">noch offen</span>{% endif %}
+    <span class="akonto-warn small">wird nicht angerechnet — bleibt offen</span></label>{% endfor %}
+  <div class="small muted">Abgezogen wird, was in Rechnung gestellt wurde. Nur abwählen, wenn diese Rechnung nicht die Schlussrechnung dazu ist.</div>
+</div>{% endif %}

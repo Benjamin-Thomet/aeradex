@@ -509,3 +509,12 @@ body[data-dragseite="erfolg"] .dropzone[data-seite="bilanz"] { opacity: .35; }
 .ledger.matrix tr.abzug td.num { color: var(--muted); }
 .ledger.matrix tr.stunden td { color: var(--faint); }
 .ledger.matrix tr.kopf td { padding-top: 16px; font-family: var(--f-num); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-bottom-color: var(--rule-strong); }
+
+/* Invoice form: Akonto to credit, Akontorechnung without account column */
+.akonto-box { margin-top: 12px; border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.akonto-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.akonto-item > span:nth-child(2) { flex: 1; min-width: 180px; }
+.akonto-warn { display: none; color: var(--warn); }
+.akonto-item:has(input:not(:checked)) .akonto-warn { display: inline; }
+.akonto-item:has(input:not(:checked)) .num { text-decoration: line-through; color: var(--muted); }
+form:has(input[name="art"][value="akonto"]:checked) .posrow input[name="p_konto"] { visibility: hidden; }

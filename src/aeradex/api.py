@@ -399,20 +399,48 @@ def customer_add(book: Book, **fields) -> dict:
 
 def invoice_create(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
                    zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
-                   leistung_von=None, leistung_bis=None) -> dict:
+                   leistung_von=None, leistung_bis=None, rabatt=None, art: str = "rechnung",
+                   akonto=None) -> dict:
+    """Issue an invoice. `rabatt` in percent; `art="akonto"` for an Akontorechnung; `akonto` the
+    Akontorechnungen this one credits (a list, or "alle" for every open one of the customer)."""
     _guard(book)
+    akonto = _akonto_list(book, kunde, akonto)
     meta, touched = invoices.issue_invoice(book, kunde, positionen, datum, text, zahlungsfrist, waehrung, kurs,
-                                           leistung_von, leistung_bis)
+                                           leistung_von, leistung_bis, rabatt=rabatt, art=art, akonto=akonto)
     meta["_text"] = text
     pdf_path = meta_pdf_path(book, meta)
     pdf_path.write_bytes(pdf.invoice_pdf(book, meta, invoices.customer(book, kunde)))
-    return _done(book, f"Rechnung {meta['nummer']} an {meta['an']['name']} über {meta['total']:.2f} ausgestellt",
-                 touched + [pdf_path], rechnung=meta, pdf=book.rel(pdf_path))
+    kind = {"akonto": "Akontorechnung", "schluss": "Schlussrechnung"}.get(meta.get("art"), "Rechnung")
+    extra = {"warnung": w} if (w := invoices.unanrechnet_warnung(book, meta["kunde"], meta)) else {}
+    if akonto:
+        extra["angerechnet"] = akonto
+    return _done(book, f"{kind} {meta['nummer']} an {meta['an']['name']} über {meta['total']:.2f} ausgestellt",
+                 touched + [pdf_path], rechnung=meta, pdf=book.rel(pdf_path), **extra)
 
 
-def invoice_check(book: Book, kunde: str, positionen: list[dict], datum=None, waehrung: str = "") -> dict:
+def _akonto_list(book: Book, kunde: str, akonto) -> list[str]:
+    """None/""/"keine" → none; "alle" → every open Akontorechnung of the customer; else the numbers given."""
+    if akonto in (None, "", "keine", []):
+        return []
+    if isinstance(akonto, str):
+        if akonto.strip().lower() == "alle":
+            cust = invoices.customer(book, kunde)
+            return [a["nummer"] for a in invoices.open_akonto(book, cust["nummer"])]
+        akonto = [x for x in akonto.replace(";", ",").split(",")]
+    return [str(x).strip() for x in akonto if str(x).strip()]
+
+
+def invoice_check(book: Book, kunde: str, positionen: list[dict], datum=None, waehrung: str = "",
+                  rabatt=None, art: str = "rechnung", akonto=None) -> dict:
     """Validate an invoice fully (customer, open period, accounts, currency) and return its figures; writes nothing."""
-    return jsonable(invoices.preview_invoice(book, kunde, positionen, datum, waehrung))
+    return jsonable(invoices.preview_invoice(book, kunde, positionen, datum, waehrung, rabatt=rabatt, art=art,
+                                             akonto=_akonto_list(book, kunde, akonto)))
+
+
+def invoice_open_akonto(book: Book, kunde: str = "") -> list[dict]:
+    """Akontorechnungen not yet credited on a Schlussrechnung (of one customer, or all)."""
+    nr = invoices.customer(book, kunde)["nummer"] if kunde else None
+    return jsonable(invoices.open_akonto(book, nr))
 
 
 def meta_pdf_path(book: Book, meta: dict) -> Path:
@@ -1020,11 +1048,25 @@ def commit_diff(book: Book, commit: str) -> dict:
     return gitlog.show(book.root, commit)
 
 
-def invoice_preview(book: Book, positionen: list[dict]) -> dict:
+def invoice_preview(book: Book, positionen: list[dict], kunde: str = "", rabatt=None, art: str = "rechnung",
+                    akonto=None) -> dict:
+    """The figures of the invoice form while it is typed (the customer may still be missing)."""
     from . import mwst as vat
     cfg = vat.config(book)
+    if art == "akonto":
+        positionen = [{**p, "konto": book.settings.konto("anzahlungen")} for p in positionen]
     pos = invoices.normalize_positions(positionen, book.settings.konto("ertrag"),
                                        "U81" if cfg["methode"] != "keine" else "")
+    if art != "akonto":
+        pct = invoices._rabatt_percent(rabatt)
+        if pct:
+            pos += invoices.rabatt_positions(book, pos, pct)
+        if kunde and akonto:
+            cur = (book.settings.get("waehrung") or "CHF").upper()
+            for p in invoices.akonto_positions(book, invoices.customer(book, kunde)["nummer"], akonto, cur):
+                if not p["mwst"]:
+                    p.pop("mwst")
+                pos.append(p)
     netto = sum((p["betrag"] for p in pos), Decimal("0"))
     breakdown = invoices.mwst_breakdown(pos)
     iban = invoices.qr.normalize_iban(book.settings.get("iban"))

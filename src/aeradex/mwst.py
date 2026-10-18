@@ -830,7 +830,13 @@ def abstimmung(book: Book, year: int) -> dict:
             zeilen.append(z)
 
     ertrag = _ertrag(book, year)
-    ertrag["umsatz_andere_konten"] = buch["200"] - ertrag["mit_code"] if cfg["methode"] != "saldo" else ZERO
+    # Akontorechnungen are turnover on Erhaltene Anzahlungen until the Schlussrechnung moves them to revenue
+    anz = book.settings.konto("anzahlungen")
+    ertrag["anzahlungen"] = sum(((r.betrag if r.haben == anz else -r.betrag) for r in book.rows
+                                 if r.datum.year == year and anz in (r.soll, r.haben) and not (r.soll and r.haben)
+                                 and r.mwst in CODES and CODES[r.mwst].kind in REVENUE_KINDS), ZERO)
+    ertrag["umsatz_andere_konten"] = buch["200"] - ertrag["mit_code"] - ertrag["anzahlungen"] \
+        if cfg["methode"] != "saldo" else ZERO
 
     # MWST accounts per 31.12. (before this year's Abgrenzung) against what they should hold.
     engine = BalanceEngine(book)

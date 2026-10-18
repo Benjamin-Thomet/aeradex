@@ -107,10 +107,15 @@ class Outcome:
 
 def _run_invoice(book: Book, p: dict) -> Outcome:
     res = api.invoice_create(book, p["kunde"], p["positionen"], p.get("datum") or None, p.get("text", ""),
-                             leistung_von=p.get("leistung_von") or None, leistung_bis=p.get("leistung_bis") or None)
+                             leistung_von=p.get("leistung_von") or None, leistung_bis=p.get("leistung_bis") or None,
+                             rabatt=p.get("rabatt") or None, art=p.get("art") or "rechnung",
+                             akonto=p.get("akonto") or [])
     r = res["rechnung"]
-    return Outcome(f"Rechnung {r['nummer']} an {r['an']['name']} über {r['waehrung']} {r['total']} ausgestellt.",
-                   book.root / res["pdf"])
+    kind = {"akonto": "Akontorechnung", "schluss": "Schlussrechnung"}.get(r.get("art") or "", "Rechnung")
+    text = f"{kind} {r['nummer']} an {r['an']['name']} über {r['waehrung']} {r['total']} ausgestellt."
+    if res.get("warnung"):
+        text += " " + res["warnung"]
+    return Outcome(text, book.root / res["pdf"])
 
 
 def _run_approve(book: Book, p: dict) -> Outcome:
@@ -147,7 +152,8 @@ def _channel() -> Channel | None:
 
 
 def request_invoice(kunde: str, positionen: list[dict], datum: str = "", text: str = "",
-                    leistung_von: str = "", leistung_bis: str = "") -> dict:
+                    leistung_von: str = "", leistung_bis: str = "", rabatt_prozent: str = "",
+                    art: str = "rechnung", akonto: str = "alle") -> dict:
     """Rechnung zur Freigabe vorlegen. Stellt NICHT aus: der Mensch bekommt eine Karte mit den vom System
     gerechneten Beträgen und tippt «Ausstellen» oder «Verwerfen». Vorher Kunde, Positionen und Total mit ihm klären.
 
@@ -158,22 +164,36 @@ def request_invoice(kunde: str, positionen: list[dict], datum: str = "", text: s
         text: Einleitungstext auf der Rechnung.
         leistung_von: Leistungsdatum bzw. Beginn des Leistungszeitraums JJJJ-MM-TT, falls abweichend.
         leistung_bis: Ende des Leistungszeitraums JJJJ-MM-TT.
+        rabatt_prozent: Rabatt auf die ganze Rechnung in Prozent, z.B. "10" (nie selbst ausrechnen).
+        art: "rechnung" oder "akonto" (Akontorechnung = Anzahlung).
+        akonto: offene Akontorechnungen des Kunden abziehen: "alle", "keine" oder Nummern "R-2026-0012".
+            Ist unklar, ob es die Schlussrechnung ist, zuerst fragen.
     """
     from aeradex.tools import book
+    art = art or "rechnung"
     try:
         b = book()
-        preview = api.invoice_check(b, kunde, positionen, datum or None)
+        preview = api.invoice_check(b, kunde, positionen, datum or None, rabatt=rabatt_prozent or None, art=art,
+                                    akonto=None if art == "akonto" else (akonto or "alle"))
     except (BookError, ValueError, KeyError) as exc:
         return {"ok": False, "fehler": str(exc)}
-    lines = [f"🧾 Rechnung an {preview['an'].get('name', kunde)} ({preview['kunde']}), {preview['datum']}"]
+    kind = {"akonto": "Akontorechnung", "schluss": "Schlussrechnung"}.get(preview.get("art") or "", "Rechnung")
+    lines = [f"🧾 {kind} an {preview['an'].get('name', kunde)} ({preview['kunde']}), {preview['datum']}"]
     for p in preview["positionen"]:
-        lines.append(f"• {p.get('text', '')}: {p.get('menge')} {p.get('einheit') or ''} × {p.get('preis')} = {p.get('betrag')}")
+        if p.get("rabatt") or p.get("akonto"):
+            lines.append(f"• {p.get('text', '')}: {p.get('betrag')}")
+        else:
+            lines.append(f"• {p.get('text', '')}: {p.get('menge')} {p.get('einheit') or ''} × {p.get('preis')} = {p.get('betrag')}")
     for m in preview.get("mwst") or []:
         lines.append(f"MWST {m.get('code', '')} {m.get('satz', '')}%: {m.get('steuer')}")
     lines.append(f"Total {preview['waehrung']} {preview['total']}")
+    if preview.get("warnung"):
+        lines.append(f"⚠️ {preview['warnung']}")
     summary = "\n".join(lines)
+    abgezogen = list(dict.fromkeys(p["akonto"] for p in preview["positionen"] if p.get("akonto")))
     payload = {"kunde": preview["kunde"], "positionen": positionen, "datum": preview["datum"], "text": text,
-               "leistung_von": leistung_von, "leistung_bis": leistung_bis}
+               "leistung_von": leistung_von, "leistung_bis": leistung_bis, "rabatt": rabatt_prozent or "",
+               "art": art, "akonto": abgezogen}
     action_id = create(b.root, "rechnung", payload, summary)
     if _channel():
         show_card(b.root, action_id, _channel())

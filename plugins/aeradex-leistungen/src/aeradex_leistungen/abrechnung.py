@@ -101,7 +101,9 @@ def bill_all(book: Book, bis=None, je: str = "kunde", datum=None, rapport: bool 
         issued.append(res)
         touched += paths
     total = sum((Decimal(str(r["total"])) for r in issued), ZERO)
-    return {"rechnungen": issued, "anzahl": len(issued), "total": total}, touched
+    # month end is not the Schlussrechnung: Akontos stay open, but nobody should miss them
+    warn = [r["warnung"] for r in issued if r.get("warnung")]
+    return {"rechnungen": issued, "anzahl": len(issued), "total": total, "warnungen": warn}, touched
 
 
 def _period(items: list[dict]) -> str:
@@ -196,9 +198,18 @@ def positions(book: Book, items: list[dict], detail: bool = False) -> list[dict]
     return out
 
 
-def totals(book: Book, raw: list[dict]) -> dict:
+def totals(book: Book, raw: list[dict], kunde: str = "", rabatt=None, akonto=None) -> dict:
     cfg = vat.config(book)
     pos = invoices.normalize_positions(raw, book.settings.konto("ertrag"), "U81" if cfg["methode"] != "keine" else "")
+    pct = invoices._rabatt_percent(rabatt)
+    if pct:
+        pos += invoices.rabatt_positions(book, pos, pct)
+    if kunde and akonto:
+        cur = (book.settings.get("waehrung") or "CHF").upper()
+        for p in invoices.akonto_positions(book, kunde, list(akonto), cur):
+            if not p["mwst"]:
+                p.pop("mwst")
+            pos.append(p)
     netto = sum((p["betrag"] for p in pos), ZERO)
     breakdown = invoices.mwst_breakdown(pos)
     return {"positionen": pos, "netto": netto, "mwst": breakdown,
@@ -222,23 +233,30 @@ def _billable(book: Book, ids: list[str]) -> list[dict]:
     return items
 
 
-def preview(book: Book, ids: list[str], detail: bool = False) -> dict:
+def preview(book: Book, ids: list[str], detail: bool = False, rabatt=None) -> dict:
+    """The invoice the entries would make. Open Akontorechnungen of the customer are taken off, as `bill`
+    does unless they are unticked."""
     items = _billable(book, ids)
+    kunde = items[0]["kunde"]
     leer = undescribed_days(book, items) if daten.settings(book)["rechnung_tage"] and not detail else []
-    return {"kunde": items[0]["kunde"], "eintraege": len(items), "ohne_beschreibung": leer,
-            **totals(book, positions(book, items, detail))}
+    offen = invoices.open_akonto(book, kunde)
+    return {"kunde": kunde, "eintraege": len(items), "ohne_beschreibung": leer, "offen_akonto": offen,
+            **totals(book, positions(book, items, detail), kunde, rabatt, [a["nummer"] for a in offen])}
 
 
 def bill(book: Book, ids: list[str], detail: bool = False, datum=None, text: str = "",
-         zahlungsfrist: int | None = None, rapport: bool = True) -> tuple[dict, list[Path]]:
+         zahlungsfrist: int | None = None, rapport: bool = True, rabatt=None,
+         akonto=None) -> tuple[dict, list[Path]]:
     """Issue the invoice for the entries (QR-bill PDF, booked as a Debitor) and mark them billed.
-    With `rapport` a Leistungsrapport (every entry) is written next to the invoice PDF."""
+    With `rapport` a Leistungsrapport (every entry) is written next to the invoice PDF. `rabatt` in percent;
+    `akonto` the Akontorechnungen it credits (core `invoices.issue_invoice`)."""
     items = _billable(book, ids)
     kunde = items[0]["kunde"]
     raw = positions(book, items, detail)
     if not text:
         text = f"Unsere Leistungen vom {_period(items)}."
-    meta, touched = invoices.issue_invoice(book, kunde, raw, datum, text, zahlungsfrist)
+    meta, touched = invoices.issue_invoice(book, kunde, raw, datum, text, zahlungsfrist, rabatt=rabatt,
+                                           akonto=list(akonto or []))
     meta["_text"] = text
     cust = invoices.customer(book, kunde)
     pdf_path = api.meta_pdf_path(book, meta)
@@ -251,8 +269,11 @@ def bill(book: Book, ids: list[str], detail: bool = False, datum=None, text: str
         touched.append(rp)
     touched += daten.mark_billed(book, [e["id"] for e in items], meta["nummer"])
     meta.pop("_text", None)
-    return {"rechnung": meta["nummer"], "kunde": kunde, "total": meta["total"], "eintraege": len(items),
-            "pdf": book.rel(pdf_path)}, touched
+    out = {"rechnung": meta["nummer"], "kunde": kunde, "total": meta["total"], "eintraege": len(items),
+           "pdf": book.rel(pdf_path)}
+    if warn := invoices.unanrechnet_warnung(book, kunde, meta):
+        out["warnung"] = warn
+    return out, touched
 
 
 def mismatches(book: Book) -> list[str]:
@@ -268,7 +289,9 @@ def mismatches(book: Book) -> list[str]:
     out = []
     for nr, items in sorted(per.items()):
         meta = all_invoices[nr]
-        netto = sum((daten.money(p["betrag"]) for p in meta.get("positionen") or []), ZERO)
+        # the entries make the positions; a discount or an Akonto taken off comes on top of them
+        netto = sum((daten.money(p["betrag"]) for p in meta.get("positionen") or []
+                     if not p.get("rabatt") and not p.get("akonto")), ZERO)
         if {e["kunde"] for e in items} != {meta.get("kunde")}:
             out.append(f"{nr}: Leistungen eines anderen Kunden markiert")
             continue

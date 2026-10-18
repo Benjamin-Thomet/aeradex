@@ -777,3 +777,24 @@ def test_lohnkonto_firma_and_lohnmeldungen(client):
     csv = client.get("/lohn/meldungen/datei.csv?jahr=2026")
     assert csv.status_code == 200 and "Ausgleichskasse" in csv.content.decode("utf-8-sig")
     assert client.get("/lohn/abrechnung/datei.pdf?jahr=2026").status_code == 404
+
+
+def test_akonto_and_discount_in_the_invoice_form(client, root):
+    pos = {"p_text": ["Malerarbeiten"], "p_menge": ["1"], "p_einheit": [""], "p_preis": ["2000"], "p_konto": ["3400"]}
+    to = ok(post(client, "/debitoren/neu", {"kunde": "K0001", "datum": "2026-04-02", "art": "akonto",
+                                             "p_text": ["1. Akonto"], "p_menge": ["1"], "p_einheit": [""],
+                                             "p_preis": ["500"], "p_konto": ["3400"], "rabatt": "10"}))
+    ak = to.rsplit("/", 1)[-1]
+    assert "Akonto · noch nicht angerechnet" in client.get(to).text
+    box = client.get("/debitoren/akonto?kunde=K0001").text
+    assert f'value="{ak}" checked' in box and "noch offen" in box
+    assert client.get("/debitoren/akonto?kunde=K0002").text.strip() == ""
+    r = post(client, "/debitoren/vorschau", {**pos, "kunde": "K0001", "rabatt": "10", "akonto": [ak]})
+    assert "Rabatt 10 %" in r.text and f"abzüglich Akontorechnung {ak}" in r.text and "1&#39;300.00" in r.text \
+        or "1'300.00" in r.text
+    to = ok(post(client, "/debitoren/neu", {**pos, "kunde": "K0001", "datum": "2026-05-02", "zahlungsfrist": "30",
+                                             "rabatt": "10", "akonto": [ak]}))
+    page = client.get(to).text
+    assert "Schlussrechnung" in page and ak in page
+    assert f"angerechnet in {to.rsplit('/', 1)[-1]}" in client.get(f"/debitoren/rechnung/{ak}").text
+    assert errors(root) == []

@@ -33,7 +33,7 @@
     <tbody>
     {% for nr, c in customers.items() %}
       <tr class="row" data-suche="{{ suche[nr] }}"><td class="acc">{{ nr }}</td><td><strong>{{ c.firma or c.name }}</strong>{% if c.firma %}<br><span class="small muted">{{ c.name }}</span>{% endif %}{% for tel in (c.telefon, c.mobil) if tel %}<br><a class="small muted" href="tel:{{ tel|replace(' ', '') }}">{{ tel }}</a>{% endfor %}</td><td>{{ (c.adresse or {}).ort }}</td>
-        <td class="right num">{{ states[nr].anzahl }}</td><td class="right num">{{ states[nr].offen|chf(true) }}</td>
+        <td class="right num">{{ states[nr].anzahl }}</td><td class="right num">{{ states[nr].offen|chf(true) }}{% if states[nr].akonto %}<br><span class="pill info" title="Akontorechnungen, die bei der Schlussrechnung abgezogen werden">Akonto {{ states[nr].akonto|chf }}</span>{% endif %}</td>
         <td class="right"><span class="rowactions"><a class="btn small" href="/debitoren/neu?kunde={{ nr }}">Rechnung</a><a class="btn small ghost" href="/debitoren/kunden?edit={{ nr }}#edit">Bearbeiten</a></span></td></tr>
       {% if edit == nr %}<tr><td colspan="6" id="edit" style="padding:0">{{ kundenform(c, "/debitoren/kunden/" ~ nr) }}</td></tr>{% endif %}
     {% endfor %}

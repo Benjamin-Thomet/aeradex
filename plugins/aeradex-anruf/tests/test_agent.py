@@ -333,3 +333,21 @@ def test_openai_drafts_mode_and_card_reaches_the_chat(book, monkeypatch):
     said = contextvars.copy_context().run(agent.ask, "Rechnung an Kunde AG, Montage 100 Franken")
     assert said == "Die Karte zum Bestätigen liegt bereit."
     assert ch.cards and "100.00" in ch.cards[0][0]
+
+
+def test_request_invoice_with_akonto_and_discount(book):
+    ak = api.invoice_create(Book(book.root), "K0001", [{"text": "Akonto", "preis": "200"}], "2026-03-01",
+                            art="akonto")["rechnung"]["nummer"]
+    ch = FakeChannel()
+    token = actions.CHANNEL.set(ch)
+    try:
+        res = actions.request_invoice("K0001", [{"text": "Malerarbeiten", "menge": 8, "einheit": "h", "preis": "100"}],
+                                      "2026-03-02", rabatt_prozent="10")
+    finally:
+        actions.CHANNEL.reset(token)
+    assert res["ok"] and str(res["total"]) == "520.00"            # 800 − 80 − 200
+    text, _ = ch.cards[0]
+    assert "Schlussrechnung" in text and "Rabatt 10 %" in text and f"abzüglich Akontorechnung {ak}" in text
+    outcome = actions.confirm(book.root, res["aktion"], "x <x@y>")
+    assert outcome.text.startswith("Schlussrechnung") and api.invoice_open_akonto(Book(book.root)) == []
+    assert_clean(Book(book.root))

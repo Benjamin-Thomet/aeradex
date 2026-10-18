@@ -52,6 +52,7 @@
       {% endfor %}</tbody>
       <tfoot><tr><td>Total</td><td class="right num total">{{ rep.ertrag.total|chf }}</td><td class="right num">{{ rep.ertrag.mit_code|chf }}</td><td class="right num">{{ rep.ertrag.ohne_code|chf(true) }}</td></tr></tfoot>
     </table></div>
+    {% if rep.ertrag.anzahlungen|float %}<div class="body small muted">Akontorechnungen, noch nicht in einer Schlussrechnung (Umsatz auf Erhaltene Anzahlungen): {{ rep.ertrag.anzahlungen|chf }}</div>{% endif %}
     {% if rep.ertrag.umsatz_andere_konten|float %}<div class="body small muted">Umsatzcodes auf anderen Konten (z.B. Eigenverbrauch, Erlösminderungen im Aufwand): {{ rep.ertrag.umsatz_andere_konten|chf }}</div>{% endif %}
   </div>
   <div class="panel">

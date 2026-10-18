@@ -1,6 +1,7 @@
 {% if error %}<div class="alert warn">{{ error }}</div>
 {% elif prev %}<div class="alert info" style="display:flex;flex-direction:column;gap:4px">
+  {% for label, betrag, zw in abzuege %}<span style="display:flex;justify-content:space-between;gap:10px"><span>{{ label }}</span><span class="num">{{ betrag|chf }}</span></span>{% endfor %}
   {% if prev.mwst %}<span style="display:flex;justify-content:space-between"><span>Total exkl. MWST</span><span class="num">{{ prev.netto|chf }}</span></span>
   {% for b in prev.mwst %}<span style="display:flex;justify-content:space-between"><span>{{ "MWST " ~ (b.satz|float) ~ " % auf " ~ (b.netto|chf) if b.satz|float else b.code }}</span><span class="num">{{ b.steuer|chf }}</span></span>{% endfor %}{% endif %}
-  <span style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span>{{ prev.positionen|length }} Position{{ 'en' if prev.positionen|length != 1 }} · Referenz {{ prev.referenz_typ }}</span><strong class="num">Total CHF {{ prev.total|chf }}</strong></span>
+  <span style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span>{{ 'Akontorechnung · ' if art == 'akonto' }}{{ anzahl }} Position{{ 'en' if anzahl != 1 }} · Referenz {{ prev.referenz_typ }}</span><strong class="num">Total CHF {{ prev.total|chf }}</strong></span>
 </div>{% endif %}

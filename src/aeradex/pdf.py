@@ -248,6 +248,37 @@ def _doc(buf, title: str, author: str, pagesize=A4, label: str = "", head: bool 
 
 # ---------- Invoice ----------
 
+def invoice_kind(meta: dict) -> str:
+    return {"akonto": "Akontorechnung", "schluss": "Schlussrechnung"}.get(meta.get("art") or "", "Rechnung")
+
+
+def invoice_deductions(book: Book, meta: dict) -> list[tuple[str, Decimal, bool]]:
+    """The lines below the positions when there is a discount or credited Akontos: Zwischentotal, one
+    Rabatt line (the per-account discount lines summed), one line per Akontorechnung (its codes summed)."""
+    from . import invoices as inv
+    rab = [p for p in meta["positionen"] if p.get("rabatt")]
+    ak: dict[str, Decimal] = {}
+    for p in meta["positionen"]:
+        if p.get("akonto"):
+            ak[str(p["akonto"])] = ak.get(str(p["akonto"]), Decimal(0)) + Decimal(str(p["betrag"]))
+    if not rab and not ak:
+        return []
+    base = sum((Decimal(str(p["betrag"])) for p in meta["positionen"] if not p.get("rabatt") and not p.get("akonto")),
+               Decimal(0))
+    out = [("Zwischentotal", base, True)]
+    if rab:
+        out.append((rab[0]["text"], sum((Decimal(str(p["betrag"])) for p in rab), Decimal(0)), False))
+    metas = inv.invoices(book) if ak else {}
+    for nr, amount in ak.items():
+        src = metas.get(nr)
+        label = next(p["text"] for p in meta["positionen"] if p.get("akonto") == nr)
+        if src is not None:
+            st = inv.invoice_state(book, src)
+            label += " (bezahlt)" if st["status"] == "bezahlt" else " (noch offen)"
+        out.append((label, amount, False))
+    return out
+
+
 def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
     s = book.settings
     width = A4[0] - 2 * SIDE
@@ -258,9 +289,11 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
     if a.get("land") and a.get("land") != "CH":
         lines.append(a["land"])
 
+    kind = invoice_kind(meta)
+
     def letter():
         story = letter_head(book, width, lines)
-        story.append(P(f"Rechnung {meta['nummer']}", "title"))
+        story.append(P(f"{kind} {meta['nummer']}", "title"))
         info = [["Rechnungsdatum", d(meta["datum"])]]
         if meta.get("leistung_von"):                  # Art. 26 Abs. 2 MWSTG: date or period of the service
             info.append(["Leistungszeitraum", f"{d(meta['leistung_von'])} – {d(meta['leistung_bis'])}"]
@@ -276,11 +309,17 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
             story += [Spacer(1, 6 * mm)] + [P(p) for p in meta["_text"].split("\n\n") if p.strip()]
         story.append(Spacer(1, 6 * mm))
         data = [["Position", "Menge", "Preis", f"Betrag {meta.get('waehrung', 'CHF')}"]]
+        sums = []
         for p in meta["positionen"]:
+            if p.get("rabatt") or p.get("akonto"):
+                continue
             menge = f"{Decimal(str(p['menge'])).normalize():f} {p.get('einheit') or ''}".strip()
             data.append([P(_lines(p["text"]), "cell"), menge, price(p["preis"]), chf(p["betrag"])])
+        for label, amount, is_sum in invoice_deductions(book, meta):
+            data.append([P(label, "cell"), "", "", chf(amount)])
+            if is_sum:
+                sums.append(len(data) - 1)
         cur = meta.get('waehrung', 'CHF')
-        sums = []
         if meta.get("mwst"):
             data.append([f"Total exkl. MWST", "", "", chf(meta.get("netto"))])
             sums.append(len(data) - 1)
@@ -297,12 +336,14 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
             story += [Spacer(1, 3 * mm), P(f"MWST-Nr. {s.get('uid')}", "small")]
         elif s.get("ohne_mwst_hinweis", True) and not uid.endswith("MWST") and not meta.get("mwst"):
             story += [Spacer(1, 3 * mm), P("Nicht MWST-pflichtig, es wird keine Mehrwertsteuer erhoben.", "small")]
+        if meta.get("art") == "akonto":
+            story += [Spacer(1, 3 * mm), P("Akontozahlung — sie wird mit der Schlussrechnung verrechnet.", "small")]
         story += [Spacer(1, 6 * mm), P(s.get("rechnung_gruss") or "Besten Dank für Ihren Auftrag.")]
         return story
 
     def make(first: str, buf):
         doc = BaseDocTemplate(buf, pagesize=A4, leftMargin=SIDE, rightMargin=SIDE, topMargin=TOP,
-                              bottomMargin=BOTTOM, title=f"Rechnung {meta['nummer']}", author=s.firma)
+                              bottomMargin=BOTTOM, title=f"{kind} {meta['nummer']}", author=s.firma)
 
         def frame(bottom):
             return Frame(SIDE, bottom, width, A4[1] - TOP - bottom, 0, 0, 0, 0)
@@ -314,7 +355,7 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
         templates = {
             "slip": PageTemplate("slip", [frame(SLIP_RESERVE)], onPage=slip),
             "plain": PageTemplate("plain", [frame(BOTTOM)],
-                                  onPage=lambda c, dd: _footer(c, dd, f"Rechnung {meta['nummer']}" if dd.page > 1 else "")),
+                                  onPage=lambda c, dd: _footer(c, dd, f"{kind} {meta['nummer']}" if dd.page > 1 else "")),
         }
         doc.addPageTemplates([templates.pop(first)] + list(templates.values()))
         return doc
@@ -326,7 +367,7 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
         make("slip", buf).build(letter())
     else:
         story = letter() + [NextPageTemplate("slip"), PageBreak(),
-                            P(f"Rechnung {meta['nummer']}", "h2"),
+                            P(f"{kind} {meta['nummer']}", "h2"),
                             P(f"Total {meta.get('waehrung', 'CHF')} {chf(meta['total'])}, zahlbar bis {d(meta['faellig'])}")]
         make("plain", buf).build(story)
     return buf.getvalue()
@@ -791,6 +832,8 @@ def mwst_abstimmung_pdf(book: Book, rep: dict) -> bytes:
     revenue.append(["Total"] + [chf(rep["ertrag"][key]) for key in ("total", "mit_code", "ohne_code")])
     story += [_grid(revenue, [width * 0.46] + [width * 0.18] * 3,
                     total_rows=(len(revenue) - 1,), right_cols=(1, 2, 3))]
+    if rep["ertrag"].get("anzahlungen"):
+        story.append(P(f"Akontorechnungen ohne Schlussrechnung (Erhaltene Anzahlungen): {chf(rep['ertrag']['anzahlungen'])} CHF", "small"))
     if rep["ertrag"]["umsatz_andere_konten"]:
         story.append(P(f"Umsatzcodes auf anderen Konten: {chf(rep['ertrag']['umsatz_andere_konten'])} CHF", "small"))
     story.append(P("MWST-Konten per 31.12. (vor Abgrenzung)", "h2"))

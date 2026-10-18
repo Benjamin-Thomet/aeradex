@@ -163,6 +163,19 @@ Frontmatter mit `nummer, kunde, an` (Adress-Snapshot), `datum, faellig, waehrung
 Rechnungen in Fremdwährung (CHF oder EUR für den QR-Zahlteil) tragen `waehrung` und `kurs`; ihre Journalzeilen
 sind in CHF mit FW und Kurs, Zahlungen gleichen den Buchwert aus (Differenz auf Kursgewinn/-verlust).
 
+Mit MWST kommen `netto`, `mwst[]` (je Code `code, satz, netto, steuer`), `mwst_methode` und `mwst_konto` dazu;
+`leistung_von`/`leistung_bis` nennen den Leistungszeitraum.
+
+Rabatt und Akonto:
+- `rabatt: '10'` (Prozent auf die ganze Rechnung). Je Konto und MWST-Code der Positionen steht eine erzeugte Position
+  `Rabatt 10 %` mit `rabatt: true`, negativem Betrag und dem Konto der Rolle `rabatt` (3800 Erlösminderungen) darin;
+  sie wird im Soll gebucht, die MWST auf den rabattierten Betrag gerechnet.
+- `art: akonto`: Akontorechnung. Alle Positionen auf der Rolle `anzahlungen` (2030 Erhaltene Anzahlungen).
+- `art: schluss`: rechnet Akontorechnungen an. Je Akontorechnung und Code eine Position `abzüglich Akontorechnung
+  R-… vom …` mit `akonto: R-…`, dem Netto der Akontorechnung negativ auf 2030 (Soll) und deren Code. Angerechnet wird,
+  was in Rechnung gestellt wurde; jede Akontorechnung höchstens einmal, nur beim gleichen Kunden (`check`).
+  Eine angerechnete Akontorechnung lässt sich erst nach der Schlussrechnung stornieren; offene listet `check` als Hinweis.
+
 Rechnungen, die ausserhalb von aeradex erstellt wurden, tragen `extern: {rechnungsnr: …}` und `datei` (das Original
 unter belege/); sie haben eine eigene aeradex-Nummer und werden sonst wie alle Rechnungen behandelt.
 
