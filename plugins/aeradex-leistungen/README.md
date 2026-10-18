@@ -112,7 +112,7 @@ Budget gegen Ist und Deckungsbeitrag.
 leistungen/einstellungen.yaml        Sätze, Personen ohne Lohn, Kategorien, Feiertage, Konten
 leistungen/produkte.yaml             Produkte mit Preis, Einheit, Konto, MWST, Kundenpreisen
 leistungen/erfassung/2026-10.md      Zeit und Produkte, eine Tabelle pro Monat
-projekte/P0001-<name>.md             Projekte mit Budget
+projekte/P0001-<name>.md             Projekte (bzw. Objekte) mit Budget, optional adresse + zugang
 offerten/2026/O-2026-0001.md + .pdf  Offerten
 rechnungen/2026/R-…-rapport.pdf      Leistungsrapport zur Rechnung
 ```

@@ -411,10 +411,44 @@ def project(book: Book, nr: str) -> dict:
     return found
 
 
+ADRESSE = ("strasse", "nr", "plz", "ort")
+
+
+def address_text(p: dict) -> str:
+    """«Bernstrasse 12, 3600 Thun» for a project (object) with an address, else ""."""
+    a = p.get("adresse") or {}
+    street = " ".join(str(a.get(k) or "").strip() for k in ("strasse", "nr")).strip()
+    place = " ".join(str(a.get(k) or "").strip() for k in ("plz", "ort")).strip()
+    return ", ".join(x for x in (street, place) if x)
+
+
+def _set_address(meta: dict, strasse=None, hausnr=None, plz=None, ort=None, zugang=None) -> None:
+    """Address and access of an object; None = unchanged, "" = cleared."""
+    a = dict(meta.get("adresse") or {})
+    for key, value in zip(ADRESSE, (strasse, hausnr, plz, ort)):
+        if value is not None:
+            a[key] = str(value).strip()
+    a = {k: a[k] for k in ADRESSE if a.get(k)}
+    if a:
+        meta["adresse"] = a
+    else:
+        meta.pop("adresse", None)
+    if zugang is not None:
+        if str(zugang).strip():
+            meta["zugang"] = str(zugang).strip()
+        else:
+            meta.pop("zugang", None)
+
+
 def add_project(book: Book, kunde: str, name: str, abrechnung: str = "aufwand", budget_stunden=None,
-                budget_chf=None, satz=None, offerte: str = "", notizen: str = "") -> tuple[dict, list[Path]]:
+                budget_chf=None, satz=None, offerte: str = "", notizen: str = "", strasse: str = "",
+                hausnr: str = "", plz: str = "", ort: str = "", zugang: str = "") -> tuple[dict, list[Path]]:
+    """A project — for a painter an object (a building): optionally with its address and how to get in."""
     cust = invoices.customer(book, kunde)
-    if not name.strip():
+    probe: dict = {}
+    _set_address(probe, strasse, hausnr, plz, ort, zugang)
+    name = (name or "").strip() or address_text(probe)
+    if not name:
         raise BookError("Projekt: Name fehlt")
     if abrechnung not in ABRECHNUNG:
         raise BookError("Abrechnung: aufwand oder pauschal")
@@ -424,7 +458,7 @@ def add_project(book: Book, kunde: str, name: str, abrechnung: str = "aufwand", 
             "budget_stunden": Decimal(str(budget_stunden)) if budget_stunden not in (None, "") else None,
             "budget_chf": money(parse_amount(budget_chf, "budget_chf")) if budget_chf not in (None, "") else None,
             "satz": money(parse_amount(satz, "satz")) if satz not in (None, "") else None,
-            "offerte": offerte, "status": "offen", "erstellt": date.today().isoformat()}
+            "offerte": offerte, "status": "offen", "erstellt": date.today().isoformat(), **probe}
     path = book.root / "projekte" / f"{nr}-{slug(name)}.md"
     write_frontmatter(path, meta, notizen)
     return meta, [path]
@@ -446,6 +480,9 @@ def update_project(book: Book, nummer: str, status: str | None = None, **fields)
         if fields["abrechnung"] not in ABRECHNUNG:
             raise BookError("Abrechnung: aufwand oder pauschal")
         meta["abrechnung"] = fields["abrechnung"]
+    _set_address(meta, *(fields.get(k) for k in ("strasse", "hausnr", "plz", "ort", "zugang")))
+    if fields.get("notizen") is not None:
+        notes = str(fields["notizen"])
     write_frontmatter(path, meta, notes)
     return meta, [path]
 

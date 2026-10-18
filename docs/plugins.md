@@ -73,6 +73,7 @@ Die Hooks sind [pluggy](https://pluggy.readthedocs.io/)-Hooks (dasselbe System w
 | `aeradex_pages()` | `[Page]` | eigene Seiten in der Oberfläche unter «Plugins» | eingeschaltet |
 | `aeradex_reports()` | `[Report]` | weitere Berichte (Berichte, `aeradex bericht`, Agent): `Report(name, label, build, params, gruppe)`, `build(book, params)` liefert die Tabelle wie `aeradex.reports` | eingeschaltet |
 | `aeradex_dossier_teile()` | `[DossierTeil]` | weitere Teile der Abschlussunterlagen (`aeradex dossier`), z.B. ein Anlagenspiegel: `build(book, jahr, format)` → `[(Dateiname, bytes)]` | eingeschaltet |
+| `aeradex_kunde_teile(book, kunde)` | `[KundeTeil]` | Teile der Kundenseite `/debitoren/kunden/<nr>`: `KundeTeil(titel, template, context, zeitachse, kennzahlen, aktionen)`; `template` aus dem `templates/`-Ordner des Plugins (bekommt `context`, `book`, `kunde`), `zeitachse` Ereignisse `{datum, art, titel, text, link}` für den Verlauf, `kennzahlen` `{label, wert, meta, link}`, `aktionen` Knöpfe `(label, href)` | eingeschaltet |
 | `aeradex_dienste(book)` | `[Dienst]` | Hintergrunddienste, die `aeradex ui` mitstartet und beim Beenden stoppt (z.B. ein Gateway oder Bot): `Dienst(name, args)`, `args` nach `aeradex --buch <buch>`; Ausgabe in `.aeradex/lokal/dienste/<name>.log`. Nicht im Servermodus | eingeschaltet |
 
 ### Kontenplan-Vorlagen (Daten)

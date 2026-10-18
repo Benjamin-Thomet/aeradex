@@ -295,6 +295,8 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
         story = letter_head(book, width, lines)
         story.append(P(f"{kind} {meta['nummer']}", "title"))
         info = [["Rechnungsdatum", d(meta["datum"])]]
+        if meta.get("objekt"):
+            info.append(["Objekt", meta["objekt"]])
         if meta.get("leistung_von"):                  # Art. 26 Abs. 2 MWSTG: date or period of the service
             info.append(["Leistungszeitraum", f"{d(meta['leistung_von'])} – {d(meta['leistung_bis'])}"]
                         if meta.get("leistung_bis") else ["Leistungsdatum", d(meta["leistung_von"])])

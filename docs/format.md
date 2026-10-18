@@ -152,9 +152,19 @@ adresse: {strasse: Marktgasse, nr: '5', plz: '3011', ort: Bern, land: CH}
 email: anna@example.ch
 telefon: 031 123 45 67     # optional
 mobil: 079 123 45 67       # optional
+kategorie: Verwaltung      # optional: Privat, Verwaltung, Architekt, Firma, Öffentlich oder frei
+herkunft: Empfehlung Hans Muster   # optional: wie der Kontakt zustande kam
+log:                       # optional: Kontakt-Log, neue Einträge hinten
+- {datum: '2026-05-01', zeit: '14:05', wer: Delia, art: anruf, text: Offerte Fassade besprochen,
+   nachfassen: '2026-05-10', erledigt: '2026-05-09'}
 ---
-Freie Notizen.
+Feste Infos (Zugang, Wünsche, Erreichbarkeit).
 ```
+
+`art` im Log: `anruf`, `besuch`, `email` oder `notiz`. Ein Eintrag mit `nachfassen` und ohne `erledigt` ist eine
+offene Wiedervorlage (Übersicht, `aeradex customer followups`). Die Kundenseite (`/debitoren/kunden/K0001`) und
+`aeradex customer show K0001` rechnen Umsatz (wie der Bericht «Umsatz nach Kunde»), Zahlungsmoral und Verlauf aus
+den Rechnungen, Zahlungen und Mahnungen; gespeichert wird davon nichts.
 
 ## rechnungen/JJJJ/R-JJJJ-NNNN.md
 
@@ -164,7 +174,8 @@ Rechnungen in Fremdwährung (CHF oder EUR für den QR-Zahlteil) tragen `waehrung
 sind in CHF mit FW und Kurs, Zahlungen gleichen den Buchwert aus (Differenz auf Kursgewinn/-verlust).
 
 Mit MWST kommen `netto`, `mwst[]` (je Code `code, satz, netto, steuer`), `mwst_methode` und `mwst_konto` dazu;
-`leistung_von`/`leistung_bis` nennen den Leistungszeitraum.
+`leistung_von`/`leistung_bis` nennen den Leistungszeitraum. `objekt` (optional) nennt das Objekt bzw. die Baustelle
+und steht auf der Rechnung.
 
 Rabatt und Akonto:
 - `rabatt: '10'` (Prozent auf die ganze Rechnung). Je Konto und MWST-Code der Positionen steht eine erzeugte Position

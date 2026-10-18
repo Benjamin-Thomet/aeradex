@@ -55,7 +55,7 @@ def customer(book: Book, nr: str) -> dict:
 def add_customer(book: Book, name: str, firma: str = "", strasse: str = "", nr: str = "",
                  plz: str = "", ort: str = "", land: str = "CH", email: str = "",
                  rechnung_an: str = "firma", stundensatz=None, notizen: str = "",
-                 telefon: str = "", mobil: str = "") -> tuple[dict, Path]:
+                 telefon: str = "", mobil: str = "", kategorie: str = "", herkunft: str = "") -> tuple[dict, Path]:
     existing = customers(book)
     nums = [int(k[1:]) for k in existing if re.fullmatch(r"K\d+", k)]
     number = f"K{max(nums, default=0) + 1:04d}"
@@ -63,7 +63,8 @@ def add_customer(book: Book, name: str, firma: str = "", strasse: str = "", nr: 
             "rechnung_an": rechnung_an,
             "adresse": {"strasse": strasse, "nr": str(nr), "plz": str(plz), "ort": ort, "land": land},
             "email": email}
-    for key, value in (("telefon", telefon), ("mobil", mobil)):    # only when given: older files stay as they are
+    for key, value in (("telefon", telefon), ("mobil", mobil), ("kategorie", kategorie), ("herkunft", herkunft)):
+        # only when given: older files stay as they are
         if str(value or "").strip():
             meta[key] = str(value).strip()
     if stundensatz is not None:
@@ -80,7 +81,7 @@ FROZEN = ("nummer", "kunde", "an", "datum", "faellig", "waehrung", "positionen",
 # Added with MWST support; part of the fingerprint only when present, so
 # invoices issued before keep their fingerprint.
 FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto", "extern", "kurs", "leistung_von", "leistung_bis",
-                   "art", "rabatt")
+                   "art", "rabatt", "objekt")
 QR_CURRENCIES = ("CHF", "EUR")          # what a Swiss QR-bill can carry
 
 
@@ -420,7 +421,7 @@ def preview_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, 
 def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
                   zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
                   leistung_von=None, leistung_bis=None, rabatt=None, art: str = "rechnung",
-                  akonto=None) -> tuple[dict, list[Path]]:
+                  akonto=None, objekt: str = "") -> tuple[dict, list[Path]]:
     """Issue and book an invoice: DR Debitoren / CR Ertrag (per position account),
     with MWST per rate when the book is MWST-pflichtig. A discount goes to the Rabatt account,
     an Akontorechnung to Anzahlungen, credited Akontos come off Anzahlungen (Soll)."""
@@ -452,6 +453,8 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
                      "mwst_konto": cfg["konten"]["umsatzsteuer"]})
     if rate is not None:
         meta["kurs"] = str(rate)
+    if str(objekt or "").strip():                    # the building/site the work was done at, printed on the PDF
+        meta["objekt"] = " ".join(str(objekt).split())
     _leistung(meta, leistung_von, leistung_bis)
     meta["fingerprint"] = fingerprint(_canonical(meta))
     path = book.root / "rechnungen" / str(d.year) / f"{nummer}.md"
@@ -550,7 +553,7 @@ def _canonical(meta: dict) -> dict:
                          for p in meta.get("positionen") or []]
     for key in ("datum", "faellig"):
         out[key] = str(meta.get(key))
-    for key in ("leistung_von", "leistung_bis", "art", "rabatt"):
+    for key in ("leistung_von", "leistung_bis", "art", "rabatt", "objekt"):
         if key in meta:
             out[key] = str(meta.get(key))
     return out

@@ -112,6 +112,11 @@
     }));
     $$("form", root).forEach(f => f.addEventListener("input", () => { f.dataset.dirty = "1"; }));
     $$("input[data-filter]", root).forEach(bindFilter);
+    // a table row with data-href opens on click, except when a link, button or form inside it was hit
+    $$("tr[data-href]", root).forEach(tr => tr.addEventListener("click", e => {
+      if (e.target.closest("a, button, input, select, textarea, label") || getSelection().toString()) return;
+      location.href = tr.dataset.href;
+    }));
   }
   // ---- instant list search: every word must appear in a row's data-suche (or its text) ----
   const fold = v => String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");

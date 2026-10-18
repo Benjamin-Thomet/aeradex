@@ -164,6 +164,11 @@ def todo_items(book: Book) -> list[dict]:
         items.append({"level": "warn", "title": f"Löhne {month[5:]}/{month[:4]} abschliessen",
                       "detail": " · ".join(f"{s.get('name')} {Decimal(str(s['werte']['nettolohn'])):,.2f} netto".replace(",", "'") for s in slips),
                       "tag": f"{len(slips)} Entwurf" + ("e" if len(slips) > 1 else ""), "href": f"/lohn?monat={month}"})
+    from .. import kunden as crm
+    for e in crm.wiedervorlagen(book, date.today())[:6]:
+        items.append({"level": "warn" if e["nachfassen"] < date.today().isoformat() else "info",
+                      "title": f"Nachfassen: {e['name']}", "detail": f"{datum(e['nachfassen'])} · {e['text']}",
+                      "tag": "Wiedervorlage", "href": f"/debitoren/kunden/{e['kunde']}"})
     from .. import kreditoren as kred
     soon = (date.today() + timedelta(days=7)).isoformat()
     due = [r for r in kred.open_payables(book)["posten"] if r["status"] == "offen" and r["faellig"] <= soon]
@@ -702,9 +707,10 @@ def invoice_search_text(row: dict, meta: dict) -> str:
 
 def customer_search_text(nr: str, c: dict) -> str:
     a = c.get("adresse") or {}
+    log = [e.get("text") for e in c.get("log") or [] if isinstance(e, dict)]
     return " ".join(str(x) for x in (nr, c.get("firma"), c.get("name"), a.get("strasse"), a.get("nr"), a.get("plz"),
                                      a.get("ort"), c.get("email"), c.get("telefon"), c.get("mobil"),
-                                     c.get("_notizen")) if x)
+                                     c.get("kategorie"), c.get("herkunft"), c.get("_notizen"), *log) if x)
 
 
 async def mahnungen_page(ui: UI, request: Request):
@@ -753,6 +759,7 @@ async def rechnung_neu(ui: UI, request: Request):
     first = kunde if kunde in custs else next(iter(custs), "")
     return ui.render(request, "rechnung_neu.html", book=book, customers=custs, accounts=account_options(book),
                      kunde=kunde, offen=invoices.open_akonto(book, first) if first else [],
+                     objekt=request.query_params.get("objekt", ""), art=request.query_params.get("art", ""),
                      default_konto=book.settings.konto("ertrag"),
                      today=date.today().isoformat())
 
@@ -808,7 +815,8 @@ async def rechnung_erstellen(ui: UI, request: Request):
                      ui.book(), f.get("kunde"), _positions(f), f.get("datum") or None, f.get("text", ""),
                      int(f.get("zahlungsfrist")) if f.get("zahlungsfrist") else None,
                      "" if (f.get("waehrung") or "CHF") == "CHF" else f.get("waehrung"), f.get("kurs") or None,
-                     f.get("leistung_von") or None, f.get("leistung_bis") or None, rabatt, art, akonto)
+                     f.get("leistung_von") or None, f.get("leistung_bis") or None, rabatt, art, akonto,
+                     f.get("objekt") or "")
 
 
 async def rechnung_aktion(ui: UI, request: Request):
@@ -858,33 +866,93 @@ async def kreditoren_offene_posten(ui: UI, request: Request):
 
 
 async def kunden(ui: UI, request: Request):
+    from .. import kunden as crm
     book = ui.book()
     custs = invoices.customers(book)
     states = defaultdict(lambda: {"anzahl": 0, "offen": ZERO})
     paid = invoices.settlements(book)
-    for meta in invoices.invoices(book).values():
+    metas = invoices.invoices(book)
+    for meta in metas.values():
         st = invoices.invoice_state(book, meta, paid.get(meta["nummer"], []))
         states[meta.get("kunde")]["anzahl"] += 1
         states[meta.get("kunde")]["offen"] += st["offen"]
     for a in invoices.open_akonto(book):
         states[a["kunde"]]["akonto"] = states[a["kunde"]].get("akonto", ZERO) + a["total"]
-    return ui.render(request, "kunden.html", book=book, customers=custs, states=states,
-                     suche={nr: customer_search_text(nr, c) for nr, c in custs.items()},
-                     q=request.query_params.get("q", ""), edit=request.query_params.get("edit"))
+    year = date.today().year
+    for nr, per in crm.revenue_by_year(book, metas).items():
+        states[nr]["umsatz"] = per.get(year, ZERO)
+    kategorien = sorted({c.get("kategorie") for c in custs.values() if c.get("kategorie")})
+    kat = request.query_params.get("kategorie", "")
+    shown = {nr: c for nr, c in custs.items() if not kat or c.get("kategorie") == kat}
+    edit = request.query_params.get("edit")
+    if edit:                                  # old links to the inline form: the detail page has it now
+        return RedirectResponse(f"/debitoren/kunden/{edit}#bearbeiten", status_code=303)
+    return ui.render(request, "kunden.html", book=book, customers=shown, alle=len(custs), states=states, jahr=year,
+                     suche={nr: customer_search_text(nr, c) for nr, c in shown.items()},
+                     kategorien=kategorien, kategorie=kat, KATEGORIEN=crm.KATEGORIEN,
+                     q=request.query_params.get("q", ""))
+
+
+async def kunde(ui: UI, request: Request):
+    from .. import kunden as crm
+    book = ui.book()
+    nr = request.path_params["nr"]
+    try:
+        d = await asyncio.to_thread(crm.dossier, book, nr)
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=404)
+    teile = []
+    for plugin, teil in d["teile"]:
+        html = ""
+        if teil.template:
+            try:
+                html = ui.env.get_template(f"plugins/{plugin}/{teil.template}").render(
+                    **teil.context, book=book, kunde=nr)
+            except Exception as exc:          # a broken plugin part must not take the customer page down
+                html = f'<div class="panel"><div class="body small muted">{teil.titel}: nicht verfügbar ({type(exc).__name__})</div></div>'
+        teile.append({"titel": teil.titel, "html": html, "kennzahlen": teil.kennzahlen, "aktionen": teil.aktionen})
+    return ui.render(request, "kunde.html", book=book, d=d, c=d["kunde"], nr=nr, teile=teile,
+                     arten=crm.LOG_ARTEN, KATEGORIEN=crm.KATEGORIEN, today=date.today().isoformat(),
+                     filter=request.query_params.get("rechnungen", "alle"))
+
+
+async def kunde_log(ui: UI, request: Request):
+    f = await request.form()
+    nr = request.path_params["nr"]
+    return await act(request, api.customer_log_add, f"/debitoren/kunden/{nr}", ui.book(), nr, f.get("text") or "",
+                     f.get("art") or "notiz", f.get("datum") or None, f.get("nachfassen") or None)
+
+
+async def kunde_log_erledigt(ui: UI, request: Request):
+    f = await request.form()
+    nr = request.path_params["nr"]
+    return await act(request, api.customer_log_done, request.headers.get("hx-current-url") or f"/debitoren/kunden/{nr}",
+                     ui.book(), nr, int(request.path_params["index"]), f.get("wieder") != "1")
+
+
+async def kunde_infos(ui: UI, request: Request):
+    f = await request.form()
+    nr = request.path_params["nr"]
+    return await act(request, api.customer_update, f"/debitoren/kunden/{nr}", ui.book(), nr,
+                     notizen=f.get("notizen") or "")
 
 
 async def kunde_speichern(ui: UI, request: Request):
     f = await request.form()
     fields = {k: (f.get(k) or "").strip() for k in ("name", "firma", "strasse", "nr", "plz", "ort", "land", "email",
-                                                    "telefon", "mobil")}
+                                                    "telefon", "mobil", "kategorie", "herkunft")}
     fields["rechnung_an"] = f.get("rechnung_an") or "firma"
     nr = request.path_params.get("nr")
     if not fields["name"]:
         return fail("Name ist nötig (Kontaktperson oder Privatperson).")
+    satz = (f.get("stundensatz") or "").strip()
     if nr:
-        return await act(request, api.customer_update, "/debitoren/kunden", ui.book(), nr,
-                         notizen=f.get("notizen"), **fields)
-    return await act(request, api.customer_add, "/debitoren/kunden", ui.book(), notizen=f.get("notizen", ""), **fields)
+        if satz:
+            fields["stundensatz"] = satz
+        notes = {"notizen": f.get("notizen")} if "notizen" in f else {}
+        return await act(request, api.customer_update, f"/debitoren/kunden/{nr}", ui.book(), nr, **notes, **fields)
+    return await act(request, api.customer_add, lambda r: f"/debitoren/kunden/{r['kunde']['nummer']}", ui.book(),
+                     notizen=f.get("notizen", ""), stundensatz=satz or None, **fields)
 
 
 # ---------- Lohn ----------
@@ -2477,7 +2545,11 @@ def routes(ui: UI) -> list[Route]:
         Route("/debitoren/mahnungen", h(mahnungen_erstellen), methods=["POST"]),
         Route("/debitoren/kunden", h(kunden)),
         Route("/debitoren/kunden/neu", h(kunde_speichern), methods=["POST"]),
+        Route("/debitoren/kunden/{nr:str}", h(kunde)),
         Route("/debitoren/kunden/{nr:str}", h(kunde_speichern), methods=["POST"]),
+        Route("/debitoren/kunden/{nr:str}/log", h(kunde_log), methods=["POST"]),
+        Route("/debitoren/kunden/{nr:str}/log/{index:int}", h(kunde_log_erledigt), methods=["POST"]),
+        Route("/debitoren/kunden/{nr:str}/infos", h(kunde_infos), methods=["POST"]),
         Route("/debitoren/rechnung/{nr:str}", h(rechnung)),
         Route("/debitoren/rechnung/{nr:str}/{aktion:str}", h(rechnung_aktion), methods=["POST"]),
         Route("/bank/bewegungen", h(bank_bewegungen), methods=["GET"]),

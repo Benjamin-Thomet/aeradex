@@ -148,7 +148,8 @@ def project(book: Book, nr: str) -> dict:
             pass
     bh, bc = p.get("budget_stunden"), p.get("budget_chf")
     return {"nummer": p["nummer"], "name": p["name"], "kunde": p["kunde"], "abrechnung": p["abrechnung"],
-            "status": p["status"], "offerte": p.get("offerte") or "",
+            "status": p["status"], "offerte": p.get("offerte") or "", "adresse": daten.address_text(p),
+            "zugang": p.get("zugang") or "",
             "budget_stunden": Decimal(str(bh)) if bh not in (None, "") else None,
             "budget_chf": daten.money(bc) if bc not in (None, "") else None,
             "stunden": hours, "wert": value, "kosten": cost, "abgerechnet": billed, "offen": by_state["offen"],

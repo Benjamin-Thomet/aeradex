@@ -223,6 +223,9 @@ def run(book: Book) -> list[Issue]:
         elif total > Decimal(str(meta.get("total") or 0)):
             add("fehler", where, f"Zahlungen {total} übersteigen das Total {Decimal(str(meta.get('total'))):.2f}")
     _check_akonto(all_inv, book, add)
+    from .kunden import check_log
+    for where, problem in check_log(book):
+        add("warnung", f"kunden/{where}", problem)
     for quelle, group in owned.items():
         kind, _, ref = quelle.partition(":")
         if kind in ("rechnung", "zahlung", "gutschrift") and ref not in all_inv:

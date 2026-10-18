@@ -34,8 +34,9 @@ Regeln:
 - Bei Schreibtools mit idempotency_key einen eindeutigen Schlüssel verwenden und bei Timeout/Wiederholung beibehalten.
 - Kunden: vor add_customer mit customers() prüfen, ob es ihn schon gibt; fehlende oder falsche Angaben eines
   bestehenden Kunden mit update_customer ergänzen, nie einen zweiten anlegen. Was der Mensch über den Kunden sagt
-  und kein eigenes Feld hat (Objekt, Zugang/Schlüssel, Wünsche, wie erreichbar, wer ihn empfohlen hat …), nicht
-  weglassen, sondern in notizen bzw. notiz festhalten.
+  und kein eigenes Feld hat (Zugang/Schlüssel, Wünsche, wie erreichbar …), nicht weglassen, sondern in notizen bzw.
+  notiz festhalten (dauerhafte Fakten); wer ihn empfohlen hat → herkunft. Was mit dem Kunden besprochen oder
+  vereinbart wurde (Anruf, Besuch, E-Mail), mit Datum → log_customer, mit nachfassen wenn etwas nachzufragen ist.
 - Rechnungen: Rabatt nur über rabatt_prozent. Hat der Kunde offene Akontorechnungen (open_akonto) und ist
   nicht klar, ob das die Schlussrechnung dazu ist, zuerst fragen; create_invoice zieht sonst alle ab (akonto="alle").
   Eine Anzahlung verlangen = create_invoice mit art="akonto".
@@ -412,17 +413,43 @@ def customers() -> list | dict:
 
 
 def customer_details(nummer: str) -> dict:
-    """Alle Angaben eines Kunden: Firma, Kontaktperson, Adresse, E-Mail, Rechnungsempfänger, Stundensatz, Notizen.
+    """Alle Angaben eines Kunden: Firma, Kontaktperson, Adresse, E-Mail, Rechnungsempfänger, Stundensatz, Kategorie,
+    Herkunft, feste Notizen; dazu Umsatz, offene Rechnungen, offene Akontos, Zahlungsmoral, die letzten
+    Log-Einträge und offene Wiedervorlagen.
 
     Args:
         nummer: Kundennummer, z.B. "K0004".
     """
-    from . import invoices as inv
-
     def get(b):
-        c = inv.customer(b, nummer)
-        return api.jsonable({**{k: v for k, v in c.items() if not k.startswith("_")}, "notizen": c.get("_notizen", "")})
+        d = api.customer_dossier(b, nummer)
+        return {**d["kunde"], "notizen": d["feste_infos"], "kennzahlen": d["kennzahlen"],
+                "zahlungsmoral": d["zahlungsmoral"],
+                "offene_rechnungen": [r for r in d["rechnungen"] if r["status"] in ("offen", "teilbezahlt")],
+                "akonto_offen": d["akonto_offen"], "log": d["log"][-5:], "wiedervorlagen": d["wiedervorlagen"]}
     return _call(get)
+
+
+def log_customer(kunde: str, text: str, art: str = "notiz", datum: str = "", nachfassen: str = "") -> dict:
+    """Ins Kunden-Log schreiben, was besprochen oder vereinbart wurde (mit Datum und wer). Dauerhafte Fakten
+    (Zugang, Wünsche) gehören dagegen mit update_customer(notiz=…) zu den festen Infos.
+
+    Args:
+        kunde: Kundennummer, z.B. "K0003".
+        text: was besprochen/vereinbart wurde, in ganzen Sätzen.
+        art: anruf, besuch, email oder notiz.
+        datum: JJJJ-MM-TT, leer = heute.
+        nachfassen: JJJJ-MM-TT, an dem nachgefragt werden soll (Wiedervorlage), sonst leer.
+    """
+    return _call(api.customer_log_add, kunde, text, art, datum or None, nachfassen or None)
+
+
+def follow_ups(bis: str = "") -> list | dict:
+    """Offene Wiedervorlagen aus den Kunden-Logs (was bei welchem Kunden nachzufragen ist), älteste zuerst.
+
+    Args:
+        bis: nur die bis zu diesem Datum fälligen (JJJJ-MM-TT), leer = alle offenen.
+    """
+    return _call(api.customer_followups, bis or None)
 
 
 def _same_customer(book: Book, name: str, firma: str) -> list[str]:
@@ -438,7 +465,7 @@ def _same_customer(book: Book, name: str, firma: str) -> list[str]:
 
 def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", plz: str = "", ort: str = "",
                  land: str = "CH", email: str = "", telefon: str = "", mobil: str = "", rechnung_an: str = "firma",
-                 notizen: str = "", trotzdem_neu: bool = False) -> dict:
+                 notizen: str = "", kategorie: str = "", herkunft: str = "", trotzdem_neu: bool = False) -> dict:
     """Kunde anlegen. Gibt es den Kunden schon (gleiche Firma bzw. gleicher Name), wird nichts angelegt:
     dann update_customer verwenden, um Angaben zu ergänzen oder zu korrigieren.
 
@@ -454,8 +481,10 @@ def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", pl
         telefon: Telefonnummer (Festnetz oder Geschäft), wie genannt.
         mobil: Mobile-/Natelnummer, wie genannt.
         rechnung_an: "firma" oder "person".
-        notizen: alles Weitere, das genannt wurde und kein eigenes Feld hat (Objekt/Baustelle, Zugang, Wünsche,
-            Erreichbarkeit, Herkunft des Kontakts …), in ganzen Sätzen; nichts Genanntes weglassen.
+        notizen: alles Weitere, das genannt wurde und kein eigenes Feld hat (Zugang, Wünsche, Erreichbarkeit …),
+            in ganzen Sätzen; nichts Genanntes weglassen.
+        kategorie: Privat, Verwaltung, Architekt, Firma oder Öffentlich (leer, wenn unklar).
+        herkunft: wie der Kontakt zustande kam, z.B. "Empfehlung Hans Muster", "Website".
         trotzdem_neu: nur wenn der Mensch ausdrücklich einen zweiten Kunden gleichen Namens will (z.B. andere Filiale).
     """
     try:
@@ -467,12 +496,13 @@ def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", pl
                                        "ergänzen oder korrigieren statt neu anlegen.", "vorhanden": same}
     return _call(api.customer_add, name=name, firma=firma, strasse=strasse, nr=nr, plz=plz, ort=ort,
                  land=land, email=email, telefon=telefon, mobil=mobil, rechnung_an=rechnung_an,
-                 notizen=notizen.strip())
+                 notizen=notizen.strip(), kategorie=kategorie.strip(), herkunft=herkunft.strip())
 
 
 def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str = "", nr: str = "", plz: str = "",
                     ort: str = "", land: str = "", email: str = "", telefon: str = "", mobil: str = "",
-                    rechnung_an: str = "", notiz: str = "", leeren: list[str] | None = None) -> dict:
+                    rechnung_an: str = "", kategorie: str = "", herkunft: str = "", notiz: str = "",
+                    leeren: list[str] | None = None) -> dict:
     """Angaben eines bestehenden Kunden ergänzen, korrigieren oder entfernen (nur die mitgegebenen Felder; leer =
     unverändert; was weg soll, in «leeren» nennen). Bereits ausgestellte Rechnungen behalten die Adresse, die beim
     Ausstellen galt; Offerten-Entwürfe mit update_quote(adresse_neu=True) nachführen.
@@ -490,13 +520,16 @@ def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str =
         telefon: Telefonnummer (Festnetz oder Geschäft).
         mobil: Mobile-/Natelnummer.
         rechnung_an: "firma" oder "person".
+        kategorie: Privat, Verwaltung, Architekt, Firma oder Öffentlich.
+        herkunft: wie der Kontakt zustande kam, z.B. "Empfehlung Hans Muster".
         notiz: wird an die Notizen des Kunden angehängt (bestehende bleiben stehen): weitere Angaben ohne eigenes Feld.
         leeren: Felder, die entfernt werden sollen, z.B. ["name"] für eine Kontaktperson oder ["email"].
     """
     fields = {k: v for k, v in {"name": name, "firma": firma, "strasse": strasse, "nr": nr, "plz": plz, "ort": ort,
                                 "land": land, "email": email, "telefon": telefon, "mobil": mobil,
-                                "rechnung_an": rechnung_an}.items() if str(v).strip()}
-    clearable = {"name", "firma", "strasse", "nr", "plz", "ort", "email", "telefon", "mobil"}
+                                "rechnung_an": rechnung_an, "kategorie": kategorie,
+                                "herkunft": herkunft}.items() if str(v).strip()}
+    clearable = {"name", "firma", "strasse", "nr", "plz", "ort", "email", "telefon", "mobil", "kategorie", "herkunft"}
     for key in leeren or []:
         if key not in clearable:
             return {"ok": False, "fehler": f"«{key}» kann nicht geleert werden (möglich: {', '.join(sorted(clearable))})"}
@@ -527,7 +560,7 @@ def invoices(status: str = "") -> list | dict:
 
 def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: str = "",
                    leistung_von: str = "", leistung_bis: str = "", rabatt_prozent: str = "",
-                   art: str = "rechnung", akonto: str = "alle",
+                   art: str = "rechnung", akonto: str = "alle", objekt: str = "",
                    expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """QR-Rechnung ausstellen und verbuchen; erzeugt die PDF mit QR-Einzahlungsschein.
     Auch Akontorechnungen (art="akonto") und Schlussrechnungen, die offene Akontos abziehen.
@@ -545,12 +578,14 @@ def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: st
         art: "rechnung" oder "akonto" (Akontorechnung: Anzahlung, gebucht auf Erhaltene Anzahlungen).
         akonto: Welche offenen Akontorechnungen dieses Kunden abgezogen werden: "alle", "keine" oder
             Nummern "R-2026-0012,R-2026-0015". Siehe open_akonto.
+        objekt: Objekt/Baustelle, an dem gearbeitet wurde, z.B. "MFH Bernstrasse 12, 3600 Thun" (steht auf der
+            Rechnung); leer, wenn keins genannt.
         expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
         idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
     return _call(api.invoice_create, kunde, positionen, datum or None, text, None, "", None,
                  leistung_von or None, leistung_bis or None, rabatt=rabatt_prozent or None,
-                 art=art or "rechnung", akonto=None if art == "akonto" else (akonto or "alle"),
+                 art=art or "rechnung", akonto=None if art == "akonto" else (akonto or "alle"), objekt=objekt,
                  expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
@@ -1210,7 +1245,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           accrual_proposals, book_accruals,
           exchange_rate, revaluation_preview,
           bill_drafts, bill_draft, create_bill_draft, complete_bill_draft, overdue_invoices, bank_rules, expenses,
-          customers, customer_details, add_customer, update_customer, invoices, create_invoice, open_akonto, match_payment, pay_invoice, credit_invoice,
+          customers, customer_details, add_customer, update_customer, log_customer, follow_ups, invoices, create_invoice, open_akonto, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
           book_bank_transaction, employees, payroll_run, payroll_payment_export, qst_sync, payslip, close_payroll, close_payslip, lohnausweis,

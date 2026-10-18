@@ -154,6 +154,22 @@ class Dienst:
 
 
 @dataclass
+class KundeTeil:
+    """A part of a customer's detail page (`/debitoren/kunden/<nr>`), e.g. the customer's objects or quotes.
+
+    ``template`` is a Jinja file in the plugin's ``templates/`` folder, rendered with ``context`` plus ``book``
+    and ``kunde``; empty = only ``zeitachse``/``kennzahlen``. ``zeitachse`` are events for the customer's timeline
+    (``{datum, art, titel, text, link}``), ``kennzahlen`` figures for the top row (``{label, wert, meta, link}``),
+    ``aktionen`` buttons in the page header (``(label, href)``)."""
+    titel: str
+    template: str = ""
+    context: dict = field(default_factory=dict)
+    zeitachse: list[dict] = field(default_factory=list)
+    kennzahlen: list[dict] = field(default_factory=list)
+    aktionen: list[tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass
 class Finding:
     """A `check` result from a plugin rule. level: fehler | warnung | hinweis."""
     level: str
@@ -211,6 +227,10 @@ class Spec:
     @hookspec
     def aeradex_dossier_teile(self) -> list[DossierTeil]:
         """Parts for the Abschlussunterlagen of a year."""
+
+    @hookspec
+    def aeradex_kunde_teile(self, book: Book, kunde: str) -> list[KundeTeil]:
+        """Parts of a customer's detail page (objects, quotes, open work …)."""
 
     @hookspec
     def aeradex_dienste(self, book: Book) -> list[Dienst]:
@@ -430,6 +450,17 @@ def dienste(book: Book) -> list[Dienst]:
         try:
             kwargs = {"book": book} if "book" in impl.argnames else {}    # pluggy: an impl may take fewer args
             out += [d for d in impl.function(**kwargs) or [] if isinstance(d, Dienst)]
+        except Exception:
+            continue
+    return out
+
+
+def kunde_teile(book: Book, kunde: str) -> list[tuple[str, KundeTeil]]:
+    """(plugin, part) for a customer's detail page; a broken plugin is skipped."""
+    out = []
+    for impl in manager(book).hook.aeradex_kunde_teile.get_hookimpls():
+        try:
+            out += [(impl.plugin_name, t) for t in impl.function(book=book, kunde=kunde) or [] if isinstance(t, KundeTeil)]
         except Exception:
             continue
     return out

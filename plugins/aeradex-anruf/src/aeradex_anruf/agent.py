@@ -40,10 +40,11 @@ ALLOWED = {
     "report_catalog", "budget_overview", "scan_qr_bill", "read_inbox_file", "recode_preview", "revaluation_preview",
     # drafts and proposals (a person approves them)
     "propose_booking", "create_bill_draft", "complete_bill_draft", "propose_bank_booking", "add_customer",
-    "update_customer",
+    "update_customer", "log_customer", "follow_ups",
     # plugin aeradex-leistungen: time, material, offer drafts
     "quick_entry", "record_time", "record_material", "record_absence", "holiday_balance", "services_master_data",
     "open_services", "billing_preview", "draft_quote", "update_quote", "hours_control", "project_status",
+    "customer_objects", "add_object", "update_object",
     # plugin aeradex-team: team overview, leave requests, take over the app entries
     "team_status", "team_requests", "team_sync",
 }

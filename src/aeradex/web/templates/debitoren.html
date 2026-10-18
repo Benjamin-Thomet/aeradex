@@ -28,7 +28,7 @@
     <thead><tr><th>Rechnung</th><th>Datum</th><th>Kunde</th><th class="right">Total</th><th class="right">Offen</th><th>Status</th></tr></thead>
     <tbody>
     {% for r in rows %}
-      <tr class="row" data-suche="{{ r.suche }}"><td><a class="beleg" href="/debitoren/rechnung/{{ r.nummer }}">{{ r.nummer }}</a></td><td class="num">{{ r.datum|datum }}</td><td>{{ r.name }}</td>
+      <tr class="row" data-suche="{{ r.suche }}"><td><a class="beleg" href="/debitoren/rechnung/{{ r.nummer }}">{{ r.nummer }}</a></td><td class="num">{{ r.datum|datum }}</td><td>{% if r.kunde %}<a class="kunde-link" href="/debitoren/kunden/{{ r.kunde }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</td>
         <td class="right num">{% if r.waehrung and r.waehrung != 'CHF' %}<span class="small muted">{{ r.waehrung }}</span> {% endif %}{{ r.total|chf }}</td><td class="right num">{{ r.offen|chf(true) }}</td>
         <td>{{ status_pill(r.status) }}{% if r.status in ('offen','teilbezahlt') and r.faellig < today().isoformat() %} <span class="pill red">überfällig</span>{% endif %}{% if r.art == 'akonto' %} <span class="pill info">Akonto</span>{% elif r.art == 'schluss' %} <span class="pill muted">Schluss</span>{% endif %}</td></tr>
     {% endfor %}

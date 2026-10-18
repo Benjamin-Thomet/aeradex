@@ -1,0 +1,76 @@
+{% from "_macros.html" import errors %}
+{% from "plugins/leistungen/leistungen/_macros.html" import budget_pill %}
+{% set A = "/p/leistungen/leistungen/" %}
+<div class="panel" id="objekte">
+  <header><h2>{{ word }}e</h2><span class="hint">{{ objekte|length }} · Adresse, Zugang, Budget</span></header>
+  {% if objekte %}
+  <div class="objekte">
+  {% for o in objekte %}
+    <div class="objekt{{ ' zu' if o.status != 'offen' }}">
+      <div class="objekt-kopf"><div><span class="beleg">{{ o.nummer }}</span> <strong>{{ o.name }}</strong>
+        {% if o.status != 'offen' %} <span class="pill muted">abgeschlossen</span>{% endif %}</div>
+        {% if o.budget_stunden is not none %}<span class="small num">{{ o.stunden|qty }} / {{ o.budget_stunden|qty }} h {{ budget_pill(o.auslastung) }}</span>{% endif %}</div>
+      {% if o.adresse %}<a class="small link" href="https://www.google.com/maps/search/?api=1&query={{ o.adresse|urlencode }}" target="_blank" rel="noopener">📍 {{ o.adresse }}</a>{% endif %}
+      {% if o.zugang %}<span class="small">🔑 {{ o.zugang }}</span>{% endif %}
+      <span class="small muted">Wert {{ o.wert|chf }} · verrechnet {{ o.abgerechnet|chf }}{% if o.offen %} · <strong>offen {{ o.offen|chf }}</strong>{% endif %}{% if o.offerte %} · <a class="link" href="/p/leistungen/offerten?nr={{ o.offerte }}">{{ o.offerte }}</a>{% endif %}</span>
+      {% if o.notizen %}<span class="small" style="white-space:pre-line">{{ o.notizen }}</span>{% endif %}
+      <details class="inline"><summary>Bearbeiten</summary>
+        <form class="body" hx-post="{{ A }}projekt_aendern" hx-target="find .errors">
+          <input type="hidden" name="nummer" value="{{ o.nummer }}">
+          <div class="form four">
+            <div class="field wide"><label>Name</label><input class="input" name="name" value="{{ o.name }}"></div>
+            <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ o.adresse_teile.strasse or '' }}"></div>
+            <div class="field"><label>Nr.</label><input class="input" name="hausnr" value="{{ o.adresse_teile.nr or '' }}"></div>
+            <div class="field"><label>PLZ</label><input class="input" name="plz" value="{{ o.adresse_teile.plz or '' }}"></div>
+            <div class="field" style="grid-column: span 2"><label>Ort</label><input class="input" name="ort" value="{{ o.adresse_teile.ort or '' }}"></div>
+            <div class="field wide"><label>Zugang (Schlüssel, Code, Hauswart)</label><input class="input" name="zugang" value="{{ o.zugang }}"></div>
+            <div class="field wide"><label>Notizen zum {{ word }}</label><textarea class="input" name="notizen" style="min-height:50px">{{ o.notizen }}</textarea></div>
+          </div>
+          {{ errors() }}<div class="formfoot"><span></span><button class="btn primary small" type="submit">Speichern</button></div>
+        </form>
+        <form class="body" hx-post="{{ A }}projekt_status" hx-target="find .errors"><input type="hidden" name="nummer" value="{{ o.nummer }}"><input type="hidden" name="status" value="{{ 'abgeschlossen' if o.status == 'offen' else 'offen' }}"><button class="btn small ghost" type="submit">{{ 'Abschliessen' if o.status == 'offen' else 'Wieder öffnen' }}</button>{{ errors() }}</form>
+      </details>
+    </div>
+  {% endfor %}
+  </div>
+  {% else %}<div class="empty">Noch keine {{ word }}e.</div>{% endif %}
+  <details class="inline"><summary>+ {{ word }} hinzufügen</summary>
+    <form class="body" hx-post="{{ A }}projekt_neu" hx-target="find .errors">
+      <input type="hidden" name="kunde" value="{{ kunde }}">
+      <div class="form four">
+        <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse"></div>
+        <div class="field"><label>Nr.</label><input class="input" name="hausnr"></div>
+        <div class="field"><label>PLZ</label><input class="input" name="plz"></div>
+        <div class="field" style="grid-column: span 2"><label>Ort</label><input class="input" name="ort"></div>
+        <div class="field" style="grid-column: span 2"><label>Name (leer = Adresse)</label><input class="input" name="name" placeholder="z.B. MFH Bernstrasse"></div>
+        <div class="field wide"><label>Zugang</label><input class="input" name="zugang" placeholder="z.B. Schlüssel beim Hauswart, Code 1234"></div>
+        <div class="field"><label>Abrechnung</label><select class="input" name="abrechnung"><option value="aufwand">nach Aufwand</option><option value="pauschal">pauschal</option></select></div>
+        <div class="field"><label>Budget Stunden</label><input class="input num" name="budget_stunden"></div>
+      </div>
+      {{ errors() }}<div class="formfoot"><span></span><button class="btn primary small" type="submit">{{ word }} anlegen</button></div>
+    </form>
+  </details>
+</div>
+
+{% if offen_je %}
+<div class="panel">
+  <header><h2>Offene Leistungen</h2><span class="hint">{{ stunden|qty }} h · {{ offen|chf }} nicht verrechnet</span>
+    <span class="actions"><a class="btn small primary" href="/p/leistungen/leistungen?tab=abrechnen&kunde={{ kunde }}">Abrechnen</a></span></header>
+  <div class="tablewrap"><table class="ledger"><thead><tr><th>{{ word }}</th><th>seit</th><th class="right">Stunden</th><th class="right">Betrag</th><th></th></tr></thead>
+    <tbody>{% for g in offen_je %}<tr><td>{% if g.projekt %}<span class="beleg">{{ g.projekt }}</span> {{ g.name }}{% else %}<span class="muted">ohne {{ word }}</span>{% endif %}</td><td>{{ g.von|datum }}</td><td class="right num">{{ g.stunden|qty }}</td><td class="right num">{{ g.betrag|chf }}</td>
+      <td class="right"><a class="btn small ghost" href="/p/leistungen/leistungen?tab=abrechnen&kunde={{ kunde }}&projekt={{ g.projekt }}">Abrechnen</a></td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="panel" id="offerten">
+  <header><h2>Offerten</h2><span class="actions"><a class="btn small" href="/p/leistungen/offerten?kunde={{ kunde }}">Neue Offerte</a></span></header>
+  {% if offerten %}
+  <div class="tablewrap"><table class="ledger"><thead><tr><th>Nr.</th><th>Titel</th><th>Datum</th><th>Status</th><th class="right">Total</th></tr></thead>
+    <tbody>{% for q in offerten %}{% set pc = {"entwurf": "muted", "versendet": "info", "angenommen": "ok", "abgelehnt": "red"} %}
+      <tr class="row"><td><a class="link" href="/p/leistungen/offerten?nr={{ q.nummer }}">{{ q.nummer }}</a></td><td>{{ q.titel }}</td><td>{{ q.datum|datum }}</td>
+        <td><span class="pill {{ pc.get(q.status, 'muted') }}">{{ q.status }}</span>{% if q.abgelaufen %} <span class="pill warn" title="gültig bis {{ q.gueltig_bis|datum }}">abgelaufen</span>{% endif %}</td>
+        <td class="right num">{{ q.total|chf }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty">Keine Offerten.</div>{% endif %}
+</div>

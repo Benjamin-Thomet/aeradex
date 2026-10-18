@@ -400,13 +400,14 @@ def customer_add(book: Book, **fields) -> dict:
 def invoice_create(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
                    zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
                    leistung_von=None, leistung_bis=None, rabatt=None, art: str = "rechnung",
-                   akonto=None) -> dict:
+                   akonto=None, objekt: str = "") -> dict:
     """Issue an invoice. `rabatt` in percent; `art="akonto"` for an Akontorechnung; `akonto` the
     Akontorechnungen this one credits (a list, or "alle" for every open one of the customer)."""
     _guard(book)
     akonto = _akonto_list(book, kunde, akonto)
     meta, touched = invoices.issue_invoice(book, kunde, positionen, datum, text, zahlungsfrist, waehrung, kurs,
-                                           leistung_von, leistung_bis, rabatt=rabatt, art=art, akonto=akonto)
+                                           leistung_von, leistung_bis, rabatt=rabatt, art=art, akonto=akonto,
+                                           objekt=objekt)
     meta["_text"] = text
     pdf_path = meta_pdf_path(book, meta)
     pdf_path.write_bytes(pdf.invoice_pdf(book, meta, invoices.customer(book, kunde)))
@@ -770,7 +771,8 @@ def customer_update(book: Book, nummer: str, notizen: str | None = None, **field
     _guard(book)
     nr = nummer
     cust = invoices.customer(book, nr)
-    allowed = {"name", "firma", "rechnung_an", "email", "telefon", "mobil", "stundensatz", *_ADDRESS_KEYS}
+    allowed = {"name", "firma", "rechnung_an", "email", "telefon", "mobil", "stundensatz", "kategorie", "herkunft",
+               *_ADDRESS_KEYS}
     unknown = set(fields) - allowed
     if unknown:
         raise BookError(f"Unbekannte Felder: {', '.join(sorted(unknown))}")
@@ -778,6 +780,41 @@ def customer_update(book: Book, nummer: str, notizen: str | None = None, **field
         raise BookError("rechnung_an muss 'firma' oder 'person' sein")
     meta = _update_record(cust["_pfad"], fields, numeric=("stundensatz",), notes=notizen)
     return _done(book, f"Kunde {nr} geändert", [cust["_pfad"]], kunde=meta)
+
+
+def customer_dossier(book: Book, nummer: str) -> dict:
+    """Everything about one customer: figures, invoices, open Akonto, payment behaviour, log and timeline."""
+    from . import kunden
+    d = kunden.dossier(book, nummer)
+    c = d["kunde"]
+    return jsonable({"nummer": nummer, "kunde": {k: v for k, v in c.items() if not k.startswith("_") and k != "log"},
+                     "feste_infos": c.get("_notizen", ""), "kennzahlen": d["kennzahlen"],
+                     "zahlungsmoral": d["zahlungsmoral"], "rechnungen": d["rechnungen"],
+                     "akonto_offen": d["akonto_offen"], "log": d["log"], "wiedervorlagen": d["wiedervorlagen"],
+                     "zeitachse": d["zeitachse"], "teile": [t.titel for _p, t in d["teile"]]})
+
+
+def customer_log_add(book: Book, nummer: str, text: str, art: str = "notiz", datum=None, nachfassen=None,
+                     wer: str = "") -> dict:
+    from . import kunden
+    _guard(book)
+    entry, path = kunden.log_add(book, nummer, text, art, wer=wer, datum=datum, nachfassen=nachfassen)
+    label = kunden.LOG_ARTEN[entry["art"]]
+    extra = f", nachfassen {entry['nachfassen']}" if entry.get("nachfassen") else ""
+    return _done(book, f"Kunde {nummer}: {label} notiert{extra}", [path], eintrag=entry)
+
+
+def customer_log_done(book: Book, nummer: str, index: int, erledigt: bool = True) -> dict:
+    from . import kunden
+    _guard(book)
+    entry, path = kunden.log_done(book, nummer, index, erledigt)
+    return _done(book, f"Kunde {nummer}: Wiedervorlage {'erledigt' if erledigt else 'wieder offen'}", [path],
+                 eintrag=entry)
+
+
+def customer_followups(book: Book, bis=None) -> list[dict]:
+    from . import kunden
+    return jsonable(kunden.wiedervorlagen(book, parse_date(bis, "bis") if bis else None))
 
 
 EMPLOYEE_NUMERIC = ("monatslohn", "pensum", "stundenlohn", "standard_stunden", "vollzeit_stunden_woche",

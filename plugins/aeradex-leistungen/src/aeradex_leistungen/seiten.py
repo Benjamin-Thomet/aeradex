@@ -418,9 +418,20 @@ def _alle_abrechnen(book, f):
 
 
 def _projekt_neu(book, f):
-    return api.write(book, f"Projekt {f.get('name')} angelegt", daten.add_project, f.get("kunde") or "",
+    word = daten.settings(book)["projekt_wort"]
+    label = f.get("name") or " ".join(x for x in (f.get("strasse"), f.get("hausnr"), f.get("ort")) if x)
+    return api.write(book, f"{word} {label} angelegt", daten.add_project, f.get("kunde") or "",
                      f.get("name") or "", f.get("abrechnung") or "aufwand", f.get("budget_stunden") or None,
-                     f.get("budget_chf") or None, f.get("satz") or None)
+                     f.get("budget_chf") or None, f.get("satz") or None, strasse=f.get("strasse") or "",
+                     hausnr=f.get("hausnr") or "", plz=f.get("plz") or "", ort=f.get("ort") or "",
+                     zugang=f.get("zugang") or "")
+
+
+def _projekt_aendern(book, f):
+    word = daten.settings(book)["projekt_wort"]
+    fields = {k: f.get(k) for k in ("name", "strasse", "hausnr", "plz", "ort", "zugang", "notizen") if k in f}
+    return api.write(book, f"{word} {f.get('nummer')} geändert", daten.update_project, f.get("nummer"), None,
+                     **fields)
 
 
 def _projekt_status(book, f):
@@ -547,7 +558,7 @@ def _offerte_rechnung(book, f):
 PAGES = [
     Page("leistungen", "Leistungen", "leistungen.html", _context,
          {"neu": _neu, "zeit": _zeit, "material": _material, "loeschen": _loeschen, "rechnung": _rechnung,
-          "projekt_neu": _projekt_neu, "projekt_status": _projekt_status, "person": _person,
+          "projekt_neu": _projekt_neu, "projekt_aendern": _projekt_aendern, "projekt_status": _projekt_status, "person": _person,
           "produkt_neu": _produkt_neu, "produkt": _produkt, "feiertage": _feiertage, "kunde": _kunde, "lohn": _lohn,
           "schnell": _schnell, "start": _start, "stop": _stop, "verwerfen": _verwerfen, "zelle": _zelle,
           "favorit": _favorit, "eintrag": _eintrag, "aendern": _aendern, "kopieren": _kopieren, "entfernen": _loeschen_schnell,

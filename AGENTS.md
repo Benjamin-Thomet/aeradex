@@ -10,6 +10,8 @@ This file is for developing aeradex itself. Agents *operating a book* read the
 - `statements.py`: OR 959a/b groups, Jahresrechnung, Gewinnverwendung, Anhang.
 - `journal.py`: posting, Beleg numbers, lock check, storno, proposals.
 - `invoices.py`, `qrbill_ch.py`: customers, frozen invoices, payments/credit notes as `Quelle` rows, Swiss QR-bill.
+- `kunden.py`: the customer as a CRM: `dossier` (invoices, revenue like `reports.umsatz`, payment behaviour, timeline),
+  contact log + follow-ups in the customer's frontmatter; plugins add panels via `aeradex_kunde_teile` (`KundeTeil`).
 - `payroll.py`, `qst.py`, `qst_import.py`, `lohnausweis.py`: payroll.
 - `lohnmeldung.py`: company Lohnkonto (`payroll.lohnkonto_matrix`, month matrix like the Command Station) and the
   annual wage declarations (Ausgleichskasse, UVG, KTG, BVG, QST) from closed payslips, with Prüfhinweise for what

@@ -28,6 +28,11 @@ Du arbeitest damit über das CLI `aeradex` (immer mit `--json`) oder den MCP-Ser
 Anzahlung verlangen: `--akonto-rechnung` (auf 2030). Die Schlussrechnung zieht sie ab: `--akonto alle` bzw.
 `--akonto R-…`; offene zeigt `aeradex invoice akonto --kunde K0001`. Im Zweifel fragen, ob es die Schlussrechnung ist.
 
+**Kunden**: `aeradex customer show K0001` zeigt Umsatz, offene Rechnungen, Zahlungsmoral und den Verlauf. Was mit
+dem Kunden besprochen wurde: `aeradex customer log K0001 "…" --art anruf [--nachfassen JJJJ-MM-TT]`; dauerhafte
+Fakten (Zugang, Wünsche) gehören in die festen Infos (Text der Kunden-Datei). Offene Wiedervorlagen:
+`aeradex customer followups`.
+
 **Lieferantenrechnungen** laufen ebenfalls über den Eingang (Art `kreditor`); bekannte Lieferanten bringen ihr Konto
 mit. Fremdwährung: Betrag in der Rechnungswährung, gebucht zum BAZG-Kurs. Dienstleistungen aus dem Ausland in
 MWST-pflichtigen Büchern: Code B81 (Bezugsteuer). Zahlen: `aeradex zahlungslauf erstellen E-2026-0001 … --datum …`

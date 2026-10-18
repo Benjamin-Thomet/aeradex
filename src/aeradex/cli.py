@@ -142,11 +142,21 @@ def build_parser() -> argparse.ArgumentParser:
     cs.add_parser("list")
     c = cs.add_parser("add")
     c.add_argument("--name", required=True)
-    for f in ("firma", "strasse", "nr", "plz", "ort", "email", "telefon", "mobil"):
+    for f in ("firma", "strasse", "nr", "plz", "ort", "email", "telefon", "mobil", "kategorie", "herkunft"):
         c.add_argument(f"--{f}", default="")
     c.add_argument("--land", default="CH")
     c.add_argument("--rechnung-an", choices=["firma", "person"], default="firma")
     c.add_argument("--stundensatz")
+    c = cs.add_parser("show", help="alles über einen Kunden: Umsatz, Rechnungen, Zahlungsmoral, Log")
+    c.add_argument("nummer")
+    c = cs.add_parser("log", help="Eintrag ins Kunden-Log (Anruf, Besuch, E-Mail, Notiz)")
+    c.add_argument("nummer")
+    c.add_argument("text")
+    c.add_argument("--art", choices=["anruf", "besuch", "email", "notiz"], default="notiz")
+    c.add_argument("--datum")
+    c.add_argument("--nachfassen", help="Wiedervorlage am JJJJ-MM-TT")
+    c = cs.add_parser("followups", help="offene Wiedervorlagen")
+    c.add_argument("--bis", help="nur bis zu diesem Datum fällige")
 
     s = sub.add_parser("invoice", help="Rechnungen")
     ins = s.add_subparsers(dest="sub", required=True)
@@ -721,9 +731,16 @@ def dispatch(a, book_path: Path | None):
     if c == "customer":
         if a.sub == "list":
             return api.customer_list(book())
+        if a.sub == "show":
+            return api.customer_dossier(book(), a.nummer)
+        if a.sub == "log":
+            return api.customer_log_add(book(), a.nummer, a.text, a.art, a.datum, a.nachfassen)
+        if a.sub == "followups":
+            return api.customer_followups(book(), a.bis)
         return api.customer_add(book(), name=a.name, firma=a.firma, strasse=a.strasse, nr=a.nr, plz=a.plz,
                                 ort=a.ort, land=a.land, email=a.email, telefon=a.telefon, mobil=a.mobil,
-                                rechnung_an=a.rechnung_an, stundensatz=a.stundensatz)
+                                rechnung_an=a.rechnung_an, stundensatz=a.stundensatz, kategorie=a.kategorie,
+                                herkunft=a.herkunft)
     if c == "invoice":
         b = book()
         if a.sub == "list":

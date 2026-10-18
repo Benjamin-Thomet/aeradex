@@ -243,10 +243,65 @@ def project_status(projekt: str) -> dict:
     return call(lambda b: api.jsonable(kontrolle.project(b, projekt)))
 
 
+def customer_objects(kunde: str) -> dict:
+    """Objekte (Projekte) eines Kunden mit Adresse, Zugang, Status und Budget gegen Ist — z.B. die Liegenschaften
+    einer Verwaltung.
+
+    Args:
+        kunde: Kundennummer, z.B. "K0003".
+    """
+    from aeradex.tools import call
+    return call(lambda b: api.jsonable([{**kontrolle.project(b, nr), "notizen": p.get("_notizen", "")}
+                                        for nr, p in daten.projects(b).items() if p.get("kunde") == kunde]))
+
+
+def add_object(kunde: str, strasse: str = "", hausnr: str = "", plz: str = "", ort: str = "", name: str = "",
+               zugang: str = "", notizen: str = "") -> dict:
+    """Ein Objekt (Liegenschaft/Baustelle) für einen Kunden anlegen; ein Kunde kann mehrere haben. Vorher mit
+    customer_objects prüfen, ob es das Objekt schon gibt. Zeit und Material lassen sich danach dem Objekt
+    zuordnen, und die Rechnung nennt es.
+
+    Args:
+        kunde: Kundennummer, z.B. "K0003".
+        strasse: Strasse des Objekts.
+        hausnr: Hausnummer.
+        plz: Postleitzahl.
+        ort: Ort.
+        name: Bezeichnung, z.B. "MFH Seestrasse"; leer = die Adresse.
+        zugang: Schlüssel, Code, Hauswart/Ansprechperson vor Ort.
+        notizen: weitere Angaben zum Objekt in ganzen Sätzen.
+    """
+    label = name or " ".join(x for x in (strasse, hausnr, ort) if x)
+    return _w(f"Objekt {label} für {kunde} angelegt", daten.add_project, kunde, name, "aufwand", None, None, None,
+              "", notizen, strasse=strasse, hausnr=hausnr, plz=plz, ort=ort, zugang=zugang)
+
+
+def update_object(nummer: str, name: str = "", strasse: str = "", hausnr: str = "", plz: str = "", ort: str = "",
+                  zugang: str = "", notizen: str = "") -> dict:
+    """Adresse, Zugang oder Notizen eines Objekts (Projekts) ändern; nur die mitgegebenen Felder.
+
+    Args:
+        nummer: Objekt-/Projektnummer, z.B. "P0004".
+        name: neue Bezeichnung.
+        strasse: Strasse.
+        hausnr: Hausnummer.
+        plz: Postleitzahl.
+        ort: Ort.
+        zugang: Schlüssel, Code, Hauswart.
+        notizen: ersetzt die Notizen zum Objekt.
+    """
+    fields = {k: v for k, v in {"name": name, "strasse": strasse, "hausnr": hausnr, "plz": plz, "ort": ort,
+                                "zugang": zugang, "notizen": notizen}.items() if str(v).strip()}
+    if not fields:
+        return {"ok": False, "fehler": "Keine Änderung angegeben"}
+    return _w(f"Objekt {nummer} geändert", daten.update_project, nummer, None, **fields)
+
+
 @hookimpl
 def aeradex_tools():
     return [record_time, record_material, quick_entry, record_absence, holiday_balance, services_master_data,
-            open_services, billing_preview, draft_quote, update_quote, hours_control, project_status]
+            open_services, billing_preview, draft_quote, update_quote, hours_control, project_status,
+            customer_objects, add_object, update_object]
 
 
 @hookimpl
@@ -255,7 +310,8 @@ def aeradex_instructions():
             "Arbeitszeit mit record_time, Material mit record_material (Nummern aus services_master_data). Abwesenheiten "
             "mit record_absence, Ferienkonto mit holiday_balance. Offene Leistungen: open_services, Rechnungsvorschau: billing_preview — "
             "Rechnungen stellt ein Mensch aus. Offerten nur als Entwurf (draft_quote), ändern mit update_quote. Stundenkontrolle: hours_control, "
-            "Projekte: project_status.")
+            "Projekte: project_status. Objekte/Liegenschaften eines Kunden (mit Adresse und Zugang): customer_objects, "
+            "neu add_object, ändern update_object.")
 
 
 # ---------- CLI ----------
@@ -538,3 +594,56 @@ def aeradex_pages():
 def aeradex_reports():
     from .berichte import REPORTS
     return REPORTS
+
+
+@hookimpl
+def aeradex_kunde_teile(book, kunde):
+    """On the customer's page: objects (projects) with address and budget, quotes, open work."""
+    from decimal import Decimal
+
+    from aeradex.files import parse_date
+    from aeradex.plugins import KundeTeil
+    cfg = daten.settings(book)
+    word = cfg["projekt_wort"]
+    projs = [p for p in daten.projects(book).values() if p.get("kunde") == kunde]
+    objekte = [{**kontrolle.project(book, p["nummer"]), "notizen": p.get("_notizen", ""),
+                "adresse_teile": p.get("adresse") or {}} for p in projs]
+    objekte.sort(key=lambda o: (o["status"] != "offen", o["nummer"]))
+    today = date.today()
+    quotes = sorted((q for q in offerten.quotes(book).values() if q.get("kunde") == kunde),
+                    key=lambda q: str(q.get("datum")), reverse=True)
+    quote_rows = [{"nummer": q["nummer"], "titel": q.get("titel") or "", "datum": str(q.get("datum")),
+                   "gueltig_bis": str(q.get("gueltig_bis") or ""), "status": q.get("status") or "entwurf",
+                   "total": daten.money(q.get("total")), "projekt": q.get("projekt") or "",
+                   "abgelaufen": q.get("status") == "versendet" and bool(q.get("gueltig_bis"))
+                   and parse_date(q["gueltig_bis"]) < today} for q in quotes]
+    open_items = abrechnung.select(book, kunde=kunde)
+    offen = sum((e["betrag"] for e in open_items), Decimal(0))
+    stunden = sum((e["menge"] for e in open_items if e["art"] == "Zeit"), Decimal(0))
+    names = {p["nummer"]: p["name"] for p in projs}
+    per_obj: dict[str, dict] = {}
+    for e in open_items:
+        g = per_obj.setdefault(e["projekt"] or "", {"projekt": e["projekt"] or "", "name": names.get(e["projekt"], ""),
+                                                    "betrag": Decimal(0), "stunden": Decimal(0), "von": e["datum"]})
+        g["betrag"] += e["betrag"]
+        g["stunden"] += e["menge"] if e["art"] == "Zeit" else 0
+        g["von"] = min(g["von"], e["datum"])
+    zeit = [{"datum": q["datum"], "art": "offerte", "titel": f"Offerte {q['nummer']}",
+             "text": f"{q['titel']} · CHF {q['total']:,.2f} · {q['status']}".replace(",", "'"),
+             "link": f"/p/leistungen/offerten?nr={q['nummer']}"} for q in quote_rows]
+    zeit += [{"datum": str(p.get("erstellt") or ""), "art": "objekt", "titel": f"{word} {p['nummer']} angelegt",
+              "text": p["name"], "link": ""} for p in projs if p.get("erstellt")]
+    figures = []
+    if offen:
+        figures.append({"label": "Offene Leistungen", "wert": offen, "meta": f"{stunden.normalize():f} h nicht verrechnet",
+                        "link": f"/p/leistungen/leistungen?tab=abrechnen&kunde={kunde}"})
+    pending = [q for q in quote_rows if q["status"] in ("entwurf", "versendet")]
+    if pending:
+        figures.append({"label": "Offerten offen", "wert": sum((q["total"] for q in pending), Decimal(0)),
+                        "meta": f"{len(pending)} Offerte(n)", "link": "#offerten"})
+    ctx = {"word": word, "objekte": objekte, "offerten": quote_rows, "offen": offen, "stunden": stunden,
+           "offen_je": sorted(per_obj.values(), key=lambda g: g["von"]), "heute": today.isoformat()}
+    return [KundeTeil(titel=f"{word}e, Offerten, Leistungen", template="leistungen/_kunde.html", context=ctx,
+                      zeitachse=zeit, kennzahlen=figures,
+                      aktionen=[("Offerte", f"/p/leistungen/offerten?kunde={kunde}"),
+                                ("Leistung erfassen", f"/p/leistungen/leistungen?tab=erfassen&neu_kunde={kunde}")])]

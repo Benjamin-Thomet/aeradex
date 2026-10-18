@@ -1,45 +1,32 @@
 {% extends "base.html" %}
-{% from "_macros.html" import errors %}
+{% from "_kundenform.html" import kundenform %}
 {% block title %}Kunden{% endblock %}
-{% macro kundenform(c, action) %}
-<form class="body" hx-post="{{ action }}" hx-target="find .errors">
-  <div class="form four">
-    <div class="field" style="grid-column: span 2"><label>Firma</label><input class="input" name="firma" value="{{ c.firma or '' }}" placeholder="leer bei Privatpersonen"></div>
-    <div class="field" style="grid-column: span 2"><label>Name (Kontakt oder Privatperson)</label><input class="input" name="name" value="{{ c.name or '' }}" required></div>
-    <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ (c.adresse or {}).strasse or '' }}"></div>
-    <div class="field"><label>Nr.</label><input class="input" name="nr" value="{{ (c.adresse or {}).nr or '' }}"></div>
-    <div class="field"><label>Land</label><input class="input" name="land" value="{{ (c.adresse or {}).land or 'CH' }}" maxlength="2"></div>
-    <div class="field"><label>PLZ</label><input class="input" name="plz" value="{{ (c.adresse or {}).plz or '' }}"></div>
-    <div class="field"><label>Ort</label><input class="input" name="ort" value="{{ (c.adresse or {}).ort or '' }}"></div>
-    <div class="field" style="grid-column: span 2"><label>E-Mail</label><input class="input" name="email" type="email" value="{{ c.email or '' }}"></div>
-    <div class="field"><label>Telefon</label><input class="input" name="telefon" type="tel" value="{{ c.telefon or '' }}"></div>
-    <div class="field"><label>Mobile</label><input class="input" name="mobil" type="tel" value="{{ c.mobil or '' }}"></div>
-    <div class="field wide"><span class="lbl">Rechnung adressieren an</span><span class="actions"><label class="check"><input type="radio" name="rechnung_an" value="firma" {{ 'checked' if c.rechnung_an != 'person' }}> Firma</label><label class="check"><input type="radio" name="rechnung_an" value="person" {{ 'checked' if c.rechnung_an == 'person' }}> Person</label></span></div>
-    <div class="field wide"><label>Notizen</label><textarea class="input" name="notizen" style="min-height:60px">{{ c._notizen or '' }}</textarea></div>
-  </div>
-  {{ errors() }}<div class="formfoot"><span class="small muted">Ohne Strasse, PLZ und Ort trägt der QR-Einzahlungsschein keine Schuldneradresse.</span><button class="btn primary" type="submit">Speichern</button></div>
-</form>
-{% endmacro %}
 {% block main %}
-<div class="topbar"><div><h1>Debitoren</h1><div class="sub">{{ customers|length }} Kunden</div></div></div>
+<div class="topbar"><div><h1>Kunden</h1><div class="sub">{{ alle }} Kunden{% if kategorie %} · {{ customers|length }} in «{{ kategorie }}»{% endif %}</div></div>
+  <div class="actions"><a class="btn" href="#neu">Kunde anlegen</a></div></div>
 <div class="panel">
-  {% if customers %}
+  {% if alle %}
   <div class="filters"><input class="input search" type="search" id="q" name="q" value="{{ q }}" autocomplete="off"
-      data-filter="#kunden" placeholder="Suchen: Name, Firma, Strasse, Ort, E-Mail, Telefon, Notizen …  ( / )" aria-label="Kunden suchen">
+      data-filter="#kunden" placeholder="Suchen: Name, Firma, Adresse, E-Mail, Telefon, Notizen, Log …  ( / )" aria-label="Kunden suchen">
+    {% if kategorien %}<span class="tabs small">{% for k in [""] + kategorien %}<a class="{{ 'on' if k == kategorie }}" href="/debitoren/kunden{{ '?kategorie=' ~ k|urlencode if k }}">{{ k or 'Alle' }}</a>{% endfor %}</span>{% endif %}
     <span class="small muted" data-filter-count></span></div>
   <div class="empty" data-filter-empty hidden>Kein Kunde gefunden.</div>
-  <div class="tablewrap"><table class="ledger" id="kunden">
-    <thead><tr><th>Nr.</th><th>Kunde</th><th>Ort</th><th class="right">Rechnungen</th><th class="right">Offen</th><th></th></tr></thead>
+  <div class="tablewrap"><table class="ledger kundenliste" id="kunden">
+    <thead><tr><th>Nr.</th><th>Kunde</th><th>Adresse</th><th>Kontakt</th><th class="right">Umsatz {{ jahr }}</th><th class="right">Offen</th><th></th></tr></thead>
     <tbody>
-    {% for nr, c in customers.items() %}
-      <tr class="row" data-suche="{{ suche[nr] }}"><td class="acc">{{ nr }}</td><td><strong>{{ c.firma or c.name }}</strong>{% if c.firma %}<br><span class="small muted">{{ c.name }}</span>{% endif %}{% for tel in (c.telefon, c.mobil) if tel %}<br><a class="small muted" href="tel:{{ tel|replace(' ', '') }}">{{ tel }}</a>{% endfor %}</td><td>{{ (c.adresse or {}).ort }}</td>
-        <td class="right num">{{ states[nr].anzahl }}</td><td class="right num">{{ states[nr].offen|chf(true) }}{% if states[nr].akonto %}<br><span class="pill info" title="Akontorechnungen, die bei der Schlussrechnung abgezogen werden">Akonto {{ states[nr].akonto|chf }}</span>{% endif %}</td>
-        <td class="right"><span class="rowactions"><a class="btn small" href="/debitoren/neu?kunde={{ nr }}">Rechnung</a><a class="btn small ghost" href="/debitoren/kunden?edit={{ nr }}#edit">Bearbeiten</a></span></td></tr>
-      {% if edit == nr %}<tr><td colspan="6" id="edit" style="padding:0">{{ kundenform(c, "/debitoren/kunden/" ~ nr) }}</td></tr>{% endif %}
+    {% for nr, c in customers.items() %}{% set a = c.adresse or {} %}{% set st = states[nr] %}
+      <tr class="row" data-suche="{{ suche[nr] }}" data-href="/debitoren/kunden/{{ nr }}">
+        <td class="acc">{{ nr }}</td>
+        <td><a class="kunde-link" href="/debitoren/kunden/{{ nr }}"><strong>{{ c.firma or c.name }}</strong></a>{% if c.kategorie %} <span class="pill muted">{{ c.kategorie }}</span>{% endif %}{% if c.firma and c.name %}<br><span class="small muted">{{ c.name }}</span>{% endif %}</td>
+        <td class="small">{% if a.strasse %}{{ a.strasse }} {{ a.nr }}<br>{% endif %}{{ a.plz }} {{ a.ort }}</td>
+        <td class="small">{% for tel in (c.telefon, c.mobil) if tel %}<a class="muted" href="tel:{{ tel|replace(' ', '') }}">{{ tel }}</a><br>{% endfor %}{% if c.email %}<a class="muted" href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}</td>
+        <td class="right num">{{ st.umsatz|chf(true) if st.umsatz }}<br><span class="small muted">{{ st.anzahl }} Rg.</span></td>
+        <td class="right num">{{ st.offen|chf(true) }}{% if st.akonto %}<br><span class="pill info" title="Akontorechnungen, die bei der Schlussrechnung abgezogen werden">Akonto {{ st.akonto|chf }}</span>{% endif %}</td>
+        <td class="right"><span class="rowactions"><a class="btn small" href="/debitoren/neu?kunde={{ nr }}">Rechnung</a><a class="btn small ghost" href="/debitoren/kunden/{{ nr }}">Öffnen</a></span></td></tr>
     {% endfor %}
     </tbody>
   </table></div>
   {% else %}<div class="empty">Noch keine Kunden.</div>{% endif %}
 </div>
-<div class="panel"><header><h2>Kunde anlegen</h2></header>{{ kundenform({}, "/debitoren/kunden/neu") }}</div>
+<div class="panel" id="neu"><header><h2>Kunde anlegen</h2></header>{{ kundenform({}, "/debitoren/kunden/neu", KATEGORIEN) }}</div>
 {% endblock %}

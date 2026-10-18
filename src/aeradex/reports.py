@@ -594,6 +594,7 @@ _INVOICE_NR = re.compile(r"R-\d{4}-\d{4}")
 def umsatz(book: Book, start: date, end: date, nach: str = "kunde") -> dict:
     """Revenue (Ertrag accounts, net of credit notes) by customer, account or month."""
     from . import invoices as inv
+    from .kunden import customer_of_row
     if nach not in ("kunde", "konto", "monat"):
         raise BookError("Umsatz nach: kunde, konto oder monat")
     meta = inv.invoices(book)
@@ -615,8 +616,7 @@ def umsatz(book: Book, start: date, end: date, nach: str = "kunde") -> dict:
                     key = f"{r.datum.year}-{r.datum.month:02d}"
                     labels[key] = f"{MONTHS_DE[r.datum.month]} {r.datum.year}"
                 else:
-                    m = _INVOICE_NR.search(r.quelle or "")
-                    kunde = meta.get(m.group(0), {}).get("kunde") if m else None
+                    kunde = customer_of_row(r, meta)
                     key = kunde or "_ohne"
                     labels[key] = names.get(kunde, kunde) if kunde else "ohne Rechnung (übrige Buchungen)"
                 per[key] += sign * r.betrag

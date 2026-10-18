@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, status_pill %}
+{% from "_kundenform.html" import kundenform %}
+{% block title %}{{ c.firma or c.name }}{% endblock %}
+{% block main %}
+{% set a = c.adresse or {} %}{% set k = d.kennzahlen %}{% set zm = d.zahlungsmoral %}
+{% set adresse = ((a.strasse or '') ~ ' ' ~ (a.nr or '')).strip() ~ (', ' if a.strasse and (a.plz or a.ort)) ~ ((a.plz or '') ~ ' ' ~ (a.ort or '')).strip() %}
+<div class="topbar">
+  <div><div class="crumbs"><a href="/debitoren">Debitoren</a> / <a href="/debitoren/kunden">Kunden</a> /</div>
+    <h1>{{ c.firma or c.name }} <span class="acc muted" style="font-size:.6em">{{ nr }}</span>
+      {% if c.kategorie %}<span class="pill muted">{{ c.kategorie }}</span>{% endif %}
+      {% if zm.ampel %}<span class="pill {{ zm.ampel }}" title="Ø {{ zm.tage_schnitt }} Tage nach Fälligkeit · {{ zm.mahnungen }} Mahnung(en)">{{ zm.label }}</span>{% endif %}</h1>
+    <div class="sub kontakt">
+      {% if c.firma and c.name %}<span>{{ c.name }}</span>{% endif %}
+      {% if adresse %}<a class="link" href="https://www.google.com/maps/search/?api=1&query={{ adresse|urlencode }}" target="_blank" rel="noopener">📍 {{ adresse }}</a>{% endif %}
+      {% for tel in (c.telefon, c.mobil) if tel %}<a class="link" href="tel:{{ tel|replace(' ', '') }}">📞 {{ tel }}</a>{% endfor %}
+      {% if c.email %}<a class="link" href="mailto:{{ c.email }}">✉️ {{ c.email }}</a>{% endif %}
+      {% if c.herkunft %}<span class="muted">via {{ c.herkunft }}</span>{% endif %}
+      {% if k.kunde_seit %}<span class="muted">Kunde seit {{ k.kunde_seit|datum }}</span>{% endif %}
+    </div></div>
+  <div class="actions">
+    <a class="btn primary" href="/debitoren/neu?kunde={{ nr }}">Rechnung</a>
+    <a class="btn" href="/debitoren/neu?kunde={{ nr }}&art=akonto">Akontorechnung</a>
+    {% for t in teile %}{% for label, href in t.aktionen %}<a class="btn" href="{{ href }}">{{ label }}</a>{% endfor %}{% endfor %}
+    <a class="btn ghost" href="#bearbeiten" onclick="document.getElementById('bearbeiten').open=true">Bearbeiten</a></div>
+</div>
+
+<div class="figures">
+  <div class="figure"><span class="label">Umsatz {{ k.jahr }}</span><span class="value">{{ k.umsatz_jahr|chf }}</span><span class="meta">Vorjahr {{ k.umsatz_vorjahr|chf }}</span></div>
+  <div class="figure"><span class="label">Umsatz total</span><span class="value">{{ k.umsatz_total|chf }}</span><span class="meta">{{ k.anzahl }} Rechnung(en){% if k.letzte %} · letzte {{ k.letzte|datum }}{% endif %}</span></div>
+  <div class="figure"><span class="label">Offen</span><span class="value">{{ k.offen|chf }}</span><span class="meta">{% if k.ueberfaellig %}<span class="pill red">überfällig {{ k.ueberfaellig|chf }}</span>{% else %}nichts überfällig{% endif %}</span></div>
+  {% if k.akonto_offen %}<div class="figure"><span class="label">Akonto offen</span><span class="value">{{ k.akonto_offen|chf }}</span><span class="meta">wird bei der Schlussrechnung abgezogen</span></div>{% endif %}
+  {% for t in teile %}{% for f in t.kennzahlen %}<div class="figure"><span class="label">{{ f.label }}</span><span class="value">{% if f.link %}<a href="{{ f.link }}">{{ f.wert|chf }}</a>{% else %}{{ f.wert|chf }}{% endif %}</span><span class="meta">{{ f.meta }}</span></div>{% endfor %}{% endfor %}
+</div>
+
+<div class="review kunde-review">
+  <div class="kunde-spalte">
+    <div class="panel" id="rechnungen">
+      <header><h2>Rechnungen</h2>
+        <span class="tabs small"><a class="{{ 'on' if filter != 'offen' }}" href="?rechnungen=alle#rechnungen">alle <span class="count">{{ d.rechnungen|length }}</span></a><a class="{{ 'on' if filter == 'offen' }}" href="?rechnungen=offen#rechnungen">offen <span class="count">{{ d.rechnungen|selectattr('status', 'in', ['offen', 'teilbezahlt'])|list|length }}</span></a></span></header>
+      {% set rows = d.rechnungen if filter != 'offen' else d.rechnungen|selectattr('status', 'in', ['offen', 'teilbezahlt'])|list %}
+      {% if rows %}
+      <div class="tablewrap"><table class="ledger">
+        <thead><tr><th>Nr.</th><th>Datum</th><th>Art</th><th class="right">Total</th><th class="right">Offen</th><th>Status</th></tr></thead>
+        <tbody>{% for r in rows %}
+          <tr class="row{{ ' muted' if r.status == 'storniert' }}"><td><a class="link" href="/debitoren/rechnung/{{ r.nummer }}">{{ r.nummer }}</a></td><td>{{ r.datum|datum }}</td>
+            <td>{% if r.art == 'akonto' %}{% if r.angerechnet_in %}<a class="pill ok" href="/debitoren/rechnung/{{ r.angerechnet_in }}" title="angerechnet in {{ r.angerechnet_in }}">Akonto → {{ r.angerechnet_in }}</a>{% else %}<span class="pill warn">Akonto · offen</span>{% endif %}{% elif r.art == 'schluss' %}<span class="pill info" title="rechnet {{ r.abgezogen|join(', ') }} an">Schluss</span>{% else %}<span class="small muted">Rechnung</span>{% endif %}</td>
+            <td class="right num">{{ r.total|chf }}{{ ' ' ~ r.waehrung if r.waehrung != 'CHF' }}</td><td class="right num">{{ r.offen|chf(true) }}</td>
+            <td>{{ status_pill(r.status) }}{% if r.ueberfaellig %} <span class="pill red">überfällig</span>{% endif %}{% if r.mahnstufe %} <span class="pill warn">{{ r.mahnstufe }}. Mahnung</span>{% endif %}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+      {% else %}<div class="empty">{{ 'Keine offenen Rechnungen.' if filter == 'offen' else 'Noch keine Rechnungen.' }}</div>{% endif %}
+    </div>
+
+    {% for t in teile %}{{ t.html|safe }}{% endfor %}
+
+    <div class="panel" id="zeitachse">
+      <header><h2>Verlauf</h2><span class="hint">Log, Rechnungen, Zahlungen, Mahnungen{{ ', Offerten' if teile }}</span></header>
+      {% if d.zeitachse %}
+      <ul class="activity zeitachse">{% for e in d.zeitachse[:60] %}
+        <li class="z-{{ e.art }}"><span class="h">{{ e.datum|datum }}{{ ' ' ~ e.zeit if e.zeit }}{% if e.wer %} · <span class="who">{{ e.wer }}</span>{% endif %}</span>
+          <span><strong>{% if e.link %}<a class="link" href="{{ e.link }}">{{ e.titel }}</a>{% else %}{{ e.titel }}{% endif %}</strong>{% if e.nachfassen %} <span class="pill {{ 'ok' if e.erledigt else ('red' if e.nachfassen <= today else 'info') }}">nachfassen {{ e.nachfassen|datum }}{{ ' ✓' if e.erledigt }}</span>{% endif %}</span>
+          <span class="z-text">{{ e.text }}</span></li>
+      {% endfor %}</ul>
+      {% else %}<div class="empty">Noch nichts.</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="kunde-spalte">
+    <div class="panel">
+      <header><h2>Notieren</h2></header>
+      <form class="body" hx-post="/debitoren/kunden/{{ nr }}/log" hx-target="find .errors">
+        <div class="seg" role="radiogroup" aria-label="Art">{% for key, label in arten.items() %}<label class="check"><input type="radio" name="art" value="{{ key }}" {{ 'checked' if key == 'anruf' }}> {{ label }}</label>{% endfor %}</div>
+        <div class="field"><label for="log-text" class="sr-only">Text</label><textarea class="input" id="log-text" name="text" required placeholder="Was wurde besprochen oder vereinbart?" style="min-height:70px"></textarea></div>
+        <div class="form">
+          <div class="field"><label for="log-d">Datum</label><input class="input" id="log-d" type="date" name="datum" value="{{ today }}"></div>
+          <div class="field"><label for="log-n">Nachfassen am</label><input class="input" id="log-n" type="date" name="nachfassen"></div>
+        </div>
+        {{ errors() }}<div class="formfoot"><span class="small muted">landet im Verlauf; mit Datum «nachfassen» als Wiedervorlage</span><button class="btn primary" type="submit">Speichern</button></div>
+      </form>
+    </div>
+
+    {% if d.wiedervorlagen %}
+    <div class="panel">
+      <header><h2>Wiedervorlagen</h2></header>
+      <ul class="wv">{% for e in d.wiedervorlagen %}
+        <li class="{{ 'red' if e.nachfassen <= today else 'info' }}"><div><strong>{{ e.nachfassen|datum }}</strong> · {{ e.art_label }}<br><span class="small">{{ e.text }}</span></div>
+          <form hx-post="/debitoren/kunden/{{ nr }}/log/{{ e.index }}" hx-target="find .errors"><button class="btn small" type="submit">Erledigt</button>{{ errors() }}</form></li>
+      {% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <div class="panel">
+      <header><h2>Feste Infos</h2><span class="hint">Zugang, Wünsche, Erreichbarkeit</span></header>
+      <form class="body" hx-post="/debitoren/kunden/{{ nr }}/infos" hx-target="find .errors">
+        <textarea class="input" name="notizen" aria-label="Feste Infos" style="min-height:90px" placeholder="z.B. Schlüssel beim Nachbarn, nur vormittags erreichbar">{{ c._notizen }}</textarea>
+        {{ errors() }}<div class="formfoot"><span></span><button class="btn small" type="submit">Speichern</button></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <header><h2>Zahlungsmoral</h2>{% if zm.ampel %}<span class="pill {{ zm.ampel }}">{{ zm.label }}</span>{% endif %}</header>
+      {% if zm.bezahlte %}
+      <div class="tablewrap"><table class="ledger"><tbody>
+        <tr><td>Ø Tage nach Fälligkeit</td><td class="right num">{{ zm.tage_schnitt }}</td></tr>
+        <tr><td>Pünktlich bezahlt</td><td class="right num">{{ zm.puenktlich_prozent }} %</td></tr>
+        <tr><td>Bezahlte Rechnungen</td><td class="right num">{{ zm.bezahlte }}</td></tr>
+        <tr><td>Mahnungen</td><td class="right num">{{ zm.mahnungen }}{% if zm.hoechste_stufe %} (bis Stufe {{ zm.hoechste_stufe }}){% endif %}</td></tr>
+      </tbody></table></div>
+      {% if not zm.ampel %}<div class="body small muted">Für eine Einschätzung braucht es mindestens zwei bezahlte Rechnungen.</div>{% endif %}
+      {% else %}<div class="empty">Noch keine bezahlte Rechnung.</div>{% endif %}
+    </div>
+
+    {% if d.akonto_offen %}
+    <div class="panel">
+      <header><h2>Offene Akontorechnungen</h2></header>
+      <div class="body">{% for ak in d.akonto_offen %}<span class="small"><a class="link" href="/debitoren/rechnung/{{ ak.nummer }}">{{ ak.nummer }}</a> vom {{ ak.datum|datum }} · {{ ak.total|chf }} · {{ 'bezahlt' if ak.status == 'bezahlt' else 'noch offen' }}</span>{% endfor %}
+        <span class="small muted">Werden bei der nächsten Rechnung an diesen Kunden abgezogen.</span></div>
+    </div>
+    {% endif %}
+
+    <details class="panel" id="bearbeiten"><summary><h2 style="display:inline">Stammdaten bearbeiten</h2></summary>
+      {{ kundenform(c, "/debitoren/kunden/" ~ nr, KATEGORIEN) }}
+    </details>
+  </div>
+</div>
+{% endblock %}

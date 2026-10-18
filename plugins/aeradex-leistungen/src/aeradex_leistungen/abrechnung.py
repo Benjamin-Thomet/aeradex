@@ -244,6 +244,20 @@ def preview(book: Book, ids: list[str], detail: bool = False, rabatt=None) -> di
             **totals(book, positions(book, items, detail), kunde, rabatt, [a["nummer"] for a in offen])}
 
 
+def object_line(book: Book, items: list[dict]) -> str:
+    """When all entries belong to one project (object): «MFH Bernstrasse, Bernstrasse 12, 3600 Thun» for the
+    invoice's Objekt line; else ""."""
+    nrs = {e["projekt"] for e in items}
+    if len(nrs) != 1 or not next(iter(nrs)):
+        return ""
+    p = daten.projects(book).get(next(iter(nrs)))
+    if not p:
+        return ""
+    adr = daten.address_text(p)
+    name = str(p.get("name") or "").strip()
+    return ", ".join(x for x in (name, adr) if x and not (x == name and adr and name in adr)) if adr else name
+
+
 def bill(book: Book, ids: list[str], detail: bool = False, datum=None, text: str = "",
          zahlungsfrist: int | None = None, rapport: bool = True, rabatt=None,
          akonto=None) -> tuple[dict, list[Path]]:
@@ -256,7 +270,7 @@ def bill(book: Book, ids: list[str], detail: bool = False, datum=None, text: str
     if not text:
         text = f"Unsere Leistungen vom {_period(items)}."
     meta, touched = invoices.issue_invoice(book, kunde, raw, datum, text, zahlungsfrist, rabatt=rabatt,
-                                           akonto=list(akonto or []))
+                                           akonto=list(akonto or []), objekt=object_line(book, items))
     meta["_text"] = text
     cust = invoices.customer(book, kunde)
     pdf_path = api.meta_pdf_path(book, meta)

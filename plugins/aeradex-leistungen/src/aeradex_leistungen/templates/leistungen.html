@@ -131,8 +131,8 @@
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th>{{ cfg.projekt_wort }}</th><th>Kunde</th><th>Art</th><th class="right">Stunden / Budget</th><th class="right">Wert</th><th class="right">Kosten</th><th class="right">Verrechnet</th><th class="right">Offen</th><th class="right">DB</th><th></th></tr></thead>
     <tbody>{% for p in liste %}
-      <tr class="row"><td><span class="beleg">{{ p.nummer }}</span> {{ p.name }}{% if p.offerte %}<br><a class="small link" href="/p/leistungen/offerten?nr={{ p.offerte }}">{{ p.offerte }}</a>{% endif %}</td>
-        <td>{{ kunden.get(p.kunde, p.kunde) }}</td><td>{{ p.abrechnung }}</td>
+      <tr class="row"><td><span class="beleg">{{ p.nummer }}</span> {{ p.name }}{% if p.adresse and p.adresse != p.name %}<br><span class="small muted">{{ p.adresse }}</span>{% endif %}{% if p.offerte %}<br><a class="small link" href="/p/leistungen/offerten?nr={{ p.offerte }}">{{ p.offerte }}</a>{% endif %}</td>
+        <td><a class="link" href="/debitoren/kunden/{{ p.kunde }}">{{ kunden.get(p.kunde, p.kunde) }}</a></td><td>{{ p.abrechnung }}</td>
         <td class="right num">{{ p.stunden|qty }}{% if p.budget_stunden is not none %} / {{ p.budget_stunden|qty }} {{ budget_pill(p.auslastung) }}{% endif %}</td>
         <td class="right num">{{ p.wert|chf(true) }}{% if p.budget_chf is not none %}<br><span class="small muted">Budget {{ p.budget_chf|chf }}</span>{% endif %}</td>
         <td class="right num">{{ p.kosten|chf(true) }}</td><td class="right num">{{ p.abgerechnet|chf(true) }}</td><td class="right num">{{ p.offen|chf(true) }}</td><td class="right num">{{ p.deckungsbeitrag|chf }}</td>
@@ -145,8 +145,13 @@
   <header><h2>{{ cfg.projekt_wort }} anlegen</h2><span class="hint">aus einer angenommenen Offerte entsteht das {{ cfg.projekt_wort }} automatisch</span></header>
   <form class="body" hx-post="{{ A }}projekt_neu" hx-target="find .errors">
     <div class="form four">
-      <div class="field" style="grid-column: span 2"><label>Name</label><input class="input" name="name" required></div>
+      <div class="field" style="grid-column: span 2"><label>Name (leer = Adresse)</label><input class="input" name="name" placeholder="z.B. MFH Bernstrasse"></div>
       <div class="field"><label>Kunde</label>{{ kunde_select(kunden, required=true) }}</div>
+      <div class="field"></div>
+      <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse"></div>
+      <div class="field"><label>Nr.</label><input class="input" name="hausnr"></div>
+      <div class="field"><label>PLZ / Ort</label><span class="actions"><input class="input" name="plz" style="width:6em" aria-label="PLZ"><input class="input" name="ort" aria-label="Ort"></span></div>
+      <div class="field wide"><label>Zugang (Schlüssel, Code, Ansprechperson vor Ort)</label><input class="input" name="zugang"></div>
       <div class="field"><label>Abrechnung</label><select class="input" name="abrechnung" style="width:100%"><option value="aufwand">nach Aufwand</option><option value="pauschal">pauschal</option></select></div>
       <div class="field"><label>Budget Stunden</label><input class="input num" name="budget_stunden"></div>
       <div class="field"><label>Budget CHF</label><input class="input num" name="budget_chf"></div>
