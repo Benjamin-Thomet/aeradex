@@ -1610,7 +1610,7 @@ async def plugin_installieren(ui: UI, request: Request):
     except BookError as exc:
         return fail(str(exc))
     ui.neustart_noetig = True
-    return done(f"Plugin {name} installiert — aeradex neu starten, um es zu laden", "/einstellungen#plugins")
+    return done(f"{name} installiert — aeradex neu starten, um es zu laden", "/einstellungen#funktionen")
 
 
 async def plugin_neustart(ui: UI, request: Request):
@@ -1618,13 +1618,13 @@ async def plugin_neustart(ui: UI, request: Request):
     if ui.auth_dir is not None:
         return fail("Den Server bitte über systemd neu starten (systemctl restart …).")
     restart_later(ui)
-    return done("aeradex startet neu …", "/einstellungen#plugins")
+    return done("aeradex startet neu …", "/einstellungen#funktionen")
 
 
 async def plugin_einstellung(ui: UI, request: Request):
     f = await request.form()
     fn = api.plugin_enable if request.path_params["aktion"] == "ein" else api.plugin_disable
-    return await act(request, fn, "/einstellungen#plugins", ui.book(), f.get("name", ""))
+    return await act(request, fn, "/einstellungen#funktionen", ui.book(), f.get("name", ""))
 
 
 def _book_and_rule(book, tid: str, konto: str, text: str, mwst: str, rule: bool) -> dict:
@@ -2397,7 +2397,7 @@ async def einstellungen(ui: UI, request: Request):
                      qst_geladen=sorted(p.stem.replace("-", " ") for p in (book.root / "lohn" / "qst_tarife").glob("??-????.json")))
 
 
-SETTINGS_TABS = ("firma", "buchhaltung", "lohn", "agent", "plugins", "buch")
+SETTINGS_TABS = ("firma", "buchhaltung", "lohn", "agent", "funktionen", "buch")
 
 
 async def einstellungen_speichern(ui: UI, request: Request):
@@ -2409,6 +2409,10 @@ async def einstellungen_speichern(ui: UI, request: Request):
     vat = {"methode": f.get("mwst_methode") or "keine", "periode": f.get("mwst_periode") or "",
            "saldosteuersatz": (f.get("mwst_saldosteuersatz") or "").strip(),
            "taetigkeit": (f.get("mwst_taetigkeit") or "").strip(), "abrechnungsart": f.get("mwst_abrechnungsart") or ""}
+    if "mwst_konto" in f:
+        vat["konto"] = acct(f.get("mwst_konto"))
+    if "mwst_abrechnungskonto" in f:
+        vat["konten"] = {"abrechnung": acct(f.get("mwst_abrechnungskonto"))}
     adresse = {k: (f.get(f"a_{k}") or "").strip() for k in ("strasse", "nr", "plz", "ort", "land") if f"a_{k}" in f}
     konten = {k: acct(f.get(f"k_{k}")) for k in ("bank", "debitoren", "ertrag", "gutschrift", "gewinnvortrag",
                                                   "jahresergebnis", "dividende", "reserve") if f"k_{k}" in f}

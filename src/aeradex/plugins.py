@@ -550,10 +550,28 @@ def describe(book: Book | None) -> list[dict]:
     for name, plugin in sorted(installed().items()):
         hooks = sorted(h[len("aeradex_"):] for h in dir(plugin.module or object) if h.startswith("aeradex_")
                        and callable(getattr(plugin.module, h)))
+        module = plugin.module
         rows.append({"name": name, "version": plugin.version, "beschreibung": plugin.beschreibung,
                      "eingeschaltet": name in enabled, "ok": plugin.ok, "fehler": plugin.fehler, "hooks": hooks,
-                     "nur_daten": bool(hooks) and set(hooks) <= DATA_HOOKS})
+                     "nur_daten": bool(hooks) and set(hooks) <= DATA_HOOKS,
+                     # How the settings show it as a function: AERADEX_TITEL/TEXT/TEIL_VON in the plugin module.
+                     "titel": str(getattr(module, "AERADEX_TITEL", "") or name),
+                     "text": str(getattr(module, "AERADEX_TEXT", "") or plugin.beschreibung),
+                     "teil_von": str(getattr(module, "AERADEX_TEIL_VON", "") or ""),
+                     "seiten": _page_list(name, module)})
     for name in sorted(enabled - set(installed())):
         rows.append({"name": name, "version": "", "beschreibung": "", "eingeschaltet": True, "ok": False,
-                     "fehler": "nicht installiert", "hooks": [], "nur_daten": False})
+                     "fehler": "nicht installiert", "hooks": [], "nur_daten": False, "titel": name, "text": "",
+                     "teil_von": "", "seiten": []})
     return rows
+
+
+def _page_list(name: str, module: ModuleType | None) -> list[dict]:
+    """A plugin's pages (also when it is switched off), for «where to find it» in the settings."""
+    try:
+        found = module.aeradex_pages() if module is not None and hasattr(module, "aeradex_pages") else []
+    except Exception:
+        return []
+    titles = {pg.bereich: pg.bereich_titel for pg in found or [] if pg.bereich_titel}
+    return [{"url": f"/p/{name}/{pg.slug}", "label": pg.label, "bereich": pg.bereich,
+             "bereich_titel": pg.bereich_titel or titles.get(pg.bereich, "")} for pg in found or []]

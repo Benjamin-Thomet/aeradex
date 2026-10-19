@@ -41,6 +41,7 @@ def test_page_without_service(client):
     c, book = client
     assert 'href="/p/anruf/sekretaerin"' in c.get("/einstellungen").text              # Einstellungen › Agent & KI
     html = c.get("/p/anruf/sekretaerin").text
+    assert "<h1>Telegram-Agent</h1>" in html and "<h1>Nora</h1>" not in html
     assert "Nora" in html and "pill ok\">läuft" not in html and "pill muted\">aus" in html and "telegram serve" in html
     assert "Noch keine Gespräche" in html
 

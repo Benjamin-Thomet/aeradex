@@ -35,6 +35,11 @@ def _weg(book: Book, f: dict) -> dict:
     return {"meldung": "Zugang entfernt"}
 
 
+# How the settings show this plugin (Einstellungen › Funktionen).
+AERADEX_TITEL = "Zugriff für Claude Code"
+AERADEX_TEXT = "SSH-Schlüssel, mit denen Claude Code an diesem Buch arbeiten darf"
+
+
 @hookimpl
 def aeradex_pages():
     return [Page("schluessel", "Zugriff (Claude Code)", "zugriff.html", _context, {"neu": _neu, "weg": _weg},

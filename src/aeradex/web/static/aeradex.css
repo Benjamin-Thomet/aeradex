@@ -547,6 +547,11 @@ details.panel > summary { list-style: none; cursor: pointer; padding: 12px 16px;
 details.panel > summary::-webkit-details-marker { display: none; }
 details.panel > summary::after { content: " ▸"; color: var(--muted); }
 details.panel[open] > summary::after { content: " ▾"; }
+/* a drawer whose summary is a panel header: the header carries the padding and the arrow */
+details.panel > summary:has(> header) { padding: 0; }
+details.panel > summary:has(> header)::after { content: none; }
+details.panel > summary > header h2::after { content: " ▸"; color: var(--muted); font-weight: 400; }
+details.panel[open] > summary > header h2::after { content: " ▾"; }
 .objekte { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; padding: 12px 16px; }
 .objekt { border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .objekt.zu { opacity: .65; }

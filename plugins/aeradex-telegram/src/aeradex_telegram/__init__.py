@@ -111,6 +111,12 @@ def serve(root, cfg) -> dict:
     return {"ok": True}
 
 
+# How the settings show this plugin (Einstellungen › Funktionen).
+AERADEX_TITEL = "Telegram"
+AERADEX_TEXT = "Chat, Sprachnachrichten und Anrufen aus Telegram"
+AERADEX_TEIL_VON = "anruf"
+
+
 @hookimpl
 def aeradex_commands():
     return [Command("telegram", "Telegram-Bot und Anrufen aus Telegram (braucht das Plugin anruf)", _run, _setup)]

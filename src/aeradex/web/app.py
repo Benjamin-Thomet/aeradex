@@ -118,7 +118,8 @@ def make_env() -> Environment:
     env.filters.update(chf=chf, preis=lambda v: __import__("aeradex.pdf", fromlist=["price"]).price(v), minus=minus, qty=qty, datum=datum, pct=pct, neg=neg, urlq=lambda v: quote(str(v)))
     static = HERE / "static"
     stamp = hashlib.sha1("".join(f"{p.name}{p.stat().st_mtime_ns}" for p in sorted(static.glob("*.*"))).encode()).hexdigest()[:8]
-    env.globals.update(MONTHS=MONTHS_DE, today=date.today, asset=stamp)
+    env.globals.update(MONTHS=MONTHS_DE, today=date.today, asset=stamp, EINSTELLUNGEN_TABS=EINSTELLUNGEN_TABS,
+                       page_place=page_place)
     return env
 
 
@@ -222,6 +223,26 @@ SECTIONS = [
         ("mwst", "MWST", "/mwst", ()), ("berichte", "Berichte", "/berichte", ()),
         ("budget", "Budget", "/berichte/budget", ()), ("abschluss", "Abschluss", "/abschluss", ())]),
 ]
+
+# The tabs of the settings page (anchor, label); plugin pages may live in one (`einstellungen:<tab>`).
+EINSTELLUNGEN_TABS = [("firma", "Firma"), ("buchhaltung", "Buchhaltung"), ("lohn", "Lohn"), ("agent", "Agent & KI"),
+                      ("funktionen", "Funktionen"), ("buch", "Buch")]
+
+
+def page_place(pg: dict) -> str:
+    """Where a plugin page is found, in words: «Lohn › Team-App», «Leistungen», «Einstellungen › Agent & KI»."""
+    bereich = pg.get("bereich") or ""
+    if bereich.startswith("einstellungen"):
+        tab = dict(EINSTELLUNGEN_TABS).get(bereich.partition(":")[2], "")
+        return "Einstellungen" + (f" › {tab}" if tab else "")
+    core = {item[0]: item[1] for item in SECTIONS}
+    if bereich in core:
+        return f"{core[bereich]} › {pg['label']}"
+    if not bereich:
+        return ""
+    titel = pg.get("bereich_titel") or pg["label"]
+    return titel if titel == pg["label"] else f"{titel} › {pg['label']}"
+
 
 def _under(path: str, prefix: str) -> bool:
     return path == prefix or (prefix != "/" and path.startswith(prefix.rstrip("/") + "/"))

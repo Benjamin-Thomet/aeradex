@@ -18,6 +18,11 @@ AERADEX_PLUGIN_API = 1
 __version__ = "0.1.0"
 
 
+# How the settings show this plugin (Einstellungen › Funktionen).
+AERADEX_TITEL = "Team-App"
+AERADEX_TEXT = "Mitarbeitende erfassen Zeit, Material und Abwesenheiten auf dem Handy"
+
+
 @hookimpl
 def aeradex_check(book, rows):
     try:

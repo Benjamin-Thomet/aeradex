@@ -264,8 +264,10 @@ def test_employee_add_and_edit(client, root):
 
 def test_settings_tabs_save_only_their_fields(client, root):
     page = client.get("/einstellungen").text
-    for tab in ("firma", "buchhaltung", "lohn", "agent", "plugins", "buch"):
+    for tab in ("firma", "buchhaltung", "lohn", "agent", "funktionen", "buch"):
         assert f'data-tab="{tab}"' in page and f'href="#{tab}"' in page
+    assert 'href="#plugins"' not in page and 'id="plugins"' in page          # old links still find the tab
+    assert 'id="technik"' in page and "aeradex.yaml und" not in page
     before = Book(root).settings
     firma, adresse = before.firma, dict(before.adresse)
     r = post(client, "/einstellungen", {"_tab": "agent", "agent_modus": "direkt"})
@@ -276,6 +278,15 @@ def test_settings_tabs_save_only_their_fields(client, root):
     ok(post(client, "/einstellungen", {"_tab": "buchhaltung", "mwst_methode": "effektiv", "k_bank": "1020"}))
     assert Book(root).settings.firma == firma
     assert "Firmenname" in post(client, "/einstellungen", {"firma": ""}).text
+    # MWST: one collection account, the Abrechnung moved to another; empty fields go back to the defaults.
+    form = {"_tab": "buchhaltung", "mwst_methode": "effektiv", "mwst_konto": "2200", "mwst_abrechnungskonto": "2201"}
+    ok(post(client, "/einstellungen", form))
+    vat = Book(root).settings.get("mwst")
+    assert vat["konto"] == "2200" and vat["konten"]["abrechnung"] == "2201"
+    assert "Umsatz-, Vor- und Bezugsteuer auf 2200" in client.get("/einstellungen").text
+    ok(post(client, "/einstellungen", {**form, "mwst_konto": "", "mwst_abrechnungskonto": ""}))
+    vat = Book(root).settings.get("mwst")
+    assert "konto" not in vat and "abrechnung" not in (vat.get("konten") or {})
 
 
 def test_settings_jev_key_never_in_book(client, root):

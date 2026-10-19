@@ -16,6 +16,11 @@ AERADEX_PLUGIN_API = 1
 __version__ = "0.1.0"
 
 
+# How the settings show this plugin (Einstellungen › Funktionen).
+AERADEX_TITEL = "Telegram-Agent"
+AERADEX_TEXT = "Der Agent per Telegram und Telefon: Fragen stellen, Belege schicken, buchen lassen"
+
+
 @hookimpl
 def aeradex_tools():
     # Only for the MCP server of a call/chat agent (started with AERADEX_ANRUF=1); the UI and other MCP

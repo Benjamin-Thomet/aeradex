@@ -1,4 +1,4 @@
-"""The «Nora» page in aeradex (Einstellungen › Agent & KI): status, call button, cards, memory, settings."""
+"""The Telegram-Agent page in aeradex (Einstellungen › Agent & KI): status, call button, cards, memory, settings."""
 from __future__ import annotations
 
 import re
@@ -139,7 +139,6 @@ def _anrufen(book: Book, form: dict) -> dict:
 
 
 def pages() -> list[Page]:
-    name = Config.load().assistant_name or "Anruf"
-    return [Page("sekretaerin", name, "sekretaerin.html", _context,
+    return [Page("sekretaerin", "Telegram-Agent", "sekretaerin.html", _context,
                  {"notizen": _notizen, "verlauf_leeren": _verlauf_leeren, "karte": _karte, "zugaenge": _zugaenge,
                   "anrufen": _anrufen}, bereich="einstellungen:agent")]

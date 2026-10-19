@@ -250,7 +250,10 @@ def test_pages(book):
             assert r.status_code == 204, r.text
             return r
 
-        assert 'href="/p/leistungen/leistungen"' in c.get("/debitoren").text            # Plugins navigation
+        assert 'href="/p/leistungen/leistungen"' in c.get("/debitoren").text            # own main menu entry
+        settings = c.get("/einstellungen").text                                         # Einstellungen › Funktionen
+        assert "Leistungen &amp; Offerten" in settings and "Stunden und Material erfassen" in settings
+        assert 'href="/p/leistungen/offerten">Leistungen</a>' not in settings and ">Leistungen</a>" in settings
         post("/p/leistungen/leistungen/kunde", {"name": "Neu", "ort": "Thun", "stundensatz": "100"})
         post("/p/leistungen/leistungen/person", {"name": "Inhaber", "satz": "130", "soll_woche": "40"})
         post("/p/leistungen/leistungen/zeit", {"datum": "2026-10-01", "wer": "M0001", "stunden": "2",

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "_macros.html" import errors %}
-{% block title %}{{ name }}{% endblock %}
+{% block title %}Telegram-Agent{% endblock %}
 {% block main %}
 <div class="topbar">
-  <div><h1>{{ name }}</h1><div class="sub">Deine Sekretärin am Telefon und in Telegram · ElevenLabs-Stimme, Claude als Agent</div></div>
+  <div><div class="crumbs"><a href="/einstellungen#agent">Einstellungen › Agent & KI</a> /</div><h1>Telegram-Agent</h1><div class="sub">Per Telegram und Telefon · ElevenLabs-Stimme, Claude als Agent</div></div>
   <div class="actions">
     {% if dienst %}<form hx-post="/p/anruf/sekretaerin/anrufen" hx-target="find .errors" class="inline"><button class="btn primary" type="submit">📞 Anrufen</button>{{ errors() }}</form>
     {% else %}<button class="btn primary" disabled title="Der Dienst läuft nicht">📞 Anrufen</button>{% endif %}
@@ -14,7 +14,7 @@
   <header><h2>Dienst {% if dienst %}<span class="pill ok">läuft</span>{% else %}<span class="pill muted">aus</span>{% endif %}</h2></header>
   <div class="body small">
     {% if dienst %}
-      {{ name }} ist erreichbar, {{ dienst.seit_text }}{% if dienst.telegram %}, mit Telegram{% endif %}.
+      Der Agent ist erreichbar, {{ dienst.seit_text }}{% if dienst.telegram %}, mit Telegram{% endif %}.
       «Anrufen» öffnet die Anrufseite{% if dienst.telegram %}; in Telegram geht es über den Knopf «Anrufen» im Chat{% endif %}.
     {% else %}
       Starten im Terminal: <code>aeradex --buch &lt;buch&gt; telegram serve</code> (mit Telegram) oder
@@ -42,9 +42,9 @@
 {% endif %}
 
 <div class="panel">
-  <header><h2>Was {{ name }} sich merkt</h2></header>
+  <header><h2>Was der Agent sich merkt</h2></header>
   <form class="body" hx-post="/p/anruf/sekretaerin/notizen" hx-target="find .errors">
-    <p class="small muted">Eine Notiz pro Zeile. {{ name }} liest sie zu Beginn jedes Gesprächs; im Gespräch ergänzt sie sie mit «Merk dir …».</p>
+    <p class="small muted">Eine Notiz pro Zeile. Der Agent liest sie zu Beginn jedes Gesprächs; im Gespräch ergänzt er sie mit «Merk dir …».</p>
     <textarea class="input" name="notizen" rows="{{ [notizen|length + 2, 4]|max }}" style="width:100%;font:inherit">{{ notizen|join('\n') }}</textarea>
     {{ errors() }}<div class="formfoot"><span class="small muted">Liegt lokal beim Buch, nicht in der Buchhaltung und nicht in git.</span><button class="btn primary" type="submit">Speichern</button></div>
   </form>
@@ -55,10 +55,10 @@
     {% if gespraeche %}<form class="actions" hx-post="/p/anruf/sekretaerin/verlauf_leeren" hx-target="find .errors" hx-confirm="Alle Gesprächsnotizen löschen?"><button class="btn small" type="submit">Alle löschen</button>{{ errors() }}</form>{% endif %}</header>
   {% if gespraeche %}
   <div class="tablewrap"><table class="ledger">
-    <thead><tr><th style="width:9.5em">Wann</th><th>Notiz von {{ name }}</th></tr></thead>
+    <thead><tr><th style="width:9.5em">Wann</th><th>Notiz des Agenten</th></tr></thead>
     <tbody>{% for g in gespraeche %}{% set wann, _, text = g.partition(': ') %}<tr class="row"><td class="num small">{{ wann }}</td><td>{{ text }}</td></tr>{% endfor %}</tbody>
   </table></div>
-  {% else %}<div class="body small muted">Noch keine Gespräche. Nach jedem Anruf schreibt {{ name }} hier einen Satz dazu.</div>{% endif %}
+  {% else %}<div class="body small muted">Noch keine Gespräche. Nach jedem Gespräch schreibt der Agent hier einen Satz dazu.</div>{% endif %}
 </div>
 
 <div class="panel">

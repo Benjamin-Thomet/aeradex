@@ -1047,6 +1047,8 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
             if nr:
                 book.account(str(nr))
                 current.setdefault("konten", {})[role] = str(nr)
+            elif role in (current.get("konten") or {}):         # empty: back to the default
+                del current["konten"][role]
         if methode != "keine":
             for role, nr in vat._konten(current).items():
                 if (role != "saldosteuer" or methode == "saldo") and role not in vat.ABGRENZUNG_KONTEN:

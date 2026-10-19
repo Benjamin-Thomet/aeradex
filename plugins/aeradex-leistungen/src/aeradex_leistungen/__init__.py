@@ -17,6 +17,11 @@ __version__ = "0.1.0"
 
 # ---------- check ----------
 
+# How the settings show this plugin (Einstellungen › Funktionen).
+AERADEX_TITEL = "Leistungen & Offerten"
+AERADEX_TEXT = "Stunden und Material erfassen, Offerten schreiben und an Kunden verrechnen"
+
+
 @hookimpl
 def aeradex_check(book, rows):
     from aeradex import invoices
