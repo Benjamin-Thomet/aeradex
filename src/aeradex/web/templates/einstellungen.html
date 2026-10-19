@@ -59,7 +59,7 @@
         <div class="field"><label for="mw-s">Saldosteuersatz %</label><input class="input num" id="mw-s" name="mwst_saldosteuersatz" value="{{ vat.saldosteuersatz if vat.saldosteuersatz|float else '' }}" placeholder="nur Saldo-Methode"></div>
         <div class="field"><label for="mw-t">ESTV-Tätigkeits-ID (Saldo, 5-stellig)</label><input class="input num" id="mw-t" name="mwst_taetigkeit" value="{{ vat.taetigkeit }}" maxlength="5" style="text-align:left"></div>
         <div class="field"><label for="mw-a">Abrechnungsart</label><select class="input" id="mw-a" name="mwst_abrechnungsart" style="width:100%"><option value="vereinbart" {{ 'selected' if vat.abrechnungsart != 'vereinnahmt' }}>vereinbarte Entgelte</option><option value="vereinnahmt" {{ 'selected' if vat.abrechnungsart == 'vereinnahmt' }}>vereinnahmte Entgelte</option></select></div>
-        <div class="field"><span class="lbl">Konten</span><span class="small muted">Vorsteuer {{ vat.konten.vorsteuer }}/{{ vat.konten.vorsteuer_inv }} · Umsatzsteuer {{ vat.konten.umsatzsteuer }} · Abrechnung {{ vat.konten.abrechnung }}{{ ' · Saldosteuer ' ~ vat.konten.saldosteuer if vat.methode == 'saldo' }}</span></div>
+        <div class="field"><span class="lbl">Konten</span><span class="small muted">{% if vat.konten.vorsteuer == vat.konten.umsatzsteuer == vat.konten.abrechnung %}Alles auf {{ vat.konten.umsatzsteuer }} (Umsatzsteuer, Vorsteuer und Abrechnung){% else %}Vorsteuer {{ vat.konten.vorsteuer }}/{{ vat.konten.vorsteuer_inv }} · Umsatzsteuer {{ vat.konten.umsatzsteuer }} · Abrechnung {{ vat.konten.abrechnung }}{% endif %}{{ ' · Saldosteuer ' ~ vat.konten.saldosteuer if vat.methode == 'saldo' }}</span></div>
       </div>
     </div>
   </div>

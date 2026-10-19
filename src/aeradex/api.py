@@ -1033,6 +1033,16 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
                                 "Methodenwechsel gilt erst ab einer neuen Steuerperiode: im neuen Geschäftsjahr "
                                 "ein neues Buch eröffnen oder die Codes zuerst stornieren.")
         from . import mwst as vat
+        if "konto" in mwst and str(mwst["konto"] or "") != str(current.get("konto") or ""):
+            if any(r.mwst for r in book.rows):
+                raise BookError("Im Buch gibt es bereits Buchungen mit MWST-Codes: die MWST-Konten erst in einem "
+                                "neuen Geschäftsjahr bzw. Buch ändern.")
+            if mwst["konto"]:
+                if book.account(str(mwst["konto"])).klasse != "passiv":
+                    raise BookError("Das MWST-Konto muss ein Passivkonto sein, z.B. 2200")
+                current["konto"] = str(mwst["konto"])
+            else:
+                current.pop("konto", None)
         for role, nr in (mwst.get("konten") or {}).items():
             if nr:
                 book.account(str(nr))

@@ -160,3 +160,37 @@ def test_saldo_cash_reconciliation_pdf(tmp_path):
     assert D(z["322_steuer"]["deklariert"]) == D("67.02")
     text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(Path(rep["pdf"]).read_bytes())).pages)
     assert "Saldosteuer" in text and "67.02" in text
+
+
+def test_one_account_for_all_mwst(tmp_path):
+    """`mwst.konto`: Umsatz-, Vorsteuer, Abrechnung and Abgrenzung on one account (2200)."""
+    book = make_book(tmp_path, "vereinnahmt")
+    root = book.root
+    api.settings_update(Book(root), mwst={"methode": "effektiv", "abrechnungsart": "vereinnahmt", "konto": "2200"})
+    api.invoice_create(Book(root), "K0001", [{"text": "Beratung", "menge": 1, "preis": "1000"}], "2026-05-04")
+    api.invoice_pay(Book(root), "R-2026-0001", None, "2026-05-30")
+    bill = api.bill_add(Book(root), "L0001", "108.10", datum="2026-05-10")["kreditor"]["nummer"]
+    api.bill_pay(Book(root), bill, "2026-05-20")
+    api.post_entry(Book(root), "2026-05-05", "6570", "1020", "54.05", "Software", mwst="I81")
+    api.post_entry(Book(root), "2026-05-06", "4400", "1020", "100.00", "Übersetzung aus Deutschland", mwst="B81")
+    api.invoice_create(Book(root), "K0001", [{"text": "Projekt", "menge": 1, "preis": "2000"}], "2026-12-01")
+
+    q2 = mwst.report(Book(root), "2026-Q2")["ziffern"]
+    assert (q2["303_steuer"], q2["400"], q2["405"]) == (D("81.00"), D("16.20"), D("4.05"))
+    used = {nr for r in Book(root).rows for nr in (r.soll, r.haben) if r.mwst}
+    assert used & {"1170", "1171", "2201"} == set() and "2200" in used
+    for q in ("2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"):
+        api.mwst_book(Book(root), q)
+    # The Abrechnung moves nothing (already on 2200): it holds what is owed to the ESTV plus the open invoice.
+    assert not [r for r in Book(root).rows if r.quelle.startswith("mwst:") and r.soll == r.haben]
+    assert at(root, "2200", "2026-06-30") == D("-68.85") and at(root, "2200", "2026-12-31") == D("-230.85")
+    api.post_entry(Book(root), "2026-08-20", "2200", "1020", "68.85", "ESTV MWST Q2")
+    rep = mwst.abstimmung(Book(root), 2026)
+    assert [k["konto"] for k in rep["steuerkonten"]] == ["2200"]
+    # Tax part = the open invoice; the Q2 debt was paid, so nothing is left for the ESTV.
+    assert rep["steuerkonten"][0]["saldo"] == D("-162.00") and rep["steuerkonten"][0]["differenz"] == 0
+    assert rep["abrechnungskonto"]["saldo"] == 0 and rep["ok"]
+    api.mwst_abgrenzung(Book(root), 2026)
+    assert not [r for r in Book(root).rows if r.quelle == "mwst:abgrenzung-2026"]
+    assert "1172" not in Book(root).accounts and "2209" not in Book(root).accounts
+    assert errors(root) == []

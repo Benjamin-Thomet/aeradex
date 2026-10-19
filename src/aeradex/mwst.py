@@ -8,6 +8,7 @@ Settings in aeradex.yaml:
       saldosteuersatz: 6.2                 # nur Saldo-Methode, in Prozent
       konten: {vorsteuer: "1170", vorsteuer_inv: "1171", umsatzsteuer: "2200",
                abrechnung: "2201", saldosteuer: "3809"}
+      konto: "2200"                        # optional: one account for all of them (see _konten)
 
 Amounts are always entered gross (as on the receipt). With the effective
 method a booking with a code is split: the net amount stays on the expense or
@@ -109,8 +110,16 @@ def config(book: Book) -> dict:
             "konten": _konten(raw)}
 
 
+# Balance sheet roles that `mwst.konto` puts on one account: Umsatz- and Vorsteuer, settlement and the
+# year-end Abgrenzung then all net on it (a small book's choice; the KMU chart keeps them apart).
+EIN_KONTO_ROLLEN = ("vorsteuer", "vorsteuer_inv", "umsatzsteuer", "abrechnung", "bezugsteuer",
+                    "umsatzsteuer_offen", "vorsteuer_offen")
+
+
 def _konten(raw: dict) -> dict:
-    konten = {**DEFAULT_KONTEN, **{k: str(v) for k, v in (raw.get("konten") or {}).items() if v}}
+    one = str(raw.get("konto") or "")
+    base = {**DEFAULT_KONTEN, **({role: one for role in EIN_KONTO_ROLLEN} if one else {})}
+    konten = {**base, **{k: str(v) for k, v in (raw.get("konten") or {}).items() if v}}
     konten.setdefault("bezugsteuer", konten["umsatzsteuer"])
     return konten
 
@@ -284,6 +293,9 @@ def _contributions(book: Book, rows: list[Row], start: date, end: date) -> list[
     k = config(book)["konten"]
     tax_accounts = {k["umsatzsteuer"], k["vorsteuer"], k["vorsteuer_inv"], k["bezugsteuer"]}
     pl = lambda nr: nr in book.accounts and book.accounts[nr].is_pl  # noqa: E731
+    # With one Vorsteuer account the Ziffer (400/405) follows the expense, as in bezug_rows.
+    bezug_cost = {(r.beleg, r.quelle): r.soll for r in rows if r.soll and r.haben and r.mwst in CODES
+                  and CODES[r.mwst].kind == "bezug"}
     out = []
     for r in rows:
         if not (start <= r.datum <= end) or not r.mwst:
@@ -298,7 +310,11 @@ def _contributions(book: Book, rows: list[Row], start: date, end: date) -> list[
             elif r.haben == k["bezugsteuer"]:
                 item.update(tax=r.betrag, konto=r.haben)   # owed
             elif r.soll in (k["vorsteuer"], k["vorsteuer_inv"]):
-                item.update(vst="400" if r.soll == k["vorsteuer"] else "405", tax=r.betrag, konto=r.soll)
+                if k["vorsteuer"] != k["vorsteuer_inv"]:
+                    vst = "400" if r.soll == k["vorsteuer"] else "405"
+                else:
+                    vst = "400" if bezug_cost.get((r.beleg, r.quelle), "4").startswith("4") else "405"
+                item.update(vst=vst, tax=r.betrag, konto=r.soll)
             else:
                 continue
             out.append(item)
@@ -554,10 +570,11 @@ def load(book: Book, label: str) -> dict | None:
     return read_yaml(p) if p.exists() else None
 
 
-def booking_rows(book: Book, label: str, saved: dict) -> list[Row]:
-    """Rows a booked Abrechnung owns: clear the MWST accounts into the settlement account."""
+def booking_rows(book: Book, label: str, saved: dict, abrechnung: str = "") -> list[Row]:
+    """Rows a booked Abrechnung owns: clear the MWST accounts into the settlement account
+    (`abrechnung` overrides it, to see what an Abrechnung clears when it shares an account)."""
     cfg = config(book)
-    k = cfg["konten"]
+    k = {**cfg["konten"], **({"abrechnung": abrechnung} if abrechnung else {})}
     _, end, _ = resolve(label)
     z = {key: Decimal(str(v)) for key, v in saved["ziffern"].items()}
     beleg, quelle = f"MWST-{label}", f"mwst:{label}"
@@ -565,7 +582,7 @@ def booking_rows(book: Book, label: str, saved: dict) -> list[Row]:
 
     def add(soll, haben, amount, text):
         amount = amount.quantize(CENT)
-        if not amount:
+        if not amount or soll == haben:
             return
         if amount < 0:
             soll, haben, amount = haben, soll, -amount
@@ -634,11 +651,15 @@ def open_items(book: Book, stichtag: date) -> dict:
         agg["base"][key] = a["base"][key] - b["base"][key]
         agg["tax"][key] = a["tax"][key] - b["tax"][key]
     t = agg["tax"]
+    umsatz = sum((t[c] for c in CODES if CODES[c].kind == "umsatz"), ZERO)
+    bezug = sum((t[c] for c in CODES if CODES[c].kind == "bezug"), ZERO)
+    vst = sum((t[c] for c in CODES if CODES[c].kind == "vorsteuer"), ZERO) + agg["bezug_vst"]["400"]
+    vst_inv = sum((t[c] for c in CODES if CODES[c].kind == "investition"), ZERO) + agg["bezug_vst"]["405"]
     accounts: dict[str, Decimal] = defaultdict(lambda: ZERO)     # signed like the ledger: Aktiven +, Passiven −
-    accounts[k["umsatzsteuer"]] -= sum((t[c] for c in CODES if CODES[c].kind == "umsatz"), ZERO)
-    accounts[k["bezugsteuer"]] -= sum((t[c] for c in CODES if CODES[c].kind == "bezug"), ZERO)
-    accounts[k["vorsteuer"]] += sum((t[c] for c in CODES if CODES[c].kind == "vorsteuer"), ZERO) + agg["bezug_vst"]["400"]
-    accounts[k["vorsteuer_inv"]] += sum((t[c] for c in CODES if CODES[c].kind == "investition"), ZERO) + agg["bezug_vst"]["405"]
+    accounts[k["umsatzsteuer"]] -= umsatz
+    accounts[k["bezugsteuer"]] -= bezug
+    accounts[k["vorsteuer"]] += vst
+    accounts[k["vorsteuer_inv"]] += vst_inv
     # Which documents are open, for the list in the Abstimmung.
     docs: dict[str, Decimal] = defaultdict(lambda: ZERO)
     tax_accounts = {k["umsatzsteuer"], k["vorsteuer"], k["vorsteuer_inv"], k["bezugsteuer"]}
@@ -647,8 +668,7 @@ def open_items(book: Book, stichtag: date) -> dict:
             if r.datum <= stichtag and (r.soll in tax_accounts and not r.haben or r.haben in tax_accounts and not r.soll):
                 docs[r.quelle] += sign * r.betrag
     return {"stichtag": stichtag, "aggregat": agg, "konten": {nr: v for nr, v in accounts.items() if v},
-            "umsatzsteuer": -accounts[k["umsatzsteuer"]] - (accounts[k["bezugsteuer"]] if k["bezugsteuer"] != k["umsatzsteuer"] else ZERO),
-            "vorsteuer": accounts[k["vorsteuer"]] + accounts[k["vorsteuer_inv"]],
+            "umsatzsteuer": umsatz + bezug, "vorsteuer": vst + vst_inv,
             "belege": [{"quelle": q, "art": "Debitor" if q.startswith("rechnung:") else "Kreditor",
                         "nummer": q.partition(":")[2], "steuer": v} for q, v in sorted(docs.items()) if v]}
 
@@ -672,7 +692,7 @@ def abgrenzung_rows(book: Book, year: int, saved: dict) -> list[Row]:
 
     def add(d, ref, soll, haben, amount, text):
         amount = Decimal(str(amount)).quantize(CENT)
-        if not amount:
+        if not amount or soll == haben:
             return
         if amount < 0:
             soll, haben, amount = haben, soll, -amount
@@ -776,6 +796,24 @@ def _ertrag(book: Book, year: int) -> dict:
             "ohne_code": sum((e["ohne_code"] for e in konten), ZERO)}
 
 
+def _tax_part(book: Book, nr: str, end: date) -> Decimal:
+    """With one account for tax and settlement (`mwst.konto`): the tax still on it per `end`, i.e. what
+    the coded rows put there less what the booked Abrechnungen would have cleared into a settlement
+    account. The rest of the balance is the debt to (claim on) the ESTV and its payments."""
+    value = sum(((r.betrag if r.soll == nr else -r.betrag) for r in book.rows
+                 if r.mwst and r.datum <= end and nr in (r.soll, r.haben)), ZERO)
+    folder = book.root / "mwst"
+    for p in sorted(folder.glob("*.yaml")) if folder.exists() else []:
+        try:
+            _, period_end, label = resolve(p.stem)
+        except BookError:
+            continue
+        if period_end <= end:
+            for r in booking_rows(book, label, read_yaml(p), abrechnung="\0"):
+                value += r.betrag if r.soll == nr else -r.betrag if r.haben == nr else ZERO
+    return value
+
+
 def abstimmung(book: Book, year: int) -> dict:
     """Umsatz- und Steuerabstimmung for a business year: turnover and tax in the accounts against
     the booked Abrechnungen, the bridge for vereinnahmte Entgelte, and the MWST account balances."""
@@ -843,7 +881,11 @@ def abstimmung(book: Book, year: int) -> dict:
     abgr_q = f"mwst:abgrenzung-{year}"
     abgr_rows = [r for r in book.rows if r.quelle == abgr_q and r.datum == end]
 
+    shared = k["abrechnung"] in {k["umsatzsteuer"], k["vorsteuer"], k["vorsteuer_inv"], k["bezugsteuer"]}
+
     def saldo(nr: str) -> Decimal:
+        if shared and nr == k["abrechnung"]:
+            return _tax_part(book, nr, end)
         value = engine.balance_at(nr, end) if nr in book.accounts else ZERO
         for r in abgr_rows:
             value -= r.betrag if r.soll == nr else ZERO
@@ -854,10 +896,11 @@ def abstimmung(book: Book, year: int) -> dict:
     why: dict[str, list[str]] = defaultdict(list)
     for agg, label in zip(unbooked_rows, [p["periode"] for p in perioden if not p["gebucht"]]):
         t = agg["tax"]
-        parts = {k["umsatzsteuer"]: -sum((t[c] for c in CODES if CODES[c].kind == "umsatz"), ZERO),
-                 k["vorsteuer"]: sum((t[c] for c in CODES if CODES[c].kind == "vorsteuer"), ZERO) + agg["bezug_vst"]["400"],
-                 k["vorsteuer_inv"]: sum((t[c] for c in CODES if CODES[c].kind == "investition"), ZERO) + agg["bezug_vst"]["405"]}
-        parts[k["bezugsteuer"]] = parts.get(k["bezugsteuer"], ZERO) - sum((t[c] for c in CODES if CODES[c].kind == "bezug"), ZERO)
+        parts: dict[str, Decimal] = defaultdict(lambda: ZERO)    # roles may share an account (mwst.konto)
+        parts[k["umsatzsteuer"]] -= sum((t[c] for c in CODES if CODES[c].kind == "umsatz"), ZERO)
+        parts[k["vorsteuer"]] += sum((t[c] for c in CODES if CODES[c].kind == "vorsteuer"), ZERO) + agg["bezug_vst"]["400"]
+        parts[k["vorsteuer_inv"]] += sum((t[c] for c in CODES if CODES[c].kind == "investition"), ZERO) + agg["bezug_vst"]["405"]
+        parts[k["bezugsteuer"]] -= sum((t[c] for c in CODES if CODES[c].kind == "bezug"), ZERO)
         for nr, v in parts.items():
             if v:
                 expected[nr] += v
@@ -877,7 +920,8 @@ def abstimmung(book: Book, year: int) -> dict:
                              "erwartet": want, "differenz": have - want, "erklaerung": "; ".join(why[nr])})
         if have != want:
             ok = False
-    abrechnungskonto = {"konto": k["abrechnung"], "saldo": engine.balance_at(k["abrechnung"], end)
+    abrechnungskonto = {"konto": k["abrechnung"], "saldo": (engine.balance_at(k["abrechnung"], end)
+                        - (_tax_part(book, k["abrechnung"], end) if shared else ZERO))
                         if k["abrechnung"] in book.accounts else ZERO}
 
     saved_abgr = load_abgrenzung(book, year)

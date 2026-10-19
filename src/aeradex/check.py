@@ -548,8 +548,10 @@ def check_mwst(book: Book, rows: list[Row], by_beleg: dict) -> list[Issue]:
                 if net and abs(tax - expected) > Decimal("0.02"):
                     out.append(Issue("warnung", crows[0].where,
                                      f"Beleg {beleg}: MWST {c} {tax} passt nicht zu {mwst.CODES[c].rate} % auf {net} (erwartet {expected})"))
+        # With one MWST account (mwst.konto) it is also the settlement account: payments to the ESTV go on it.
+        uncoded_ok = {cfg["konten"]["abrechnung"]}
         for r in rows:
-            if not r.mwst and not r.quelle and (r.soll in tax_accounts or r.haben in tax_accounts):
+            if not r.mwst and not r.quelle and ({r.soll, r.haben} & tax_accounts) - uncoded_ok:
                 out.append(Issue("warnung", r.where, "Buchung auf einem MWST-Konto ohne MWST-Code — "
                                  "erscheint nicht in der MWST-Abrechnung"))
     # Booked Abrechnungen own their rows; a changed period afterwards needs a correction.
