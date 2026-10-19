@@ -86,6 +86,9 @@ Danach die Abstimmung erneut prüfen und das PDF für die Abschlussunterlagen er
 - Dienstleistungserlös 3400 · Material 4000 · Drittleistungen 4400 · Lohn 5000 · Miete 6000
 - Büromaterial 6500 · Telefon/Internet 6510 · Informatik 6570 · Werbung 6600 · Reisespesen 6640
 - Abschreibungen 6800 · Zinsaufwand 6900 · Bankspesen 6940 · Direkte Steuern 8900
+- Anschaffungen, die mehrere Jahre genutzt werden (Fahrzeug, Maschine, Gerüst, Computer — ab etwa CHF 1000), aufs
+  Anlagekonto (1500 Maschinen, 1510 Mobiliar, 1520 Informatik, 1530 Fahrzeuge, 1540 Werkzeuge), nicht in den Aufwand;
+  mit dem Plugin `anlagen` danach als Anlage erfassen (`aeradex anlagen kandidaten`), es schreibt jährlich ab.
 - Soll = wohin der Wert fliesst (Aufwand ↑, Aktiven ↑, Passiven ↓). Haben = woher (Ertrag ↑, Bank ↓ bei Zahlung).
 
 **Einzelfirma** (`rechtsform: Einzelfirma`): Was der Inhaber privat bezieht oder bezahlt, ist kein Aufwand.

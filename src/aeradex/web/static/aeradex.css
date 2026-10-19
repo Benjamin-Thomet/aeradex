@@ -330,6 +330,7 @@ details.inline > .body { padding-top: 0; }
   .tabsrow { padding: 0 12px; }
   .main { padding-inline: 16px; }
   .figures, .form, .form.three, .form.four { grid-template-columns: minmax(0, 1fr); }
+  .form > * { grid-column: 1 / -1 !important; }   /* one column: an inline «span 2» must not add a second */
   .proposal { grid-template-columns: minmax(0, 1fr); }
   .splitrow, .posrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }

@@ -1,48 +1,122 @@
 {% extends "base.html" %}
 {% from "_macros.html" import errors %}
 {% block title %}Anlagen {{ jahr }}{% endblock %}
+{% macro beleg_link(beleg, quelle, datum) %}{% if quelle and quelle.startswith('kreditor:') %}<a class="link beleg" href="/kreditoren/rechnung/{{ beleg }}">{{ beleg }}</a>{% else %}<a class="link beleg" href="/journal?jahr={{ datum.year if datum.year is defined else datum[:4] }}&monat=&q={{ beleg|urlencode }}">{{ beleg }}</a>{% endif %}{% endmacro %}
+{% macro kategorie_select(selected="", id="") %}<select class="input" name="kategorie" {% if id %}id="{{ id }}"{% endif %} style="width:100%"><option value="">— eigener Satz —</option>{% for k, v in kategorien.items() %}<option value="{{ k }}" {{ 'selected' if k == selected }}>{{ v[0] }} · {{ lebensdauer[k] }} J linear</option>{% endfor %}</select>{% endmacro %}
 {% block main %}
 <div class="topbar">
-  <div><h1>Anlagen</h1><div class="sub">Anlagenspiegel {{ jahr }} · Abschreibungen per 31.12. (im Anschaffungsjahr anteilig nach Monaten)</div></div>
+  <div><h1>Anlagen</h1><div class="sub">Anlagenspiegel {{ jahr }} · Abschreibung per 31.12., im ersten Jahr anteilig nach Monaten · direkt auf dem Anlagekonto</div></div>
   <form class="actions" method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in jahre|reverse %}<option {{ 'selected' if y == jahr }}>{{ y }}</option>{% endfor %}</select></form>
 </div>
-<div class="panel">
+
+{% if kandidaten %}
+<div class="panel" id="kandidaten">
+  <header><h2>Anschaffungen ohne Anlage <span class="count">{{ kandidaten|length }}</span></h2><span class="hint">auf ein Anlagekonto gebucht, aber noch nicht im Anlagenspiegel</span></header>
+  {% for k in kandidaten %}
+  <form class="body{{ ' focus' if k.beleg == fokus }}" hx-post="/p/anlagen/anlagen/aus_beleg" hx-target="find .errors" style="border-top:1px solid var(--rule)">
+    <input type="hidden" name="beleg" value="{{ k.beleg }}"><input type="hidden" name="konto" value="{{ k.konto }}">
+    <div style="display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;justify-content:space-between">
+      <span>{{ k.datum|datum }} · {{ beleg_link(k.beleg, k.quelle, k.datum) }} · {{ k.text }}</span>
+      <span class="num"><span class="small muted">{{ k.konto }} {{ k.konto_name }} ·</span> {{ k.rest|chf }}</span>
+    </div>
+    {% if k.erfasst %}<span class="small muted">davon schon als Anlage erfasst: {{ k.erfasst|chf }}</span>{% endif %}
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label for="kb-{{ loop.index }}">Bezeichnung</label><input class="input" id="kb-{{ loop.index }}" name="bezeichnung" value="{{ k.bezeichnung }}" required></div>
+      <div class="field"><label for="kk-{{ loop.index }}">Kategorie</label>{{ kategorie_select(k.kategorie, 'kk-' ~ loop.index) }}</div>
+      <div class="field"><label for="kn-{{ loop.index }}">Nutzungsdauer (Jahre)</label><input class="input num" id="kn-{{ loop.index }}" name="nutzungsdauer" inputmode="decimal" placeholder="{{ k.nutzungsdauer or 'aus Kategorie' }}"></div>
+      <div class="field"><label for="kw-{{ loop.index }}">Wert CHF</label><input class="input num" id="kw-{{ loop.index }}" name="wert" value="{{ k.rest }}" inputmode="decimal" title="Bei mehreren Geräten auf einer Rechnung: Teilbetrag, der Rest bleibt hier stehen"></div>
+    </div>
+    {{ errors() }}
+    <div class="formfoot"><span class="small muted">Linear ab {{ k.datum|datum }} · mehrere Geräte auf einer Rechnung: Teilbetrag erfassen, der Rest bleibt stehen</span>
+      <span class="actions"><button class="btn ghost small" type="submit" hx-post="/p/anlagen/anlagen/keine_anlage" hx-confirm="Beleg {{ k.beleg }} auf {{ k.konto }} ist keine Anlage (z.B. Umbuchung)?" formnovalidate>keine Anlage</button><button class="btn primary" type="submit">Als Anlage erfassen</button></span></div>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="panel" id="spiegel">
+  <header><h2>Anlagenspiegel {{ jahr }}</h2>{% if spiegel.anlagen %}<span class="hint"><a class="link" href="/berichte?typ=anlagenspiegel&jahr={{ jahr }}">als Bericht / PDF</a></span>{% endif %}</header>
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th>Anlage</th><th>Konto</th><th class="right">Anfang</th><th class="right">Zugang</th><th class="right">Abschreibung</th><th class="right">Abgang</th><th class="right">Ende</th><th></th></tr></thead>
     <tbody>{% for a in spiegel.anlagen %}
-      <tr class="row"><td><span class="beleg">{{ a.nummer }}</span> {{ a.bezeichnung }}<br><span class="small muted">{{ a.methode }} {{ a.satz }} %</span></td><td class="acc">{{ a.konto }}</td>
+      <tr class="row"><td><span class="beleg">{{ a.nummer }}</span> {{ a.bezeichnung }}{% if a.uebernahme %} <span class="pill muted" title="schon vor dem ersten Buchjahr vorhanden">{{ 'Einlage' if a.einlage else 'Übernahme' }}</span>{% endif %}{% if a.abgegangen %} <span class="pill muted">ausgeschieden</span>{% endif %}
+          <br><span class="small muted">{{ a.datum|datum }} · {{ a.wert|chf }} · {% if a.methode == 'linear' and a.nutzungsdauer %}linear {{ a.nutzungsdauer }} Jahre ({{ a.satz }} %){% else %}{{ a.methode }} {{ a.satz }} %{% endif %}{% if a.restwert|float %} · Restwert {{ a.restwert|chf }}{% endif %}{% if a.beleg %} · Beleg {{ a.beleg }}{% endif %}{% if a.notiz %} · {{ a.notiz }}{% endif %}</span></td>
+        <td class="acc">{{ a.konto }}</td>
         <td class="right num">{{ a.anfang|chf(true) }}</td><td class="right num">{{ a.zugang|chf(true) }}</td>
         <td class="right num">{{ a.abschreibung|chf(true) }}{% if a.offen %} <span class="pill warn">offen</span>{% endif %}</td>
         <td class="right num">{{ a.abgang|chf(true) }}</td><td class="right num">{{ a.ende|chf }}</td>
-        <td class="right">{% if not a.abgang %}<details class="drawer"><summary class="btn small ghost" title="Verkauf oder Entsorgung">⋯</summary>
-          <form class="panel" hx-post="/p/anlagen/anlagen/abgang" hx-target="find .errors" style="position:absolute;right:40px;z-index:3;padding:12px;width:280px;text-align:left;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px">
-            <input type="hidden" name="nummer" value="{{ a.nummer }}">
-            <div class="field"><label>Datum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></div>
-            <div class="field"><label>Verkaufserlös (0 = entsorgt)</label><input class="input num" name="erloes" value="0"></div>
-            {{ errors() }}<button class="btn small danger" type="submit">Ausbuchen</button></form></details>{% endif %}</td></tr>
+        <td class="right">{% if not a.abgegangen %}<details class="drawer"><summary class="btn small ghost" title="Bearbeiten, Abgang">⋯</summary>
+          <div class="panel" style="position:absolute;right:40px;z-index:3;padding:12px;width:320px;text-align:left;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px">
+            <form hx-post="/p/anlagen/anlagen/aendern" hx-target="find .errors" style="display:flex;flex-direction:column;gap:8px">
+              <input type="hidden" name="nummer" value="{{ a.nummer }}">
+              <div class="field"><label>Bezeichnung</label><input class="input" name="bezeichnung" value="{{ a.bezeichnung }}"></div>
+              {% if a.methode == 'linear' %}<div class="field"><label>Nutzungsdauer (Jahre)</label><input class="input num" name="nutzungsdauer" value="{{ a.nutzungsdauer }}" inputmode="decimal"></div>
+              {% else %}<div class="field"><label>Satz %</label><input class="input num" name="satz" value="{{ a.satz }}" inputmode="decimal"></div>{% endif %}
+              <div class="field"><label>Restwert</label><input class="input num" name="restwert" value="{{ a.restwert }}" inputmode="decimal"></div>
+              {% if not a.fest %}<div class="field"><label>Anschaffung am</label><input class="input" type="date" name="datum" value="{{ a.datum }}"></div>
+              <div class="field"><label>Wert CHF</label><input class="input num" name="wert" value="{{ a.wert }}" inputmode="decimal"></div>{% endif %}
+              <div class="field"><label>Notiz</label><input class="input" name="notiz" value="{{ a.notiz }}" placeholder="z.B. Seriennummer, Standort"></div>
+              {{ errors() }}<button class="btn small" type="submit">Speichern</button>
+            </form>
+            {% if a.aenderbar %}<form hx-post="/p/anlagen/anlagen/entfernen" hx-target="find .errors" hx-confirm="{{ a.nummer }} {{ a.bezeichnung }} löschen?{{ ' Die Einlage-Buchung wird entfernt.' if a.einlage }}">
+              <input type="hidden" name="nummer" value="{{ a.nummer }}">{{ errors() }}<button class="btn small ghost danger" type="submit">Anlage löschen (falsch erfasst)</button></form>{% endif %}
+            <form hx-post="/p/anlagen/anlagen/abgang" hx-target="find .errors" style="display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:10px">
+              <input type="hidden" name="nummer" value="{{ a.nummer }}">
+              <div class="field"><label>Abgang am</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></div>
+              <div class="field"><label>Verkaufserlös (0 = entsorgt)</label><input class="input num" name="erloes" value="0" inputmode="decimal"></div>
+              {{ errors() }}<button class="btn small danger" type="submit" hx-confirm="{{ a.nummer }} ausbuchen?">Verkauf / Entsorgung buchen</button></form>
+          </div></details>{% endif %}</td></tr>
     {% else %}<tr><td colspan="8" class="empty">Keine Anlagen in diesem Jahr.</td></tr>{% endfor %}</tbody>
-    <tfoot><tr><td colspan="2">Total</td><td class="right num">{{ spiegel.total.anfang|chf }}</td><td class="right num">{{ spiegel.total.zugang|chf }}</td><td class="right num">{{ spiegel.total.abschreibung|chf }}</td><td class="right num">{{ spiegel.total.abgang|chf }}</td><td class="right num total">{{ spiegel.total.ende|chf }}</td><td></td></tr></tfoot>
+    {% if spiegel.anlagen %}<tfoot><tr><td colspan="2">Total</td><td class="right num">{{ spiegel.total.anfang|chf }}</td><td class="right num">{{ spiegel.total.zugang|chf }}</td><td class="right num">{{ spiegel.total.abschreibung|chf }}</td><td class="right num">{{ spiegel.total.abgang|chf }}</td><td class="right num total">{{ spiegel.total.ende|chf }}</td><td></td></tr></tfoot>{% endif %}
   </table></div>
   {% if vorschau %}
   <form class="body" hx-post="/p/anlagen/anlagen/abschreiben" hx-target="find .errors" hx-confirm="Abschreibungen {{ jahr }} buchen?">
     <input type="hidden" name="jahr" value="{{ jahr }}">
-    <p class="small">Offen für {{ jahr }}: {% for v in vorschau %}{{ v.nummer }} {{ v.betrag|chf }}{{ ', ' if not loop.last }}{% endfor %}</p>
-    {{ errors() }}<div class="formfoot"><span class="small muted">Bucht per 31.12.{{ jahr }} Abschreibungen an die Anlagekonten.</span><button class="btn primary" type="submit">Abschreibungen {{ jahr }} buchen</button></div>
+    <span class="lbl">Abschreibungen {{ jahr }}</span>
+    <div class="tablewrap"><table class="ledger">
+      <thead><tr><th>Anlage</th><th class="right">Buchwert vorher</th><th class="right">berechnet</th><th class="right">buchen</th></tr></thead>
+      <tbody>{% for v in vorschau %}<tr><td><span class="beleg">{{ v.nummer }}</span> {{ v.bezeichnung }}</td><td class="right num">{{ v.buchwert_vorher|chf }}</td><td class="right num">{{ v.betrag|chf }}</td>
+        <td class="right"><input class="input num" style="width:120px" name="betrag_{{ v.nummer }}" value="{{ v.betrag }}" inputmode="decimal" aria-label="Abschreibung {{ v.nummer }}" title="0 bis {{ v.maximal|chf }}: tiefer oder zusätzlich abschreiben"></td></tr>{% endfor %}</tbody>
+    </table></div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Bucht per 31.12.{{ jahr }} 6800 an die Anlagekonten. Ein anderer Betrag geht bis zum Buchwert (abzüglich Restwert) — steuerlich gelten die ESTV-Sätze als Obergrenze.</span><button class="btn primary" type="submit">Abschreibungen {{ jahr }} buchen</button></div>
   </form>{% endif %}
 </div>
-<div class="panel">
-  <header><h2>Anlage erfassen</h2><span class="hint">die Anschaffung selbst ist meist schon gebucht (z.B. als Kreditor auf 1520)</span></header>
-  <form class="body" hx-post="/p/anlagen/anlagen/erfassen" hx-target="find .errors">
+
+<div class="panel" id="erfassen">
+  <header><h2>Anlage erfassen</h2>
+    <span class="tabs small"><a class="{{ 'on' if tab != 'bestand' }}" href="?jahr={{ jahr }}#erfassen">Neue Anlage</a><a class="{{ 'on' if tab == 'bestand' }}" href="?jahr={{ jahr }}&tab=bestand#erfassen">Bestand übernehmen</a></span></header>
+  {% if tab == 'bestand' %}
+  <form class="body" hx-post="/p/anlagen/anlagen/uebernehmen" hx-target="find .errors">
+    <p class="small muted">Für Fahrzeug, Gerüst, Geräte, die schon vor {{ erstes_jahr }} im Geschäft waren: mit dem Wert per 1.1.{{ erstes_jahr }} übernehmen. Abgeschrieben wird ab dann.</p>
     <div class="form four">
-      <div class="field" style="grid-column: span 2"><label>Bezeichnung</label><input class="input" name="bezeichnung" required placeholder="z.B. Laptop Lea"></div>
-      <div class="field"><label>Anschaffung am</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}" required></div>
-      <div class="field"><label>Wert CHF</label><input class="input num" name="wert" required></div>
-      <div class="field"><label>Kategorie (ESTV-Höchstsatz)</label><select class="input" name="kategorie" style="width:100%"><option value="">— eigener Satz —</option>{% for k, v in kategorien.items() %}<option value="{{ k }}">{{ v[0] }} ({{ v[2] }} % degr.)</option>{% endfor %}</select></div>
-      <div class="field"><label>Konto (leer = aus Kategorie)</label><select class="input" name="konto" style="width:100%"><option value="">—</option>{% for a in konten_aktiv %}<option value="{{ a.nr }}">{{ a.nr }} {{ a.name }}</option>{% endfor %}</select></div>
-      <div class="field"><label>Methode</label><select class="input" name="methode" style="width:100%"><option value="degressiv">degressiv (vom Buchwert)</option><option value="linear">linear (vom Anschaffungswert)</option></select></div>
-      <div class="field"><label>Satz % (leer = ESTV)</label><input class="input num" name="satz" placeholder="ESTV"></div>
+      <div class="field" style="grid-column: span 2"><label for="u-b">Bezeichnung</label><input class="input" id="u-b" name="bezeichnung" required placeholder="z.B. Lieferwagen VW Crafter"></div>
+      <div class="field"><label for="u-k">Kategorie</label>{{ kategorie_select('', 'u-k') }}</div>
+      <div class="field"><label for="u-n">Nutzungsdauer ab Kauf (Jahre)</label><input class="input num" id="u-n" name="nutzungsdauer" inputmode="decimal" placeholder="aus Kategorie"></div>
+      <div class="field"><label for="u-d">Gekauft am</label><input class="input" id="u-d" type="date" name="datum" required></div>
+      <div class="field"><label for="u-w">Kaufpreis CHF</label><input class="input num" id="u-w" name="wert" required inputmode="decimal"></div>
+      <div class="field"><label for="u-bw">Wert per 1.1.{{ erstes_jahr }}</label><input class="input num" id="u-bw" name="buchwert" required inputmode="decimal" placeholder="Buchwert / Zeitwert"></div>
+      <div class="field"><label for="u-kt">Konto (leer = aus Kategorie)</label><select class="input" id="u-kt" name="konto" style="width:100%"><option value="">—</option>{% for a in konten_aktiv %}<option value="{{ a.nr }}">{{ a.nr }} {{ a.name }}</option>{% endfor %}</select></div>
     </div>
-    {{ errors() }}<div class="formfoot"><span class="small muted">Höchstsätze gemäss ESTV-Merkblatt A 1995 (Geschäftsbetriebe), linear die Hälfte — vor Gebrauch prüfen.</span><button class="btn primary" type="submit">Erfassen</button></div>
+    <div class="seg" role="radiogroup" aria-label="Gegenbuchung" style="margin-top:10px">
+      <label class="check"><input type="radio" name="einlage" value="1" checked> Als Einlage buchen ({{ eigenkapital }} Eigenkapital an Anlagekonto)</label>
+      <label class="check"><input type="radio" name="einlage" value="0"> Steht schon in der Eröffnungsbilanz</label>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Linear vom Kaufpreis (Satz aus der Nutzungsdauer), bis der übernommene Wert abgeschrieben ist.</span><button class="btn primary" type="submit">Übernehmen</button></div>
   </form>
+  {% else %}
+  <form class="body" hx-post="/p/anlagen/anlagen/erfassen" hx-target="find .errors">
+    <p class="small muted">Meist geht es schneller über den Belegeingang: Rechnung auf ein Anlagekonto (15xx) buchen, dann erscheint sie oben unter «Anschaffungen ohne Anlage».</p>
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label for="n-b">Bezeichnung</label><input class="input" id="n-b" name="bezeichnung" required placeholder="z.B. Airless-Spritzgerät"></div>
+      <div class="field"><label for="n-d">Anschaffung am</label><input class="input" id="n-d" type="date" name="datum" value="{{ today().isoformat() }}" required></div>
+      <div class="field"><label for="n-w">Wert CHF (netto)</label><input class="input num" id="n-w" name="wert" required inputmode="decimal"></div>
+      <div class="field"><label for="n-k">Kategorie</label>{{ kategorie_select('', 'n-k') }}</div>
+      <div class="field"><label for="n-kt">Konto (leer = aus Kategorie)</label><select class="input" id="n-kt" name="konto" style="width:100%"><option value="">—</option>{% for a in konten_aktiv %}<option value="{{ a.nr }}">{{ a.nr }} {{ a.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="n-m">Methode</label><select class="input" id="n-m" name="methode" style="width:100%"><option value="linear">linear (Nutzungsdauer)</option><option value="degressiv">degressiv (Satz vom Buchwert)</option></select></div>
+      <div class="field"><label for="n-n">Nutzungsdauer (Jahre) oder Satz %</label><div style="display:flex;gap:6px"><input class="input num" id="n-n" name="nutzungsdauer" inputmode="decimal" placeholder="Jahre" aria-label="Nutzungsdauer"><input class="input num" name="satz" inputmode="decimal" placeholder="%" aria-label="Satz"></div></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Leer = aus der Kategorie: linear der halbe ESTV-Höchstsatz (Merkblatt A 1995, Geschäftsbetriebe), degressiv der ganze. Die Anschaffung selbst wird separat gebucht.</span><button class="btn primary" type="submit">Erfassen</button></div>
+  </form>
+  {% endif %}
 </div>
 {% endblock %}

@@ -401,6 +401,23 @@ Die Auszahlung der beschlossenen Dividende: `jahr, datum, brutto, vst` (35 %), `
 `frist` (30 Tage). Besitzt ihre Journalzeilen (`Quelle dividende:JJJJ`: Beschlossene Ausschüttungen an Bank bzw. an
 Verrechnungssteuer `konten.verrechnungssteuer`, Standard 2206).
 
+## anlagen/A0001-name.yaml (Plugin anlagen)
+
+Eine Anlage: `nummer, bezeichnung, kategorie, konto` (Anlagekonto 15xx–17xx), `aufwandkonto` (6800), `datum` und
+`wert` der Anschaffung (netto), `methode` (`linear` vom Anschaffungswert, `degressiv` vom Buchwert), `satz` in Prozent,
+bei linear `nutzungsdauer` in Jahren (Satz = 100 / Jahre), `restwert`, `beleg` (die gebuchte Anschaffung, aus der sie
+erfasst wurde), optional `notiz`. `abschreibungen: {Jahr: Betrag}` ist, was gebucht ist; die Anlage besitzt diese
+Zeilen (`Quelle abschreibung:A0001:2026`, 31.12., Aufwandkonto an Anlagekonto). Im ersten Jahr anteilig nach Monaten.
+
+- `uebernahme: {per, buchwert, einlage, gegenkonto}`: schon vor dem Buch vorhanden, ab `per` mit `buchwert`. Mit
+  `einlage` bucht sie Anlagekonto an `gegenkonto` (Einzelfirma: Eigenkapital; `Quelle abschreibung:A0001:uebernahme`),
+  sonst steht der Wert in der Eröffnungsbilanz (`per` = 1. Januar).
+- `abgang: {datum, buchwert, erloes, zahlkonto, verlustkonto, gewinnkonto}`: Verkauf oder Entsorgung
+  (`Quelle abschreibung:A0001:abgang`).
+
+`anlagen/ignoriert.yaml`: Liste `{beleg, konto}` von Buchungen auf Anlagekonten, die keine Anlage sind. Alle anderen
+Soll-Buchungen auf Anlagekonten, die keine Anlage nennt, zeigt die Prüfung als «noch keine Anlage».
+
 ## spesen/JJJJ/SP-JJJJ-NNNN.yaml
 
 Spesenbeleg einer Mitarbeiterin/eines Mitarbeiters: `nummer, mitarbeiter, name, datum, text, art` (`reise` →

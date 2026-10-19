@@ -16,7 +16,7 @@ pkg() {
   fi
 }
 PKGS=("$(pkg aeradex "[ui,mcp,crypt,scan]")")
-for p in leistungen team zugriff anruf telegram; do PKGS+=("$(pkg "aeradex-$p" "" "plugins/aeradex-$p")"); done
+for p in leistungen team zugriff anruf telegram anlagen; do PKGS+=("$(pkg "aeradex-$p" "" "plugins/aeradex-$p")"); done
 sudo -u "$U" "$VENV/bin/pip" install -q --upgrade "${PKGS[@]}"
 # pip skips a git install whose version number did not change: reinstall our own packages every time
 sudo -u "$U" "$VENV/bin/pip" install -q --upgrade --force-reinstall --no-deps "${PKGS[@]}"

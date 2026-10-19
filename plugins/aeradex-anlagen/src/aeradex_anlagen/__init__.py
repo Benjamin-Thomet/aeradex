@@ -4,34 +4,37 @@ from __future__ import annotations
 from datetime import date
 
 from aeradex import api
-from aeradex.files import parse_date
-from aeradex.plugins import Command, Finding, Page, Source, hookimpl
+from aeradex.plugins import Command, DossierTeil, Finding, Page, Source, hookimpl
 
 from . import anlagen
 
 AERADEX_PLUGIN_API = 1
-__version__ = "0.1.0"
+__version__ = "0.2.0"
+PAGE = "/p/anlagen/anlagen"
 
 
 @hookimpl
 def aeradex_sources():
-    return [Source("abschreibung", "Anlage", anlagen.rows, link=lambda ref: "/p/anlagen/anlagen")]
+    return [Source("abschreibung", "Anlage", anlagen.rows, link=lambda ref: PAGE)]
 
 
 @hookimpl
 def aeradex_check(book, rows):
-    """Each fixed-asset account holding assets should equal their book values (at the last year-end)."""
+    """Each fixed-asset account holding assets should equal their book values (at the last year-end);
+    a purchase on an asset account that is no asset yet is pointed out."""
     from aeradex.ledger import BalanceEngine
+    out = [Finding("hinweis", "anlagen", f"Anschaffung Beleg {k['beleg']} auf {k['konto']} "
+                                         f"({k['rest']:.2f}) ist noch keine Anlage — unter Anlagen erfassen")
+           for k in anlagen.kandidaten(book)]
     items = anlagen.assets(book)
     if not items or not book.years():
-        return []
+        return out
     year = max(book.years())
     sched = anlagen.schedule(book, year)
     per = {}
     for line in sched["anlagen"]:
         per[line["konto"]] = per.get(line["konto"], anlagen.ZERO) + line["ende"]
     eng = BalanceEngine(book)
-    out = []
     for konto, total in sorted(per.items()):
         if konto not in book.accounts:
             out.append(Finding("warnung", "anlagen", f"Konto {konto} fehlt im Kontenplan"))
@@ -46,6 +49,41 @@ def aeradex_check(book, rows):
     return out
 
 
+@hookimpl
+def aeradex_nach_beleg(book, beleg):
+    """After a bill or receipt was booked onto an asset account: continue on the Anlagen page with it."""
+    if anlagen.kandidaten(book, beleg):
+        return f"{PAGE}?beleg={beleg}#kandidaten"
+    return None
+
+
+# ---------- Abschlussunterlagen and Berichte ----------
+
+def _dossier(book, year, fmt):
+    from aeradex import berichte
+    rep = anlagen.report(book, year)
+    if fmt == "csv":
+        return [(f"Anlagenspiegel {year}.csv", berichte.csv(rep))]
+    return [(f"Anlagenspiegel {year}.pdf",
+             berichte.pdf(book, [{"bericht": rep, "kommentar": None}], f"Anlagenspiegel {year}"))]
+
+
+@hookimpl
+def aeradex_dossier_teile():
+    return [DossierTeil("anlagen", "Anlagenspiegel", ("pdf", "csv"), _dossier,
+                        lambda book, year: bool(anlagen.schedule(book, year)["anlagen"]),
+                        "Anlagen mit Anfang, Zugang, Abschreibung, Abgang und Ende")]
+
+
+@hookimpl
+def aeradex_reports():
+    from aeradex.reports import Report
+    return [Report("anlagenspiegel", "Anlagenspiegel", lambda book, p: anlagen.report(book, int(p.get("jahr") or
+                                                                                               max(book.years()))),
+                   params=(), gruppe="Abschluss",
+                   beschreibung="Anlagen mit Anfang, Zugang, Abschreibung, Abgang und Ende")]
+
+
 # ---------- agent ----------
 
 def fixed_assets(jahr: int = 0) -> dict:
@@ -58,15 +96,60 @@ def fixed_assets(jahr: int = 0) -> dict:
     return call(lambda b: api.jsonable(anlagen.schedule(b, jahr or max(b.years()))))
 
 
+def asset_candidates() -> list | dict:
+    """Gebuchte Anschaffungen auf Anlagekonten (15xx–17xx), die noch keine Anlage sind: Beleg, Konto, Datum,
+    noch nicht erfasster Betrag, Vorschlag für Bezeichnung, Kategorie und Nutzungsdauer."""
+    from aeradex.tools import call
+    return call(lambda b: api.jsonable(anlagen.kandidaten(b)))
+
+
+def add_asset_from_booking(beleg: str, konto: str, bezeichnung: str = "", kategorie: str = "",
+                           nutzungsdauer: str = "", wert: str = "") -> dict:
+    """Eine gebuchte Anschaffung als Anlage erfassen (Datum, Konto und Wert aus der Buchung; bucht nichts).
+
+    Args:
+        beleg: Belegnummer der Anschaffung (aus asset_candidates).
+        konto: Anlagekonto der Buchung, z.B. "1540".
+        bezeichnung: z.B. "Airless-Spritzgerät Graco"; leer = aus dem Buchungstext.
+        kategorie: mobiliar, bueromaschinen, edv, fahrzeuge, maschinen, werkzeuge, geruest; leer = aus dem Konto.
+        nutzungsdauer: Jahre (linear); leer = aus der Kategorie (halber ESTV-Höchstsatz).
+        wert: nur bei mehreren Anlagen auf einem Beleg: Teilbetrag; leer = ganzer Rest.
+    """
+    from aeradex.tools import call
+    return call(lambda b: api.write(b, f"Anlage aus Beleg {beleg} erfasst", anlagen.add_from_booking, beleg, konto,
+                                    bezeichnung, kategorie, wert or None, nutzungsdauer or None))
+
+
+def add_existing_asset(bezeichnung: str, datum: str, wert: str, buchwert: str, kategorie: str = "",
+                       nutzungsdauer: str = "") -> dict:
+    """Eine Anlage übernehmen, die schon vor dem ersten Buchjahr da war (steht in der Eröffnungsbilanz; bucht
+    nichts). Eine Einlage aus dem Privatvermögen bucht ein Mensch unter Anlagen.
+
+    Args:
+        bezeichnung: z.B. "Lieferwagen VW Crafter".
+        datum: ursprüngliches Kaufdatum JJJJ-MM-TT.
+        wert: ursprünglicher Kaufpreis.
+        buchwert: Wert per 1. Januar des ersten Buchjahrs.
+        kategorie: mobiliar, bueromaschinen, edv, fahrzeuge, maschinen, werkzeuge, geruest.
+        nutzungsdauer: Jahre ab Kauf (linear); leer = aus der Kategorie.
+    """
+    from aeradex.tools import call
+    return call(lambda b: api.write(b, f"Anlage {bezeichnung} übernommen", anlagen.add_existing, bezeichnung, datum,
+                                    wert, buchwert, None, kategorie, "", "linear", None, nutzungsdauer or None))
+
+
 @hookimpl
 def aeradex_tools():
-    return [fixed_assets]
+    return [fixed_assets, asset_candidates, add_asset_from_booking, add_existing_asset]
 
 
 @hookimpl
 def aeradex_instructions():
-    return ("- Anlagen (Plugin anlagen): Anschaffungen auf Sachanlagekonten (15xx) gehören in die Anlagenbuchhaltung; "
-            "fixed_assets() zeigt den Anlagenspiegel. Abschreibungen bucht ein Mensch (Plugins → Anlagen).")
+    return ("- Anlagen (Plugin anlagen): Anschaffungen mit mehrjähriger Nutzung (Fahrzeug, Maschine, Spritzgerät, "
+            "Gerüst, Computer — ab etwa CHF 1000) aufs Anlagekonto 15xx statt in den Aufwand; danach mit "
+            "add_asset_from_booking als Anlage erfassen (asset_candidates zeigt, was fehlt). Was vor dem ersten "
+            "Buchjahr schon da war: add_existing_asset. fixed_assets() zeigt den Anlagenspiegel. Abschreibungen, "
+            "Abgänge und Einlagen bucht ein Mensch (Buchhaltung → Anlagen).")
 
 
 # ---------- CLI ----------
@@ -74,9 +157,24 @@ def aeradex_instructions():
 def _run(book, a):
     if a.aktion == "list":
         return anlagen.schedule(book, a.jahr or max(book.years()))
+    if a.aktion == "kandidaten":
+        return anlagen.kandidaten(book)
     if a.aktion == "add":
+        if a.beleg:
+            return api.write(book, f"Anlage aus Beleg {a.beleg} erfasst", anlagen.add_from_booking, a.beleg, a.konto,
+                             a.bezeichnung, a.kategorie, a.wert, a.nutzungsdauer, a.methode, a.satz)
         return api.write(book, f"Anlage {a.bezeichnung} erfasst", anlagen.add, a.bezeichnung, a.datum, a.wert,
-                         a.kategorie, a.konto, a.methode, a.satz)
+                         a.kategorie, a.konto, a.methode, a.satz, nutzungsdauer=a.nutzungsdauer)
+    if a.aktion == "uebernehmen":
+        return api.write(book, f"Anlage {a.bezeichnung} übernommen", anlagen.add_existing, a.bezeichnung, a.datum,
+                         a.wert, a.buchwert, a.per, a.kategorie, a.konto, a.methode, a.satz, a.nutzungsdauer,
+                         einlage=a.einlage)
+    if a.aktion == "aendern":
+        fields = {k: getattr(a, k) for k in ("bezeichnung", "kategorie", "satz", "nutzungsdauer", "restwert")
+                  if getattr(a, k) not in (None, "")}
+        return api.write(book, f"Anlage {a.nummer} geändert", anlagen.update, a.nummer, **fields)
+    if a.aktion == "entfernen":
+        return api.write(book, f"Anlage {a.nummer} entfernt", anlagen.remove, a.nummer)
     if a.aktion == "abschreiben":
         return api.write(book, f"Abschreibungen {a.jahr} gebucht", anlagen.depreciate, a.jahr)
     if a.aktion == "abgang":
@@ -84,15 +182,23 @@ def _run(book, a):
 
 
 def _setup(p):
-    p.add_argument("aktion", choices=["list", "add", "abschreiben", "abgang"])
+    p.add_argument("aktion", choices=["list", "kandidaten", "add", "uebernehmen", "aendern", "entfernen",
+                                      "abschreiben", "abgang"])
     p.add_argument("--jahr", type=int, default=0)
     p.add_argument("--bezeichnung", default="")
-    p.add_argument("--datum")
-    p.add_argument("--wert", help="add: Anschaffungswert · abgang: Verkaufserlös")
+    p.add_argument("--datum", help="Anschaffung · uebernehmen: ursprünglicher Kauf · abgang: Datum")
+    p.add_argument("--wert", help="add: Anschaffungswert (mit --beleg: Teilbetrag) · uebernehmen: Kaufpreis · "
+                                  "abgang: Verkaufserlös")
+    p.add_argument("--beleg", default="", help="add: aus dieser gebuchten Anschaffung")
+    p.add_argument("--buchwert", help="uebernehmen: Buchwert per --per")
+    p.add_argument("--per", help="uebernehmen: ab wann im Buch (Standard: 1.1. des ersten Jahres)")
+    p.add_argument("--einlage", action="store_true", help="uebernehmen: als Einlage an Eigenkapital buchen")
     p.add_argument("--kategorie", default="", choices=[""] + list(anlagen.KATEGORIEN))
     p.add_argument("--konto", default="")
-    p.add_argument("--methode", default="degressiv", choices=["degressiv", "linear"])
+    p.add_argument("--methode", default="linear", choices=list(anlagen.METHODEN))
     p.add_argument("--satz")
+    p.add_argument("--nutzungsdauer", help="Jahre (linear)")
+    p.add_argument("--restwert")
     p.add_argument("--nummer", default="")
 
 
@@ -106,19 +212,65 @@ def aeradex_commands():
 def _context(book, query):
     years = book.years() or [date.today().year]
     year = int(query.get("jahr") or max(years))
+    cands = anlagen.kandidaten(book)
+    focus = query.get("beleg") or ""
     return {"jahr": year, "jahre": years, "spiegel": anlagen.schedule(book, year),
             "vorschau": anlagen.preview(book, year), "kategorien": anlagen.KATEGORIEN,
-            "konten_aktiv": [a for a in book.accounts.values() if a.klasse == "aktiv" and a.nr[:2] in ("15", "16", "17")]}
+            "lebensdauer": {k: anlagen.useful_life(k) for k in anlagen.KATEGORIEN},
+            "kandidaten": cands, "fokus": focus, "erstes_jahr": book.settings.erstes_jahr,
+            "eigenkapital": anlagen.equity_account(book), "tab": query.get("tab") or "",
+            "konten_aktiv": [a for a in book.accounts.values()
+                             if a.klasse == "aktiv" and a.gruppe in anlagen.ASSET_GROUPS]}
+
+
+def _blank(form, key):
+    v = form.get(key)
+    return None if v in (None, "") else v
 
 
 def _add(book, form):
     return api.write(book, f"Anlage {form.get('bezeichnung')} erfasst", anlagen.add, form.get("bezeichnung") or "",
                      form.get("datum"), form.get("wert"), form.get("kategorie") or "", form.get("konto") or "",
-                     form.get("methode") or "degressiv", form.get("satz") or None)
+                     form.get("methode") or "linear", _blank(form, "satz"), form.get("restwert") or 0,
+                     nutzungsdauer=_blank(form, "nutzungsdauer"), notiz=form.get("notiz") or "")
+
+
+def _from_booking(book, form):
+    res = api.write(book, f"Anlage aus Beleg {form.get('beleg')} erfasst", anlagen.add_from_booking,
+                    form.get("beleg") or "", form.get("konto") or "", form.get("bezeichnung") or "",
+                    form.get("kategorie") or "", _blank(form, "wert"), _blank(form, "nutzungsdauer"),
+                    form.get("methode") or "linear", _blank(form, "satz"))
+    return {**res, "weiter": PAGE}
+
+
+def _ignore(book, form):
+    res = api.write(book, f"Beleg {form.get('beleg')} auf {form.get('konto')}: keine Anlage", anlagen.ignore,
+                    form.get("beleg") or "", form.get("konto") or "")
+    return {**res, "weiter": PAGE}
+
+
+def _existing(book, form):
+    return api.write(book, f"Anlage {form.get('bezeichnung')} übernommen", anlagen.add_existing,
+                     form.get("bezeichnung") or "", form.get("datum"), form.get("wert"), form.get("buchwert"),
+                     _blank(form, "per"), form.get("kategorie") or "", form.get("konto") or "",
+                     form.get("methode") or "linear", _blank(form, "satz"), _blank(form, "nutzungsdauer"),
+                     form.get("restwert") or 0, einlage=form.get("einlage") == "1",
+                     gegenkonto=form.get("gegenkonto") or "", notiz=form.get("notiz") or "")
+
+
+def _update(book, form):
+    fields = {k: form.get(k) for k in anlagen.EDITABLE + anlagen.EDITABLE_UNBOOKED if form.get(k) is not None}
+    return api.write(book, f"Anlage {form.get('nummer')} geändert", anlagen.update, form.get("nummer"), **fields)
+
+
+def _remove(book, form):
+    return api.write(book, f"Anlage {form.get('nummer')} entfernt", anlagen.remove, form.get("nummer"))
 
 
 def _depreciate(book, form):
-    return api.write(book, f"Abschreibungen {form.get('jahr')} gebucht", anlagen.depreciate, int(form.get("jahr")))
+    amounts = {k[len("betrag_"):]: v for k, v in form.items() if k.startswith("betrag_")}
+    return api.write(book, f"Abschreibungen {form.get('jahr')} gebucht", anlagen.depreciate, int(form.get("jahr")),
+                     amounts or None)
 
 
 def _dispose(book, form):
@@ -129,4 +281,6 @@ def _dispose(book, form):
 @hookimpl
 def aeradex_pages():
     return [Page("anlagen", "Anlagen", "anlagen.html", _context,
-                 {"erfassen": _add, "abschreiben": _depreciate, "abgang": _dispose})]
+                 {"erfassen": _add, "aus_beleg": _from_booking, "keine_anlage": _ignore, "uebernehmen": _existing,
+                  "aendern": _update, "entfernen": _remove, "abschreiben": _depreciate, "abgang": _dispose},
+                 bereich="buchhaltung")]

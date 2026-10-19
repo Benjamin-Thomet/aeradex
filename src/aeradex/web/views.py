@@ -1751,6 +1751,28 @@ def draft_nav(book: Book, meta: dict) -> dict:
             "prev": url(items[i - 1]) if i > 0 else "", "next": url(items[i + 1]) if i + 1 < len(items) else ""}
 
 
+def _beleg_of(result: dict) -> str:
+    """The Beleg number a booked bill or receipt got (api results of bill_add / receipt_book)."""
+    if isinstance(result, dict):
+        if result.get("kreditor"):
+            return str(result["kreditor"].get("nummer") or "")
+        rows = result.get("buchungen") or []
+        if rows:
+            return str(rows[0].get("beleg") or "")
+    return ""
+
+
+def then_plugin(book: Book, to):
+    """Wrap an `act` target: a plugin may continue elsewhere after the Beleg (e.g. Anlagen for a purchase)."""
+    from .. import plugins
+
+    def target(result):
+        default = to(result) if callable(to) else to
+        beleg = _beleg_of(result)
+        return (plugins.after_beleg(book, beleg) if beleg else None) or default
+    return target
+
+
 def after_draft(book: Book, art: str, draft_id: str, weiter: bool) -> str:
     """Where to go once a draft is approved: with «Freigeben & nächster» the next draft of the list that
     is not with the agent, else back to the list."""
@@ -1893,17 +1915,19 @@ async def eingang_freigeben(ui: UI, request: Request):
     back = request.headers.get("hx-current-url") or "/kreditoren?status=entwurf"
     if not ids:
         return fail("Keinen Entwurf gewählt.")
-    booked, problems = [], []
+    from .. import plugins
+    booked, problems, follow = [], [], None
     for draft_id in ids:
         try:
-            await asyncio.to_thread(api.bill_draft_approve, ui.book(), draft_id)
+            res = await asyncio.to_thread(api.bill_draft_approve, ui.book(), draft_id)
             booked.append(draft_id)
+            follow = follow or (plugins.after_beleg(ui.book(), _beleg_of(res)) if _beleg_of(res) else None)
         except (BookError, FormatError, ValueError) as exc:
             problems.append(str(exc))
     if not booked:
         return fail(" · ".join(problems))
     msg = f"{len(booked)} freigegeben ({', '.join(booked)})" + (f" · offen: {' · '.join(problems)}" if problems else "")
-    return done(msg, back, "warn" if problems else "ok")
+    return done(msg, follow or back, "warn" if problems else "ok")
 
 
 def draft_vat(meta: dict) -> list[dict]:
@@ -1961,7 +1985,8 @@ async def quittung_buchen(ui: UI, request: Request):
     lines = [{"konto": acct(k), "betrag": b, "text": t, "mwst": m}
              for k, b, t, m in zip(f.getlist("p_konto"), f.getlist("p_betrag"), f.getlist("p_text"), codes) if k or b]
     cur = (f.get("waehrung") or "CHF").upper()
-    return await act(request, api.receipt_book, after_draft(ui.book(), "quittung", draft_id, f.get("weiter") == "1"),
+    return await act(request, api.receipt_book,
+                     then_plugin(ui.book(), after_draft(ui.book(), "quittung", draft_id, f.get("weiter") == "1")),
                      ui.book(), draft_id, f.get("datum"),
                      (f.get("text") or "").strip() or "Quittung", f.get("betrag"), acct(f.get("konto")),
                      f.get("mwst") or "", lines or None, "" if cur == "CHF" else cur, f.get("kurs") or None, zahlung,
@@ -2100,7 +2125,7 @@ async def kreditor_erfassen(ui: UI, request: Request):
         fields["positionen"] = lines
     to = (after_draft(book, "kreditor", fields["entwurf"], f.get("weiter") == "1") if fields.get("entwurf")
           else lambda r: f"/kreditoren/rechnung/{r['kreditor']['nummer']}")
-    return await act(request, api.bill_add, to, book, lieferant, f.get("betrag"), **fields)
+    return await act(request, api.bill_add, then_plugin(book, to), book, lieferant, f.get("betrag"), **fields)
 
 
 async def kreditor_detail(ui: UI, request: Request):

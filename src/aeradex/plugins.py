@@ -242,6 +242,11 @@ class Spec:
         """Parts of a customer's detail page (objects, quotes, open work …)."""
 
     @hookspec
+    def aeradex_nach_beleg(self, book: Book, beleg: str) -> str | None:
+        """Where the UI continues after a document from the inbox was booked as `beleg` (a supplier bill, a
+        receipt): a URL for a follow-up the plugin offers (e.g. turn an asset purchase into an asset), or None."""
+
+    @hookspec
     def aeradex_dienste(self, book: Book) -> list[Dienst]:
         """Background services the local UI starts for this book (`aeradex ui`, not the server mode)."""
 
@@ -473,6 +478,18 @@ def kunde_teile(book: Book, kunde: str) -> list[tuple[str, KundeTeil]]:
         except Exception:
             continue
     return out
+
+
+def after_beleg(book: Book, beleg: str) -> str | None:
+    """The first follow-up URL a plugin offers for a freshly booked Beleg; a broken plugin is skipped."""
+    for impl in manager(book).hook.aeradex_nach_beleg.get_hookimpls():
+        try:
+            url = impl.function(book=book, beleg=beleg)
+        except Exception:
+            continue
+        if url:
+            return str(url)
+    return None
 
 
 def template_dir(name: str) -> Path | None:
