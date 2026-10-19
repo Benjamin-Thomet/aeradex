@@ -155,6 +155,17 @@ class DossierTeil:
 
 
 @dataclass
+class Todo:
+    """A line in the to-do list of the Übersicht: work waiting for a person, leading to where it is done.
+    ``level`` info | warn | red."""
+    titel: str
+    href: str
+    detail: str = ""
+    tag: str = ""
+    level: str = "info"
+
+
+@dataclass
 class Dienst:
     """A background service the local UI (`aeradex ui`) starts with itself and stops with itself, e.g. a call
     gateway or a chat bot. `args` are aeradex CLI arguments after `--buch <buch>`."""
@@ -240,6 +251,10 @@ class Spec:
     @hookspec
     def aeradex_kunde_teile(self, book: Book, kunde: str) -> list[KundeTeil]:
         """Parts of a customer's detail page (objects, quotes, open work …)."""
+
+    @hookspec
+    def aeradex_todos(self, book: Book) -> list[Todo]:
+        """Lines for the to-do list of the Übersicht (work waiting for a person)."""
 
     @hookspec
     def aeradex_nach_beleg(self, book: Book, beleg: str) -> str | None:
@@ -475,6 +490,17 @@ def kunde_teile(book: Book, kunde: str) -> list[tuple[str, KundeTeil]]:
     for impl in manager(book).hook.aeradex_kunde_teile.get_hookimpls():
         try:
             out += [(impl.plugin_name, t) for t in impl.function(book=book, kunde=kunde) or [] if isinstance(t, KundeTeil)]
+        except Exception:
+            continue
+    return out
+
+
+def todos(book: Book) -> list[Todo]:
+    """To-do lines of the plugins this book enables; a broken plugin is skipped."""
+    out = []
+    for impl in manager(book).hook.aeradex_todos.get_hookimpls():
+        try:
+            out += [t for t in impl.function(book=book) or [] if isinstance(t, Todo)]
         except Exception:
             continue
     return out

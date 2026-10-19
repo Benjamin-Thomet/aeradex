@@ -169,6 +169,9 @@ def todo_items(book: Book) -> list[dict]:
         items.append({"level": "warn" if e["nachfassen"] < date.today().isoformat() else "info",
                       "title": f"Nachfassen: {e['name']}", "detail": f"{datum(e['nachfassen'])} · {e['text']}",
                       "tag": "Wiedervorlage", "href": f"/debitoren/kunden/{e['kunde']}"})
+    from .. import plugins
+    for t in plugins.todos(book):
+        items.append({"level": t.level, "title": t.titel, "detail": t.detail, "tag": t.tag, "href": t.href})
     from .. import kreditoren as kred
     soon = (date.today() + timedelta(days=7)).isoformat()
     due = [r for r in kred.open_payables(book)["posten"] if r["status"] == "offen" and r["faellig"] <= soon]

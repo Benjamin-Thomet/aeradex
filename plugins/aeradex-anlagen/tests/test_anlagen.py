@@ -237,6 +237,7 @@ def test_page_candidate_takeover_and_redirect_after_a_bill(firm):
         h = {"X-CSRF": app.state.ui.csrf, "HX-Request": "true"}
         page = c.get("/p/anlagen/anlagen").text
         assert 'id="kandidaten"' in page and "Airless-Spritzgerät" in page
+        assert "1 Anschaffung als Anlage erfassen" in c.get("/").text                     # to-do on the Übersicht
         r = c.post("/kreditoren/neu", headers=h, data={"lieferant": "L0001", "betrag": "1081.00", "datum": "2026-05-02",
                                                          "konto": "1540", "mwst": "I81"})
         assert r.status_code == 204, r.text

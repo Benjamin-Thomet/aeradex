@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 
 from aeradex import api
-from aeradex.plugins import Command, DossierTeil, Finding, Page, Source, hookimpl
+from aeradex.plugins import Command, DossierTeil, Finding, Page, Source, Todo, hookimpl
 
 from . import anlagen
 
@@ -55,6 +55,18 @@ def aeradex_nach_beleg(book, beleg):
     if anlagen.kandidaten(book, beleg):
         return f"{PAGE}?beleg={beleg}#kandidaten"
     return None
+
+
+@hookimpl
+def aeradex_todos(book):
+    """On the Übersicht: purchases on an asset account that are not an asset yet."""
+    cands = anlagen.kandidaten(book)
+    if not cands:
+        return []
+    n = len(cands)
+    detail = " · ".join(f"{k['bezeichnung']} {k['rest']:,.2f}".replace(",", "'") for k in cands[:3])
+    return [Todo(f"{n} Anschaffung{'en' if n > 1 else ''} als Anlage erfassen", f"{PAGE}#kandidaten",
+                 detail + (" …" if n > 3 else ""), "Anlagen")]
 
 
 # ---------- Abschlussunterlagen and Berichte ----------
