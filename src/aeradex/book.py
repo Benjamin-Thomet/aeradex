@@ -385,6 +385,27 @@ def load_journal_file(path: Path, root: Path) -> list[Row]:
     return [_row_from_cells(cells, rel, i) for i, cells in enumerate(table.rows, 1)]
 
 
+ACCOUNT_KEYS = {"nr", "name", "klasse", "gruppe", "eroeffnung", "vorjahr", "gruppe_negativ",
+                "aktiv", "waehrung", "eroeffnung_fw", "abschluss"}
+
+
+def _rejoin_name(item: dict) -> dict:
+    """An unquoted name with commas in a YAML flow mapping ({nr: "1520", name: Büromaschinen, Informatik, …})
+    is split into the name plus empty keys; older charts were shipped like that. Join them back."""
+    keys = list(item)
+    if "name" not in keys:
+        return item
+    i, parts = keys.index("name") + 1, []
+    while i < len(keys) and item[keys[i]] is None and keys[i] not in ACCOUNT_KEYS:
+        parts.append(str(keys[i]))
+        i += 1
+    if not parts:
+        return item
+    fixed = {k: v for k, v in item.items() if k not in parts}
+    fixed["name"] = ", ".join([str(item["name"] or "")] + parts)
+    return fixed
+
+
 def load_accounts(path: Path) -> dict[str, Account]:
     raw = read_yaml(path)
     items = raw.get("konten", raw) if isinstance(raw, dict) else raw
@@ -402,6 +423,7 @@ def load_accounts(path: Path) -> dict[str, Account]:
             raise FormatError(f"{where}: 'nr' fehlt")
         if nr in accounts:
             raise FormatError(f"{where}: Konto {nr} doppelt")
+        item = _rejoin_name(item)
         klasse = str(item.get("klasse") or "").strip().lower() or _klasse_for(nr)
         if klasse not in KLASSEN:
             raise FormatError(f"{where}: klasse '{klasse}' — erlaubt: {', '.join(KLASSEN)}")
@@ -415,9 +437,7 @@ def load_accounts(path: Path) -> dict[str, Account]:
             waehrung=str(item.get("waehrung") or "CHF").upper(),
             eroeffnung_fw=parse_amount(item.get("eroeffnung_fw", 0), where),
             abschluss=str(item.get("abschluss") or "").strip(),
-            extra={k: v for k, v in item.items() if k not in {
-                "nr", "name", "klasse", "gruppe", "eroeffnung", "vorjahr", "gruppe_negativ",
-                "aktiv", "waehrung", "eroeffnung_fw", "abschluss"}},
+            extra={k: v for k, v in item.items() if k not in ACCOUNT_KEYS},
         )
     return accounts
 

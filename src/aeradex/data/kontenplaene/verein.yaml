@@ -18,7 +18,7 @@ konten:
 - {nr: "1170", name: Vorsteuer MWST Material und Dienstleistungen, klasse: aktiv}
 - {nr: "1171", name: Vorsteuer MWST Investitionen und übriger Betriebsaufwand, klasse: aktiv}
 - {nr: "1176", name: Verrechnungssteuer, klasse: aktiv}
-- {nr: "1200", name: Vorräte (Festwirtschaft, Verkaufsartikel), klasse: aktiv}
+- {nr: "1200", name: "Vorräte (Festwirtschaft, Verkaufsartikel)", klasse: aktiv}
 - {nr: "1300", name: Aktive Rechnungsabgrenzung, klasse: aktiv}
 - {nr: "1500", name: Mobiliar und Vereinsmaterial, klasse: aktiv}
 - {nr: "1520", name: Informatik, klasse: aktiv}
@@ -53,14 +53,14 @@ konten:
 - {nr: "4400", name: Verbandsabgaben und Lizenzen, klasse: aufwand}
 # --- 5 Personal ---
 - {nr: "5000", name: Löhne und Entschädigungen, klasse: aufwand}
-- {nr: "5700", name: AHV, IV, EO, ALV, klasse: aufwand}
+- {nr: "5700", name: "AHV, IV, EO, ALV", klasse: aufwand}
 - {nr: "5710", name: FAK, klasse: aufwand}
 - {nr: "5720", name: Berufliche Vorsorge, klasse: aufwand}
 - {nr: "5730", name: Unfallversicherung, klasse: aufwand}
 - {nr: "5740", name: Krankentaggeldversicherung, klasse: aufwand}
 - {nr: "5820", name: Spesen Vorstand und Helfende, klasse: aufwand}
 # --- 6 Übriger Aufwand ---
-- {nr: "6000", name: Raumaufwand (Miete, Trainingsstätten), klasse: aufwand}
+- {nr: "6000", name: "Raumaufwand (Miete, Trainingsstätten)", klasse: aufwand}
 - {nr: "6100", name: Unterhalt Vereinsmaterial, klasse: aufwand}
 - {nr: "6300", name: Versicherungen, klasse: aufwand}
 - {nr: "6500", name: Verwaltungsaufwand, klasse: aufwand}

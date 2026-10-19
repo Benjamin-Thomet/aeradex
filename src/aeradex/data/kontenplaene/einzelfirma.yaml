@@ -20,8 +20,8 @@ konten:
 - {nr: "1100", name: Forderungen aus Lieferungen und Leistungen (Debitoren), klasse: aktiv}
 - {nr: "1109", name: Delkredere, klasse: aktiv}
 - {nr: "1140", name: Vorschüsse und Darlehen, klasse: aktiv}
-- {nr: "1170", name: Vorsteuer MWST Material, Waren, Dienstleistungen, klasse: aktiv}
-- {nr: "1171", name: Vorsteuer MWST Investitionen, übriger Betriebsaufwand, klasse: aktiv}
+- {nr: "1170", name: "Vorsteuer MWST Material, Waren, Dienstleistungen", klasse: aktiv}
+- {nr: "1171", name: "Vorsteuer MWST Investitionen, übriger Betriebsaufwand", klasse: aktiv}
 - {nr: "1176", name: Verrechnungssteuer, klasse: aktiv}
 - {nr: "1180", name: Forderungen gegenüber Sozialversicherungen, klasse: aktiv}
 - {nr: "1200", name: Handelswaren, klasse: aktiv}
@@ -33,11 +33,11 @@ konten:
 - {nr: "1480", name: Beteiligungen, klasse: aktiv}
 - {nr: "1500", name: Maschinen und Apparate, klasse: aktiv}
 - {nr: "1510", name: Mobiliar und Einrichtungen, klasse: aktiv}
-- {nr: "1520", name: Büromaschinen, Informatik, Kommunikationstechnologie, klasse: aktiv}
+- {nr: "1520", name: "Büromaschinen, Informatik, Kommunikationstechnologie", klasse: aktiv}
 - {nr: "1530", name: Fahrzeuge, klasse: aktiv}
 - {nr: "1540", name: Werkzeuge und Geräte, klasse: aktiv}
 - {nr: "1600", name: Geschäftsliegenschaften, klasse: aktiv}
-- {nr: "1700", name: Patente, Know-how, Lizenzen, Rechte, Entwicklungen, klasse: aktiv}
+- {nr: "1700", name: "Patente, Know-how, Lizenzen, Rechte, Entwicklungen", klasse: aktiv}
 - {nr: "1770", name: Goodwill, klasse: aktiv}
 # --- 2 Passiven ---
 - {nr: "2000", name: Verbindlichkeiten aus Lieferungen und Leistungen (Kreditoren), klasse: passiv}
@@ -80,7 +80,7 @@ konten:
 - {nr: "4900", name: Aufwandminderungen, klasse: aufwand}
 # --- 5 Personalaufwand ---
 - {nr: "5000", name: Lohnaufwand, klasse: aufwand}
-- {nr: "5700", name: AHV, IV, EO, ALV, klasse: aufwand}
+- {nr: "5700", name: "AHV, IV, EO, ALV", klasse: aufwand}
 - {nr: "5710", name: FAK, klasse: aufwand}
 - {nr: "5720", name: Berufliche Vorsorge, klasse: aufwand}
 - {nr: "5730", name: Unfallversicherung, klasse: aufwand}
@@ -92,17 +92,17 @@ konten:
 - {nr: "5900", name: Leistungen Dritter (Temporärarbeit), klasse: aufwand}
 # --- 6 Übriger betrieblicher Aufwand, Abschreibungen, Finanzerfolg ---
 - {nr: "6000", name: Raumaufwand / Miete, klasse: aufwand}
-- {nr: "6100", name: Unterhalt, Reparaturen, Ersatz, klasse: aufwand}
+- {nr: "6100", name: "Unterhalt, Reparaturen, Ersatz", klasse: aufwand}
 - {nr: "6105", name: Leasingaufwand mobile Sachanlagen, klasse: aufwand}
 - {nr: "6200", name: Fahrzeug- und Transportaufwand, klasse: aufwand}
 - {nr: "6270", name: Privatanteil Fahrzeugaufwand, klasse: aufwand}
-- {nr: "6300", name: Sachversicherungen, Abgaben, Gebühren, Bewilligungen, klasse: aufwand}
+- {nr: "6300", name: "Sachversicherungen, Abgaben, Gebühren, Bewilligungen", klasse: aufwand}
 - {nr: "6400", name: Energie- und Entsorgungsaufwand, klasse: aufwand}
 - {nr: "6500", name: Büromaterial, klasse: aufwand}
-- {nr: "6510", name: Telefon, Internet, klasse: aufwand}
-- {nr: "6512", name: Privatanteil Telefon, Internet, klasse: aufwand}
+- {nr: "6510", name: "Telefon, Internet", klasse: aufwand}
+- {nr: "6512", name: "Privatanteil Telefon, Internet", klasse: aufwand}
 - {nr: "6513", name: Porti, klasse: aufwand}
-- {nr: "6520", name: Beiträge, Spenden, klasse: aufwand}
+- {nr: "6520", name: "Beiträge, Spenden", klasse: aufwand}
 - {nr: "6530", name: Buchführungs- und Beratungsaufwand, klasse: aufwand}
 - {nr: "6570", name: Informatikaufwand, klasse: aufwand}
 - {nr: "6600", name: Werbeaufwand, klasse: aufwand}
