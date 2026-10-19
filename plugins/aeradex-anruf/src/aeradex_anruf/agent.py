@@ -47,6 +47,8 @@ ALLOWED = {
     "customer_objects", "add_object", "update_object",
     # plugin aeradex-team: team overview, leave requests, take over the app entries
     "team_status", "team_requests", "team_sync",
+    # plugin aeradex-anlagen: asset schedule; recording an asset books nothing (depreciation is for a person)
+    "fixed_assets", "asset_candidates", "add_asset_from_booking", "add_existing_asset",
 }
 
 INTERNET = """Internet: Du darfst im Web suchen und Seiten lesen, wenn dir Angaben fehlen, z.B. für einen neuen Kunden
