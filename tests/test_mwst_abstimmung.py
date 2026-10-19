@@ -194,3 +194,30 @@ def test_one_account_for_all_mwst(tmp_path):
     assert not [r for r in Book(root).rows if r.quelle == "mwst:abgrenzung-2026"]
     assert "1172" not in Book(root).accounts and "2209" not in Book(root).accounts
     assert errors(root) == []
+
+
+def test_collect_on_one_account_settle_to_another(tmp_path):
+    """All tax on 2200A (mwst.konto), the booked Abrechnung moves the balance to 2200 (konten.abrechnung)."""
+    book = make_book(tmp_path, "vereinnahmt")
+    root = book.root
+    api.add_account(Book(root), "2200A", "MWST Sammelkonto", "passiv")
+    api.settings_update(Book(root), mwst={"methode": "effektiv", "abrechnungsart": "vereinnahmt", "konto": "2200"})
+    b = Book(root)
+    for nr in ("1170", "1171", "2201"):                # no longer needed: settings must still save
+        del b.accounts[nr]
+    b.save_accounts()
+    api.settings_update(Book(root), mwst={"methode": "effektiv", "abrechnungsart": "vereinnahmt", "konto": "2200A",
+                                          "konten": {"abrechnung": "2200"}})
+    api.invoice_create(Book(root), "K0001", [{"text": "Beratung", "menge": 1, "preis": "1000"}], "2026-05-04")
+    api.invoice_pay(Book(root), "R-2026-0001", None, "2026-05-30")
+    api.post_entry(Book(root), "2026-05-05", "6570", "1020", "54.05", "Software", mwst="I81")
+    api.post_entry(Book(root), "2026-05-06", "4400", "1020", "100.00", "Übersetzung aus Deutschland", mwst="B81")
+    used = {nr for r in Book(root).rows for nr in (r.soll, r.haben) if r.mwst}
+    assert "2200A" in used and "2200" not in used
+    for q in ("2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"):
+        api.mwst_book(Book(root), q)
+    assert at(root, "2200A", "2026-06-30") == 0 and at(root, "2200", "2026-06-30") == D("-76.95")
+    api.post_entry(Book(root), "2026-08-20", "2200", "1020", "76.95", "ESTV MWST Q2")
+    rep = mwst.abstimmung(Book(root), 2026)
+    assert [k["konto"] for k in rep["steuerkonten"]] == ["2200A"] and rep["ok"]
+    assert errors(root) == []

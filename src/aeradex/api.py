@@ -1048,7 +1048,7 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
                 book.account(str(nr))
                 current.setdefault("konten", {})[role] = str(nr)
         if methode != "keine":
-            for role, nr in {**vat.DEFAULT_KONTEN, **(current.get("konten") or {})}.items():
+            for role, nr in vat._konten(current).items():
                 if (role != "saldosteuer" or methode == "saldo") and role not in vat.ABGRENZUNG_KONTEN:
                     book.account(nr)          # the Abgrenzung accounts are added when first needed
         data["mwst"] = current
