@@ -10,6 +10,8 @@ from . import anlagen
 
 AERADEX_PLUGIN_API = 1
 __version__ = "0.2.0"
+AERADEX_TITEL = "Anlagen"
+AERADEX_TEXT = "Fahrzeuge, Maschinen und Geräte mit Abschreibungen und Anlagenspiegel"
 PAGE = "/p/anlagen/anlagen"
 
 
