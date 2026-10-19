@@ -1126,6 +1126,22 @@ def wage_declarations(jahr: int) -> dict:
 
 # ---------- chat only: let Claude look at a receipt ----------
 
+def propose_journal_lines(ref: str, zeilen: list[dict], art: str = "beleg", datum: str = "", hinweis: str = "") -> dict:
+    """Die Zeilen eines Belegs oder einer Kreditkartenabrechnung für das Journal-Raster erfassen (Auftrag «Beleg …
+    für das Journal auslesen»). aeradex prüft Konten, MWST-Codes und dass jeder Betrag im Text steht. Bucht nichts:
+    der Mensch wählt das Gegenkonto und bucht. Erneut aufrufen überschreibt.
+
+    Args:
+        ref: Kennung aus dem Auftrag.
+        zeilen: [{"datum": "JJJJ-MM-TT", "text": "Coop Thun", "konto": "4000", "betrag": "48.60", "mwst": ""}];
+            betrag in CHF wie auf dem Beleg, Gutschriften negativ.
+        art: "beleg" oder "karte" (Kreditkartenabrechnung).
+        datum: Datum des Belegs bzw. der Abrechnung JJJJ-MM-TT.
+        hinweis: optional, etwas, das der Mensch wissen sollte (ein Satz).
+    """
+    return _call(api.journal_lines_propose, ref, zeilen, art, datum, hinweis)
+
+
 def read_inbox_file(datei: str) -> list[dict] | str:
     """Liest eine Datei aus inbox/ oder belege/ (PDF, Bild oder Text), damit du den Inhalt siehst.
 
@@ -1252,7 +1268,8 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           payroll_account, wage_declarations,
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
           closing_documents, mwst_details,
-          period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year]
+          period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year,
+          propose_journal_lines]
 CHAT_ONLY = [read_inbox_file]
 
 # Public names for plugin tools: wrap an api function so errors come back as {"ok": False, …}.

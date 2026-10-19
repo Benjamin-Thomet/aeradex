@@ -20,11 +20,12 @@
   <td><input name="haben" data-col="3" list="konten" aria-label="Haben" autocomplete="off"><small class="accname"></small></td>
   <td><input name="betrag" data-col="4" class="num" inputmode="decimal" aria-label="Betrag" autocomplete="off"></td>
   {% if vat.methode != 'keine' %}<td><input name="mwst" data-col="5" list="mwstcodes" aria-label="MWST-Code" autocomplete="off"></td>{% endif %}
-  <td class="clip"><label class="btn small ghost" title="Beleg-Datei anhängen (Quittung, Rechnung)" data-gridfile>📎<input type="file" name="datei" accept=".pdf,image/*,.txt" hidden tabindex="-1"></label></td>
+  <td class="clip"><label class="btn small ghost" title="Beleg-Datei anhängen (Quittung, Rechnung)" data-gridfile>📎<input type="file" name="datei" accept=".pdf,image/*,.txt" hidden tabindex="-1"></label><input type="hidden" name="ref" data-ref><input type="hidden" name="gruppe" data-gruppe></td>
   <td class="x"><button class="btn small ghost" type="button" data-gridremove tabindex="-1" aria-label="Zeile entfernen">✕</button></td></tr>{% endmacro %}
 <div class="panel" id="neueBuchung">
   <header><h2>Buchungen erfassen</h2><span class="hint">Taste N · Enter = nächste Zeile · leeres Datum = wie oben · aus Excel einfügen · ⌘↵ / Ctrl+↵ bucht</span>
-    <span class="actions"><a class="btn small ghost" href="/journal/vorlage.xlsx" title="Excel-Vorlage mit Konten- und MWST-Auswahl">Excel-Vorlage</a>
+    <span class="actions"><label class="btn small primary" title="Quittung, Rechnung oder Kreditkartenabrechnung: Datum, Text, Aufwandkonto, Betrag und MWST werden ausgelesen, das Gegenkonto wählst du">📄 Beleg auslesen<input type="file" accept=".pdf,image/*,.txt" multiple data-gridread hidden></label>
+      <a class="btn small ghost" href="/journal/vorlage.xlsx" title="Excel-Vorlage mit Konten- und MWST-Auswahl">Excel-Vorlage</a>
       <label class="btn small" title="Ausgefüllte Vorlage (.xlsx oder .csv) ins Raster laden">Excel importieren<input type="file" accept=".xlsx,.xlsm,.csv,.txt" data-gridimport hidden></label></span></header>
   <form id="raster" class="raster" hx-post="/journal/raster" hx-encoding="multipart/form-data" hx-target="find .errors" data-accounts='{{ account_names|tojson }}' data-key="{{ settings.firma }}">
     <input type="hidden" name="jahr" value="{{ year }}">

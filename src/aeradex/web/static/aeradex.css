@@ -564,3 +564,7 @@ table.grid td.clip label.on { color: var(--ok); }
 form.inline-attach { display: inline; }
 form.inline-attach label { cursor: pointer; }
 tr.dropping td { background: var(--info-soft); box-shadow: inset 0 1px 0 var(--info), inset 0 -1px 0 var(--info); }
+table.grid tr.hint td { background: var(--warn-soft); }
+table.grid td.clip .readfile { cursor: default; }
+.panel.dropping { box-shadow: inset 0 0 0 2px var(--info); }
+label.busy { opacity: .6; pointer-events: none; }

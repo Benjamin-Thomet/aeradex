@@ -1400,6 +1400,26 @@ def bank_format_list(book: Book) -> list[dict]:
                      for k, v in bankformat.formats(book).items()])
 
 
+def journal_read(book: Book, filename: str, data: bytes, agent: bool = True) -> dict:
+    """Read a receipt or a card statement into grid lines (counter account open). Writes nothing to the book:
+    the file and the reading stay in .aeradex/lokal/auslesen until the lines are booked."""
+    from . import auslesen
+    auslesen.stale(book)
+    res = auslesen.read(book, filename, data)
+    if res.get("agent"):
+        if not agent:
+            return jsonable(res)
+        res = {**auslesen.read_with_agent(book.root, res["ref"], res["art"]), "hinweise": res.get("hinweise") or []}
+    return jsonable({**res, "art_label": auslesen.ARTEN.get(res.get("art"), ""),
+                     "zeilen_raster": auslesen.grid_lines(Book(book.root), res)})
+
+
+def journal_lines_propose(book: Book, ref: str, zeilen: list[dict], art: str = "beleg", datum: str = "",
+                          hinweis: str = "") -> dict:
+    from . import auslesen
+    return jsonable(auslesen.propose(book, ref, zeilen, art, datum, hinweis))
+
+
 def card_statement_text(book: Book, datei: str) -> dict:
     from . import bankformat
     path = bankformat._source(book, datei)
@@ -1980,14 +2000,15 @@ class RowErrors(BookError):
 
 def post_entries(book: Book, zeilen: list[dict]) -> dict:
     """Book several simple bookings in one go — all or none, one commit. Each line:
-    {datum, text, soll, haben, betrag, mwst?, waehrung?, kurs?, beleg?, datei?} — `datei` is a receipt filed with
-    the booking under belege/ (same commit)."""
+    {datum, text, soll, haben, betrag, mwst?, waehrung?, kurs?, beleg?, datei?, gruppe?} — `datei` is a receipt
+    filed with the booking under belege/ (same commit); lines with the same `gruppe` (a card statement) are one
+    Beleg, its file filed once."""
     from .files import FormatError
     _guard(book)
     if not zeilen:
         raise BookError("Keine Buchungen")
     taken: set[str] = set()
-    prepared, errors = [], {}
+    prepared, errors, groups = [], {}, {}
     for n, z in enumerate(zeilen, 1):
         try:
             if not str(z.get("text") or "").strip():
@@ -1996,11 +2017,17 @@ def post_entries(book: Book, zeilen: list[dict]) -> dict:
                 if not str(z.get(side) or "").strip():
                     raise BookError(f"{side.capitalize()}-Konto fehlt")
                 book.account(str(z[side]).strip())
+            group = str(z.get("gruppe") or "")
             row, rows = journal.prepare_entry(book, z.get("datum"), z["soll"], z["haben"], z.get("betrag"), z["text"],
-                                              z.get("beleg") or "", mwst=(z.get("mwst") or "").upper(),
+                                              z.get("beleg") or groups.get(group, ("", None))[0],
+                                              mwst=(z.get("mwst") or "").upper(),
                                               waehrung=z.get("waehrung") or "", kurs=z.get("kurs") or None,
                                               taken=taken)
             taken.add(row.beleg)
+            if group and group in groups and row.datum != groups[group][1]:
+                raise BookError("Zeilen einer Abrechnung brauchen dasselbe Datum (ein Beleg)")
+            if group:
+                groups.setdefault(group, (row.beleg, row.datum))
             if z.get("datei"):
                 src = Path(z["datei"]) if Path(z["datei"]).is_absolute() else book.root / z["datei"]
                 if not src.exists():
@@ -2011,9 +2038,11 @@ def post_entries(book: Book, zeilen: list[dict]) -> dict:
     if errors:
         raise RowErrors(errors)
     touched = journal.post(book, [r for _, rows in prepared for r in rows])
+    filed: set[str] = set()
     for z, (row, _) in zip(zeilen, prepared):
-        if z.get("datei"):
+        if z.get("datei") and row.beleg not in filed:
             touched.append(journal.attach(book, row, Path(z["datei"])))
+            filed.add(row.beleg)
     first, last = prepared[0][0].beleg, prepared[-1][0].beleg
     label = first if len(prepared) == 1 else f"{first} … {last}"
     return _done(book, f"{len(prepared)} Buchung(en) erfasst ({label})", touched,

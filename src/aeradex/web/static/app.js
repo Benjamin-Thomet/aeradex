@@ -186,6 +186,16 @@
     const amount = v => { let t = (v || "").replace(/chf|fr\.|['’\s]/gi, ""); if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(".") > t.lastIndexOf(",") ? t.replace(/,/g, "") : t.replace(/\./g, "").replace(",", "."); else t = t.replace(",", "."); return parseFloat(t); };
     const fmt = n => n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
     function addRow() { body.appendChild(tpl.content.cloneNode(true)); return rows()[rows().length - 1]; }
+    // a row read from a receipt carries the file (ref) and its statement (gruppe: one Beleg)
+    const refOf = tr => { const r = $("[data-ref]", tr); return r && r.value ? { ref: r.value, gruppe: $("[data-gruppe]", tr).value, datei: tr.dataset.datei || "" } : null; };
+    function setRef(tr, info) {
+      if (!info) return;
+      $("[data-ref]", tr).value = info.ref; $("[data-gruppe]", tr).value = info.gruppe || ""; tr.dataset.datei = info.datei || "";
+      const clip = $("[data-gridfile]", tr); clip.hidden = true;
+      let tag = $(".readfile", tr);
+      if (!tag) { tag = document.createElement("span"); tag.className = "readfile"; clip.parentNode.appendChild(tag); }
+      tag.textContent = "📄"; tag.title = "Beleg: " + (info.datei || info.ref);
+    }
     function hint(input) {
       const small = input.nextElementSibling; if (!small) return;
       const nr = (input.value || "").trim().split(" ")[0];
@@ -205,7 +215,7 @@
       if (!rows().length) addRow(), update(false);
       if (n) form.setAttribute("data-dirty", ""); else form.removeAttribute("data-dirty");
       $("#rasterAnzahl").textContent = n; $("#rasterSumme").textContent = fmt(sum);
-      if (save) store.set(key, JSON.stringify(rows().filter(tr => !empty(tr)).map(tr => cells(tr).map(c => c.value))));
+      if (save) store.set(key, JSON.stringify(rows().filter(tr => !empty(tr)).map(tr => cells(tr).map(c => c.value).concat([refOf(tr)]))));
     }
     // Like Excel: Enter after tabbing across a row goes back to the column the row was started in.
     let startCol = 0, startRow = null;
@@ -220,7 +230,15 @@
       if (!target && dr > 0) target = addRow();
       if (target) { const c = cells(target).find(x => +x.dataset.col === col); if (c) { c.focus(); c.select && c.select(); } }
     }
-    form.addEventListener("input", e => { e.target.closest("tr").classList.remove("err"); update(); });
+    form.addEventListener("input", e => {
+      const tr = e.target.closest("tr"); tr.classList.remove("err");
+      // the counter account of one line of a statement goes to its other lines that have none yet
+      const info = refOf(tr);
+      if (info && info.gruppe && +e.target.dataset.col === 3)
+        rows().forEach(o => { const oi = refOf(o); if (o !== tr && oi && oi.gruppe === info.gruppe) { const h = cells(o)[3]; if (!h.value.trim() || h.dataset.auto) { h.value = e.target.value; h.dataset.auto = "1"; } } });
+      if (+e.target.dataset.col === 3) delete e.target.dataset.auto;
+      update();
+    });
     form.addEventListener("change", e => {
       if (!e.target.matches("[data-gridfile] input")) return;
       const label = e.target.closest("[data-gridfile]"), file = e.target.files[0];
@@ -256,6 +274,43 @@
       if (e.target.closest("[data-gridadd]")) { const tr = addRow(); update(); cells(tr)[0].focus(); }
       if (e.target.closest("[data-gridclear]") && confirm("Alle Zeilen leeren?")) { rows().forEach(tr => tr.remove()); addRow(); update(); }
     });
+    // ---- read receipts and card statements into the grid ----
+    const reader = $("[data-gridread]", form.closest(".panel") || root);
+    async function readFiles(files) {
+      const csrf = JSON.parse(document.body.getAttribute("hx-headers") || "{}")["X-CSRF"];
+      const label = reader && reader.closest("label");
+      for (const file of files) {
+        if (label) label.classList.add("busy");
+        toast("Lese " + file.name + " … (Kreditkartenabrechnungen liest der Agent, das dauert etwas)");
+        const fd = new FormData(); fd.append("datei", file);
+        let res;
+        try { res = await (await fetch("/journal/auslesen", { method: "POST", body: fd, headers: { "X-CSRF": csrf } })).json(); }
+        catch (x) { res = { fehler: "Auslesen fehlgeschlagen" }; }
+        if (label) label.classList.remove("busy");
+        if (res.fehler) { toast(file.name + ": " + res.fehler, true); continue; }
+        rows().filter(empty).forEach(tr => tr.remove());
+        let first = null;
+        (res.zeilen_raster || []).forEach(z => {
+          const tr = addRow(), c = cells(tr);
+          [z.datum, z.text, z.soll, z.haben, z.betrag, z.mwst].forEach((v, j) => { const cell = c.find(x => +x.dataset.col === j); if (cell) cell.value = v || ""; });
+          setRef(tr, { ref: res.ref, gruppe: res.ref, datei: res.datei });
+          if (z.hinweis) { tr.classList.add("hint"); tr.title = z.hinweis; }
+          first = first || tr;
+        });
+        update();
+        const n = (res.zeilen_raster || []).length;
+        toast(`${file.name}: ${n} Zeile${n === 1 ? "" : "n"} (${res.quelle || "gelesen"}) — Gegenkonto wählen`);
+        (res.hinweise || []).slice(0, 2).forEach(h => toast(h));
+        if (first) { const h = cells(first)[3]; h.focus(); }
+      }
+    }
+    if (reader) reader.addEventListener("change", () => { const files = [...reader.files]; reader.value = ""; readFiles(files); });
+    const panel = form.closest(".panel");
+    if (panel) {
+      panel.addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); panel.classList.add("dropping"); } });
+      panel.addEventListener("dragleave", e => { if (!panel.contains(e.relatedTarget)) panel.classList.remove("dropping"); });
+      panel.addEventListener("drop", e => { if (!e.dataTransfer.files.length) return; e.preventDefault(); panel.classList.remove("dropping"); readFiles([...e.dataTransfer.files]); });
+    }
     const picker = $("[data-gridimport]", form.closest(".panel") || root);
     if (picker) picker.addEventListener("change", async () => {
       const file = picker.files[0]; if (!file) return;
@@ -278,7 +333,7 @@
     let saved = [];
     try { saved = JSON.parse(store.get(key) || "[]"); } catch (x) { saved = []; }
     if (saved.length) {
-      saved.forEach((vals, i) => { const tr = rows()[i] || addRow(); cells(tr).forEach((c, j) => { c.value = vals[j] || ""; }); });
+      saved.forEach((vals, i) => { const tr = rows()[i] || addRow(); cells(tr).forEach((c, j) => { c.value = vals[j] || ""; }); const extra = vals[cells(tr).length]; if (extra && typeof extra === "object") setRef(tr, extra); });
       toast("Nicht gebuchte Zeilen von vorhin wiederhergestellt");
     }
     update(false);

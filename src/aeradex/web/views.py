@@ -437,6 +437,7 @@ async def journal_raster(ui: UI, request: Request):
     year = int(f.get("jahr") or date.today().year)
     cols = {k: f.getlist(k) for k in ("datum", "text", "soll", "haben", "betrag", "mwst")}
     files = f.getlist("datei")              # one file field per grid row, empty where nothing is attached
+    refs, groups = f.getlist("ref"), f.getlist("gruppe")   # a row read from a receipt: its file, its statement
     n = max((len(v) for v in cols.values()), default=0)
     tmpdir = Path(tempfile.mkdtemp(prefix="aeradex-"))
     entries, where, problems, previous = [], [], {}, None
@@ -454,8 +455,20 @@ async def journal_raster(ui: UI, request: Request):
         entry = {"datum": previous.isoformat(), "text": cell["text"], "soll": acct(cell["soll"]),
                  "haben": acct(cell["haben"]), "betrag": grid_amount(cell["betrag"]),
                  "mwst": cell["mwst"].split(" ", 1)[0].upper()}
+        if entry["betrag"].startswith("-"):     # a refund on a statement: the other way round
+            entry["soll"], entry["haben"], entry["betrag"] = entry["haben"], entry["soll"], entry["betrag"][1:]
+        ref = refs[i] if i < len(refs) else ""
+        if ref:
+            from .. import auslesen
+            try:
+                entry["datei"] = str(auslesen.file_of(book, ref))
+            except BookError as exc:
+                problems[i + 1] = str(exc)
+                continue
+            if i < len(groups) and groups[i]:
+                entry["gruppe"] = groups[i]
         upload = files[i] if i < len(files) else None
-        if upload is not None and getattr(upload, "filename", ""):
+        if upload is not None and getattr(upload, "filename", "") and not ref:
             tmp = tmpdir / f"{i}" / Path(upload.filename).name
             tmp.parent.mkdir()
             tmp.write_bytes(await upload.read())
@@ -473,6 +486,8 @@ async def journal_raster(ui: UI, request: Request):
         except BookError as exc:
             return fail(str(exc))
         else:
+            from .. import auslesen
+            auslesen.cleanup(book, {r for r in refs if r})
             return done(result.get("meldung", "Gebucht"), request.headers.get("hx-current-url") or "/journal")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
@@ -496,6 +511,20 @@ async def journal_import(ui: UI, request: Request):
         return JSONResponse({"fehler": "Keine Datei gewählt."}, status_code=400)
     try:
         res = await asyncio.to_thread(api.journal_import_read, ui.book(), await upload.read(), upload.filename)
+    except BookError as exc:
+        return JSONResponse({"fehler": str(exc)}, status_code=400)
+    return JSONResponse(res)
+
+
+async def journal_auslesen(ui: UI, request: Request):
+    """A receipt or a card statement → lines for the grid (JSON), counter account open. A statement (or a receipt
+    Jev cannot account) is read by the agent, which takes a while."""
+    f = await request.form()
+    upload = f.get("datei")
+    if not upload or not getattr(upload, "filename", ""):
+        return JSONResponse({"fehler": "Keine Datei gewählt."}, status_code=400)
+    try:
+        res = await asyncio.to_thread(api.journal_read, ui.book(), upload.filename, await upload.read())
     except BookError as exc:
         return JSONResponse({"fehler": str(exc)}, status_code=400)
     return JSONResponse(res)
@@ -2618,6 +2647,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/journal/umbuchen/vorschau", h(journal_umbuchen_vorschau), methods=["POST"]),
         Route("/journal/umbuchen", h(journal_umbuchen), methods=["POST"]),
         Route("/journal/import", h(journal_import), methods=["POST"]),
+        Route("/journal/auslesen", h(journal_auslesen), methods=["POST"]),
         Route("/kreditoren", h(kreditoren_page)),
         Route("/kreditoren/neu", h(kreditor_neu)),
         Route("/kreditoren/einlesen", h(eingang_einlesen), methods=["POST"]),

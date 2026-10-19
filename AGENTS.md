@@ -45,6 +45,10 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   writing through the `complete_bill_draft` tool). Jev also picks, among the amounts and dates on the document, the total and
   the invoice date, and the Vorsteuer code (`jev.read_bill`): a confident pick fills an empty field, a different one only
   warns; with a known supplier Jev still checks the account and a confident other one warns. The agent runs when account, amount or date is missing, or a period the text names was not read (`missing`). Never books; IBAN/name conflicts are flagged, never auto-matched.
+- `auslesen.py`: «Beleg auslesen» in the journal grid: a receipt (Belegeingang readers + Jev) or a card statement (the
+  book's agent via `propose_journal_lines`, every amount checked against the text) → grid lines with the counter account
+  open; file and reading in `.aeradex/lokal/auslesen/<ref>/` until booked. `post_entries` books lines with the same
+  `gruppe` as one Beleg and files the receipt once.
 - `spesen.py`: employee expense claims (own their rows on 2210); `payroll.run/close` add open claims to the payslip
   (`werte.spesen`, `auszahlung`) without touching the wage calculation; Lohnausweis 13.1.2.
 - `mahnungen.py`: reminders (3 steps, PDF with QR-bill for the open amount). Plugin pages: `plugins.Page`, routes
