@@ -1,7 +1,7 @@
 # aeradex-zugriff
 
 Für ein Buch auf einem Server (`aeradex serve`): Wer darf von seinem eigenen PC mit **Claude Code** oder Codex
-(eigenes Abo) an diesem Buch arbeiten? Die Inhaberin trägt unter **Plugins › Zugriff (Claude Code)** den
+(eigenes Abo) an diesem Buch arbeiten? Die Inhaberin trägt unter **Einstellungen › Buch › Zugriff (Claude Code)** den
 öffentlichen SSH-Schlüssel einer Person ein; aeradex schreibt ihn beschränkt in `authorized_keys`:
 
 ```

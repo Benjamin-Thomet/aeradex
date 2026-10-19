@@ -37,7 +37,8 @@ def _weg(book: Book, f: dict) -> dict:
 
 @hookimpl
 def aeradex_pages():
-    return [Page("schluessel", "Zugriff (Claude Code)", "zugriff.html", _context, {"neu": _neu, "weg": _weg})]
+    return [Page("schluessel", "Zugriff (Claude Code)", "zugriff.html", _context, {"neu": _neu, "weg": _weg},
+                 bereich="einstellungen:buch")]
 
 
 def _run(book, args):

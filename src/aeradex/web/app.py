@@ -165,10 +165,13 @@ class UI:
         ctx.setdefault("vat_codes", mwst.CODES)
         try:
             from .. import plugins
-            ctx.setdefault("plugin_pages", [{"url": f"/p/{name}/{pg.slug}", "label": pg.label}
+            ctx.setdefault("plugin_pages", [{"url": f"/p/{name}/{pg.slug}", "label": pg.label, "plugin": name,
+                                             "bereich": pg.bereich, "bereich_titel": pg.bereich_titel,
+                                             "nach": pg.nach, "kuerzel": pg.kuerzel}
                                             for name, pg in plugins.pages(book)])
         except Exception:
             ctx.setdefault("plugin_pages", [])
+        ctx.setdefault("einstellungen_seiten", settings_pages(ctx["plugin_pages"]))
         ctx.setdefault("navigation", navigation(request.url.path, ctx["nav"], ctx["plugin_pages"],
                                                 ctx["vat"].get("methode", "") if isinstance(ctx["vat"], dict) else "",
                                                 str(ctx.get("status") or request.query_params.get("status") or "")))
@@ -224,14 +227,47 @@ def _under(path: str, prefix: str) -> bool:
     return path == prefix or (prefix != "/" and path.startswith(prefix.rstrip("/") + "/"))
 
 
+def _with_plugin_pages(plugin_pages: list[dict]) -> list:
+    """SECTIONS with the plugin pages where they live (`plugins.Page.bereich`): a tab of a core section,
+    or a section of their own after `nach`. Settings pages and pages without a place get no menu entry."""
+    core = {item[0]: i for i, item in enumerate(SECTIONS)}
+    out = [(key, label, url, badge, keyc, list(tabs)) for key, label, url, badge, keyc, tabs in SECTIONS]
+    own: dict[str, tuple] = {}
+    for pg in plugin_pages:
+        bereich = pg.get("bereich") or ""
+        if not bereich or bereich.startswith("einstellungen"):
+            continue
+        tab = (pg["url"], pg["label"], pg["url"], ())
+        if bereich in core:
+            out[core[bereich]][5].append(tab)
+        elif bereich in own:
+            own[bereich][5].append(tab)
+        else:
+            own[bereich] = (bereich, pg.get("bereich_titel") or pg["label"], pg["url"], "", pg.get("kuerzel") or "",
+                            [tab], pg.get("nach") or "")
+    for key, (*section, nach) in own.items():
+        after = next((i for i, item in enumerate(out) if item[0] == nach), len(out) - 1)
+        out.insert(after + 1, tuple(section))
+    return out
+
+
+def settings_pages(plugin_pages: list[dict]) -> dict[str, list[dict]]:
+    """Plugin pages that live in the settings, per settings tab (`bereich = einstellungen:<tab>`)."""
+    out: dict[str, list[dict]] = {}
+    for pg in plugin_pages:
+        bereich = pg.get("bereich") or ""
+        if bereich.startswith("einstellungen"):
+            out.setdefault(bereich.partition(":")[2] or "plugins", []).append(pg)
+    return out
+
+
 def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: str = "", status: str = "") -> dict:
     """The two navigation rows: sections (with badge and active flag), and the tabs of the active
-    section. `status` is the status the page shows (for status tabs). All enabled plugin pages appear
-    in a shared «Plugins» section."""
+    section. `status` is the status the page shows (for status tabs). Plugin pages sit where their
+    `bereich` says; `einstellungen` is on for a plugin page that lives in the settings."""
     sections, active = [], None
-    plugin_section = [("plugins", "Plugins", plugin_pages[0]["url"], "", "", [
-        (pg["url"], pg["label"], pg["url"], ()) for pg in plugin_pages])] if plugin_pages else []
-    for item in [*SECTIONS, *([None, *plugin_section] if plugin_section else [])]:
+    in_settings = any(_under(path, pg["url"]) for tab in settings_pages(plugin_pages).values() for pg in tab)
+    for item in _with_plugin_pages(plugin_pages):
         if item is None:
             sections.append(None)
             continue
@@ -245,7 +281,7 @@ def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: st
         on = any(_under(path, p) for p in prefixes)
         entry = {"key": key, "label": label, "url": url, "badge": counts.get(badge) if badge else 0,
                  "kuerzel": keyc, "on": on,
-                 "tabs": tabs if len(tabs) > 1 or key == "plugins" else []}
+                 "tabs": tabs if len(tabs) > 1 else []}
         if on and active is None:
             active = entry
         sections.append(entry)
@@ -262,7 +298,7 @@ def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: st
         best = best if top else (active["tabs"][0] if active["tabs"] else None)
         for t in active["tabs"]:
             t["on"] = t is best
-    return {"bereiche": sections, "aktiv": active}
+    return {"bereiche": sections, "aktiv": active, "einstellungen": in_settings}
 
 
 def nav_counts(book: Book) -> dict:

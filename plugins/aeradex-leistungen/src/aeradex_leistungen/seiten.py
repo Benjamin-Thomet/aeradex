@@ -564,10 +564,11 @@ PAGES = [
           "favorit": _favorit, "eintrag": _eintrag, "aendern": _aendern, "kopieren": _kopieren, "entfernen": _loeschen_schnell,
           "verschieben": _verschieben, "abwesenheit": _abwesenheit, "abwesenheit_loeschen": _abwesenheit_loeschen,
           "alle_abrechnen": _alle_abrechnen, "einstellungen": _einstellungen, "nachweis": _nachweis},
+         bereich="leistungen", bereich_titel="Leistungen", nach="einkauf", kuerzel="z",
          fragments={"woche": ("leistungen/_woche.html", _woche_ctx),
                     "vorschau": ("leistungen/_vorschau.html", _vorschau_ctx),
                     "kalender": ("leistungen/_kalender.html", _kalender_ctx),
                     "rechnung_vorschau": ("leistungen/_rechnung_vorschau.html", _abrechnen_ctx)}),
     Page("offerten", "Offerten", "offerten.html", _offerten_context,
-         {"neu": _offerte_neu, "status": _offerte_status, "rechnung": _offerte_rechnung}),
+         {"neu": _offerte_neu, "status": _offerte_status, "rechnung": _offerte_rechnung}, bereich="leistungen"),
 ]

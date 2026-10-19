@@ -10,6 +10,11 @@
   {% for key, label in [("firma", "Firma"), ("buchhaltung", "Buchhaltung"), ("lohn", "Lohn"), ("agent", "Agent & KI"), ("plugins", "Plugins"), ("buch", "Buch")] %}<a href="#{{ key }}" data-tab-link="{{ key }}">{{ label }}{% if key == 'buch' and n_issues %} <span class="count">{{ n_issues }}</span>{% endif %}</a>{% endfor %}
 </nav>
 
+{% macro plugin_seiten(tab) %}{% if einstellungen_seiten.get(tab) %}
+<div class="panel">
+  <header><h2>Weitere Einstellungen</h2><span class="hint">aus Plugins</span></header>
+  <ul class="todo">{% for pg in einstellungen_seiten[tab] %}<li><a href="{{ pg.url }}"><span class="stripe muted"></span><div><div class="t">{{ pg.label }}</div><div class="d">{{ pg.plugin }}</div></div><span class="pill muted">öffnen</span></a></li>{% endfor %}</ul>
+</div>{% endif %}{% endmacro %}
 <section data-tab="firma" id="firma">
 <form class="panel" hx-post="/einstellungen" hx-target="find .errors">
   <input type="hidden" name="_tab" value="firma">
@@ -45,6 +50,7 @@
     {{ errors() }}
   </div>
 </form>
+{{ plugin_seiten('firma') }}
 </section>
 
 <section data-tab="buchhaltung" id="buchhaltung">
@@ -73,6 +79,7 @@
     {{ errors() }}<div class="formfoot"><span class="small muted">Gilt für neue Buchungen.</span><button class="btn primary" type="submit">Speichern</button></div>
   </div>
 </form>
+{{ plugin_seiten('buchhaltung') }}
 </section>
 
 <section data-tab="lohn" id="lohn">
@@ -99,6 +106,7 @@
     <form class="actions" hx-post="/lohn/qst-import" hx-target="find .errors"><label>Kanton <select class="input" name="kanton">{% for k in kantone %}<option>{{ k }}</option>{% endfor %}<option value="ALLE">Alle Kantone</option></select></label> <label>Jahr <input class="input" name="jahr" type="number" min="2025" max="2099" value="{{ today().year }}" required></label> <button class="btn" type="submit">Jetzt laden</button>{{ errors() }}</form>
   </div>
 </details>
+{{ plugin_seiten('lohn') }}
 </section>
 
 <section data-tab="agent" id="agent">
@@ -167,6 +175,7 @@
     {{ errors() }}<div class="formfoot"><span>{% if jev.schluessel_datei %}<button class="btn small" type="submit" name="entfernen" value="1">Entfernen</button>{% endif %}</span><button class="btn primary" type="submit">Schlüssel speichern</button></div>
   </form>
 </div>
+{{ plugin_seiten('agent') }}
 </section>
 
 <section data-tab="plugins" id="plugins">
@@ -176,7 +185,7 @@
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th>Plugin</th><th>Was es beiträgt</th><th class="right"></th></tr></thead>
     <tbody>{% for p in plugin_rows %}
-      <tr class="row"><td><strong>{{ p.name }}</strong> <span class="small muted">{{ p.version }}</span><br><span class="small">{{ p.beschreibung }}</span></td>
+      <tr class="row"><td><strong>{{ p.name }}</strong> <span class="small muted">{{ p.version }}</span><br><span class="small">{{ p.beschreibung }}</span>{% for pg in plugin_pages if pg.plugin == p.name and not pg.bereich %}<br><a class="link small" href="{{ pg.url }}">{{ pg.label }} öffnen</a>{% endfor %}</td>
         <td class="small muted">{% if p.fehler %}<span class="pill warn">{{ p.fehler }}</span>{% else %}{{ p.hooks|join(", ") }}{% endif %}</td>
         <td class="right">
           {% if p.nur_daten %}<span class="pill muted" title="Vorlagen und Tabellen sind immer verfügbar">Daten</span>
@@ -232,5 +241,6 @@
     </div>
   </form>
 </div>
+{{ plugin_seiten('buch') }}
 </section>
 {% endblock %}

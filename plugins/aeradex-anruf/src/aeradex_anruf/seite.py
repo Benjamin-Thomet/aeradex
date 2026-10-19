@@ -1,4 +1,4 @@
-"""The «Nora» page in aeradex (Plugins → Nora): status, call button, cards, memory, settings."""
+"""The «Nora» page in aeradex (Einstellungen › Agent & KI): status, call button, cards, memory, settings."""
 from __future__ import annotations
 
 import re
@@ -142,4 +142,4 @@ def pages() -> list[Page]:
     name = Config.load().assistant_name or "Anruf"
     return [Page("sekretaerin", name, "sekretaerin.html", _context,
                  {"notizen": _notizen, "verlauf_leeren": _verlauf_leeren, "karte": _karte, "zugaenge": _zugaenge,
-                  "anrufen": _anrufen})]
+                  "anrufen": _anrufen}, bereich="einstellungen:agent")]

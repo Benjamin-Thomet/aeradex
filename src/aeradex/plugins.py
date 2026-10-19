@@ -105,9 +105,15 @@ class Command:
 
 @dataclass
 class Page:
-    """A page in the web UI: ``/p/<plugin>/<slug>``. Enabled plugin pages appear as
-    tabs under «Plugins». ``bereich`` is retained for compatibility with older
-    plugins and no longer affects navigation.
+    """A page in the web UI: ``/p/<plugin>/<slug>``. ``bereich`` says where it lives:
+
+    - a core section (``einkauf``, ``verkauf``, ``bank``, ``lohn``, ``buchhaltung``): a tab at its end;
+    - ``einstellungen:<tab>`` (``firma``, ``buchhaltung``, ``lohn``, ``agent``, ``buch``): a card in that tab of
+      the settings, no menu entry;
+    - any other name: a section of its own, the pages with the same name are its tabs. ``bereich_titel`` is its
+      label (default: the first page's label), ``nach`` the core section it follows (default: the end),
+      ``kuerzel`` its keyboard shortcut;
+    - empty: no menu entry; the page is linked next to its plugin in Einstellungen › Plugins.
 
     ``template`` is a Jinja file in the plugin package's ``templates/`` folder (it may
     ``{% extends "base.html" %}`` and use the core macros); ``context(book, query)``
@@ -127,6 +133,9 @@ class Page:
     actions: dict[str, Callable[[Book, dict], Any]] = field(default_factory=dict)
     bereich: str = ""
     fragments: dict[str, tuple[str, Callable[[Book, dict], dict]]] = field(default_factory=dict)
+    bereich_titel: str = ""
+    nach: str = ""
+    kuerzel: str = ""
 
 
 @dataclass

@@ -32,7 +32,7 @@ def aeradex_check(book, rows):
     out += [Finding("fehler", "team", f"Benutzername {u} doppelt") for u in sorted(set(users)) if users.count(u) > 1]
     open_ = [r for r in reqs if r["status"] == "offen"]
     if open_:
-        out.append(Finding("hinweis", "team", f"{len(open_)} Abwesenheits-Antrag/Anträge aus der App warten (Plugins › Team-App)"))
+        out.append(Finding("hinweis", "team", f"{len(open_)} Abwesenheits-Antrag/Anträge aus der App warten (Lohn › Team-App)"))
     return out
 
 

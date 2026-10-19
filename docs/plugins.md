@@ -11,7 +11,7 @@ aeradex plugins aus revolut
 ```
 
 In der Oberfläche: **Einstellungen → Plugins** (im Serverbetrieb nur für Admins).
-Die Seiten eingeschalteter Erweiterungen stehen unter dem Hauptmenüpunkt **Plugins**.
+Die Seiten eingeschalteter Erweiterungen stehen dort, wo sie fachlich hingehören (Feld `bereich`, siehe unten).
 
 ## Die Regeln
 
@@ -70,7 +70,7 @@ Die Hooks sind [pluggy](https://pluggy.readthedocs.io/)-Hooks (dasselbe System w
 | `aeradex_tools()` | `[Funktion]` | Werkzeuge für Agenten (MCP und Chat in der Oberfläche) | eingeschaltet |
 | `aeradex_instructions()` | `str` | kurzer Hinweis an den Agenten, wann er die Werkzeuge nutzt | eingeschaltet |
 | `aeradex_commands()` | `[Command]` | Befehle `aeradex <name> …` | eingeschaltet |
-| `aeradex_pages()` | `[Page]` | eigene Seiten in der Oberfläche unter «Plugins» | eingeschaltet |
+| `aeradex_pages()` | `[Page]` | eigene Seiten in der Oberfläche, eingeordnet nach `bereich` | eingeschaltet |
 | `aeradex_reports()` | `[Report]` | weitere Berichte (Berichte, `aeradex bericht`, Agent): `Report(name, label, build, params, gruppe)`, `build(book, params)` liefert die Tabelle wie `aeradex.reports` | eingeschaltet |
 | `aeradex_dossier_teile()` | `[DossierTeil]` | weitere Teile der Abschlussunterlagen (`aeradex dossier`), z.B. ein Anlagenspiegel: `build(book, jahr, format)` → `[(Dateiname, bytes)]` | eingeschaltet |
 | `aeradex_kunde_teile(book, kunde)` | `[KundeTeil]` | Teile der Kundenseite `/debitoren/kunden/<nr>`: `KundeTeil(titel, template, context, zeitachse, kennzahlen, aktionen)`; `template` aus dem `templates/`-Ordner des Plugins (bekommt `context`, `book`, `kunde`), `zeitachse` Ereignisse `{datum, art, titel, text, link}` für den Verlauf, `kennzahlen` `{label, wert, meta, link}`, `aktionen` Knöpfe `(label, href)` | eingeschaltet |
@@ -192,12 +192,18 @@ from aeradex.plugins import Page
 @hookimpl
 def aeradex_pages():
     return [Page("anlagen", "Anlagen", "anlagen.html", context=lambda book, query: {...},
-                 actions={"erfassen": lambda book, form: api.write(book, "…", erfassen, …)})]
+                 actions={"erfassen": lambda book, form: api.write(book, "…", erfassen, …)},
+                 bereich="buchhaltung")]
 ```
 
-Alle Seiten eingeschalteter Plugins erscheinen als Reiter unter **Plugins** (z.B. Leistungen,
-Offerten, Anlagen). Der Menüpunkt erscheint, sobald eine Erweiterung Seiten beiträgt.
-Das frühere Feld `bereich` bleibt für bestehende Plugins erhalten, beeinflusst die Navigation aber nicht mehr.
+Einen Sammelpunkt «Plugins» gibt es nicht: `bereich` sagt, wo die Seite hingehört.
+
+| `bereich` | wo die Seite steht |
+|---|---|
+| `einkauf`, `verkauf`, `bank`, `lohn`, `buchhaltung` | als letzter Reiter in diesem Hauptmenüpunkt (Team-App unter Lohn, Anlagen unter Buchhaltung) |
+| `einstellungen:<tab>` mit `firma`, `buchhaltung`, `lohn`, `agent`, `buch` | als Karte «Weitere Einstellungen» in diesem Tab der Einstellungen, ohne Menüeintrag (Sekretärin unter Agent & KI, Zugriff unter Buch) |
+| ein eigener Name, z.B. `leistungen` | ein eigener Hauptmenüpunkt; alle Seiten mit diesem Namen sind seine Reiter. `bereich_titel` ist sein Name, `nach` der Hauptmenüpunkt, hinter dem er steht, `kuerzel` die Taste nach `g` |
+| leer | kein Menüeintrag; die Seite ist in Einstellungen › Plugins beim Plugin verlinkt |
 
 Die Seite liegt unter `/p/<plugin>/<slug>`, die Vorlage im Ordner `templates/` des Plugin-Pakets (in
 `package-data` aufnehmen). Sie darf `{% extends "base.html" %}` und die Makros aus `_macros.html` verwenden.

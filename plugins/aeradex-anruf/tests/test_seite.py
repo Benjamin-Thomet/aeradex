@@ -39,7 +39,7 @@ def post(c, url, data):
 
 def test_page_without_service(client):
     c, book = client
-    assert 'href="/p/anruf/sekretaerin"' in c.get("/debitoren").text                  # in the Plugins navigation
+    assert 'href="/p/anruf/sekretaerin"' in c.get("/einstellungen").text              # Einstellungen › Agent & KI
     html = c.get("/p/anruf/sekretaerin").text
     assert "Nora" in html and "pill ok\">läuft" not in html and "pill muted\">aus" in html and "telegram serve" in html
     assert "Noch keine Gespräche" in html

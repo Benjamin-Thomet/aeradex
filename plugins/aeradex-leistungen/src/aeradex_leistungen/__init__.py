@@ -177,7 +177,7 @@ def open_services(kunde: str = "", projekt: str = "", bis: str = "") -> dict:
 
 def billing_preview(kunde: str, projekt: str = "", bis: str = "", detail: bool = False) -> dict:
     """Vorschau der Rechnung für die offenen Leistungen eines Kunden. Ausstellen tut ein Mensch
-    (Plugins → Abrechnen oder `aeradex leistungen abrechnen`).
+    (Leistungen → Abrechnen oder `aeradex leistungen abrechnen`).
 
     Args:
         kunde: Kundennummer.

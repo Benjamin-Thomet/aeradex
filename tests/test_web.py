@@ -555,11 +555,14 @@ def test_buch_export(client, root, tmp_path):
 
 
 def test_top_navigation():
-    from aeradex.web.app import navigation
+    from aeradex.web.app import navigation, settings_pages
     counts = {"todo": 9, "bank": 7, "entwuerfe": 0, "einkauf": 2, "verkauf": 0, "vorschlaege": 1}
-    pages = [{"url": "/p/leistungen/leistungen", "label": "Leistungen", "bereich": "debitoren"},
+    pages = [{"url": "/p/leistungen/leistungen", "label": "Leistungen", "bereich": "leistungen",
+              "bereich_titel": "Leistungen", "nach": "einkauf", "kuerzel": "z"},
              {"url": "/p/leistungen/offerten", "label": "Offerten", "bereich": "leistungen"},
-             {"url": "/p/anlagen/anlagen", "label": "Anlagen", "bereich": "abschluss"},
+             {"url": "/p/anlagen/anlagen", "label": "Anlagen", "bereich": "buchhaltung"},
+             {"url": "/p/team/team", "label": "Team-App", "bereich": "lohn"},
+             {"url": "/p/anruf/sekretaerin", "label": "Nora", "bereich": "einstellungen:agent"},
              {"url": "/p/x/seite", "label": "Fremd", "bereich": ""}]
 
     def at(path, methode="effektiv", status=""):
@@ -570,34 +573,43 @@ def test_top_navigation():
         return [t["label"] for t in nv["aktiv"]["tabs"] if t.get("on")]
 
     nv, s = at("/")
-    assert [k for k in s] == ["uebersicht", "einkauf", "verkauf", "bank", "lohn", "buchhaltung", "plugins"]
+    assert [k for k in s] == ["uebersicht", "einkauf", "leistungen", "verkauf", "bank", "lohn", "buchhaltung"]
     assert s["uebersicht"]["on"] and s["uebersicht"]["badge"] == 9 and s["bank"]["badge"] == 7
+    assert s["leistungen"]["kuerzel"] == "z" and s["leistungen"]["url"] == "/p/leistungen/leistungen"
+    assert [t["label"] for t in s["lohn"]["tabs"]][-1] == "Team-App"
+    assert [t["label"] for t in s["buchhaltung"]["tabs"]][-1] == "Anlagen"
+    assert not nv["einstellungen"]
     nv, s = at("/debitoren/kunden")
     assert nv["aktiv"]["key"] == "verkauf" and on(nv) == ["Kunden"]
     assert "Leistungen" not in [t["label"] for t in nv["aktiv"]["tabs"]]
-    assert [t["label"] for t in s["plugins"]["tabs"]] == ["Leistungen", "Offerten", "Anlagen", "Fremd"]
     nv, _ = at("/debitoren/rechnung/R-2026-0001")
     assert on(nv) == ["Offen"]
     nv, _ = at("/kreditoren", status="entwurf")
     assert on(nv) == ["Entwürfe"] and nv["aktiv"]["tabs"][0]["badge"] == 2
     assert on(at("/kreditoren", status="storniert")[0]) == ["Alle"]
     assert on(at("/eingang/quittung")[0]) == ["Entwürfe"]
-    for slug, label in (("/p/leistungen/leistungen", "Leistungen"), ("/p/leistungen/offerten", "Offerten"),
-                        ("/p/anlagen/anlagen", "Anlagen"), ("/p/anlagen/anlagen/abschreiben", "Anlagen"),
-                        ("/p/x/seite", "Fremd")):
-        nv, _ = at(slug)
-        assert nv["aktiv"]["key"] == "plugins" and on(nv) == [label]
+    for path, section, label in (("/p/leistungen/leistungen", "leistungen", "Leistungen"),
+                                 ("/p/leistungen/offerten", "leistungen", "Offerten"),
+                                 ("/p/anlagen/anlagen", "buchhaltung", "Anlagen"),
+                                 ("/p/anlagen/anlagen/abschreiben", "buchhaltung", "Anlagen"),
+                                 ("/p/team/team", "lohn", "Team-App")):
+        nv, _ = at(path)
+        assert nv["aktiv"]["key"] == section and on(nv) == [label]
+    # A settings page and a page without a place: no menu entry; the settings one lights the gear.
+    nv, _ = at("/p/anruf/sekretaerin")
+    assert nv["aktiv"] is None and nv["einstellungen"]
+    nv, _ = at("/p/x/seite")
+    assert nv["aktiv"] is None and not nv["einstellungen"]
+    assert [pg["label"] for pg in settings_pages(pages)["agent"]] == ["Nora"]
     nv, _ = at("/abschluss")
-    assert not any(t["label"] == "Anlagen" for t in nv["aktiv"]["tabs"])
+    assert on(nv) == ["Abschluss"]
     assert on(at("/lohn/lohnkonto/2026/M0001")[0]) == ["Lohnkonto"]
     assert on(at("/lohn/lohnmeldungen")[0]) == ["Lohnmeldungen"]
     assert on(at("/bank/regeln")[0]) == ["Regeln"] and on(at("/bank")[0]) == ["Abgleichen"]
     nv, s = at("/mwst", "keine")
     assert nv["aktiv"]["key"] == "buchhaltung" and "MWST" not in [t["label"] for t in nv["aktiv"]["tabs"]]
     assert "MWST" in [t["label"] for t in at("/journal")[0]["aktiv"]["tabs"]]
-    assert not any(s and s["key"] == "plugins" for s in navigation("/", counts, [])["bereiche"])
-    nv = navigation("/p/anlagen/anlagen", counts, pages[2:3])
-    assert nv["aktiv"]["key"] == "plugins" and nv["aktiv"]["tabs"][0]["on"]
+    assert not any(s and s["key"] == "plugins" for s in navigation("/", counts, pages)["bereiche"])
 
 
 def test_top_navigation_renders(client):

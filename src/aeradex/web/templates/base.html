@@ -44,7 +44,7 @@
         </div>
       </details>
       <a class="icon {{ 'on' if path.startswith('/verlauf') }}" href="/verlauf" title="Verlauf (g v)" aria-label="Verlauf" data-key="v"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.5a6.5 6.5 0 1 1-6.1 4.3M3.5 3.5v4h4M10 6.5V10l2.5 1.5"/></svg></a>
-      <a class="icon {{ 'on' if path.startswith('/einstellungen') }}" href="/einstellungen" title="Einstellungen (g e)" aria-label="Einstellungen" data-key="e"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 6h13M3.5 14h13"/><circle cx="7.5" cy="6" r="2" class="knob"/><circle cx="12.5" cy="14" r="2" class="knob"/></svg></a>
+      <a class="icon {{ 'on' if path.startswith('/einstellungen') or (navigation and navigation.einstellungen) }}" href="/einstellungen" title="Einstellungen (g e)" aria-label="Einstellungen" data-key="e"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 6h13M3.5 14h13"/><circle cx="7.5" cy="6" r="2" class="knob"/><circle cx="12.5" cy="14" r="2" class="knob"/></svg></a>
       <button class="icon" id="themeBtn" type="button" title="Hell / Dunkel" aria-label="Hell / Dunkel"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5a6.5 6.5 0 0 1 0 13z" class="fill"/></svg></button>
     </div>
   </div>

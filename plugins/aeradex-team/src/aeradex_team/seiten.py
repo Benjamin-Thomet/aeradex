@@ -144,4 +144,4 @@ PAGES = [Page("team", "Team-App", "team.html", _context,
                "geprueft": _geprueft, "eintrag_loeschen": _eintrag_loeschen, "abschliessen": _abschliessen,
                "pensum": _pensum, "textkorrektur": _textkorrektur,
                "leistungsart": _leistungsart},
-              fragments={"code": ("team/_code.html", _code_ctx)})]
+              bereich="lohn", fragments={"code": ("team/_code.html", _code_ctx)})]

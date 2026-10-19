@@ -102,7 +102,7 @@ def fixed_service(book: Book) -> str:
 def set_fixed_service(book: Book, nummer: str) -> tuple[dict, list[Path]]:
     nummer = str(nummer or "").strip()
     if nummer and nummer not in leistungen.services(book):
-        raise BookError(f"Leistungsart {nummer} gibt es nicht (Plugins › Leistungen › Stammdaten)")
+        raise BookError(f"Leistungsart {nummer} gibt es nicht (Leistungen › Stammdaten)")
     return {"leistungsart": nummer}, [_save_settings(book, leistungsart=nummer)]
 
 

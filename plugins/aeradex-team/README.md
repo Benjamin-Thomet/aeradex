@@ -28,7 +28,7 @@ ohne das Buch: Einträge warten dort, bis der Abgleich sie übernimmt. Protokoll
 
 Mitarbeitende sehen nie Preise, Stundensätze, Löhne anderer, Kundenadressen oder das Buch.
 
-## Im Büro (Plugins › Team-App)
+## Im Büro (Lohn › Team-App)
 
 - **Zu prüfen:** neue und geänderte Einträge aus der App mit Hinweisen (über 10 h am Tag, Wochenende, Feiertag,
   ohne Stundensatz, Projekt abgeschlossen …); «geprüft» einzeln oder alle.
@@ -49,7 +49,7 @@ aeradex --buch <buch> team verbinden --url https://team.example.ch --token <Sync
 aeradex --buch <buch> team sync                      # oder als Dienst: team sync --wiederholen 300
 ```
 
-Portal und Abgleich auf einem Server richtet [deploy/](../../deploy) ein. Mitarbeitende einladen: Plugins › Team-App ›
+Portal und Abgleich auf einem Server richtet [deploy/](../../deploy) ein. Mitarbeitende einladen: Lohn › Team-App ›
 *Einladen* (oder `aeradex team einladen M0001`), Adresse und Code weitergeben.
 
 Einstellungen in `team/einstellungen.yaml` (im Buch, in git), neben Konten und Abschluss:
