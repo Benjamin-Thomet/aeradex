@@ -1980,7 +1980,8 @@ class RowErrors(BookError):
 
 def post_entries(book: Book, zeilen: list[dict]) -> dict:
     """Book several simple bookings in one go — all or none, one commit. Each line:
-    {datum, text, soll, haben, betrag, mwst?, waehrung?, kurs?, beleg?}."""
+    {datum, text, soll, haben, betrag, mwst?, waehrung?, kurs?, beleg?, datei?} — `datei` is a receipt filed with
+    the booking under belege/ (same commit)."""
     from .files import FormatError
     _guard(book)
     if not zeilen:
@@ -2000,12 +2001,19 @@ def post_entries(book: Book, zeilen: list[dict]) -> dict:
                                               waehrung=z.get("waehrung") or "", kurs=z.get("kurs") or None,
                                               taken=taken)
             taken.add(row.beleg)
+            if z.get("datei"):
+                src = Path(z["datei"]) if Path(z["datei"]).is_absolute() else book.root / z["datei"]
+                if not src.exists():
+                    raise BookError(f"Beleg-Datei {Path(z['datei']).name} nicht gefunden")
             prepared.append((row, rows))
         except (BookError, FormatError, ValueError) as exc:
             errors[n] = str(exc).replace("Fehler: ", "")
     if errors:
         raise RowErrors(errors)
     touched = journal.post(book, [r for _, rows in prepared for r in rows])
+    for z, (row, _) in zip(zeilen, prepared):
+        if z.get("datei"):
+            touched.append(journal.attach(book, row, Path(z["datei"])))
     first, last = prepared[0][0].beleg, prepared[-1][0].beleg
     label = first if len(prepared) == 1 else f"{first} … {last}"
     return _done(book, f"{len(prepared)} Buchung(en) erfasst ({label})", touched,

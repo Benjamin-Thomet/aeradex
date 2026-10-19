@@ -70,3 +70,31 @@ def test_grid_needs_a_first_date(book):
         r = c.post("/journal/raster", headers={"X-CSRF": app.state.ui.csrf, "HX-Request": "true"},
                    data={"datum": [""], "text": ["x"], "soll": ["6500"], "haben": ["1020"], "betrag": ["1"]})
         assert "Datum fehlt" in json.loads(r.headers["HX-Trigger"])["rasterFehler"]["1"]
+
+
+def test_grid_rows_carry_their_receipt_and_a_booking_without_one_takes_a_file(book):
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+    from aeradex.web.app import create_app
+    app = create_app(book.root, token="tok")
+    with TestClient(app) as c:
+        c.get("/?t=tok", follow_redirects=False)
+        h = {"X-CSRF": app.state.ui.csrf, "HX-Request": "true"}
+        page = c.get("/journal?jahr=2026").text
+        assert 'hx-encoding="multipart/form-data" hx-target="find .errors" data-accounts' in page and "data-gridfile" in page
+        data = {"jahr": "2026", "datum": ["5.3.26", "6.3.26"], "text": ["Papier", "Porto"],
+                "soll": ["6500", "6500"], "haben": ["1020", "1020"], "betrag": ["45.80", "12.00"], "mwst": ["", ""]}
+        files = [("datei", ("quittung-papier.pdf", b"%PDF-1.4 papier", "application/pdf")),
+                 ("datei", ("", b"", "application/octet-stream"))]                 # second row: no file
+        r = c.post("/journal/raster", headers=h, data=data, files=files)
+        assert r.status_code == 204, r.text
+        b = Book(book.root)
+        papier, porto = sorted({r.beleg for r in b.rows})
+        assert [p.name for p in (book.root / "belege" / "2026").iterdir()] == [f"{papier} quittung-papier.pdf"]
+        page = c.get("/journal?jahr=2026&monat=3").text
+        assert f'data-attach="{porto}"' in page and "ohne Beleg · 📎 anhängen" in page
+        r = c.post("/journal/beleg", headers=h, data={"beleg": porto},
+                   files={"datei": ("porto.jpg", b"\xff\xd8jpeg", "image/jpeg")})
+        assert r.status_code == 204, r.text
+        assert "ohne Beleg · 📎" not in c.get("/journal?jahr=2026&monat=3").text
+    assert_clean(Book(book.root))

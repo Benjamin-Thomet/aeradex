@@ -181,7 +181,7 @@
     const accounts = JSON.parse(form.dataset.accounts || "{}");
     const key = "aeradex-raster:" + (form.dataset.key || "");
     const rows = () => $$("tr", body);
-    const cells = tr => $$("input", tr);
+    const cells = tr => $$("input[data-col]", tr);
     const empty = tr => cells(tr).every(c => !c.value.trim());
     const amount = v => { let t = (v || "").replace(/chf|fr\.|['’\s]/gi, ""); if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(".") > t.lastIndexOf(",") ? t.replace(/,/g, "") : t.replace(/\./g, "").replace(",", "."); else t = t.replace(",", "."); return parseFloat(t); };
     const fmt = n => n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
@@ -221,6 +221,13 @@
       if (target) { const c = cells(target).find(x => +x.dataset.col === col); if (c) { c.focus(); c.select && c.select(); } }
     }
     form.addEventListener("input", e => { e.target.closest("tr").classList.remove("err"); update(); });
+    form.addEventListener("change", e => {
+      if (!e.target.matches("[data-gridfile] input")) return;
+      const label = e.target.closest("[data-gridfile]"), file = e.target.files[0];
+      label.classList.toggle("on", !!file);
+      label.title = file ? file.name + " (klicken: andere Datei)" : "Beleg-Datei anhängen (Quittung, Rechnung)";
+      label.firstChild.textContent = file ? "📎✓" : "📎";
+    });
     form.addEventListener("keydown", e => {
       if (!e.target.matches("input[data-col]") || e.metaKey || e.ctrlKey || e.altKey) return;
       const listCell = e.target.hasAttribute("list");
@@ -276,6 +283,24 @@
     }
     update(false);
   }
+
+  // ---- journal: drop a receipt file on a booking to attach it ----
+  document.addEventListener("dragover", e => {
+    const tr = e.target.closest && e.target.closest("tr[data-attach]");
+    if (!tr || !e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
+    e.preventDefault(); tr.classList.add("dropping");
+  });
+  document.addEventListener("dragleave", e => { const tr = e.target.closest && e.target.closest("tr[data-attach]"); if (tr) tr.classList.remove("dropping"); });
+  document.addEventListener("drop", async e => {
+    const tr = e.target.closest && e.target.closest("tr[data-attach]");
+    if (!tr || !e.dataTransfer.files.length) return;
+    e.preventDefault(); tr.classList.remove("dropping");
+    const body = new FormData(); body.append("beleg", tr.dataset.attach); body.append("datei", e.dataTransfer.files[0]);
+    const csrf = JSON.parse(document.body.getAttribute("hx-headers") || "{}")["X-CSRF"];
+    const res = await fetch("/journal/beleg", { method: "POST", body, headers: { "X-CSRF": csrf, "HX-Request": "true", "HX-Current-URL": location.href } });
+    if (res.status === 204) location.href = res.headers.get("HX-Redirect") || location.href;
+    else toast((await res.text()).replace(/<[^>]+>/g, "") || "Anhängen fehlgeschlagen", true);
+  });
 
   // ---- agent drawer ----
   function bindChat() {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import threading
 import tempfile
 from collections import OrderedDict, defaultdict
@@ -435,7 +436,9 @@ async def journal_raster(ui: UI, request: Request):
     book = ui.book()
     year = int(f.get("jahr") or date.today().year)
     cols = {k: f.getlist(k) for k in ("datum", "text", "soll", "haben", "betrag", "mwst")}
+    files = f.getlist("datei")              # one file field per grid row, empty where nothing is attached
     n = max((len(v) for v in cols.values()), default=0)
+    tmpdir = Path(tempfile.mkdtemp(prefix="aeradex-"))
     entries, where, problems, previous = [], [], {}, None
     for i in range(n):
         cell = {k: (v[i] if i < len(v) else "").strip() for k, v in cols.items()}
@@ -448,11 +451,19 @@ async def journal_raster(ui: UI, request: Request):
         except (BookError, ValueError) as exc:
             problems[i + 1] = str(exc)
             continue
-        entries.append({"datum": previous.isoformat(), "text": cell["text"], "soll": acct(cell["soll"]),
-                        "haben": acct(cell["haben"]), "betrag": grid_amount(cell["betrag"]),
-                        "mwst": cell["mwst"].split(" ", 1)[0].upper()})
+        entry = {"datum": previous.isoformat(), "text": cell["text"], "soll": acct(cell["soll"]),
+                 "haben": acct(cell["haben"]), "betrag": grid_amount(cell["betrag"]),
+                 "mwst": cell["mwst"].split(" ", 1)[0].upper()}
+        upload = files[i] if i < len(files) else None
+        if upload is not None and getattr(upload, "filename", ""):
+            tmp = tmpdir / f"{i}" / Path(upload.filename).name
+            tmp.parent.mkdir()
+            tmp.write_bytes(await upload.read())
+            entry["datei"] = str(tmp)
+        entries.append(entry)
         where.append(i + 1)
     if not entries and not problems:
+        shutil.rmtree(tmpdir, ignore_errors=True)
         return fail("Keine Buchungen im Raster.")
     if not problems:
         try:
@@ -463,6 +474,9 @@ async def journal_raster(ui: UI, request: Request):
             return fail(str(exc))
         else:
             return done(result.get("meldung", "Gebucht"), request.headers.get("hx-current-url") or "/journal")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+    shutil.rmtree(tmpdir, ignore_errors=True)
     response = fail("Nichts gebucht — " + "; ".join(f"Zeile {k}: {v}" for k, v in sorted(problems.items())))
     response.headers["HX-Trigger"] = json.dumps({"rasterFehler": {str(k): v for k, v in problems.items()}})
     return response

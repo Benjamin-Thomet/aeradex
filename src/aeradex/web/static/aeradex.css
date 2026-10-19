@@ -557,3 +557,10 @@ details.panel[open] > summary::after { content: " ▾"; }
 a.kunde-link { color: inherit; text-decoration: none; }
 a.kunde-link:hover { color: var(--info); text-decoration: underline; }
 .kunde-review td:first-child a { white-space: nowrap; }
+
+/* journal: receipts in the grid and on a booking */
+table.grid th.clip, table.grid td.clip { width: 52px; text-align: center; }
+table.grid td.clip label.on { color: var(--ok); }
+form.inline-attach { display: inline; }
+form.inline-attach label { cursor: pointer; }
+tr.dropping td { background: var(--info-soft); box-shadow: inset 0 1px 0 var(--info), inset 0 -1px 0 var(--info); }
