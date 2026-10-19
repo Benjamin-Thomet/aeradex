@@ -57,16 +57,33 @@ def aeradex_nach_beleg(book, beleg):
     return None
 
 
+def todos(book, today: date | None = None) -> list[Todo]:
+    """Purchases that are not an asset yet; from December on, the year's depreciation still to book
+    (in December as a reminder, after the year end as a warning)."""
+    today = today or date.today()
+    out = []
+    cands = anlagen.kandidaten(book)
+    if cands:
+        n = len(cands)
+        detail = " · ".join(f"{k['bezeichnung']} {k['rest']:,.2f}".replace(",", "'") for k in cands[:3])
+        out.append(Todo(f"{n} Anschaffung{'en' if n > 1 else ''} als Anlage erfassen", f"{PAGE}#kandidaten",
+                        detail + (" …" if n > 3 else ""), "Anlagen"))
+    for year in sorted(book.years()):
+        if year > today.year or year == today.year and today.month < 12:
+            continue
+        todo = anlagen.preview(book, year)
+        if todo:
+            total = sum((t["betrag"] for t in todo), anlagen.ZERO)
+            out.append(Todo(f"Abschreibungen {year} buchen", f"{PAGE}?jahr={year}#spiegel",
+                            f"{len(todo)} Anlage{'n' if len(todo) > 1 else ''} · {total:,.2f}".replace(",", "'")
+                            + " · per 31.12.", "Anlagen", "warn" if year < today.year else "info"))
+    return out
+
+
 @hookimpl
 def aeradex_todos(book):
-    """On the Übersicht: purchases on an asset account that are not an asset yet."""
-    cands = anlagen.kandidaten(book)
-    if not cands:
-        return []
-    n = len(cands)
-    detail = " · ".join(f"{k['bezeichnung']} {k['rest']:,.2f}".replace(",", "'") for k in cands[:3])
-    return [Todo(f"{n} Anschaffung{'en' if n > 1 else ''} als Anlage erfassen", f"{PAGE}#kandidaten",
-                 detail + (" …" if n > 3 else ""), "Anlagen")]
+    """On the Übersicht: purchases that are not an asset yet, depreciation due at the year end."""
+    return todos(book)
 
 
 # ---------- Abschlussunterlagen and Berichte ----------

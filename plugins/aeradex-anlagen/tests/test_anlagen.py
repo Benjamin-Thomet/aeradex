@@ -256,3 +256,17 @@ def test_page_candidate_takeover_and_redirect_after_a_bill(firm):
     b = Book(firm.root)
     assert anlagen.booked(anlagen.asset(b, "A0002"))[2026] == D("100.00")
     assert_clean(b)
+
+
+def test_todo_reminds_of_the_depreciation_from_december(book):
+    from datetime import date as _date
+    from aeradex_anlagen import todos
+    [k] = anlagen.kandidaten(Book(book.root))
+    W(book, anlagen.add_from_booking, k["beleg"], "1520", "Laptop Lea", "edv")
+    assert [t.titel for t in todos(Book(book.root), _date(2026, 11, 30))] == []
+    [t] = todos(Book(book.root), _date(2026, 12, 1))
+    assert (t.titel, t.level, t.href) == ("Abschreibungen 2026 buchen", "info", "/p/anlagen/anlagen?jahr=2026#spiegel")
+    assert "400.00" in t.detail
+    assert todos(Book(book.root), _date(2027, 1, 15))[0].level == "warn"
+    W(book, anlagen.depreciate, 2026)
+    assert todos(Book(book.root), _date(2027, 1, 15)) == []
