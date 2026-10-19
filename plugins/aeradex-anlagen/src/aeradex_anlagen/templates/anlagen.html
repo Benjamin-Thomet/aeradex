@@ -35,7 +35,11 @@
 {% endif %}
 
 <div class="panel" id="spiegel">
-  <header><h2>Anlagenspiegel {{ jahr }}</h2>{% if spiegel.anlagen %}<span class="hint"><a class="link" href="/berichte?typ=anlagenspiegel&jahr={{ jahr }}">als Bericht / PDF</a></span>{% endif %}</header>
+  <header><h2>Anlagenspiegel {{ jahr }}</h2><span class="hint" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <form hx-post="/p/anlagen/anlagen/einstellungen" hx-trigger="change" hx-target="find .errors" style="display:flex;gap:6px;align-items:center">
+      <label for="rundung" class="small muted">Buchwerte runden auf</label>
+      <select class="input" id="rundung" name="rundung">{% for r in rundungen %}<option value="{{ r|int }}" {{ 'selected' if r == rundung }}>{{ 'Rappen' if not r else 'CHF ' ~ (r|int) }}</option>{% endfor %}</select>{{ errors() }}</form>
+    {% if spiegel.anlagen %}<a class="link" href="/berichte?typ=anlagenspiegel&jahr={{ jahr }}">als Bericht / PDF</a>{% endif %}</span></header>
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th>Anlage</th><th>Konto</th><th class="right">Anfang</th><th class="right">Zugang</th><th class="right">Abschreibung</th><th class="right">Abgang</th><th class="right">Ende</th><th></th></tr></thead>
     <tbody>{% for a in spiegel.anlagen %}
@@ -78,7 +82,7 @@
       <tbody>{% for v in vorschau %}<tr><td><span class="beleg">{{ v.nummer }}</span> {{ v.bezeichnung }}</td><td class="right num">{{ v.buchwert_vorher|chf }}</td><td class="right num">{{ v.betrag|chf }}</td>
         <td class="right"><input class="input num" style="width:120px" name="betrag_{{ v.nummer }}" value="{{ v.betrag }}" inputmode="decimal" aria-label="Abschreibung {{ v.nummer }}" title="0 bis {{ v.maximal|chf }}: tiefer oder zusätzlich abschreiben"></td></tr>{% endfor %}</tbody>
     </table></div>
-    {{ errors() }}<div class="formfoot"><span class="small muted">Bucht per 31.12.{{ jahr }} 6800 an die Anlagekonten. Ein anderer Betrag geht bis zum Buchwert (abzüglich Restwert) — steuerlich gelten die ESTV-Sätze als Obergrenze.</span><button class="btn primary" type="submit">Abschreibungen {{ jahr }} buchen</button></div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Bucht per 31.12.{{ jahr }} 6800 an die Anlagekonten{% if rundung %}, so dass jeder Buchwert auf CHF {{ rundung|int }} gerundet ist{% endif %}. Ein anderer Betrag geht bis zum Buchwert (abzüglich Restwert) — steuerlich gelten die ESTV-Sätze als Obergrenze.</span><button class="btn primary" type="submit">Abschreibungen {{ jahr }} buchen</button></div>
   </form>{% endif %}
 </div>
 

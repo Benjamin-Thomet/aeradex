@@ -270,3 +270,22 @@ def test_todo_reminds_of_the_depreciation_from_december(book):
     assert todos(Book(book.root), _date(2027, 1, 15))[0].level == "warn"
     W(book, anlagen.depreciate, 2026)
     assert todos(Book(book.root), _date(2027, 1, 15)) == []
+
+
+def test_book_values_rounded_to_100(book):
+    [k] = anlagen.kandidaten(Book(book.root))
+    W(book, anlagen.add_from_booking, k["beleg"], "1520", "Laptop Lea", "edv", wert="2387.35")   # 20 %, 10 months
+    W(book, anlagen.add, "Maus", "2026-01-01", "130", "", "1520", nutzungsdauer="5")             # 26 a year
+    assert anlagen.preview(Book(book.root), 2026)[0]["betrag"] == D("397.89")                 # to the cent
+    W(book, anlagen.save_settings, 100)
+    pv = {p["nummer"]: p["betrag"] for p in anlagen.preview(Book(book.root), 2026)}
+    assert pv["A0001"] == D("387.35")                                                       # 2387.35 → 2000
+    assert pv["A0002"] == D("30.00")                                                        # 104 → down to 100
+    W(book, anlagen.depreciate, 2026)
+    b = Book(book.root)
+    assert anlagen.schedule(b, 2026)["total"]["ende"] == D("2100.00")
+    api.post_entry(b, "2027-01-05", "6500", "1020", "1", "x")
+    assert anlagen.preview(Book(book.root), 2027)[0]["betrag"] == D("500.00")               # 477.47 → 1500
+    assert anlagen.round_to_step(D("100"), D("26"), D("0"), D("100")) == D("100")            # small: down to 0
+    with pytest.raises(BookError, match="Rundung"):
+        W(book, anlagen.save_settings, 50)

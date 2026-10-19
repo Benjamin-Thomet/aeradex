@@ -2,6 +2,7 @@
 
     anlagen/A0001-<name>.yaml   one asset: acquisition, method, rate, the depreciation booked per year
     anlagen/ignoriert.yaml      purchases on an asset account a person marked as «keine Anlage»
+    anlagen/einstellungen.yaml  rundung: book values at the year end rounded to 100 CHF (or 1, 10, 1000)
 
 Depreciation for a year is booked at 31.12. (pro rata temporis in full months in the
 year of acquisition) and recorded in the asset's file; the asset owns those journal rows
@@ -19,7 +20,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from aeradex.book import Book, BookError, Row
@@ -111,9 +112,45 @@ def useful_life(kategorie: str) -> Decimal | None:
     return (Decimal(100) / rate).quantize(Decimal("0.1"), ROUND_HALF_UP) if rate else None
 
 
-def depreciation(meta: dict, year: int) -> Decimal:
+ROUNDINGS = (ZERO, Decimal(1), Decimal(10), Decimal(100), Decimal(1000))
+
+
+def settings(book: Book) -> dict:
+    """anlagen/einstellungen.yaml: `rundung` — book values at the year end rounded to this step in CHF (0 = to the
+    cent), so the asset accounts show round figures."""
+    path = folder(book) / "einstellungen.yaml"
+    data = (read_yaml(path) or {}) if path.exists() else {}
+    return {"rundung": Decimal(str(data.get("rundung") or 0))}
+
+
+def save_settings(book: Book, rundung) -> tuple[dict, list[Path]]:
+    step = Decimal(str(rundung or 0))
+    if step not in ROUNDINGS:
+        raise BookError("Rundung: 0, 1, 10, 100 oder 1000")
+    path = folder(book) / "einstellungen.yaml"
+    data = (read_yaml(path) or {}) if path.exists() else {}
+    data["rundung"] = int(step)
+    write_yaml(path, data)
+    return {"rundung": int(step)}, [path]
+
+
+def round_to_step(start: Decimal, amount: Decimal, floor: Decimal, step: Decimal) -> Decimal:
+    """Adjust a depreciation so the book value after it is a multiple of `step` (nearest; down when the
+    nearest would leave the value unchanged, so a small asset still goes down), never below `floor`."""
+    if not step or amount <= 0:
+        return amount
+    end = start - amount
+    rounded = (end / step).quantize(Decimal(1), ROUND_HALF_UP) * step
+    if rounded >= start:
+        rounded = (end / step).to_integral_value(rounding=ROUND_FLOOR) * step
+    rounded = max(rounded, floor)
+    return max(ZERO, min(start - rounded, start - floor))
+
+
+def depreciation(meta: dict, year: int, rundung: Decimal = ZERO) -> Decimal:
     """What year `year` should take: pro rata temporis in full months in the first year,
-    never below the residual value, nothing once disposed of."""
+    never below the residual value, nothing once disposed of; with `rundung` the book value
+    after it is a round figure."""
     begin = start_of(meta)
     if begin.year > year or meta.get("abgang") and parse_date(meta["abgang"]["datum"]).year <= year:
         return ZERO
@@ -123,7 +160,8 @@ def depreciation(meta: dict, year: int) -> Decimal:
     rate = Decimal(str(meta["satz"])) / 100
     base = money(meta["wert"]) if meta.get("methode") == "linear" else start
     amount = money(base * rate * months / 12)
-    return max(ZERO, min(amount, start - rest))
+    amount = max(ZERO, min(amount, start - rest))
+    return round_to_step(start, amount, rest, rundung)
 
 
 def equity_account(book: Book) -> str:
@@ -460,10 +498,11 @@ def remove(book: Book, nr: str) -> tuple[dict, list[Path]]:
 
 def preview(book: Book, year: int) -> list[dict]:
     out = []
+    step = settings(book)["rundung"]
     for nr, meta in assets(book).items():
         if int(year) in booked(meta):
             continue
-        amount = depreciation(meta, int(year))
+        amount = depreciation(meta, int(year), step)
         if amount:
             vorher = book_value(meta, int(year) - 1) if start_of(meta).year < int(year) else start_value(meta)
             out.append({"nummer": nr, "bezeichnung": meta["bezeichnung"], "konto": meta["konto"], "betrag": amount,
@@ -526,6 +565,7 @@ def dispose(book: Book, nr: str, datum, erloes=0, zahlkonto: str = "") -> tuple[
 def schedule(book: Book, year: int) -> dict:
     """Anlagenspiegel: per asset start, additions, depreciation, disposals, end of the year."""
     year = int(year)
+    step = settings(book)["rundung"]
     lines, totals = [], {k: ZERO for k in ("anfang", "zugang", "abschreibung", "abgang", "ende")}
     for nr, meta in assets(book).items():
         begin = start_of(meta)
@@ -549,7 +589,7 @@ def schedule(book: Book, year: int) -> dict:
                 "restwert": money(meta.get("restwert")), "notiz": meta.get("notiz", ""),
                 "uebernahme": bool(u), "einlage": bool(u.get("einlage")), "abgegangen": bool(gone),
                 "anfang": anfang, "zugang": zugang, "abschreibung": abschreibung, "abgang": abgang, "ende": ende,
-                "offen": year not in booked(meta) and bool(depreciation(meta, year)),
+                "offen": year not in booked(meta) and bool(depreciation(meta, year, step)),
                 "aenderbar": not booked(meta) and not gone,
                 "fest": bool(booked(meta) or u.get("einlage") or meta.get("beleg"))}
         lines.append(line)

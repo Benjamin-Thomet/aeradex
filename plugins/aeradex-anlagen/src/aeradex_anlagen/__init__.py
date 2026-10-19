@@ -248,6 +248,7 @@ def _context(book, query):
             "lebensdauer": {k: anlagen.useful_life(k) for k in anlagen.KATEGORIEN},
             "kandidaten": cands, "fokus": focus, "erstes_jahr": book.settings.erstes_jahr,
             "eigenkapital": anlagen.equity_account(book), "tab": query.get("tab") or "",
+            "rundung": anlagen.settings(book)["rundung"], "rundungen": anlagen.ROUNDINGS,
             "konten_aktiv": [a for a in book.accounts.values()
                              if a.klasse == "aktiv" and a.gruppe in anlagen.ASSET_GROUPS]}
 
@@ -302,6 +303,11 @@ def _depreciate(book, form):
                      amounts or None)
 
 
+def _settings(book, form):
+    return api.write(book, f"Anlagen: Buchwerte runden auf {form.get('rundung') or 0}", anlagen.save_settings,
+                     form.get("rundung") or 0)
+
+
 def _dispose(book, form):
     return api.write(book, f"Abgang {form.get('nummer')}", anlagen.dispose, form.get("nummer"), form.get("datum"),
                      form.get("erloes") or 0)
@@ -311,5 +317,6 @@ def _dispose(book, form):
 def aeradex_pages():
     return [Page("anlagen", "Anlagen", "anlagen.html", _context,
                  {"erfassen": _add, "aus_beleg": _from_booking, "keine_anlage": _ignore, "uebernehmen": _existing,
-                  "aendern": _update, "entfernen": _remove, "abschreiben": _depreciate, "abgang": _dispose},
+                  "aendern": _update, "entfernen": _remove, "abschreiben": _depreciate, "abgang": _dispose,
+                  "einstellungen": _settings},
                  bereich="buchhaltung")]
