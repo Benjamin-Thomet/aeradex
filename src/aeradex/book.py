@@ -391,17 +391,13 @@ ACCOUNT_KEYS = {"nr", "name", "klasse", "gruppe", "eroeffnung", "vorjahr", "grup
 
 def _rejoin_name(item: dict) -> dict:
     """An unquoted name with commas in a YAML flow mapping ({nr: "1520", name: Büromaschinen, Informatik, …})
-    is split into the name plus empty keys; older charts were shipped like that. Join them back."""
-    keys = list(item)
-    if "name" not in keys:
+    is split into the name plus empty keys; older charts were shipped like that, and saving such a book wrote
+    the fragments before `nr`. Join them back: empty keys that are not field names (fields are lower case)."""
+    parts = [str(k) for k, v in item.items()
+             if v is None and k not in ACCOUNT_KEYS and not str(k)[:1].islower()]
+    if not parts or "name" not in item:
         return item
-    i, parts = keys.index("name") + 1, []
-    while i < len(keys) and item[keys[i]] is None and keys[i] not in ACCOUNT_KEYS:
-        parts.append(str(keys[i]))
-        i += 1
-    if not parts:
-        return item
-    fixed = {k: v for k, v in item.items() if k not in parts}
+    fixed = {k: v for k, v in item.items() if str(k) not in parts}
     fixed["name"] = ", ".join([str(item["name"] or "")] + parts)
     return fixed
 
