@@ -113,7 +113,7 @@
 
   {% if anhang %}
   <section>
-    <h3>Anhang zur Jahresrechnung {{ year }}</h3><p class="small muted">Angaben nach Art. 959c OR · <a class="link" href="/abschluss?jahr={{ year }}#anhang">Anhang bearbeiten</a></p>
+    <h3>Anhang zur Jahresrechnung {{ year }}</h3><p class="small muted">Angaben nach Art. 959c OR · <a class="link" href="/abschluss/abschliessen?jahr={{ year }}#anhang">Anhang bearbeiten</a></p>
     {% set ns = namespace(nr=0) %}
     {% for kind, text in anhang %}
       {% if kind == "heading" %}{% set ns.nr = ns.nr + 1 %}<h4>{{ ns.nr }}. {{ text }}</h4>
@@ -123,7 +123,7 @@
   </section>
   {% else %}
   <p class="small muted">Ohne Anhang: ein Einzelunternehmen darf ihn weglassen (Art. 959c Abs. 3 OR) ·
-    <a class="link" href="/abschluss?jahr={{ year }}#anhang">trotzdem beifügen</a></p>
+    <a class="link" href="/abschluss/abschliessen?jahr={{ year }}#anhang">trotzdem beifügen</a></p>
   {% endif %}
 
   {% if g %}

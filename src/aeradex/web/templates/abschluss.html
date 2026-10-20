@@ -3,18 +3,37 @@
 {% block title %}Abschluss {{ year }}{% endblock %}
 {% block main %}
 {% set g = st.gewinnverwendung %}
+{% set tabs = [("uebersicht", "Übersicht", "/abschluss"), ("buchungen", "Abschlussbuchungen", "/abschluss/buchungen"),
+               ("jahresrechnung", "Jahresrechnung", "/abschluss/jahresrechnung"), ("unterlagen", "Unterlagen", "/abschluss/unterlagen"),
+               ("abschliessen", "Abschliessen", "/abschluss/abschliessen")] %}
 <div class="topbar">
-  <div><h1>Jahresrechnung {{ year }}</h1><div class="sub">{{ st.firma }} · Bilanz und Erfolgsrechnung nach OR 959a/959b · {% if st.abgeschlossen %}<span class="pill lock">🔒 gesperrt</span>{% else %}<span class="pill info">offen</span>{% endif %}</div></div>
+  <div><h1>Abschluss {{ year }}</h1><div class="sub">{{ st.firma }} · Bilanz und Erfolgsrechnung nach OR 959a/959b · {% if st.abgeschlossen %}<span class="pill lock">🔒 gesperrt</span>{% else %}<span class="pill info">offen</span>{% endif %}</div></div>
   <div class="actions">
     <form method="get"><select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">{% for y in years|reverse %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
-    <a class="btn primary" href="/abschluss/vorschau?jahr={{ year }}">Vorschau</a>
+    <a class="btn" href="/abschluss/vorschau?jahr={{ year }}">Vorschau</a>
     <a class="btn" href="/pdf/jahresrechnung?jahr={{ year }}" target="_blank">Jahresrechnung PDF</a>
-    {% if year == years|max and kann_eroeffnen %}<form hx-post="/abschluss/jahr-eroeffnen" hx-target="find .errors" hx-confirm="Geschäftsjahr {{ naechstes_jahr }} eröffnen? Die Salden per 31.12.{{ year }} werden vorgetragen; {{ year }} bleibt bearbeitbar, bis du es sperrst.">
-      <button class="btn" type="submit" title="Das nächste Geschäftsjahr anlegen, auch vor der ersten Buchung">Neues Geschäftsjahr {{ naechstes_jahr }}</button>{{ errors() }}</form>{% endif %}
   </div>
 </div>
+<nav class="subnav pagetabs" aria-label="Abschluss">{% for key, label, href in tabs %}<a href="{{ href }}?jahr={{ year }}" class="{{ 'on' if tab == key }}"{% if tab == key %} aria-current="page"{% endif %}>{{ label }}{% if key == 'uebersicht' and checkliste %}<span class="count">{{ checkliste.erledigt }}/{{ checkliste.total }}</span>{% elif key == 'buchungen' and buchungen_offen %}<span class="count">{{ buchungen_offen }}</span>{% endif %}</a>{% endfor %}</nav>
+
+{% if tab == "uebersicht" %}
+<script>
+  // old links pointed at sections of the single page: send them to their tab
+  (function () {
+    var to = {abgrenzungen: "buchungen", mwst: "buchungen", fremdwaehrung: "buchungen", eigenkapital: "jahresrechnung",
+              unterlagen: "unterlagen", sperre: "abschliessen", anhang: "abschliessen"}[location.hash.slice(1)];
+    if (to) location.replace("/abschluss/" + to + location.search + location.hash);
+  })();
+</script>
+{% if st.differenz|float %}<div class="alert error">Bilanzdifferenz {{ st.differenz|chf }}: Aktiven und Passiven stimmen nicht überein. aeradex check zeigt die Ursache.</div>{% endif %}
+<div class="figures">
+  <div class="figure"><span class="label">Total Aktiven</span><span class="value">{{ st.total_aktiven|chf }}</span></div>
+  <div class="figure"><span class="label">Jahresergebnis</span><span class="value">{{ st.jahresergebnis|chf }}</span><span class="meta">{{ 'Gewinn' if st.jahresergebnis|float > 0 else 'Verlust' if st.jahresergebnis|float < 0 else 'ausgeglichen' }}</span></div>
+  <div class="figure"><span class="label">{{ "Bilanzverlust" if g.bilanzgewinn|neg else "Bilanzgewinn" }}</span><span class="value">{{ g.bilanzgewinn|chf }}</span><span class="meta">Vortrag {{ g.gewinnvortrag|chf }} + Ergebnis</span></div>
+  <div class="figure"><span class="label">Gesperrt bis</span><span class="value" style="font-size:18px">{{ settings.sperre_bis|datum or '—' }}</span></div>
+</div>
 {% if checkliste %}{% set cl = checkliste %}
-<div class="panel closing" id="checkliste" style="margin-bottom:16px">
+<div class="panel closing" id="checkliste">
   <header><h2>Abschluss {{ year }}</h2><span class="hint">Schritt für Schritt · was aeradex erkennt, hakt es selbst ab</span>
     <span class="pill {{ 'ok' if cl.erledigt == cl.total else 'info' }}">{{ cl.erledigt }} von {{ cl.total }} erledigt</span></header>
   <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ cl.total }}" aria-valuenow="{{ cl.erledigt }}"><span style="width:{{ (100 * cl.erledigt / cl.total)|round|int if cl.total else 0 }}%"></span></div>
@@ -59,13 +78,17 @@
   </table></div>
 </div>
 {% endif %}
-{% if st.differenz|float %}<div class="alert error">Bilanzdifferenz {{ st.differenz|chf }}: Aktiven und Passiven stimmen nicht überein. aeradex check zeigt die Ursache.</div>{% endif %}
-<div class="figures">
-  <div class="figure"><span class="label">Total Aktiven</span><span class="value">{{ st.total_aktiven|chf }}</span></div>
-  <div class="figure"><span class="label">Jahresergebnis</span><span class="value">{{ st.jahresergebnis|chf }}</span><span class="meta">{{ 'Gewinn' if st.jahresergebnis|float > 0 else 'Verlust' if st.jahresergebnis|float < 0 else 'ausgeglichen' }}</span></div>
-  <div class="figure"><span class="label">{{ "Bilanzverlust" if g.bilanzgewinn|neg else "Bilanzgewinn" }}</span><span class="value">{{ g.bilanzgewinn|chf }}</span><span class="meta">Vortrag {{ g.gewinnvortrag|chf }} + Ergebnis</span></div>
-  <div class="figure"><span class="label">Gesperrt bis</span><span class="value" style="font-size:18px">{{ settings.sperre_bis|datum or '—' }}</span></div>
+{% elif tab == "buchungen" %}
+{% if checkliste %}
+<div class="closingcards">
+  {% for ph in checkliste.phasen if ph.key in ("bewerten", "buchen") %}{% for s in ph.schritte %}
+  <a class="panel card{{ ' done' if s.erledigt }}{{ ' muted' if s.status == 'entfaellt' }}" href="{{ s.link }}">
+    <span class="head"><strong>{{ s.titel }}</strong>{% if s.status == "ok" %}<span class="pill ok">erledigt</span>{% elif s.markiert %}<span class="pill ok">✓ abgehakt</span>{% elif s.status == "entfaellt" %}<span class="pill muted">entfällt</span>{% elif s.status == "offen" %}<span class="pill warn">offen</span>{% else %}<span class="pill info">prüfen</span>{% endif %}</span>
+    <span class="small muted">{{ s.text }}</span>
+  </a>
+  {% endfor %}{% endfor %}
 </div>
+{% endif %}
 <div class="panel" id="abgrenzungen">
   <header><h2>Rechnungsabgrenzungen 31.12.{{ year }}</h2><span class="hint">aus «Leistung von–bis» der Buchungen · Anteil nach Tagen · Auflösung am 01.01.{{ year + 1 }}</span></header>
   {% if abgr_fehler %}<div class="body"><div class="alert warn">{{ abgr_fehler }}</div></div>
@@ -96,6 +119,46 @@
   <div class="body"><span class="small muted">Keine Buchung mit Leistungszeitraum über den Jahreswechsel. Erfasse «Leistung von/bis» bei Rechnungen und Belegen (Abo, Miete, Versicherung, Lizenz) — oder schreibe «· Leistung 01.10.{{ year }}–30.09.{{ year + 1 }}» in den Buchungstext.</span></div>
   {% endif %}
 </div>
+{% if fx %}
+<div class="panel" id="fremdwaehrung">
+  <header><h2>Fremdwährungen per {{ fx.stichtag|datum }}</h2>
+    <form method="get" class="actions"><input type="hidden" name="jahr" value="{{ year }}">{% if fx.bewertet %}<span class="pill ok">bewertet</span>{% endif %}
+      <label class="small muted" for="fx-st">Stichtag</label><input class="input num" id="fx-st" type="date" name="stichtag" value="{{ fx.stichtag.isoformat() }}" min="{{ year }}-01-01" max="{{ year }}-12-31" onchange="this.form.submit()"></form></header>
+  <div class="body"><p class="small muted">Saldo in der Fremdwährung × BAZG-Kurs des Stichtags (die Kurse der ESTV) gegen den CHF-Buchwert.
+    {% if fx.erledigt %}Bereits bewertet: {% for d in fx.erledigt %}<a class="link" href="/abschluss/buchungen?jahr={{ year }}&stichtag={{ d }}">{{ d|datum }}</a>{{ ", " if not loop.last }}{% endfor %}.{% endif %}</p></div>
+  {% if fx.fehler %}<div class="body"><p class="small muted">{{ fx.fehler }}</p></div>{% endif %}
+  {% if fx.konten %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Konto</th><th class="right">Saldo FW</th><th class="right">Kurs</th><th class="right">CHF zum Kurs</th><th class="right">CHF gebucht</th><th class="right">Kursdifferenz</th></tr></thead>
+    <tbody>{% for k in fx.konten %}
+      <tr class="row"><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ year }}">{{ k.konto }}</a> {{ k.name }}</td><td class="right num">{{ k.waehrung }} {{ k.fw|chf }}</td><td class="right num">{{ k.kurs }}</td><td class="right num">{{ k.chf_neu|chf }}</td><td class="right num">{{ k.chf_buch|chf }}</td><td class="right num">{{ k.differenz|chf(false, true) }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if fx.kreditoren %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Offene Kreditoren in Fremdwährung</th><th class="right">Offen FW</th><th class="right">Kurs</th><th class="right">CHF zum Kurs</th><th class="right">CHF Buchwert</th><th class="right">Kursdifferenz</th></tr></thead>
+    <tbody>{% for k in fx.kreditoren %}
+      <tr class="row"><td><a class="link" href="/kreditoren/rechnung/{{ k.nummer }}">{{ k.nummer }}</a> {{ k.name }}</td><td class="right num">{{ k.waehrung }} {{ k.fw|chf }}</td><td class="right num">{{ k.kurs }}</td><td class="right num">{{ k.chf_neu|chf }}</td><td class="right num">{{ k.chf_buch|chf }}</td><td class="right num">{{ (-(k.differenz|float))|chf(false, true) }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if fx.debitoren %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Offene Kundenrechnungen in Fremdwährung</th><th class="right">Offen FW</th><th class="right">Kurs</th><th class="right">CHF zum Kurs</th><th class="right">CHF Buchwert</th><th class="right">Kursdifferenz</th></tr></thead>
+    <tbody>{% for k in fx.debitoren %}
+      <tr class="row"><td><a class="link" href="/debitoren/rechnung/{{ k.nummer }}">{{ k.nummer }}</a> {{ k.name }}</td><td class="right num">{{ k.waehrung }} {{ k.fw|chf }}</td><td class="right num">{{ k.kurs }}</td><td class="right num">{{ k.chf_neu|chf }}</td><td class="right num">{{ k.chf_buch|chf }}</td><td class="right num">{{ k.differenz|chf(false, true) }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if not fx.bewertet and (fx.konten or fx.kreditoren or fx.debitoren) and not st.abgeschlossen %}
+  <form class="body" hx-post="/abschluss/bewertung" hx-target="find .errors" hx-confirm="Kursdifferenzen per {{ fx.stichtag|datum }} buchen?">
+    <input type="hidden" name="jahr" value="{{ year }}"><input type="hidden" name="stichtag" value="{{ fx.stichtag.isoformat() }}">
+    {{ errors() }}<div class="formfoot"><span class="small muted">Gewinne auf {{ settings.konto('kursgewinn') }}, Verluste auf {{ settings.konto('kursverlust') }}; die Bilanz zeigt danach die Fremdwährungskonten zum Stichtagskurs.</span><button class="btn primary" type="submit">Bewertung buchen</button></div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 {% if mwst_jahr %}{% set mj = mwst_jahr %}
 <div class="panel" id="mwst">
   <header><h2>MWST-Jahresabschluss {{ year }}</h2>{% if mj.ok %}<span class="pill ok">abgestimmt</span>{% elif not mj.fehler %}<span class="pill warn">offen</span>{% endif %}
@@ -109,6 +172,47 @@
   </div>
 </div>
 {% endif %}
+{% elif tab == "jahresrechnung" %}
+{% if st.differenz|float %}<div class="alert error">Bilanzdifferenz {{ st.differenz|chf }}: Aktiven und Passiven stimmen nicht überein. aeradex check zeigt die Ursache.</div>{% endif %}
+<div class="grid2 even">{{ stmt("Aktiven", st.aktiven, st) }}{{ stmt("Passiven", st.passiven, st) }}</div>
+{{ stmt("Erfolgsrechnung", st.erfolg, st) }}
+<div>
+  {% if st.eigenkapital %}{% set ek = st.eigenkapital %}
+  <div class="panel" id="eigenkapital">
+    <header><h2>{{ ek.name }} {{ year }}</h2><span class="hint">geht bei der Eröffnung {{ year + 1 }} ins Konto {{ ek.konto }}</span></header>
+    {{ ergebnis_tabelle(st) }}
+  </div>
+  {% else %}
+  <div class="panel">
+    <header><h2>Gewinnverwendung {{ year }}</h2>{% if g.gebucht %}<span class="pill ok">gebucht</span>{% endif %}</header>
+    {{ ergebnis_tabelle(st) }}
+    {% if not g.gebucht %}
+    <form class="body" hx-post="/abschluss/gewinnverwendung" hx-target="find .errors">
+      <input type="hidden" name="jahr" value="{{ year }}">
+      <div class="form"><div class="field"><label>Dividende CHF</label><input class="input num" name="dividende" value="{{ g.dividende }}"></div><div class="field"><label>Gesetzliche Reserve CHF</label><input class="input num" name="reserve" value="{{ g.reserve }}"></div></div>
+      {{ errors() }}<div class="formfoot"><span class="small muted">Antrag an die GV</span><button class="btn" type="submit">Antrag speichern</button></div>
+    </form>
+    {% if g.dividende|float or g.reserve|float %}
+    <form class="body" hx-post="/abschluss/gewinnverwendung-buchen" hx-target="find .errors" hx-confirm="Gewinnverwendung {{ year }} buchen?" style="border-top:1px solid var(--rule)">
+      <input type="hidden" name="jahr" value="{{ year }}">
+      <div class="field"><label>Datum des GV-Beschlusses ({{ year + 1 }})</label><input class="input" type="date" name="datum" value="{{ gv_date }}"></div>
+      {{ errors() }}<div class="formfoot"><span class="small muted">Bucht Gewinnvortrag an Dividende / Reserve</span><button class="btn primary" type="submit">Nach GV-Beschluss buchen</button></div>
+    </form>{% endif %}
+    {% elif g.dividende|float %}
+    {% if div %}
+    <div class="body"><span class="small">Dividende ausbezahlt am {{ div.datum|datum }}: netto {{ div.netto|chf }}, Verrechnungssteuer {{ div.vst|chf }} — Formular 103 und Zahlung an die ESTV bis {{ div.frist|datum }}.</span></div>
+    {% else %}
+    <form class="body" hx-post="/abschluss/dividende" hx-target="find .errors" hx-confirm="Dividende {{ year }} auszahlen?" style="border-top:1px solid var(--rule)">
+      <input type="hidden" name="jahr" value="{{ year }}">
+      <div class="form"><div class="field"><label>Auszahlungsdatum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></div>
+        <div class="field"><span class="lbl">Aufteilung</span><span class="small">netto 65 % {{ (g.dividende|float * 0.65)|round(2)|chf }} an die Gesellschafter · Verrechnungssteuer 35 % {{ (g.dividende|float * 0.35)|round(2)|chf }}</span></div></div>
+      {{ errors() }}<div class="formfoot"><span class="small muted">Die Verrechnungssteuer ist innert 30 Tagen mit Formular 103 zu deklarieren und zu bezahlen (bei Beteiligungen ≥ 10 % evtl. Meldeverfahren, Formular 106).</span><button class="btn primary" type="submit">Dividende auszahlen</button></div>
+    </form>{% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% elif tab == "unterlagen" %}
 <div class="panel" id="unterlagen">
   <header><h2>Unterlagen {{ year }}</h2><span class="hint">für Treuhand, Revision und Archiv (10 Jahre) · {% if st.abgeschlossen %}gesperrtes Jahr{% else %}ohne Sperre mit Vermerk «ENTWURF»{% endif %}</span></header>
   <form method="get" action="/abschluss/unterlagen.zip">
@@ -146,84 +250,7 @@
     {% endif %}
   </div>
 </div>
-{% if fx %}
-<div class="panel" id="fremdwaehrung">
-  <header><h2>Fremdwährungen per {{ fx.stichtag|datum }}</h2>
-    <form method="get" class="actions"><input type="hidden" name="jahr" value="{{ year }}">{% if fx.bewertet %}<span class="pill ok">bewertet</span>{% endif %}
-      <label class="small muted" for="fx-st">Stichtag</label><input class="input num" id="fx-st" type="date" name="stichtag" value="{{ fx.stichtag.isoformat() }}" min="{{ year }}-01-01" max="{{ year }}-12-31" onchange="this.form.submit()"></form></header>
-  <div class="body"><p class="small muted">Saldo in der Fremdwährung × BAZG-Kurs des Stichtags (die Kurse der ESTV) gegen den CHF-Buchwert.
-    {% if fx.erledigt %}Bereits bewertet: {% for d in fx.erledigt %}<a class="link" href="/abschluss?jahr={{ year }}&stichtag={{ d }}">{{ d|datum }}</a>{{ ", " if not loop.last }}{% endfor %}.{% endif %}</p></div>
-  {% if fx.fehler %}<div class="body"><p class="small muted">{{ fx.fehler }}</p></div>{% endif %}
-  {% if fx.konten %}
-  <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Konto</th><th class="right">Saldo FW</th><th class="right">Kurs</th><th class="right">CHF zum Kurs</th><th class="right">CHF gebucht</th><th class="right">Kursdifferenz</th></tr></thead>
-    <tbody>{% for k in fx.konten %}
-      <tr class="row"><td><a class="link" href="/konten/{{ k.konto }}?jahr={{ year }}">{{ k.konto }}</a> {{ k.name }}</td><td class="right num">{{ k.waehrung }} {{ k.fw|chf }}</td><td class="right num">{{ k.kurs }}</td><td class="right num">{{ k.chf_neu|chf }}</td><td class="right num">{{ k.chf_buch|chf }}</td><td class="right num">{{ k.differenz|chf(false, true) }}</td></tr>
-    {% endfor %}</tbody>
-  </table></div>
-  {% endif %}
-  {% if fx.kreditoren %}
-  <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Offene Kreditoren in Fremdwährung</th><th class="right">Offen FW</th><th class="right">Kurs</th><th class="right">CHF zum Kurs</th><th class="right">CHF Buchwert</th><th class="right">Kursdifferenz</th></tr></thead>
-    <tbody>{% for k in fx.kreditoren %}
-      <tr class="row"><td><a class="link" href="/kreditoren/rechnung/{{ k.nummer }}">{{ k.nummer }}</a> {{ k.name }}</td><td class="right num">{{ k.waehrung }} {{ k.fw|chf }}</td><td class="right num">{{ k.kurs }}</td><td class="right num">{{ k.chf_neu|chf }}</td><td class="right num">{{ k.chf_buch|chf }}</td><td class="right num">{{ (-(k.differenz|float))|chf(false, true) }}</td></tr>
-    {% endfor %}</tbody>
-  </table></div>
-  {% endif %}
-  {% if fx.debitoren %}
-  <div class="tablewrap"><table class="ledger">
-    <thead><tr><th>Offene Kundenrechnungen in Fremdwährung</th><th class="right">Offen FW</th><th class="right">Kurs</th><th class="right">CHF zum Kurs</th><th class="right">CHF Buchwert</th><th class="right">Kursdifferenz</th></tr></thead>
-    <tbody>{% for k in fx.debitoren %}
-      <tr class="row"><td><a class="link" href="/debitoren/rechnung/{{ k.nummer }}">{{ k.nummer }}</a> {{ k.name }}</td><td class="right num">{{ k.waehrung }} {{ k.fw|chf }}</td><td class="right num">{{ k.kurs }}</td><td class="right num">{{ k.chf_neu|chf }}</td><td class="right num">{{ k.chf_buch|chf }}</td><td class="right num">{{ k.differenz|chf(false, true) }}</td></tr>
-    {% endfor %}</tbody>
-  </table></div>
-  {% endif %}
-  {% if not fx.bewertet and (fx.konten or fx.kreditoren or fx.debitoren) and not st.abgeschlossen %}
-  <form class="body" hx-post="/abschluss/bewertung" hx-target="find .errors" hx-confirm="Kursdifferenzen per {{ fx.stichtag|datum }} buchen?">
-    <input type="hidden" name="jahr" value="{{ year }}"><input type="hidden" name="stichtag" value="{{ fx.stichtag.isoformat() }}">
-    {{ errors() }}<div class="formfoot"><span class="small muted">Gewinne auf {{ settings.konto('kursgewinn') }}, Verluste auf {{ settings.konto('kursverlust') }}; die Bilanz zeigt danach die Fremdwährungskonten zum Stichtagskurs.</span><button class="btn primary" type="submit">Bewertung buchen</button></div>
-  </form>
-  {% endif %}
-</div>
-{% endif %}
-<div class="grid2 even">{{ stmt("Aktiven", st.aktiven, st) }}{{ stmt("Passiven", st.passiven, st) }}</div>
-{{ stmt("Erfolgsrechnung", st.erfolg, st) }}
-
-<div class="grid2 even">
-  {% if st.eigenkapital %}{% set ek = st.eigenkapital %}
-  <div class="panel" id="eigenkapital">
-    <header><h2>{{ ek.name }} {{ year }}</h2><span class="hint">geht bei der Eröffnung {{ year + 1 }} ins Konto {{ ek.konto }}</span></header>
-    {{ ergebnis_tabelle(st) }}
-  </div>
-  {% else %}
-  <div class="panel">
-    <header><h2>Gewinnverwendung {{ year }}</h2>{% if g.gebucht %}<span class="pill ok">gebucht</span>{% endif %}</header>
-    {{ ergebnis_tabelle(st) }}
-    {% if not g.gebucht %}
-    <form class="body" hx-post="/abschluss/gewinnverwendung" hx-target="find .errors">
-      <input type="hidden" name="jahr" value="{{ year }}">
-      <div class="form"><div class="field"><label>Dividende CHF</label><input class="input num" name="dividende" value="{{ g.dividende }}"></div><div class="field"><label>Gesetzliche Reserve CHF</label><input class="input num" name="reserve" value="{{ g.reserve }}"></div></div>
-      {{ errors() }}<div class="formfoot"><span class="small muted">Antrag an die GV</span><button class="btn" type="submit">Antrag speichern</button></div>
-    </form>
-    {% if g.dividende|float or g.reserve|float %}
-    <form class="body" hx-post="/abschluss/gewinnverwendung-buchen" hx-target="find .errors" hx-confirm="Gewinnverwendung {{ year }} buchen?" style="border-top:1px solid var(--rule)">
-      <input type="hidden" name="jahr" value="{{ year }}">
-      <div class="field"><label>Datum des GV-Beschlusses ({{ year + 1 }})</label><input class="input" type="date" name="datum" value="{{ gv_date }}"></div>
-      {{ errors() }}<div class="formfoot"><span class="small muted">Bucht Gewinnvortrag an Dividende / Reserve</span><button class="btn primary" type="submit">Nach GV-Beschluss buchen</button></div>
-    </form>{% endif %}
-    {% elif g.dividende|float %}
-    {% if div %}
-    <div class="body"><span class="small">Dividende ausbezahlt am {{ div.datum|datum }}: netto {{ div.netto|chf }}, Verrechnungssteuer {{ div.vst|chf }} — Formular 103 und Zahlung an die ESTV bis {{ div.frist|datum }}.</span></div>
-    {% else %}
-    <form class="body" hx-post="/abschluss/dividende" hx-target="find .errors" hx-confirm="Dividende {{ year }} auszahlen?" style="border-top:1px solid var(--rule)">
-      <input type="hidden" name="jahr" value="{{ year }}">
-      <div class="form"><div class="field"><label>Auszahlungsdatum</label><input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></div>
-        <div class="field"><span class="lbl">Aufteilung</span><span class="small">netto 65 % {{ (g.dividende|float * 0.65)|round(2)|chf }} an die Gesellschafter · Verrechnungssteuer 35 % {{ (g.dividende|float * 0.35)|round(2)|chf }}</span></div></div>
-      {{ errors() }}<div class="formfoot"><span class="small muted">Die Verrechnungssteuer ist innert 30 Tagen mit Formular 103 zu deklarieren und zu bezahlen (bei Beteiligungen ≥ 10 % evtl. Meldeverfahren, Formular 106).</span><button class="btn primary" type="submit">Dividende auszahlen</button></div>
-    </form>{% endif %}
-    {% endif %}
-  </div>
-  {% endif %}
+{% else %}
   <div class="panel" id="sperre">
     <header><h2>Periode sperren</h2><span class="hint">GeBüV: abgeschlossene Perioden bleiben unverändert</span></header>
     <form class="body" hx-post="/abschluss/sperre" hx-target="find .errors" hx-confirm="Buchungen bis zu diesem Datum endgültig sperren? Korrekturen gehen danach nur noch als neue Buchung.">
@@ -241,8 +268,14 @@
     </details>{% endif %}
     {% if verlauf %}<div class="body"><span class="lbl">Verlauf</span>{% for v in verlauf %}<span class="small">{{ v.am|datum }} · {{ v.aktion }} {{ v.bis|datum if v.bis }}{% if v.grund %} · «{{ v.grund }}»{% endif %}</span>{% endfor %}</div>{% endif %}
   </div>
+{% if year == years|max and kann_eroeffnen %}
+<div class="panel">
+  <header><h2>Neues Geschäftsjahr {{ naechstes_jahr }}</h2><span class="hint">die Salden per 31.12.{{ year }} werden vorgetragen</span></header>
+  <form class="body" hx-post="/abschluss/jahr-eroeffnen" hx-target="find .errors" hx-confirm="Geschäftsjahr {{ naechstes_jahr }} eröffnen? Die Salden per 31.12.{{ year }} werden vorgetragen; {{ year }} bleibt bearbeitbar, bis du es sperrst.">
+    {{ errors() }}<div class="formfoot"><span class="small muted">Legt {{ naechstes_jahr }} an, auch vor der ersten Buchung. {{ year }} bleibt bearbeitbar, bis du es sperrst.</span><button class="btn" type="submit">{{ naechstes_jahr }} eröffnen</button></div>
+  </form>
 </div>
-
+{% endif %}
 <div class="panel" id="anhang">
   <header><h2>Anhang {{ year }} (Art. 959c OR)</h2><span class="hint">{{ '## Überschrift, darunter Text' if anhang_an else 'weggelassen' }}</span></header>
   {% if einzelfirma %}<form class="body" hx-post="/abschluss/{{ 'anhang-aus' if anhang_an else 'anhang-an' }}" hx-target="find .errors">
@@ -257,4 +290,5 @@
     {{ errors() }}<div class="formfoot"><span class="small muted">Wird in abschluss/{{ year }}/anhang.md gespeichert und erscheint in der Jahresrechnung.</span><button class="btn" type="submit">Anhang speichern</button></div>
   </form>{% endif %}
 </div>
+{% endif %}
 {% endblock %}

@@ -455,7 +455,7 @@ def _core_steps(book: Book, year: int) -> list[dict]:
     if any(a.is_foreign for a in book.accounts.values()):
         done = (book.root / "bewertung" / f"{year}-12-31.yaml").exists()
         add("fremdwaehrung", "bewerten", "Fremdwährungen bewertet", "ok" if done else "offen",
-            "Fremdwährungskonten zum Kurs per 31.12. bewerten.", f"/abschluss{q}#fremdwaehrung")
+            "Fremdwährungskonten zum Kurs per 31.12. bewerten.", f"/abschluss/buchungen{q}#fremdwaehrung")
 
     # 3 Abschlussbuchungen
     try:
@@ -466,7 +466,7 @@ def _core_steps(book: Book, year: int) -> list[dict]:
     add("abgrenzungen", "buchen", "Rechnungsabgrenzungen", "offen" if n else "ok",
         f"{n} Abgrenzung(en) noch nicht gebucht." if n else
         ("Alle gebucht." if total else "Keine Buchung mit Leistungszeitraum über den Jahreswechsel — "
-         "Versicherungen, Miete im Voraus oder offene Rechnungen des Jahres prüfen."), f"/abschluss{q}#abgrenzungen")
+         "Versicherungen, Miete im Voraus oder offene Rechnungen des Jahres prüfen."), f"/abschluss/buchungen{q}#abgrenzungen")
     if cfg["methode"] != "keine" and cfg["abrechnungsart"] == "vereinnahmt":
         done = mwst.load_abgrenzung(book, year)
         add("mwst_abgrenzung", "buchen", "MWST-Abgrenzung offene Posten", "ok" if done else "offen",
@@ -485,7 +485,7 @@ def _core_steps(book: Book, year: int) -> list[dict]:
             ("Diese Privatkonten werden nicht ins Eigenkapital abgeschlossen: "
              + ", ".join(f"{a.nr} {a.name}" for a in loose) + " — unter Konten «Abschluss ins Eigenkapital» setzen.")
             if loose else f"Die Privatkonten gehen bei der Eröffnung {year + 1} automatisch ins Konto {eq}; "
-                          "keine Umbuchung nötig.", f"/konten{q}" if loose else f"/abschluss{q}#eigenkapital")
+                          "keine Umbuchung nötig.", f"/konten{q}" if loose else f"/abschluss/jahresrechnung{q}#eigenkapital")
 
     # 4 Kontrolle
     errors = [i for i in checks.run(book) if i.level == "fehler"]
@@ -510,11 +510,11 @@ def _core_steps(book: Book, year: int) -> list[dict]:
     add("jahresrechnung", "abschliessen", "Jahresrechnung geprüft", "hinweis",
         "Bilanz und Erfolgsrechnung in der Vorschau durchsehen, mit dem Vorjahr vergleichen.", f"/abschluss/vorschau{q}")
     add("unterlagen", "abschliessen", "Unterlagen an Treuhand / Steuererklärung", "hinweis",
-        "Abschlussunterlagen als ZIP herunterladen und weitergeben.", f"/abschluss{q}#unterlagen")
+        "Abschlussunterlagen als ZIP herunterladen und weitergeben.", f"/abschluss/unterlagen{q}")
     lock = book.settings.sperre_bis
     add("sperre", "abschliessen", f"Geschäftsjahr {year} gesperrt", "ok" if lock and lock >= end else "offen",
         f"Gesperrt bis {lock:%d.%m.%Y}." if lock and lock >= end else
-        "Zum Schluss sperren — danach sind die Buchungen unveränderlich.", f"/abschluss{q}#sperre")
+        "Zum Schluss sperren — danach sind die Buchungen unveränderlich.", f"/abschluss/abschliessen{q}#sperre")
     return out
 
 

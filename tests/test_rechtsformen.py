@@ -92,7 +92,7 @@ def test_einzelfirma_closing_page_and_pdf(tmp_path):
     api.post_entry(book, "2026-05-01", "2851", "1020", "700", "AHV Akonto Inhaber")
     with TestClient(create_app(book.root, token="tok")) as c:
         c.get("/?t=tok", follow_redirects=False)
-        page = c.get("/abschluss?jahr=2026")
+        page = c.get("/abschluss/jahresrechnung?jahr=2026")
         assert page.status_code == 200
         assert "Eigenkapital nach Abschluss" in page.text and "Privat AHV" in page.text
         assert "Gewinnverwendung" not in page.text

@@ -185,7 +185,7 @@ def todo_items(book: Book) -> list[dict]:
             items.append({"level": "warn" if date.today() > date(due, 12, 31) else "info",
                           "title": f"Abschluss {due}: {cl['erledigt']} von {cl['total']} erledigt",
                           "detail": " · ".join(todo[:3]) + (" …" if len(todo) > 3 else ""), "tag": "Abschluss",
-                          "href": f"/abschluss?jahr={due}#checkliste"})
+                          "href": f"/abschluss?jahr={due}"})
     from .. import kreditoren as kred
     soon = (date.today() + timedelta(days=7)).isoformat()
     due = [r for r in kred.open_payables(book)["posten"] if r["status"] == "offen" and r["faellig"] <= soon]
@@ -1314,45 +1314,66 @@ async def lohnausweis_erstellen(ui: UI, request: Request):
 
 # ---------- Abschluss ----------
 
+ABSCHLUSS_TABS = ("uebersicht", "buchungen", "jahresrechnung", "unterlagen", "abschliessen")
+
+
 async def abschluss(ui: UI, request: Request):
+    """Abschluss in tabs: Übersicht (checklist), Abschlussbuchungen, Jahresrechnung, Unterlagen, Abschliessen.
+    Each tab computes only what it shows."""
     book = ui.book()
     year = year_param(request, book)
+    tab = request.path_params.get("tab", "uebersicht")
+    if tab not in ABSCHLUSS_TABS:
+        return HTMLResponse("Unbekannte Seite", status_code=404)
     st = statements.year_end_statement(book, year)
-    lock_path = checks.locks_path(book)
-    from ..files import read_yaml
-    verlauf = (read_yaml(lock_path).get("verlauf") or []) if lock_path.exists() else []
-    fx_view = None
+    ctx = {"tab": tab, "checkliste": _closing_list(book, year)}
+    cl = ctx["checkliste"]
+    ctx["buchungen_offen"] = sum(1 for ph in (cl or {}).get("phasen", []) if ph["key"] in ("bewerten", "buchen")
+                                 for s in ph["schritte"] if not s["erledigt"])
+    if tab == "uebersicht":
+        ctx["jahreswechsel"] = jahreswechsel.checklist(book, year)
+    elif tab == "buchungen":
+        ctx["fx"] = _fx_view(book, request, year, st)
+        ctx.update(_abgrenzungen(book, year), mwst_jahr=_mwst_year(book, year))
+    elif tab == "jahresrechnung":
+        from ..files import read_yaml
+        ctx.update(gv_date=date(year + 1, 6, 30).isoformat(),
+                   div=(read_yaml(statements.dividend_path(book, year)) if statements.dividend_path(book, year).exists()
+                        else None))
+    elif tab == "unterlagen":
+        from .. import dossier
+        ctx.update(unterlagen=dossier.overview(book, year), luecken=dossier.belegluecken(book, year))
+    else:
+        from ..files import read_yaml
+        lock_path = checks.locks_path(book)
+        verlauf = (read_yaml(lock_path).get("verlauf") or []) if lock_path.exists() else []
+        ctx.update(verlauf=list(reversed(verlauf))[:5], anhang=statements.anhang(book, year),
+                   anhang_an=statements.anhang_enabled(book),
+                   einzelfirma=book.settings.rechtsform_art == "einzelfirma",
+                   naechstes_jahr=jahreswechsel.next_year(book),
+                   kann_eroeffnen=jahreswechsel.next_year(book) <= date.today().year + 1)
+    return ui.render(request, "abschluss.html", book=book, year=year, st=st, years=book.years(), **ctx)
+
+
+def _fx_view(book: Book, request: Request, year: int, st: dict) -> dict | None:
     from .. import kreditoren as kred
     has_fw_bills = (any(kred.is_foreign(m) for m in kred.bills(book).values())
                     or any(invoices.is_foreign(m) for m in invoices.invoices(book).values()))
-    if st.get("fremdwaehrung") or has_fw_bills:
-        from .. import fx
-        try:
-            stichtag = date.fromisoformat(request.query_params.get("stichtag", ""))
-        except ValueError:
-            stichtag = min(date(year, 12, 31), date.today())
-        done = sorted(p.stem for p in (book.root / "bewertung").glob(f"{year}-*.yaml"))
-        try:
-            fx_view = {"stichtag": stichtag, "konten": fx.preview(book, stichtag), "bewertet": fx.path(book, stichtag).exists(),
-                       "erledigt": done, "kreditoren": fx.preview_bills(book, stichtag),
-                       "debitoren": fx.preview_invoices(book, stichtag)}
-        except BookError as exc:          # no rates yet (future date, offline)
-            fx_view = {"stichtag": stichtag, "konten": [], "bewertet": fx.path(book, stichtag).exists(), "fehler": str(exc),
-                       "erledigt": done}
-    from .. import dossier
-    unterlagen = dossier.overview(book, year)
-    luecken = dossier.belegluecken(book, year)
-    return ui.render(request, "abschluss.html", book=book, year=year, st=st, years=book.years(),
-                     unterlagen=unterlagen, luecken=luecken,
-                     anhang=statements.anhang(book, year), anhang_an=statements.anhang_enabled(book),
-                     einzelfirma=book.settings.rechtsform_art == "einzelfirma", verlauf=list(reversed(verlauf))[:5],
-                     gv_date=date(year + 1, 6, 30).isoformat(), fx=fx_view,
-                     div=(read_yaml(statements.dividend_path(book, year)) if statements.dividend_path(book, year).exists()
-                          else None),
-                     jahreswechsel=jahreswechsel.checklist(book, year), naechstes_jahr=jahreswechsel.next_year(book),
-                     checkliste=_closing_list(book, year),
-                     **_abgrenzungen(book, year), mwst_jahr=_mwst_year(book, year),
-                     kann_eroeffnen=jahreswechsel.next_year(book) <= date.today().year + 1)
+    if not (st.get("fremdwaehrung") or has_fw_bills):
+        return None
+    from .. import fx
+    try:
+        stichtag = date.fromisoformat(request.query_params.get("stichtag", ""))
+    except ValueError:
+        stichtag = min(date(year, 12, 31), date.today())
+    done = sorted(p.stem for p in (book.root / "bewertung").glob(f"{year}-*.yaml"))
+    try:
+        return {"stichtag": stichtag, "konten": fx.preview(book, stichtag), "bewertet": fx.path(book, stichtag).exists(),
+                "erledigt": done, "kreditoren": fx.preview_bills(book, stichtag),
+                "debitoren": fx.preview_invoices(book, stichtag)}
+    except BookError as exc:          # no rates yet (future date, offline)
+        return {"stichtag": stichtag, "konten": [], "bewertet": fx.path(book, stichtag).exists(), "fehler": str(exc),
+                "erledigt": done}
 
 
 def _closing_list(book: Book, year: int) -> dict | None:
@@ -1411,7 +1432,7 @@ async def abschluss_buchung_post(ui: UI, request: Request):
     f = await request.form()
     art = request.path_params["art"]
     year = int(f.get("jahr") or current_year(ui.book()))
-    to = f"/abschluss?jahr={year}#checkliste"
+    to = f"/abschluss/buchungen?jahr={year}"
     if request.url.path.endswith("/entfernen"):
         return await act(request, api.closing_entry_remove, to, ui.book(), year, art)
     texts, amounts = f.getlist("text"), f.getlist("betrag")
@@ -1492,6 +1513,12 @@ async def abschluss_aktion(ui: UI, request: Request):
     book = ui.book()
     year = int(f.get("jahr") or current_year(book))
     to = f"/abschluss?jahr={year}"
+    tab = {"gewinnverwendung": "jahresrechnung", "gewinnverwendung-buchen": "jahresrechnung",
+           "dividende": "jahresrechnung", "bewertung": "buchungen", "abgrenzungen": "buchungen", "anhang": "abschliessen",
+           "anhang-an": "abschliessen", "anhang-aus": "abschliessen", "sperre": "abschliessen",
+           "entsperren": "abschliessen"}.get(aktion)
+    if tab:
+        to = f"/abschluss/{tab}?jahr={year}"
     if aktion == "gewinnverwendung":
         return await act(request, api.allocation_set, to, book, year, f.get("dividende") or "0", f.get("reserve") or "0")
     if aktion == "gewinnverwendung-buchen":
@@ -1510,7 +1537,7 @@ async def abschluss_aktion(ui: UI, request: Request):
         neu = jahreswechsel.next_year(book)
         return await act(request, api.year_open, f"/abschluss?jahr={neu}", book, neu)
     if aktion == "schritt":
-        return await act(request, api.closing_mark, to + "#checkliste", book, year, f.get("schritt", ""),
+        return await act(request, api.closing_mark, to, book, year, f.get("schritt", ""),
                          f.get("erledigt") == "1", f.get("notiz", ""), _who(request))
     if aktion == "sperre":
         return await act(request, api.lock, to, book, f.get("bis"))
@@ -2787,6 +2814,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/abschluss/vorschau", h(abschluss_vorschau)),
         Route("/abschluss/gruppe", h(abschluss_gruppe), methods=["POST"]),
         Route("/abschluss/buchung/{art:str}", h(abschluss_buchung)),
+        Route("/abschluss/{tab:str}", h(abschluss)),
         Route("/abschluss/buchung/{art:str}", h(abschluss_buchung_post), methods=["POST"]),
         Route("/abschluss/buchung/{art:str}/entfernen", h(abschluss_buchung_post), methods=["POST"]),
         Route("/abschluss/{aktion:str}", h(abschluss_aktion), methods=["POST"]),

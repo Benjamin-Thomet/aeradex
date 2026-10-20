@@ -3,7 +3,7 @@
 {% block title %}{{ v.titel }} {{ year }}{% endblock %}
 {% block main %}
 {% set g = v.gebucht %}
-<div class="crumbs"><a href="/abschluss?jahr={{ year }}#checkliste">Abschluss {{ year }}</a> /</div>
+<div class="crumbs"><a href="/abschluss?jahr={{ year }}">Abschluss {{ year }}</a> / <a href="/abschluss/buchungen?jahr={{ year }}">Abschlussbuchungen</a> /</div>
 <div class="topbar">
   <div><h1>{{ v.titel }} per 31.12.{{ year }}</h1>
     <div class="sub">{% if g %}<span class="pill ok">gebucht · Beleg {{ g.beleg }}</span>{% if v.veraltet %} <span class="pill warn">Kontostand hat sich geändert — neu buchen</span>{% endif %}{% else %}<span class="pill warn">noch nicht gebucht</span>{% endif %}</div></div>

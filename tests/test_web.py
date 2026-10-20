@@ -532,12 +532,12 @@ def test_foreign_currency_screens(client, root, monkeypatch):
     assert "EUR 100.00" in client.get("/journal?jahr=2026&monat=3").text
     blatt = client.get("/konten/1021?jahr=2026").text
     assert "Saldo EUR" in blatt and "95.00" in blatt
-    assert "Fremdwährungen per" in client.get("/abschluss?jahr=2026").text
+    assert "Fremdwährungen per" in client.get("/abschluss/buchungen?jahr=2026").text
     assert errors(root) == []
 
 
 def test_unterlagen_downloads(client, root):
-    page = client.get("/abschluss").text
+    page = client.get("/abschluss/unterlagen").text
     assert 'id="unterlagen"' in page and "/abschluss/unterlagen/journal?jahr=2026&format=csv" in page
     r = client.get("/abschluss/unterlagen/journal?jahr=2026&format=csv")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
@@ -721,7 +721,7 @@ def test_journal_filter_select_preview_and_recode(client, root):
 
 
 def test_open_next_business_year_from_abschluss(client, root):
-    page = client.get("/abschluss?jahr=2026").text
+    page = client.get("/abschluss/abschliessen?jahr=2026").text
     assert "Neues Geschäftsjahr 2027" in page
     assert ok(post(client, "/abschluss/jahr-eroeffnen", {"jahr": "2026"})) == "/abschluss?jahr=2027"
     page = client.get("/abschluss?jahr=2027").text
@@ -752,7 +752,7 @@ def test_service_period_from_forms_to_year_end_accrual(client, root):
                                              "p_preis": ["1810"], "p_konto": ["3400"]}))
     nr = to.rsplit("/", 1)[-1]
     assert "Leistung 01.11.2026 – 30.04.2027" in client.get(f"/debitoren/rechnung/{nr}").text
-    page = client.get("/abschluss?jahr=2026").text
+    page = client.get("/abschluss/buchungen?jahr=2026").text
     assert "Rechnungsabgrenzungen 31.12.2026" in page and "Wartungsvertrag" not in page.split('id="abgrenzungen"')[0]
     assert "120/181 Tage" in page                       # 01.01.–30.04.2027 of 01.11.2026–30.04.2027
     from aeradex import abgrenzung

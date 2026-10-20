@@ -98,7 +98,7 @@ def test_einzelfirma_shows_the_equity_change_not_an_allocation(tmp_path):
         page = c.get("/abschluss/vorschau").text
         assert "Veränderung" in page and "keine Gewinnverwendung" in page and "Inhaber/in" in page
         assert "Antrag über die Verwendung" not in page
-        assert "MWST-Jahresabschluss" not in c.get("/abschluss").text
+        assert "MWST-Jahresabschluss" not in c.get("/abschluss/buchungen").text
 
 
 def test_vat_year_end_box_only_with_vat(tmp_path):
@@ -110,7 +110,7 @@ def test_vat_year_end_box_only_with_vat(tmp_path):
     app = create_app(b.root, token="tok")
     with TestClient(app) as c:
         c.get("/?t=tok", follow_redirects=False)
-        page = c.get("/abschluss?jahr=2026").text
+        page = c.get("/abschluss/buchungen?jahr=2026").text
     assert "MWST-Jahresabschluss 2026" in page and "/mwst/abstimmung?jahr=2026" in page
     assert "/abschluss/unterlagen/mwst?jahr=2026&amp;format=pdf" in page or "/abschluss/unterlagen/mwst?jahr=2026&format=pdf" in page
 
@@ -176,7 +176,7 @@ def test_side_by_side_and_the_anhang_switch_in_the_ui(tmp_path):
         h = {"X-CSRF": app.state.ui.csrf, "HX-Request": "true"}
         assert c.post("/abschluss/anhang-an", headers=h, data={"jahr": "2026"}).status_code == 204
         assert "Anhang zur Jahresrechnung" in c.get("/abschluss/vorschau").text
-        assert "Anhang weglassen" in c.get("/abschluss").text
+        assert "Anhang weglassen" in c.get("/abschluss/abschliessen").text
         r = c.post("/abschluss/gruppe", headers=h, data={"konto": "1020", "negativ": "verb_verzinsl_kf", "jahr": "2026"})
         assert r.status_code == 204, r.text
     assert Book(b.root).accounts["1020"].gruppe_negativ == "verb_verzinsl_kf"

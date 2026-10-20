@@ -193,7 +193,7 @@ def test_ui_foreign_split_bill_and_payment(book):
         r = c.post(f"/kreditoren/rechnung/{nr}/zahlung", headers=h,
                    data={"datum": "2026-04-15", "konto": "1020", "fw": "1000.00", "betrag": "958.40"})
         assert r.status_code == 204, r.text
-        assert "Offene Kreditoren in Fremdwährung" not in c.get("/abschluss?jahr=2026&stichtag=2026-06-30").text
+        assert "Offene Kreditoren in Fremdwährung" not in c.get("/abschluss/buchungen?jahr=2026&stichtag=2026-06-30").text
     b = Book(book.root)
     assert saldo(b, "6942") == Decimal("8.40") and saldo(b, "2000") == 0
     assert_clean(b)

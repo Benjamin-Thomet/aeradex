@@ -69,7 +69,7 @@ def checklist(book: Book, jahr: int) -> list[dict]:
     offen = abgrenzung.open_count(book, prev)
     if offen:
         add("offen", f"Rechnungsabgrenzungen {prev}", f"{offen} Buchung(en) mit Leistungszeitraum über den Jahreswechsel "
-            "noch nicht abgegrenzt.", f"/abschluss?jahr={prev}#abgrenzungen")
+            "noch nicht abgegrenzt.", f"/abschluss/buchungen?jahr={prev}#abgrenzungen")
     if st.get("gewinnverwendung") is not None:
         g = st["gewinnverwendung"]
         if g["gebucht"]:

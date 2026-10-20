@@ -125,6 +125,11 @@ def test_pages(book):
         assert "Abschluss 2026" in page and "/abschluss/buchung/material?jahr=2026" in page
         assert "Materialvorrat" in c.get("/abschluss/buchung/material?jahr=2026").text
         assert "Fahrzeug" in c.get("/abschluss/buchung/privatanteile?jahr=2026").text
+        for tab in ("buchungen", "jahresrechnung", "unterlagen", "abschliessen"):
+            got = c.get(f"/abschluss/{tab}?jahr=2026")
+            assert got.status_code == 200 and 'aria-current="page"' in got.text, tab
+        assert "Materialvorrat" in c.get("/abschluss/buchungen?jahr=2026").text           # a card per entry
+        assert c.get("/abschluss/gibtsnicht").status_code == 404
         r = c.post("/abschluss/buchung/material", headers=h,
                    data={"jahr": "2026", "text": ["Farbe", ""], "betrag": ["300", ""]})
         assert r.status_code == 204, r.text
