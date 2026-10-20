@@ -583,6 +583,13 @@ def _setup(p):
 
 
 @hookimpl
+def aeradex_abschluss_vorschlaege(book, jahr, art):
+    """Year end: open work per 31.12. at cost, holidays and overtime of the employees."""
+    from . import abschluss
+    return abschluss.proposals(book, jahr, art)
+
+
+@hookimpl
 def aeradex_commands():
     return [Command("leistungen", "Offerten, Zeiterfassung, Produkte, Projekte, Abrechnung", _run, _setup)]
 

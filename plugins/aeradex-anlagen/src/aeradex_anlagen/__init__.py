@@ -88,6 +88,58 @@ def aeradex_todos(book):
     return todos(book)
 
 
+# ---------- Jahresabschluss ----------
+
+@hookimpl
+def aeradex_abschluss_schritte(book, jahr):
+    """The year-end checklist: purchases still to turn into assets, the year's depreciation."""
+    from aeradex.plugins import AbschlussSchritt
+    out = []
+    cands = [k for k in anlagen.kandidaten(book) if k["datum"].year <= int(jahr)]
+    if cands:
+        out.append(AbschlussSchritt("anlagen_erfassen", "Anschaffungen als Anlage erfassen", "offen",
+                                    f"{PAGE}#kandidaten", f"{len(cands)} Anschaffung(en) auf Anlagekonten ohne Anlage: "
+                                    + ", ".join(k["bezeichnung"] for k in cands[:3]), "bewerten"))
+    active = [m for m in anlagen.assets(book).values() if anlagen.start_of(m).year <= int(jahr)
+              and not (m.get("abgang") and str(m["abgang"]["datum"])[:4] < str(jahr))]
+    todo = anlagen.preview(book, int(jahr))
+    if todo:
+        total = sum((t["betrag"] for t in todo), anlagen.ZERO)
+        out.append(AbschlussSchritt("abschreibungen", f"Abschreibungen {jahr}", "offen", f"{PAGE}?jahr={jahr}#spiegel",
+                                    f"{len(todo)} Anlage(n), zusammen {total:,.2f} — per 31.12. buchen.".replace(",", "'")))
+    elif active:
+        out.append(AbschlussSchritt("abschreibungen", f"Abschreibungen {jahr}", "ok", f"{PAGE}?jahr={jahr}#spiegel",
+                                    "Gebucht; der Anlagenspiegel liegt in den Unterlagen."))
+    else:
+        out.append(AbschlussSchritt("abschreibungen", f"Abschreibungen {jahr}", "entfaellt", PAGE,
+                                    "Keine Anlagen im Anlagenspiegel."))
+    return out
+
+
+@hookimpl
+def aeradex_abschluss_vorschlaege(book, jahr, art):
+    """Privatanteil of each vehicle: 0.9 % of the purchase price per month it was in the business that year."""
+    if art != "privatanteile":
+        return []
+    from aeradex.jahresabschluss import fahrzeug_anteil
+    out = []
+    for nr, m in anlagen.assets(book).items():
+        if m.get("kategorie") != "fahrzeuge":
+            continue
+        start = max(anlagen.parse_date(m["datum"]), date(int(jahr), 1, 1))
+        end = anlagen.parse_date(m["abgang"]["datum"]) if m.get("abgang") else date(int(jahr), 12, 31)
+        end = min(end, date(int(jahr), 12, 31))
+        if start > end:
+            continue
+        months = (end.year - start.year) * 12 + end.month - start.month + 1
+        price = anlagen.money(m["wert"])
+        out.append({"art": "fahrzeug", "konto": "6270", "text": f"Fahrzeug {m['bezeichnung']}",
+                    "betrag": fahrzeug_anteil(price, months),
+                    "grundlage": f"0.9 % × {price:,.2f} × {months} Monate".replace(",", "'"),
+                    "detail": f"aus Anlagen {nr} — nur wenn privat genutzt", "quelle": "anlagen"})
+    return out
+
+
 # ---------- Abschlussunterlagen and Berichte ----------
 
 def _dossier(book, year, fmt):

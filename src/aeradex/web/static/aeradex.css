@@ -573,3 +573,22 @@ table.grid tr.hint td { background: var(--warn-soft); }
 table.grid td.clip .readfile { cursor: default; }
 .panel.dropping { box-shadow: inset 0 0 0 2px var(--info); }
 label.busy { opacity: .6; pointer-events: none; }
+
+/* Abschluss checklist */
+.closing .progress { height: 4px; background: var(--rule); margin: 0 16px 4px; border-radius: 2px; overflow: hidden; }
+.closing .progress > span { display: block; height: 100%; background: var(--ok); }
+.closing .phase { padding: 14px 16px 4px; }
+.closing table.steps td.state { width: 110px; }
+.closing table.steps td.acts { white-space: nowrap; position: relative; }
+.closing table.steps td.acts > * { display: inline-block; vertical-align: middle; }
+.closing form.inline { display: inline; }
+.closing .pop { position: absolute; right: 0; top: 100%; z-index: 3; padding: 12px; width: 300px; text-align: left;
+  display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow); }
+@media (max-width: 640px) {
+  .closing table.steps tr { display: grid; grid-template-columns: 84px 1fr; column-gap: 8px; }
+  .closing table.steps td { border: 0; }
+  .closing table.steps tr { border-bottom: 1px solid var(--rule); }
+  .closing table.steps td.state { width: auto; }
+  .closing table.steps td.acts { grid-column: 2; text-align: left; padding-top: 0; }
+  .closing .pop { left: 0; right: auto; width: min(300px, calc(100vw - 48px)); }
+}

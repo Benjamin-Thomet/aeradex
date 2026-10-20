@@ -374,6 +374,30 @@ def book_accruals(jahr: int, ids: list[str],
     return _direct(api.accruals_book, jahr, ids, expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
+def closing_checklist(jahr: int) -> dict:
+    """Checkliste des Jahresabschlusses: Schritte in Arbeitsreihenfolge (Laufendes, Bewerten, Abschlussbuchungen,
+    Kontrolle, Abschliessen) mit Status, Link und wer was abgehakt hat. Ändert nichts — abhaken und buchen tut ein
+    Mensch auf der Seite Abschluss.
+
+    Args:
+        jahr: Geschäftsjahr, z.B. 2026.
+    """
+    return _call(api.closing_checklist, jahr)
+
+
+def closing_entry(jahr: int, art: str) -> dict:
+    """Eine Abschlussbuchung ansehen: angefangene Arbeiten (arbeiten), Materialvorrat (material), Delkredere,
+    Ferien-/Überstundenguthaben (ferien) oder Privatanteile (privatanteile) — Saldo ohne diese Buchung, was gebucht
+    ist, und Vorschläge (offene Leistungen, Akontos, 5 % der Debitoren, Ferien-/Überstundensalden, Fahrzeuge).
+    Ändert nichts; gebucht wird auf Abschluss › Checkliste.
+
+    Args:
+        jahr: Geschäftsjahr.
+        art: arbeiten, material, delkredere, ferien oder privatanteile.
+    """
+    return _call(api.closing_entry, jahr, art)
+
+
 def mwst_report(periode: str) -> dict:
     """MWST-Abrechnung einer Periode nach ESTV-Ziffern (Umsatz, Steuer, Vorsteuer, Zahllast).
 
@@ -1269,7 +1293,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
           closing_documents, mwst_details,
           period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year,
-          propose_journal_lines]
+          propose_journal_lines, closing_checklist, closing_entry]
 CHAT_ONLY = [read_inbox_file]
 
 # Public names for plugin tools: wrap an api function so errors come back as {"ok": False, …}.

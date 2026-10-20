@@ -13,6 +13,40 @@
       <button class="btn" type="submit" title="Das nächste Geschäftsjahr anlegen, auch vor der ersten Buchung">Neues Geschäftsjahr {{ naechstes_jahr }}</button>{{ errors() }}</form>{% endif %}
   </div>
 </div>
+{% if checkliste %}{% set cl = checkliste %}
+<div class="panel closing" id="checkliste" style="margin-bottom:16px">
+  <header><h2>Abschluss {{ year }}</h2><span class="hint">Schritt für Schritt · was aeradex erkennt, hakt es selbst ab</span>
+    <span class="pill {{ 'ok' if cl.erledigt == cl.total else 'info' }}">{{ cl.erledigt }} von {{ cl.total }} erledigt</span></header>
+  <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ cl.total }}" aria-valuenow="{{ cl.erledigt }}"><span style="width:{{ (100 * cl.erledigt / cl.total)|round|int if cl.total else 0 }}%"></span></div>
+  {% for ph in cl.phasen %}
+  <div class="phase"><span class="lbl">{{ loop.index }} · {{ ph.titel }}</span></div>
+  <div class="tablewrap"><table class="ledger steps"><tbody>
+    {% for s in ph.schritte %}
+    <tr class="row{{ ' muted' if s.status == 'entfaellt' }}" id="schritt-{{ s.key }}">
+      <td class="state">{% if s.status == "ok" %}<span class="pill ok">erledigt</span>{% elif s.markiert %}<span class="pill ok" title="von Hand abgehakt">✓ abgehakt</span>{% elif s.status == "entfaellt" %}<span class="pill muted">entfällt</span>{% elif s.status == "offen" %}<span class="pill warn">offen</span>{% else %}<span class="pill info">prüfen</span>{% endif %}</td>
+      <td><strong>{{ s.titel }}</strong><div class="small muted">{{ s.text }}</div>
+        {% if s.markiert %}<div class="small">Abgehakt {{ s.markiert.am|datum }}{% if s.markiert.von %} von {{ s.markiert.von }}{% endif %}{% if s.markiert.notiz %} · «{{ s.markiert.notiz }}»{% endif %}</div>{% endif %}</td>
+      <td class="right acts">
+        {% if s.link %}<a class="btn small{{ ' primary' if not s.erledigt else ' ghost' }}" href="{{ s.link }}">Öffnen</a>{% endif %}
+        {% if s.status != "ok" and s.status != "entfaellt" %}
+          {% if s.markiert %}
+          <form hx-post="/abschluss/schritt" hx-target="find .errors" class="inline"><input type="hidden" name="jahr" value="{{ year }}"><input type="hidden" name="schritt" value="{{ s.key }}"><button class="btn small ghost" type="submit" title="Wieder als offen führen">↺</button>{{ errors() }}</form>
+          {% else %}
+          <details class="drawer"><summary class="btn small ghost" title="Von Hand als erledigt abhaken">✓</summary>
+            <form class="panel pop" hx-post="/abschluss/schritt" hx-target="find .errors">
+              <input type="hidden" name="jahr" value="{{ year }}"><input type="hidden" name="schritt" value="{{ s.key }}"><input type="hidden" name="erledigt" value="1">
+              <div class="field"><label>Notiz (optional)</label><input class="input" name="notiz" placeholder="z.B. kein Vorrat, mit Treuhand besprochen"></div>
+              {{ errors() }}<button class="btn small primary" type="submit">Abhaken</button>
+            </form></details>
+          {% endif %}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody></table></div>
+  {% endfor %}
+</div>
+{% endif %}
 {% if jahreswechsel %}
 <div class="panel" style="margin-bottom:16px">
   <header><h2>Jahreswechsel {{ year - 1 }} → {{ year }}</h2><span class="hint">{{ jahreswechsel|selectattr("status", "equalto", "offen")|list|length }} offen</span></header>
@@ -113,7 +147,7 @@
   </div>
 </div>
 {% if fx %}
-<div class="panel">
+<div class="panel" id="fremdwaehrung">
   <header><h2>Fremdwährungen per {{ fx.stichtag|datum }}</h2>
     <form method="get" class="actions"><input type="hidden" name="jahr" value="{{ year }}">{% if fx.bewertet %}<span class="pill ok">bewertet</span>{% endif %}
       <label class="small muted" for="fx-st">Stichtag</label><input class="input num" id="fx-st" type="date" name="stichtag" value="{{ fx.stichtag.isoformat() }}" min="{{ year }}-01-01" max="{{ year }}-12-31" onchange="this.form.submit()"></form></header>
@@ -157,7 +191,7 @@
 
 <div class="grid2 even">
   {% if st.eigenkapital %}{% set ek = st.eigenkapital %}
-  <div class="panel">
+  <div class="panel" id="eigenkapital">
     <header><h2>{{ ek.name }} {{ year }}</h2><span class="hint">geht bei der Eröffnung {{ year + 1 }} ins Konto {{ ek.konto }}</span></header>
     {{ ergebnis_tabelle(st) }}
   </div>
@@ -190,7 +224,7 @@
     {% endif %}
   </div>
   {% endif %}
-  <div class="panel">
+  <div class="panel" id="sperre">
     <header><h2>Periode sperren</h2><span class="hint">GeBüV: abgeschlossene Perioden bleiben unverändert</span></header>
     <form class="body" hx-post="/abschluss/sperre" hx-target="find .errors" hx-confirm="Buchungen bis zu diesem Datum endgültig sperren? Korrekturen gehen danach nur noch als neue Buchung.">
       <input type="hidden" name="jahr" value="{{ year }}">

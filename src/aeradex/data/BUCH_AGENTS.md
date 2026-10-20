@@ -54,7 +54,9 @@ Die Kreditkarte ist ein Passivkonto; Einkäufe danach wie Bankbewegungen kontier
 
 **Lohnlauf**: `aeradex payroll run 2026-01` → prüfen (`payroll show`) → `aeradex payroll close 2026-01` (alle Entwürfe, eine Sammelbuchung L-2026-01; Einzellöhne stehen nur auf den Abrechnungen, nicht im Journal).
 
-**Abschluss**: `aeradex report --jahr 2026 --pdf`, Gewinnverwendung `aeradex allocation set 2026 --dividende … --reserve …`,
+**Abschluss**: die Checkliste `aeradex abschluss 2026` (Werkzeug `closing_checklist`) zeigt, was offen ist, in
+Arbeitsreihenfolge; Bestände (angefangene Arbeiten, Material, Delkredere, Ferien/Überstunden) und Privatanteile
+bucht ein Mensch unter Abschluss › Checkliste (`closing_entry` zeigt Saldo und Vorschläge). `aeradex report --jahr 2026 --pdf`, Gewinnverwendung `aeradex allocation set 2026 --dividende … --reserve …`,
 nach der GV `aeradex allocation book 2026 --datum …`, Periode sperren `aeradex lock 2026-12-31`.
 Unterlagen für Treuhand/Revision: `aeradex dossier --jahr 2026` (ZIP in berichte/, einzeln mit `--teil journal --format csv`).
 

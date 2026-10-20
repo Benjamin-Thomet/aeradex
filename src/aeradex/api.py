@@ -181,9 +181,29 @@ def add_account(book: Book, nr: str, name: str, klasse: str = "", gruppe: str = 
     if gruppe:
         _check_group(nr, klasse, gruppe)
     book.accounts[nr] = Account(nr=nr, name=name, klasse=klasse,
-                                gruppe=gruppe or statements.default_group(nr, klasse), waehrung=waehrung)
+                                gruppe=gruppe or statements.default_group(nr, klasse), waehrung=waehrung,
+                                abschluss=_default_closing(book, nr, klasse))
     book.save_accounts()
     return _done(book, f"Konto {nr} {name} angelegt", [book.root / "kontenplan.yaml"])
+
+
+def _default_closing(book: Book, nr: str, klasse: str) -> str:
+    """An Einzelfirma's new Privat account (285x) closes into equity at the next opening, like 2850."""
+    eq = book.settings.konto("gewinnvortrag")
+    if book.settings.rechtsform_art == "einzelfirma" and klasse == "passiv" and nr.startswith("285") and nr != eq \
+            and eq in book.accounts:
+        return eq
+    return ""
+
+
+def _check_closing(book: Book, nr: str, target: str) -> None:
+    if target == nr:
+        raise BookError(f"Konto {nr} kann nicht in sich selbst abgeschlossen werden")
+    acct = book.account(target)
+    if acct.klasse != "passiv" or book.accounts[target].abschluss:
+        raise BookError(f"Konto {target} ist kein Eigenkapitalkonto, in das abgeschlossen werden kann")
+    if any(a.abschluss == nr for a in book.accounts.values()):
+        raise BookError(f"In Konto {nr} werden andere Konten abgeschlossen")
 
 
 def _currency(code: str | None) -> str:
@@ -350,6 +370,47 @@ def year_checklist(book: Book, jahr: int) -> dict:
     from . import jahreswechsel
     return jsonable({"jahr": jahr, "naechstes": jahreswechsel.next_year(book),
                      "checkliste": jahreswechsel.checklist(book, jahr)})
+
+
+def closing_checklist(book: Book, jahr: int) -> dict:
+    """The year-end checklist of `jahr`: steps in working order with status, link and who ticked them off."""
+    from . import jahresabschluss
+    return jsonable(jahresabschluss.checklist(book, int(jahr)))
+
+
+def closing_mark(book: Book, jahr: int, schritt: str, erledigt: bool = True, notiz: str = "", von: str = "") -> dict:
+    """Tick off (or reopen) a step of the year-end checklist."""
+    from . import jahresabschluss
+    _guard(book)
+    mark, touched = jahresabschluss.mark(book, int(jahr), schritt, erledigt, notiz, von)
+    return _done(book, f"Abschluss {jahr}: «{schritt}» {'erledigt' if erledigt else 'wieder offen'}", touched,
+                 markiert=mark)
+
+
+def closing_entry(book: Book, jahr: int, art: str) -> dict:
+    """One closing entry (stock or private shares): current balance, proposals, what is booked."""
+    from . import jahresabschluss
+    return jsonable(jahresabschluss.view(book, int(jahr), art))
+
+
+def closing_entry_book(book: Book, jahr: int, art: str, positionen: list[dict] | None = None, wert=None,
+                       notiz: str = "", von: str = "") -> dict:
+    """Book a closing entry per 31.12.: a stock (arbeiten, material, delkredere, ferien) to its value — the
+    difference to the account's balance — or the private shares (privatanteile). Booking again replaces it."""
+    from . import jahresabschluss
+    _guard(book)
+    entry, touched = jahresabschluss.book_entry(book, int(jahr), art, positionen or [], wert, notiz, von)
+    label = "Privatanteile" if art == jahresabschluss.PRIVAT else jahresabschluss.BESTAENDE[art]["titel"]
+    what = f"CHF {Decimal(entry['wert']):,.2f}".replace(",", "'") if "wert" in entry else \
+        f"{len(entry['positionen'])} Position(en)"
+    return _done(book, f"{label} 31.12.{jahr}: {what} (Beleg {entry['beleg']})", touched, eintrag=jsonable(entry))
+
+
+def closing_entry_remove(book: Book, jahr: int, art: str) -> dict:
+    from . import jahresabschluss
+    _guard(book)
+    entry, touched = jahresabschluss.remove_entry(book, int(jahr), art)
+    return _done(book, f"Abschlussbuchung {art} {jahr} zurückgenommen (Beleg {entry['beleg']})", touched)
 
 
 def reverse_entry(book: Book, beleg: str, datum=None, text: str = "") -> dict:
@@ -914,11 +975,22 @@ def anhang_enable(book: Book, an: bool) -> dict:
 
 def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | None = None,
                    aktiv: bool | None = None, eroeffnung=None, vorjahr=None,
-                   waehrung: str | None = None, eroeffnung_fw=None) -> dict:
+                   waehrung: str | None = None, eroeffnung_fw=None, abschluss: str | None = None) -> dict:
+    """`abschluss`: the equity account this one closes into at the next opening (Privat → Eigenkapital); "" = none."""
     _guard(book)
     acct = book.account(nr)
     if name is not None:
         acct.name = name.strip() or acct.name
+    if abschluss is not None and abschluss.strip() != acct.abschluss:
+        target = abschluss.strip()
+        if target:
+            _check_closing(book, nr, target)
+        lock = book.settings.sperre_bis
+        if lock and lock.year >= book.settings.erstes_jahr and any(nr in (r.soll, r.haben) for r in book.rows
+                                                                    if r.datum <= lock):
+            raise BookError(f"Konto {nr} hat Buchungen in gesperrten Jahren — der Abschluss ins Eigenkapital "
+                            "würde deren Eröffnung ändern")
+        acct.abschluss = target
     if gruppe:
         _check_group(nr, acct.klasse, gruppe)
         acct.gruppe = gruppe
@@ -1135,7 +1207,8 @@ WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "y
           "customer_add", "invoice_create", "invoice_void", "invoice_pay", "invoice_credit", "employee_add",
           "payroll_run", "payroll_close", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
           "allocation_book", "lock", "unlock", "customer_update", "employee_update", "account_update",
-          "settings_update", "payroll_config_update", "anhang_save")
+          "settings_update", "payroll_config_update", "anhang_save", "closing_mark", "closing_entry_book",
+          "closing_entry_remove")
 for _name in WRITES:
     globals()[_name] = _locked(globals()[_name])
 

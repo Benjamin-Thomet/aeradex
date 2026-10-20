@@ -289,3 +289,20 @@ def test_book_values_rounded_to_100(book):
     assert anlagen.round_to_step(D("100"), D("26"), D("0"), D("100")) == D("100")            # small: down to 0
     with pytest.raises(BookError, match="Rundung"):
         W(book, anlagen.save_settings, 50)
+
+
+def test_year_end_checklist_and_vehicle_share(book):
+    def steps():
+        cl = api.closing_checklist(Book(book.root), 2026)
+        return {s["key"]: s for p in cl["phasen"] for s in p["schritte"]}
+    assert steps()["anlagen_erfassen"]["status"] == "offen"                 # the laptop purchase is no asset yet
+    api.write(Book(book.root), "Anlage", anlagen.add_from_booking, "26-001", "1520", "Laptop Lea", "edv")
+    s = steps()
+    assert "anlagen_erfassen" not in s and s["abschreibungen"]["status"] == "offen"
+    api.write(Book(book.root), "AB", anlagen.depreciate, 2026)
+    assert steps()["abschreibungen"]["status"] == "ok"
+    api.post_entry(Book(book.root), "2026-07-01", "1530", "1020", "30000", "VW Caddy")
+    api.write(Book(book.root), "Anlage", anlagen.add, "VW Caddy", "2026-07-01", "30000", "fahrzeuge")
+    v = api.closing_entry(Book(book.root), 2026, "privatanteile")
+    [p] = v["vorschlaege"]
+    assert Decimal(p["betrag"]) == Decimal("1620.00") and p["konto"] == "6270"   # 0.9 % × 30'000 × 6 months

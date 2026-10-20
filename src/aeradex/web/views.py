@@ -173,6 +173,19 @@ def todo_items(book: Book) -> list[dict]:
     from .. import plugins
     for t in plugins.todos(book):
         items.append({"level": t.level, "title": t.titel, "detail": t.detail, "tag": t.tag, "href": t.href})
+    from .. import jahresabschluss
+    due = jahresabschluss.due_year(book)
+    if due is not None:
+        try:
+            cl = jahresabschluss.checklist(book, due)
+        except BookError:
+            cl = None
+        if cl and cl["erledigt"] < cl["total"]:
+            todo = [st["titel"] for ph in cl["phasen"] for st in ph["schritte"] if not st["erledigt"]]
+            items.append({"level": "warn" if date.today() > date(due, 12, 31) else "info",
+                          "title": f"Abschluss {due}: {cl['erledigt']} von {cl['total']} erledigt",
+                          "detail": " · ".join(todo[:3]) + (" …" if len(todo) > 3 else ""), "tag": "Abschluss",
+                          "href": f"/abschluss?jahr={due}#checkliste"})
     from .. import kreditoren as kred
     soon = (date.today() + timedelta(days=7)).isoformat()
     due = [r for r in kred.open_payables(book)["posten"] if r["status"] == "offen" and r["faellig"] <= soon]
@@ -586,7 +599,8 @@ async def konten(ui: UI, request: Request):
     for nr, a in sorted(book.accounts.items()):
         by_klasse[a.klasse].append({"a": a, "saldo": eng.balance(nr, year)})
     return ui.render(request, "konten.html", book=book, year=year, by_klasse=by_klasse,
-                     groups=statements.GROUPS)
+                     groups=statements.GROUPS, eigenkapital=book.settings.konto("gewinnvortrag")
+                     if book.settings.rechtsform_art == "einzelfirma" else "")
 
 
 async def saldenliste(ui: UI, request: Request):
@@ -685,6 +699,8 @@ async def konto_aendern(ui: UI, request: Request):
     f = await request.form()
     nr = request.path_params["nr"]
     kwargs = {"name": f.get("name"), "gruppe": f.get("gruppe") or None, "aktiv": f.get("aktiv") == "1"}
+    if "abschluss_feld" in f:
+        kwargs["abschluss"] = ui.book().settings.konto("gewinnvortrag") if f.get("abschluss") == "1" else ""
     if f.get("eroeffnung") not in (None, ""):
         kwargs["eroeffnung"] = parse_amount(f.get("eroeffnung"))
     if f.get("waehrung"):
@@ -1334,8 +1350,81 @@ async def abschluss(ui: UI, request: Request):
                      div=(read_yaml(statements.dividend_path(book, year)) if statements.dividend_path(book, year).exists()
                           else None),
                      jahreswechsel=jahreswechsel.checklist(book, year), naechstes_jahr=jahreswechsel.next_year(book),
+                     checkliste=_closing_list(book, year),
                      **_abgrenzungen(book, year), mwst_jahr=_mwst_year(book, year),
                      kann_eroeffnen=jahreswechsel.next_year(book) <= date.today().year + 1)
+
+
+def _closing_list(book: Book, year: int) -> dict | None:
+    from .. import jahresabschluss
+    try:
+        return jahresabschluss.checklist(book, year)
+    except BookError:
+        return None
+
+
+def _who(request: Request) -> str:
+    user = getattr(request.state, "user", None)
+    return getattr(user, "anzeige", "") or getattr(user, "name", "") or ""
+
+
+async def abschluss_buchung(ui: UI, request: Request):
+    """One closing entry: a stock to count or estimate per 31.12., or the private shares."""
+    from .. import jahresabschluss as ja
+    book = ui.book()
+    year = year_param(request, book)
+    art = request.path_params["art"]
+    try:
+        v = ja.view(book, year, art)
+    except BookError as exc:
+        return HTMLResponse(str(exc), status_code=404)
+    qp = request.query_params
+    rows = [dict(p) for p in ((v["gebucht"] or {}).get("positionen") or [])]
+    if qp.get("vorschlaege") == "1":
+        rows = [dict(p) for p in v["vorschlaege"] if p.get("betrag") not in (None, "")] or rows
+    fz = None
+    if art == ja.PRIVAT and qp.get("fz_preis"):
+        try:
+            months = int(qp.get("fz_monate") or 12)
+            amount = ja.fahrzeug_anteil(parse_amount(qp.get("fz_preis")), months)
+            fz = {"art": "fahrzeug", "konto": ja.PRIVAT_ARTEN["fahrzeug"][1], "betrag": f"{amount:.2f}",
+                  "text": f"Fahrzeug {qp.get('fz_name') or ''}".strip(),
+                  "grundlage": f"0.9 % × {parse_amount(qp.get('fz_preis')):,.2f} × {months} Monate".replace(",", "'")}
+            rows.append(fz)
+        except (BookError, ValueError) as exc:
+            fz = {"fehler": str(exc)}
+    rows += [{} for _ in range(3)]
+    return ui.render(request, "abschluss_buchung.html", book=book, year=year, art=art, v=v, rows=rows, fz=fz,
+                     privat=art == ja.PRIVAT, mwst_codes=_mwst_codes_for(book),
+                     accounts=account_options(book))
+
+
+def _mwst_codes_for(book: Book) -> list[str]:
+    from .. import mwst
+    if mwst.config(book)["methode"] != "effektiv":
+        return []
+    return [c for c in mwst.CODES if c.startswith("U") and c not in ("U0", "UA")]
+
+
+async def abschluss_buchung_post(ui: UI, request: Request):
+    from .. import jahresabschluss as ja
+    f = await request.form()
+    art = request.path_params["art"]
+    year = int(f.get("jahr") or current_year(ui.book()))
+    to = f"/abschluss?jahr={year}#checkliste"
+    if request.url.path.endswith("/entfernen"):
+        return await act(request, api.closing_entry_remove, to, ui.book(), year, art)
+    texts, amounts = f.getlist("text"), f.getlist("betrag")
+    arten, konten, codes = f.getlist("art"), f.getlist("konto"), f.getlist("mwst")
+    pos = []
+    for i, text in enumerate(texts):
+        item = {"text": text, "betrag": amounts[i] if i < len(amounts) else ""}
+        if art == ja.PRIVAT:
+            item.update(art=arten[i] if i < len(arten) else "", konto=acct(konten[i] if i < len(konten) else ""),
+                        mwst=codes[i] if i < len(codes) else "")
+        pos.append(item)
+    return await act(request, api.closing_entry_book, to, ui.book(), year, art, pos, None, f.get("notiz", ""),
+                     _who(request))
 
 
 def _mwst_year(book: Book, year: int) -> dict | None:
@@ -1420,6 +1509,9 @@ async def abschluss_aktion(ui: UI, request: Request):
     if aktion == "jahr-eroeffnen":
         neu = jahreswechsel.next_year(book)
         return await act(request, api.year_open, f"/abschluss?jahr={neu}", book, neu)
+    if aktion == "schritt":
+        return await act(request, api.closing_mark, to + "#checkliste", book, year, f.get("schritt", ""),
+                         f.get("erledigt") == "1", f.get("notiz", ""), _who(request))
     if aktion == "sperre":
         return await act(request, api.lock, to, book, f.get("bis"))
     if aktion == "entsperren":
@@ -2694,6 +2786,9 @@ def routes(ui: UI) -> list[Route]:
         Route("/abschluss/unterlagen/{teil:str}", h(unterlagen_teil)),
         Route("/abschluss/vorschau", h(abschluss_vorschau)),
         Route("/abschluss/gruppe", h(abschluss_gruppe), methods=["POST"]),
+        Route("/abschluss/buchung/{art:str}", h(abschluss_buchung)),
+        Route("/abschluss/buchung/{art:str}", h(abschluss_buchung_post), methods=["POST"]),
+        Route("/abschluss/buchung/{art:str}/entfernen", h(abschluss_buchung_post), methods=["POST"]),
         Route("/abschluss/{aktion:str}", h(abschluss_aktion), methods=["POST"]),
         Route("/mwst", h(mwst_page)),
         Route("/mwst/buchen", h(mwst_buchen), methods=["POST"]),

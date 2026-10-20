@@ -49,6 +49,11 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   book's agent via `propose_journal_lines`, every amount checked against the text) → grid lines with the counter account
   open; file and reading in `.aeradex/lokal/auslesen/<ref>/` until booked. `post_entries` books lines with the same
   `gruppe` as one Beleg and files the receipt once.
+- `jahresabschluss.py`: the year-end checklist (Abschluss page, phases laufend → abschliessen; status from the books,
+  ticks in `abschluss/<J>/checkliste.yaml`, plugin steps via `aeradex_abschluss_schritte`) and the closing entries
+  per 31.12.: stocks (angefangene Arbeiten, Material, Delkredere, Ferien/Überstunden) booked as the difference to the
+  account's balance, Privatanteile Privat an Aufwand; rows owned as `Quelle jahresabschluss:<J>:<art>` (builtin
+  Source), proposals from plugins via `aeradex_abschluss_vorschlaege`.
 - `spesen.py`: employee expense claims (own their rows on 2210); `payroll.run/close` add open claims to the payslip
   (`werte.spesen`, `auszahlung`) without touching the wage calculation; Lohnausweis 13.1.2.
 - `mahnungen.py`: reminders (3 steps, PDF with QR-bill for the open amount). Plugin pages: `plugins.Page`, routes

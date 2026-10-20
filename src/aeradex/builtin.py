@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .plugins import BankFormat, BelegLeser, hookimpl
+from .plugins import BankFormat, BelegLeser, Source, hookimpl
 
 AERADEX_PLUGIN_API = 1
 DATA = Path(__file__).parent / "data"
@@ -72,3 +72,17 @@ def aeradex_beleg_leser():
     return [BelegLeser("qr", "QR", 10, _read_qr),
             BelegLeser("text", "Text", 50, _read_text),
             BelegLeser("ocr", "OCR", 80, _read_ocr)]
+
+
+# ---------- year-end entries (stocks, private shares) ----------
+
+def _closing_rows(book):
+    from . import jahresabschluss
+    return jahresabschluss.rows(book)
+
+
+@hookimpl
+def aeradex_sources():
+    return [Source(prefix="jahresabschluss", label="Abschlussbuchung", rows=_closing_rows,
+                   link=lambda ref: f"/abschluss/buchung/{ref.split(':')[1]}?jahr={ref.split(':')[0]}"
+                   if ":" in ref else None)]

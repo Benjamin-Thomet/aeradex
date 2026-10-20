@@ -401,6 +401,22 @@ Die Auszahlung der beschlossenen Dividende: `jahr, datum, brutto, vst` (35 %), `
 `frist` (30 Tage). Besitzt ihre Journalzeilen (`Quelle dividende:JJJJ`: Beschlossene Ausschüttungen an Bank bzw. an
 Verrechnungssteuer `konten.verrechnungssteuer`, Standard 2206).
 
+## abschluss/JJJJ/abschlussbuchungen.yaml und checkliste.yaml
+
+Abschlussbuchungen per 31.12. (Abschluss › Checkliste, `aeradex abschluss JJJJ <art>`), je `buchungen.<art>`:
+`datum, beleg, positionen: [{text, betrag}], notiz, von, gebucht_am`.
+
+- Bestände `arbeiten` (1280 an 3940), `material` (1210 an 4000), `delkredere` (3805 an 1109), `ferien`
+  (5000 an 2331): `wert` (Summe der Positionen) und `buchung: {soll, haben, betrag}` — die Differenz zum Saldo des
+  Kontos ohne diese Buchung, darum ohne Rückbuchung und im Folgejahr wieder nur die Veränderung. Fehlende Konten
+  legt die erste Buchung mit dem Namen des Kontenrahmens KMU an; `konten.abschluss_<art>` / `abschluss_<art>_gegen`
+  in aeradex.yaml wählen andere.
+- `privatanteile` (nur Einzelfirma): `privatkonto` (2850) und Positionen mit `art` (fahrzeug, telefon, raum,
+  andere), `konto` (Aufwand, z.B. 6270), optional `mwst` und `grundlage`; je Position Privat an Aufwand.
+
+Die Zeilen gehören dem Dokument (`Quelle jahresabschluss:JJJJ:<art>`, ein Beleg je Art); neu buchen ersetzt sie
+unter derselben Belegnummer. `checkliste.yaml`: von Hand abgehakte Schritte `{schritt: {am, von, notiz}}`.
+
 ## anlagen/A0001-name.yaml (Plugin anlagen)
 
 Eine Anlage: `nummer, bezeichnung, kategorie, konto` (Anlagekonto 15xx–17xx), `aufwandkonto` (6800), `datum` und

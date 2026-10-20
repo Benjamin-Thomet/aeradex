@@ -18,7 +18,7 @@
       {% for it in items %}{% set a = it.a %}
         <tr class="row" id="k{{ a.nr }}" {% if not a.aktiv_ %}style="opacity:.55"{% endif %}>
           <td class="acc"><a class="link" href="/konten/{{ a.nr }}?jahr={{ year }}">{{ a.nr }}</a></td>
-          <td>{{ a.name }}{% if a.is_foreign %} <span class="pill info">{{ a.waehrung }}</span>{% endif %}<br><span class="small muted">{{ glabel.get(a.gruppe, a.gruppe) }}</span></td>
+          <td>{{ a.name }}{% if a.is_foreign %} <span class="pill info">{{ a.waehrung }}</span>{% endif %}<br><span class="small muted">{{ glabel.get(a.gruppe, a.gruppe) }}{% if a.abschluss %} · Abschluss in {{ a.abschluss }}{% endif %}</span></td>
           <td class="right num">{{ it.saldo|chf(true) }}</td>
           <td class="right">
             <details class="drawer"><summary class="btn small ghost" title="Bearbeiten">✎</summary>
@@ -28,6 +28,8 @@
                 {% if a.is_balance_sheet %}<div class="field"><label>Eröffnungssaldo {{ settings.erstes_jahr }} CHF (Aktiven +, Passiven −)</label><input class="input num" name="eroeffnung" value="{{ a.eroeffnung }}"></div>
                 <div class="field"><label>Währung</label><input class="input" name="waehrung" value="{{ a.waehrung }}" maxlength="3" style="text-transform:uppercase" title="Nur änderbar, solange das Konto keine Buchungen hat"></div>
                 {% if a.is_foreign %}<div class="field"><label>Eröffnungssaldo {{ a.waehrung }}</label><input class="input num" name="eroeffnung_fw" value="{{ a.eroeffnung_fw }}"></div>{% endif %}{% endif %}
+                {% if eigenkapital and a.klasse == 'passiv' and a.nr != eigenkapital and a.nr[:2] in ('28', '29') %}<input type="hidden" name="abschluss_feld" value="1">
+                <label class="check" title="Der Saldo geht bei der Eröffnung des Folgejahres ins Eigenkapital (wie Privat)"><input type="checkbox" name="abschluss" value="1" {{ 'checked' if a.abschluss }}> Abschluss ins Eigenkapital {{ eigenkapital }}</label>{% endif %}
                 <label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if a.aktiv_ }}> aktiv (in Auswahllisten)</label>
                 {{ errors() }}<button class="btn small primary" type="submit">Speichern</button>
               </form>

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, accounts_datalist %}
+{% block title %}{{ v.titel }} {{ year }}{% endblock %}
+{% block main %}
+{% set g = v.gebucht %}
+<div class="crumbs"><a href="/abschluss?jahr={{ year }}#checkliste">Abschluss {{ year }}</a> /</div>
+<div class="topbar">
+  <div><h1>{{ v.titel }} per 31.12.{{ year }}</h1>
+    <div class="sub">{% if g %}<span class="pill ok">gebucht · Beleg {{ g.beleg }}</span>{% if v.veraltet %} <span class="pill warn">Kontostand hat sich geändert — neu buchen</span>{% endif %}{% else %}<span class="pill warn">noch nicht gebucht</span>{% endif %}</div></div>
+</div>
+<p class="small muted" style="max-width:72ch">{{ v.text }}</p>
+
+{% if not privat %}
+<div class="figures">
+  <div class="figure"><span class="label">Konto {{ v.konto }}</span><span class="value" style="font-size:16px">{{ v.konto_name }}</span><span class="meta">Gegenkonto {{ v.gegen }}</span></div>
+  <div class="figure"><span class="label">Saldo ohne diese Buchung</span><span class="value">{{ v.saldo|chf }}</span><span class="meta">Vortrag und Buchungen bis 31.12.</span></div>
+  <div class="figure"><span class="label">Wert per 31.12.</span><span class="value">{{ v.wert|chf if v.wert is not none else '—' }}</span><span class="meta">{% if g %}Differenz gebucht {{ g.buchung.betrag|chf }}{% else %}gezählt / geschätzt{% endif %}</span></div>
+</div>
+{% endif %}
+
+{% if v.vorschlaege %}
+<div class="panel">
+  <header><h2>Vorschläge</h2><span class="hint">aus der Buchhaltung{{ ' und den Leistungen' if v.vorschlaege|selectattr('quelle')|list }} — prüfen, dann übernehmen</span>
+    {% if v.vorschlaege|rejectattr('info')|list %}<a class="btn small" href="?jahr={{ year }}&vorschlaege=1#positionen">Übernehmen</a>{% endif %}</header>
+  <div class="tablewrap"><table class="ledger"><tbody>
+    {% for p in v.vorschlaege %}<tr class="row{{ ' muted' if p.info }}"><td>{{ p.text }}{% if p.detail %}<div class="small muted">{{ p.detail }}</div>{% endif %}</td>
+      <td class="right num">{{ p.betrag|chf if p.betrag not in (none, '') else 'Hinweis' }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endif %}
+
+{% if privat %}
+<div class="panel">
+  <header><h2>Fahrzeug berechnen</h2><span class="hint">ESTV: 0.9 % des Kaufpreises ohne MWST pro Monat, mindestens CHF 150</span></header>
+  <form class="body" method="get">
+    <input type="hidden" name="jahr" value="{{ year }}">
+    <div class="form">
+      <div class="field"><label for="fz-n">Fahrzeug</label><input class="input" id="fz-n" name="fz_name" placeholder="VW Caddy"></div>
+      <div class="field"><label for="fz-p">Kaufpreis ohne MWST CHF</label><input class="input num" id="fz-p" name="fz_preis" inputmode="decimal" required></div>
+      <div class="field"><label for="fz-m">Monate geschäftlich genutzt</label><input class="input num" id="fz-m" name="fz_monate" value="12" inputmode="numeric"></div>
+    </div>
+    {% if fz and fz.fehler %}<div class="alert error">{{ fz.fehler }}</div>{% endif %}
+    <div class="formfoot"><span class="small muted">Die Zeile kommt unten dazu; gebucht wird erst mit «Buchen».</span><button class="btn" type="submit">Berechnen</button></div>
+  </form>
+</div>
+{% endif %}
+
+<div class="panel" id="positionen">
+  <header><h2>{{ 'Privatanteile' if privat else 'Inventar / Aufstellung' }}</h2><span class="hint">{{ 'je Zeile Privat ' ~ v.privatkonto ~ ' an das Aufwandkonto' if privat else 'die Summe ist der Wert per 31.12.; 0 = nichts vorhanden' }}</span></header>
+  {% if privat %}{{ accounts_datalist(accounts) }}{% endif %}
+  <form hx-post="/abschluss/buchung/{{ art }}" hx-target="find .errors" {% if g %}hx-confirm="{{ v.titel }} {{ year }} neu buchen? Die bisherige Buchung wird ersetzt."{% endif %}>
+    <input type="hidden" name="jahr" value="{{ year }}">
+    <div class="tablewrap"><table class="ledger grid">
+      <thead><tr>{% if privat %}<th>Art</th>{% endif %}<th>Text</th>{% if privat %}<th>Aufwandkonto</th>{% if mwst_codes %}<th>MWST</th>{% endif %}{% endif %}<th class="right">Betrag CHF</th></tr></thead>
+      <tbody>
+      {% for p in rows %}
+        <tr>
+          {% if privat %}<td><select class="input small" name="art" aria-label="Art">{% for k, (label, nr) in v.arten.items() %}<option value="{{ k }}" {{ 'selected' if p.art == k }}>{{ label }}</option>{% endfor %}</select></td>{% endif %}
+          <td><input class="input" name="text" value="{{ p.text or '' }}" aria-label="Text">{% if p.grundlage %}<div class="small muted">{{ p.grundlage }}</div>{% endif %}</td>
+          {% if privat %}<td><input class="input" name="konto" list="konten" value="{{ p.konto or '' }}" placeholder="leer = nach Art" aria-label="Aufwandkonto" style="width:9em"></td>
+          {% if mwst_codes %}<td><select class="input small" name="mwst" aria-label="MWST-Code"><option value="">ohne</option>{% for c in mwst_codes %}<option {{ 'selected' if p.mwst == c }}>{{ c }}</option>{% endfor %}</select></td>{% endif %}{% endif %}
+          <td class="right"><input class="input num" name="betrag" value="{{ p.betrag if p.betrag not in (none, '') else '' }}" inputmode="decimal" aria-label="Betrag" style="width:9em;text-align:right"></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="body">
+      <div class="field"><label for="notiz">Notiz (Grundlage, wer gezählt hat)</label><input class="input" id="notiz" name="notiz" value="{{ g.notiz if g and g.notiz else '' }}"></div>
+      {% if privat and v.mwst_hinweis %}<div class="alert warn">{{ v.mwst_hinweis }}</div>{% endif %}
+      {{ errors() }}
+      <div class="formfoot"><span class="small muted">{% if privat %}Ein Beleg per 31.12.{% else %}Gebucht wird die Differenz zum Saldo, per 31.12. auf {{ v.konto }} gegen {{ v.gegen }}; im nächsten Jahr wieder nur die Veränderung.{% endif %}{% if not privat or mwst_codes %} Für mehr Zeilen speichern und neu öffnen.{% endif %}</span>
+        <button class="btn primary" type="submit">{{ 'Neu buchen' if g else 'Buchen' }}</button></div>
+    </div>
+  </form>
+</div>
+{% if g %}
+<form class="body" hx-post="/abschluss/buchung/{{ art }}/entfernen" hx-target="find .errors" hx-confirm="Buchung {{ g.beleg }} zurücknehmen?">
+  <input type="hidden" name="jahr" value="{{ year }}">{{ errors() }}
+  <button class="btn danger small" type="submit">Buchung zurücknehmen</button>
+</form>
+{% endif %}
+{% endblock %}

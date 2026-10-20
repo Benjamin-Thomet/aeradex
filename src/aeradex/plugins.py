@@ -166,6 +166,18 @@ class Todo:
 
 
 @dataclass
+class AbschlussSchritt:
+    """A step of the year-end checklist (Abschluss page). ``phase``: laufend | bewerten | buchen | kontrolle |
+    abschliessen; ``status``: ok | offen | hinweis (a person ticks it off) | entfaellt (does not apply this year)."""
+    key: str
+    titel: str
+    status: str
+    link: str = ""
+    text: str = ""
+    phase: str = "buchen"
+
+
+@dataclass
 class Dienst:
     """A background service the local UI (`aeradex ui`) starts with itself and stops with itself, e.g. a call
     gateway or a chat bot. `args` are aeradex CLI arguments after `--buch <buch>`."""
@@ -255,6 +267,16 @@ class Spec:
     @hookspec
     def aeradex_todos(self, book: Book) -> list[Todo]:
         """Lines for the to-do list of the Übersicht (work waiting for a person)."""
+
+    @hookspec
+    def aeradex_abschluss_schritte(self, book: Book, jahr: int) -> list[AbschlussSchritt]:
+        """Steps for the year-end checklist of `jahr` (e.g. book the depreciation)."""
+
+    @hookspec
+    def aeradex_abschluss_vorschlaege(self, book: Book, jahr: int, art: str) -> list[dict]:
+        """Values to start a closing entry from (`jahresabschluss.ARTEN`: arbeiten, material, delkredere, ferien,
+        privatanteile): ``{text, betrag, detail}``; for privatanteile also ``art`` (fahrzeug …), ``konto``,
+        ``grundlage``. ``betrag`` None with ``info: True`` is a hint only."""
 
     @hookspec
     def aeradex_nach_beleg(self, book: Book, beleg: str) -> str | None:
@@ -501,6 +523,28 @@ def todos(book: Book) -> list[Todo]:
     for impl in manager(book).hook.aeradex_todos.get_hookimpls():
         try:
             out += [t for t in impl.function(book=book) or [] if isinstance(t, Todo)]
+        except Exception:
+            continue
+    return out
+
+
+def abschluss_schritte(book: Book, jahr: int) -> list[AbschlussSchritt]:
+    """Checklist steps of the plugins this book enables; a broken plugin is skipped."""
+    out = []
+    for impl in manager(book).hook.aeradex_abschluss_schritte.get_hookimpls():
+        try:
+            out += [s for s in impl.function(book=book, jahr=jahr) or [] if isinstance(s, AbschlussSchritt)]
+        except Exception:
+            continue
+    return out
+
+
+def abschluss_vorschlaege(book: Book, jahr: int, art: str) -> list[dict]:
+    """Proposed values for a closing entry from the plugins; a broken plugin is skipped."""
+    out = []
+    for impl in manager(book).hook.aeradex_abschluss_vorschlaege.get_hookimpls():
+        try:
+            out += [dict(v) for v in impl.function(book=book, jahr=jahr, art=art) or [] if isinstance(v, dict)]
         except Exception:
             continue
     return out

@@ -21,7 +21,7 @@ def sample():
 def test_installed_is_not_enabled(tmp_path, sample):
     book = make_book(tmp_path)
     assert "spenden" in plugins.installed()
-    assert plugins.sources(book) == {}                       # behaviour only when enabled
+    assert set(plugins.sources(book)) == {"jahresabschluss"}  # only the core's own: behaviour only when enabled
     with pytest.raises(BookError, match="Unbekanntes Kontoauszugsformat"):
         plugins.bank_format_for(book, "a.csv", b"Datum;Betrag;Text\n")
     assert "testplan" in plugins.kontenplaene()             # data from every installed plugin

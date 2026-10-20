@@ -488,6 +488,15 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("abgrenzung", help="Rechnungsabgrenzungen per 31.12. aus dem Leistungszeitraum der Buchungen")
     s.add_argument("jahr", type=int)
     s.add_argument("--buchen", nargs="*", metavar="ID", help="diese Vorschläge buchen (ohne ID: alle offenen)")
+    s = sub.add_parser("abschluss", help="Jahresabschluss: Checkliste, Bestände und Privatanteile per 31.12.")
+    s.add_argument("jahr", type=int)
+    s.add_argument("art", nargs="?", help="arbeiten, material, delkredere, ferien, privatanteile (ohne: Checkliste)")
+    s.add_argument("--position", action="append", default=[], metavar="TEXT=BETRAG",
+                   help="eine Zeile; bei privatanteile TEXT=BETRAG@KONTO")
+    s.add_argument("--wert", help="Wert per 31.12. statt Positionen")
+    s.add_argument("--entfernen", action="store_true", help="die Abschlussbuchung zurücknehmen")
+    s.add_argument("--abhaken", metavar="SCHRITT", help="einen Schritt der Checkliste abhaken")
+    s.add_argument("--notiz", default="")
     s = sub.add_parser("jahr-eroeffnen", help="nächstes Geschäftsjahr eröffnen (Salden werden vorgetragen)")
     s.add_argument("jahr", type=int, nargs="?", help="Standard: das Jahr nach dem letzten")
     s = sub.add_parser("lock", help="Periode sperren (unveränderlich)")
@@ -987,6 +996,21 @@ def dispatch(a, book_path: Path | None):
             return api.accruals(book(), a.jahr)
         ids = a.buchen or [p["id"] for p in api.accruals(book(), a.jahr)["vorschlaege"] if not p["gebucht"]]
         return api.accruals_book(book(), a.jahr, ids)
+    if c == "abschluss":
+        if a.abhaken:
+            return api.closing_mark(book(), a.jahr, a.abhaken, True, a.notiz)
+        if not a.art:
+            return api.closing_checklist(book(), a.jahr)
+        if a.entfernen:
+            return api.closing_entry_remove(book(), a.jahr, a.art)
+        if not a.position and a.wert is None:
+            return api.closing_entry(book(), a.jahr, a.art)
+        pos = []
+        for raw in a.position:
+            text, _, rest = raw.rpartition("=")
+            betrag, _, konto = rest.partition("@")
+            pos.append({"text": text, "betrag": betrag, "konto": konto})
+        return api.closing_entry_book(book(), a.jahr, a.art, pos, a.wert, a.notiz)
     if c == "jahr-eroeffnen":
         return api.year_open(book(), a.jahr)
     if c == "lock":
