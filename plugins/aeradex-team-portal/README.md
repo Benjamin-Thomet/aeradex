@@ -18,6 +18,7 @@ aeradex-team-portal serve --port 4100      # hinter Caddy/nginx mit https
 | `AERADEX_PORTAL_DATA` | Datenordner (Standard `/var/lib/aeradex-team-portal`) |
 | `AERADEX_PORTAL_KENNUNG` | ein Wort für diese Installation (Standard `aeradex`): Cookie, Header, Speicher auf dem Handy, Salz der Schlüssel. **Nach dem Start nie ändern**: sonst sind alle abgemeldet und gespeicherte Dokumente nicht mehr lesbar |
 | `AERADEX_PORTAL_TITEL` | Name der App, z.B. «Team · Muster AG» |
+| `AERADEX_PORTAL_KURZ` | Name unter dem Symbol auf dem Home-Bildschirm (höchstens 12 Zeichen; Standard: Anfang des Titels) |
 | `AERADEX_PORTAL_FARBE` | Farbe der Kopfzeile und Statusleiste |
 | `AERADEX_PORTAL_BRANDING` | Ordner mit eigenem `logo.png`, `icon-192.png`, `icon-512.png`, `branding.css` (überschreibt die Farb-Token aus `app.css`, kann Schriften laden; weitere `.woff2`/`.png`/`.svg` liegen unter `/app/branding/…`) |
 | `AERADEX_PORTAL_INSECURE_COOKIE=1` | nur lokal ohne https |

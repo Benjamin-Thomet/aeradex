@@ -418,7 +418,10 @@ def test_entries_per_customer_without_project(book, portal, send):
     abgleich.run(Book(book.root), send)
     shared = phone.get("/app/api/ich").json()["shared"]
     assert {k["nummer"]: k["name"] for k in shared["kunden"]} == {"K0001": "Hans Huber", "K0002": "Muster AG"}
-    assert "Seeweg" not in str(shared) and "Dorfstrasse" not in str(shared)       # names only, no addresses
+    assert shared["kunden"][1] == {"nummer": "K0002", "name": "Muster AG", "kontakt": "Erika Muster",
+                                   "strasse": "Seeweg 2", "ort": "3600 Thun", "land": ""}   # to find the site
+    assert shared["kunden"][0]["kontakt"] == "" and shared["kunden"][0]["strasse"] == "Dorfstrasse 1"
+    assert "email" not in str(shared) and "stundensatz" not in str(shared)
     assert shared["projekte"][0]["kunde_nr"] == "K0001"
 
     t = post(phone, "zeit", {"datum": YESTERDAY, "stunden": "4", "kunde": "K0002", "leistung": "P001", "text": ""})

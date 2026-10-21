@@ -1,7 +1,7 @@
 """The snapshot the portal shows: master data to pick from, and per person their own balances and entries.
 
-Only what an employee may see: project names, Leistungsarten, materials with units, own hours, own absences.
-No prices, rates, salaries or customer addresses.
+Only what an employee may see: customers with their address (to find the site), project names, Leistungsarten,
+materials with units, own hours, own absences. No prices, rates, salaries, customer e-mails or notes.
 """
 from __future__ import annotations
 
@@ -29,6 +29,17 @@ def _customer_short(c: dict | None) -> str:
     return str(c.get("firma") or c.get("name") or "").strip()
 
 
+def _customer_card(nr: str, c: dict) -> dict:
+    name = _customer_short(c) or nr
+    person = str(c.get("name") or "").strip()
+    a = c.get("adresse") or {}
+    street = " ".join(x for x in (str(a.get("strasse") or "").strip(), str(a.get("nr") or "").strip()) if x)
+    place = " ".join(x for x in (str(a.get("plz") or "").strip(), str(a.get("ort") or "").strip()) if x)
+    land = str(a.get("land") or "CH").strip()
+    return {"nummer": nr, "name": name, "kontakt": person if person != name else "", "strasse": street,
+            "ort": place, "land": "" if land in ("", "CH") else land}
+
+
 def shared(book: Book, today: date) -> dict:
     cfg = leistungen.settings(book)
     texts = daten.texts(book)
@@ -36,9 +47,9 @@ def shared(book: Book, today: date) -> dict:
     projects = [{"nummer": nr, "name": str(p.get("name") or nr), "kunde_nr": str(p.get("kunde") or ""),
                  "kunde": _customer_short(custs.get(str(p.get("kunde"))))}
                 for nr, p in sorted(leistungen.projects(book).items()) if p.get("status", "offen") == "offen"]
-    # names only (no addresses): employees pick the customer they worked for
-    customers = sorted(({"nummer": nr, "name": _customer_short(c) or nr} for nr, c in custs.items()
-                        if c.get("aktiv", True) is not False), key=lambda c: c["name"].lower())
+    # name and address (employees drive there), never e-mail, notes or rates
+    customers = sorted((_customer_card(nr, c) for nr, c in custs.items() if c.get("aktiv", True) is not False),
+                       key=lambda c: c["name"].lower())
     # one fixed service (e.g. always the same hourly work): the app asks nothing, the book fills it in on import
     services = [] if daten.fixed_service(book) else [{"nummer": nr, "text": str(p.get("text") or nr)}
                                                      for nr, p in sorted(leistungen.services(book).items())]

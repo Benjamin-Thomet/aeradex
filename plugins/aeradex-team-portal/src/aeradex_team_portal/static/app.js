@@ -347,15 +347,50 @@ function recentCombos() {
 
 function kundeOf(d) { return d.kunde || (d.projekt && projekt(d.projekt) ? projekt(d.projekt).kunde_nr : ""); }
 
+// ----- customers: search, suggestions, addresses -----
+
+function fold(v) { return String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+function kundeDaten(nr) { return (shared().kunden || []).find((x) => x.nummer === nr); }
+function adresse(k) { return [k.strasse, [k.ort, k.land].filter(Boolean).join(" ")].filter(Boolean).join(", "); }
+// Apple Maps on an iPhone, Google Maps elsewhere (on Android the link opens the Maps app)
+function karte(k) {
+  const q = encodeURIComponent(adresse(k));
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) ? `https://maps.apple.com/?q=${q}` : `https://www.google.com/maps/search/?api=1&query=${q}`;
+}
+function kundenTreffer(q, limit = 8) {
+  // every word must appear in name, contact, address or one of the customer's objects; name matches first
+  const words = fold(q).split(/\s+/).filter(Boolean);
+  const out = [];
+  for (const k of shared().kunden || []) {
+    const name = fold(`${k.name} ${k.kontakt || ""}`);
+    const hay = `${name} ${fold(adresse(k))} ${objekteVon(k.nummer).map((p) => fold(p.name)).join(" ")} ${fold(k.nummer)}`;
+    if (!words.every((w) => hay.includes(w))) continue;
+    out.push({k, rank: words.length && name.startsWith(words[0]) ? 0 : words.every((w) => name.includes(w)) ? 1 : 2});
+  }
+  out.sort((a, b) => a.rank - b.rank || a.k.name.localeCompare(b.k.name, "de-CH", {numeric: true}));
+  return out.slice(0, limit).map((x) => x.k);
+}
+function zuletztKunden() {
+  // the customers of the last entries, for the empty search field
+  const seen = [];
+  const all = [...queue.filter((q) => q.op === "put").map((q) => q.data),
+    ...(mein().eintraege || []).filter((e) => e.data).map((e) => e.data)].filter((d) => d && !d._loeschen).reverse();
+  for (const d of all) { const nr = kundeOf(d); if (nr && kundeDaten(nr) && !seen.includes(nr)) seen.push(nr); }
+  return seen.slice(0, 5).map(kundeDaten);
+}
+
 function zielField(d, withIntern) {
-  // customers first; internal work (Werkstatt, Büro, Berufsschule …) as its own group
+  // one search field: customers by name, place or object; internal work (Werkstatt, Büro …) below them
   const s = shared();
   const sel = kundeOf(d) ? `kunde:${kundeOf(d)}` : d.kategorie ? `intern:${d.kategorie}` : "";
-  const kunden = (s.kunden || []).map((k) => `<option value="kunde:${h(k.nummer)}" ${sel === `kunde:${k.nummer}` ? "selected" : ""}>${h(k.name)}</option>`).join("");
-  const intern = withIntern ? (s.kategorien || []).map((k) => `<option value="intern:${h(k)}" ${sel === `intern:${k}` ? "selected" : ""}>${h(k)}</option>`).join("") : "";
-  return `<div class="field"><label for="ziel">${withIntern ? "Kunde oder intern" : "Kunde"}</label><select id="ziel" required>
-      <option value="">${withIntern ? "Kunde oder intern wählen …" : "Kunde wählen …"}</option>
-      <optgroup label="Kunden">${kunden}</optgroup>${intern ? `<optgroup label="Intern">${intern}</optgroup>` : ""}</select></div>
+  const label = sel.startsWith("kunde:") ? kundeLabel(sel.slice(6)) : sel ? `Intern: ${d.kategorie}` : "";
+  return `<div class="field combo"><label for="zielSuche">${withIntern ? "Kunde oder intern" : "Kunde"}</label>
+      <input id="zielSuche" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+        role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="zielListe"
+        placeholder="${withIntern ? "Name, Ort oder intern …" : "Name oder Ort tippen …"}" value="${h(label)}">
+      <input type="hidden" id="ziel" value="${h(sel)}" data-intern="${withIntern ? "1" : ""}">
+      <ul id="zielListe" class="combo-list hidden" role="listbox"></ul>
+      <p class="muted small hidden" id="zielAdresse"></p></div>
     <div class="field hidden" id="projektWrap"><label for="projekt">${h(wort())}${s.projekt_pflicht ? "" : ` <span class="unit">optional</span>`}</label><select id="projekt"></select></div>`;
 }
 
@@ -364,8 +399,70 @@ function wort() { return shared().projekt_wort || "Projekt"; }
 function objekteVon(kunde) { return (shared().projekte || []).filter((p) => p.kunde_nr === kunde); }
 function objektFehlt(z) { return !!(shared().projekt_pflicht && z.kunde && !z.projekt && objekteVon(z.kunde).length); }
 
+function bindSuche(onPick) {
+  // the suggestions under #zielSuche; picking one sets #ziel and fires its change event
+  const input = $("#zielSuche"), hidden = $("#ziel"), list = $("#zielListe");
+  const withIntern = !!hidden.dataset.intern;
+  let items = [], active = -1;
+  const show = () => {
+    const q = input.value.trim();
+    const typed = q && !(hidden.value && input.value === input.dataset.chosen);
+    const kunden = typed ? kundenTreffer(q) : zuletztKunden();
+    const intern = !withIntern ? [] : (shared().kategorien || []).filter((k) => !typed || fold(k).includes(fold(q)) || fold("intern").startsWith(fold(q)));
+    items = [...kunden.map((k) => ({value: `kunde:${k.nummer}`, label: k.name, sub: [k.kontakt, k.ort].filter(Boolean).join(" · ")})),
+      ...intern.map((k) => ({value: `intern:${k}`, label: `Intern: ${k}`, sub: ""}))];
+    active = items.length && typed ? 0 : -1;
+    const head = !typed && kunden.length ? `<li class="combo-head" role="presentation">Zuletzt</li>` : "";
+    list.innerHTML = items.length ? head + items.map((it, i) => `${!typed && i === kunden.length && kunden.length ? `<li class="combo-head" role="presentation">Intern</li>` : ""}<li role="option" id="opt${i}" data-i="${i}" aria-selected="${i === active}"><span>${h(it.label)}</span>${it.sub ? `<span class="muted small">${h(it.sub)}</span>` : ""}</li>`).join("")
+      : `<li class="combo-head" role="presentation">${typed ? "Kein Kunde gefunden. Fehlt einer, sag es dem Büro." : "Tippe den Namen oder den Ort."}</li>`;
+    list.classList.remove("hidden");
+    input.setAttribute("aria-expanded", "true");
+    if (active >= 0) input.setAttribute("aria-activedescendant", `opt${active}`); else input.removeAttribute("aria-activedescendant");
+  };
+  const hide = () => { list.classList.add("hidden"); input.setAttribute("aria-expanded", "false"); };
+  const pick = (it) => {
+    hidden.value = it.value; input.value = it.label; input.dataset.chosen = it.label; hide();
+    hidden.dispatchEvent(new Event("change"));
+    if (onPick) onPick(it);
+  };
+  input.dataset.chosen = input.value;
+  input.addEventListener("focus", () => { if (hidden.value) input.select(); show(); });
+  input.addEventListener("input", () => {
+    if (hidden.value) { hidden.value = ""; hidden.dispatchEvent(new Event("change")); }
+    show();
+  });
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (list.classList.contains("hidden")) show();
+      if (!items.length) return;
+      active = (active + (ev.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
+      for (const li of list.querySelectorAll("[role=option]")) li.setAttribute("aria-selected", String(Number(li.dataset.i) === active));
+      input.setAttribute("aria-activedescendant", `opt${active}`);
+    } else if (ev.key === "Enter" && !list.classList.contains("hidden")) {
+      ev.preventDefault();                       // Enter picks, it does not send the form
+      if (active >= 0) pick(items[active]);
+    } else if (ev.key === "Escape") hide();
+  });
+  // pointerdown, not click: the field's blur would close the list first
+  list.addEventListener("pointerdown", (ev) => {
+    const li = ev.target.closest("[role=option]");
+    if (li) { ev.preventDefault(); pick(items[Number(li.dataset.i)]); }
+  });
+  input.addEventListener("blur", () => {
+    setTimeout(() => {
+      hide();
+      if (!hidden.value && input.value.trim()) {     // typed a name exactly or one match only: take it
+        const hits = kundenTreffer(input.value, 2);
+        if (hits.length === 1) pick({value: `kunde:${hits[0].nummer}`, label: hits[0].name});
+      }
+    }, 150);
+  });
+}
+
 function bindZiel(d = {}) {
   // the project list follows the customer; it only appears when that customer has open projects
+  bindSuche();
   const fill = () => {
     const ziel = $("#ziel").value;
     const kunde = ziel.startsWith("kunde:") ? ziel.slice(6) : "";
@@ -376,6 +473,9 @@ function bindZiel(d = {}) {
     $("#projekt").innerHTML = `<option value="">${pflicht ? `${h(wort())} wählen …` : `ohne ${h(wort())}`}</option>` + list.map((p) => `<option value="${h(p.nummer)}" ${p.nummer === d.projekt ? "selected" : ""}>${h(p.name)}</option>`).join("");
     const lw = $("#leistungWrap");
     if (lw) lw.classList.toggle("hidden", ziel.startsWith("intern:"));
+    const k = kundeDaten(kunde), where = $("#zielAdresse");
+    where.classList.toggle("hidden", !(k && adresse(k)));
+    where.innerHTML = k && adresse(k) ? `${h(adresse(k))} · <a href="${h(karte(k))}" target="_blank" rel="noopener">Karte</a>` : "";
   };
   $("#ziel").addEventListener("change", () => { d = {}; fill(); });
   fill();
@@ -798,10 +898,55 @@ async function renderDokumente(note = "") {
   }
 }
 
+// ----- Kunden -----
+
+let kundenSuche = "";
+let erfassenVorlage = null;     // from a customer card: the form opens with that customer
+function renderKunden(offen = "") {
+  setTab("kunden");
+  if (!ich) return renderLogin();
+  const alle = shared().kunden || [];
+  view().innerHTML = `<h1>Kunden</h1>
+    <div class="field"><label for="kSuche">Suchen</label><input id="kSuche" type="search" autocomplete="off" spellcheck="false"
+      enterkeyhint="search" placeholder="Name, Strasse, Ort oder ${h(wort())}" value="${h(kundenSuche)}"></div>
+    <div id="kListe"></div>
+    ${!alle.length ? `<p class="muted small">Noch keine Kunden vom Büro übertragen (letzter Abgleich: ${h(stand(ich.letzter_abgleich))}).</p>` : ""}`;
+  const draw = () => {
+    const q = kundenSuche.trim();
+    const shown = q ? kundenTreffer(q, 50) : (zuletztKunden().length ? zuletztKunden() : alle.slice(0, 20));
+    const more = q ? kundenTreffer(q, 1000).length - shown.length : 0;
+    $("#kListe").innerHTML = (!q && alle.length ? `<p class="muted small">${zuletztKunden().length ? "Zuletzt bei dir. " : ""}${alle.length} Kunden: Namen oder Ort tippen.</p>` : "") +
+      (shown.length ? shown.map((k) => kundeKarte(k, k.nummer === offen || shown.length === 1)).join("")
+        : q ? `<p class="empty">Kein Kunde gefunden. Fehlt einer, sag es dem Büro.</p>` : "") +
+      (more > 0 ? `<p class="muted small">… und ${more} weitere: genauer suchen.</p>` : "");
+    for (const b of document.querySelectorAll("[data-erfassen]")) {
+      b.addEventListener("click", () => {
+        const [art, nr, obj] = b.dataset.erfassen.split("|");
+        erfassenArt = art;
+        erfassenVorlage = {kunde: nr, projekt: obj || ""};
+        location.hash = "#/erfassen";
+      });
+    }
+  };
+  $("#kSuche").addEventListener("input", (ev) => { kundenSuche = ev.target.value; draw(); });
+  draw();
+}
+
+function kundeKarte(k, auf) {
+  const objekte = objekteVon(k.nummer);
+  return `<details class="card kunde"${auf ? " open" : ""}><summary><span class="kname">${h(k.name)}</span>
+      <span class="muted small">${h([k.kontakt, k.ort].filter(Boolean).join(" · "))}</span></summary>
+    ${adresse(k) ? `<p class="addr">${k.kontakt ? `${h(k.kontakt)}<br>` : ""}${h(k.strasse)}${k.strasse ? "<br>" : ""}${h([k.ort, k.land].filter(Boolean).join(" "))}</p>
+      <p><a class="btn small" href="${h(karte(k))}" target="_blank" rel="noopener">Karte öffnen</a></p>` : `<p class="muted small">Keine Adresse im Büro erfasst.</p>`}
+    ${objekte.length ? `<h2>${h(wort())}e</h2>${objekte.map((p) => `<div class="item"><div class="what">${h(p.name)}</div><div class="side"><button class="btn small" type="button" data-erfassen="zeit|${h(k.nummer)}|${h(p.nummer)}">Zeit</button></div></div>`).join("")}` : ""}
+    <div class="actions fill"><button class="btn small" type="button" data-erfassen="zeit|${h(k.nummer)}|">Zeit erfassen</button>
+      <button class="btn small" type="button" data-erfassen="material|${h(k.nummer)}|">Material</button></div></details>`;
+}
+
 // ---------- router ----------
 
-const ROUTES = {login: renderLogin, aktivieren: renderActivate, erfassen: () => renderErfassen(), woche: renderWoche,
-  abwesend: () => renderAbwesend(), konto: () => renderKonto(), dokumente: () => renderDokumente()};
+const ROUTES = {login: renderLogin, aktivieren: renderActivate, erfassen: () => { const v = erfassenVorlage; erfassenVorlage = null; renderErfassen("", "ok", v); }, woche: renderWoche,
+  kunden: () => renderKunden(), abwesend: () => renderAbwesend(), konto: () => renderKonto(), dokumente: () => renderDokumente()};
 
 async function route() {
   const name = (location.hash.replace(/^#\/?/, "") || "erfassen").split("?")[0];

@@ -140,7 +140,7 @@ table.list thead + tbody tr:first-child td { border-top: 1px solid var(--line); 
 .docrow:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
 .docrow .open { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: var(--muted); white-space: nowrap; }
 
-nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: grid; grid-template-columns: repeat(5, 1fr);
+nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
   background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
 nav.tabs a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   min-height: var(--nav); text-decoration: none; color: var(--muted); font-size: 11px; font-weight: 600; }
@@ -163,3 +163,27 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .dlgfoot { margin-top: 10px; }
 dialog h2 { margin-bottom: 4px; }
 dialog p.muted { margin-top: 0; }
+
+/* customer search: suggestions under the field */
+.combo { position: relative; }
+.combo-list { position: absolute; left: 0; right: 0; z-index: 6; margin: 4px 0 0; padding: 4px; list-style: none;
+  max-height: 50vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.combo-list [role=option] { display: flex; flex-direction: column; min-height: 48px; justify-content: center;
+  padding: 6px 10px; border-radius: 9px; cursor: pointer; overflow-wrap: anywhere; }
+.combo-list [role=option][aria-selected="true"], .combo-list [role=option]:hover { background: var(--surface-2); }
+.combo-head { padding: 8px 10px 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+#zielAdresse { margin: 6px 0 0; }
+#zielAdresse a { font-weight: 600; }
+
+/* Kunden */
+details.kunde { padding: 0; }
+details.kunde > summary { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; cursor: pointer; list-style: none;
+  min-height: 52px; justify-content: center; }
+details.kunde > summary::-webkit-details-marker { display: none; }
+details.kunde > summary .kname { font-weight: 600; overflow-wrap: anywhere; }
+details.kunde[open] > summary { border-bottom: 1px solid var(--line); }
+details.kunde > :not(summary) { margin-left: 16px; margin-right: 16px; }
+details.kunde > :last-child { margin-bottom: 16px; }
+details.kunde .addr { margin-top: 12px; margin-bottom: 8px; line-height: 1.5; }
+details.kunde h2 { margin-top: 14px; margin-bottom: 0; }

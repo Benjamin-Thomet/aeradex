@@ -186,9 +186,12 @@ def test_kennung_names_cookie_header_and_page(tmp_path):
     page = phone.get("/app/").text
     assert 'data-kennung="muster"' in page and "<title>Team · Muster AG</title>" in page and "__" not in page
     sw = phone.get("/app/sw.js").text
-    assert '"muster-shell-v9"' in sw and '"/app/static/app.js"' in sw and "__" not in sw
-    assert phone.get("/app/manifest.webmanifest").json()["name"] == "Team · Muster AG"
+    assert '"muster-shell-v10"' in sw and '"/app/static/app.js"' in sw and "__" not in sw
+    manifest = phone.get("/app/manifest.webmanifest").json()
+    assert manifest["name"] == "Team · Muster AG" and manifest["short_name"] == "Team"
     assert pc.get("/app/api/sync/docs").json()["kennung"] == "muster"
+    kurz = Config(tmp_path / "k", b"x" * 40, "", titel="Team · Muster AG", kurz="MA Team")
+    assert client(create_app(kurz)).get("/app/manifest.webmanifest").json()["short_name"] == "MA Team"
     with pytest.raises(SystemExit):
         Config(tmp_path / "d", b"x" * 40, "", kennung="Nicht gut!")
 

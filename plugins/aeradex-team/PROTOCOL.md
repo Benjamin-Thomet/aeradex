@@ -45,7 +45,7 @@ transaction as the entry. A replayed UUID is acked with its existing id.
 ### `PUT /snapshot`
 ```json
 {"stand": "2026-10-15T12:00:00+02:00",
- "shared": {"firma": "…", "kunden": [{"nummer": "K0001", "name": "…"}],
+ "shared": {"firma": "…", "kunden": [{"nummer": "K0001", "name": "…", "kontakt": "…", "strasse": "…", "ort": "3600 Thun", "land": ""}],
             "projekte": [{"nummer": "P0001", "name": "…", "kunde_nr": "K0001", "kunde": "…"}],
             "leistungen": [{"nummer": "P001", "text": "Arbeitszeit"}],
             "material": [{"nummer": "P010", "text": "Kleinmaterial", "einheit": "Stk"}],
@@ -56,7 +56,8 @@ transaction as the entry. A replayed UUID is acked with its existing id.
 ```
 Entries, absences and requests recorded in the app carry `uuid`, `version`, `kind`, `data` (form fields),
 `aenderbar` and `gesperrt` (`abgeschlossen` | `verrechnet` | request status). Per person also `abgeschlossen_bis`.
-No prices, rates, salaries or customer addresses are ever sent in a snapshot. Salaries only travel inside
+Customers carry their address (employees drive to the site), never e-mail, notes or rates. No prices,
+rates or salaries are ever sent in a snapshot. Salaries only travel inside
 encrypted documents.
 
 ## Accounts (book → portal)

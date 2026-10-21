@@ -47,6 +47,7 @@ class Config:
     titel: str = "Team"                 # name of the app on the phone, e.g. «Team · Muster AG»
     branding: Path | None = None        # folder with logo.png, icon-192.png, icon-512.png, branding.css (optional)
     farbe: str = "#1b1f24"              # theme colour (status bar, header)
+    kurz: str = ""                      # name under the icon on the home screen (default: start of the title)
 
     def __post_init__(self):
         if not KENNUNG.match(self.kennung):
@@ -63,7 +64,7 @@ class Config:
         return cls(data, secret.encode(), env("AERADEX_PORTAL_SYNC_TOKEN_SHA256", "").strip().lower(),
                    env("AERADEX_PORTAL_INSECURE_COOKIE") != "1", kennung=env("AERADEX_PORTAL_KENNUNG", "aeradex"),
                    titel=env("AERADEX_PORTAL_TITEL", "Team"), branding=Path(branding) if branding else None,
-                   farbe=env("AERADEX_PORTAL_FARBE", "#1b1f24"))
+                   farbe=env("AERADEX_PORTAL_FARBE", "#1b1f24"), kurz=env("AERADEX_PORTAL_KURZ", "").strip())
 
     @property
     def cookie(self) -> str:
@@ -258,7 +259,7 @@ def create_app(config: Config | None = None) -> Starlette:
 
     async def manifest(request: Request):
         return JSONResponse({
-            "name": cfg.titel, "short_name": cfg.titel.split(" · ")[0][:12], "start_url": "/app/#/erfassen",
+            "name": cfg.titel, "short_name": (cfg.kurz or cfg.titel.split(" · ")[0])[:12], "start_url": "/app/#/erfassen",
             "scope": "/app/", "display": "standalone", "background_color": cfg.farbe, "theme_color": cfg.farbe, "lang": "de-CH",
             "icons": [{"src": "/app/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
                       {"src": "/app/static/icon-512.png", "sizes": "512x512", "type": "image/png",

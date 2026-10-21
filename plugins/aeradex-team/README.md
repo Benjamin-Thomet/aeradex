@@ -26,7 +26,11 @@ ohne das Buch: Einträge warten dort, bis der Abgleich sie übernimmt. Protokoll
 - **Lohn:** Lohnabrechnungen, Lohnausweise, Arbeitszeitnachweise (Art. 73 ArGV 1), verschlüsselt mit dem Schlüssel
   der Person: auf dem Portal liegt nur Chiffretext, entschlüsselt wird im Browser.
 
-Mitarbeitende sehen nie Preise, Stundensätze, Löhne anderer, Kundenadressen oder das Buch.
+- **Kunden:** Suche nach Name, Strasse, Ort oder Objekt; Adresse mit Link zur Karte (Apple Karten auf dem iPhone,
+  sonst Google Maps), Objekte des Kunden, von dort direkt Zeit oder Material erfassen. Beim Erfassen schlägt das
+  Kundenfeld beim Tippen passende Kunden vor.
+
+Mitarbeitende sehen nie Preise, Stundensätze, Löhne anderer, E-Mail und Notizen der Kunden oder das Buch.
 
 ## Im Büro (Lohn › Team-App)
 
