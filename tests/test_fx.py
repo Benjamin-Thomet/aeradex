@@ -3,6 +3,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from aeradex import api, fx
+from aeradex.testing import open_years
 from aeradex.book import Book
 
 SAMPLE = b'''<?xml version="1.0"?><wechselkurse xmlns="https://www.backend-rates.bazg.admin.ch/xmldaily">
@@ -117,6 +118,7 @@ def test_revaluation_books_loss_and_check_guards_it(fwbook):
 
 
 def test_revaluation_gain_and_next_year_opening(fwbook):
+    open_years(Book(fwbook), 2027)
     api.post_entry(Book(fwbook), "2026-03-02", "1021", "3200", "1000", "Verkauf DE", waehrung="EUR")
     DAILY["20260630"] = "0.97"
     try:

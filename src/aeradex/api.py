@@ -365,6 +365,55 @@ def year_open(book: Book, jahr: int | None = None) -> dict:
                  checkliste=jahreswechsel.checklist(book, year))
 
 
+def years_overview(book: Book) -> dict:
+    """The business years: which take bookings, which are locked, what can be opened next."""
+    from . import jahreswechsel
+    return jsonable(jahreswechsel.overview(book))
+
+
+def first_year_set(book: Book, jahr: int) -> dict:
+    """Move the first business year (only while no booking lies before it and nothing is locked)."""
+    from . import jahreswechsel
+    _guard(book)
+    touched = jahreswechsel.set_first_year(book, int(jahr))
+    return _done(book, f"Erstes Geschäftsjahr: {jahr}", touched, jahr=int(jahr))
+
+
+def opening_balance(book: Book) -> dict:
+    """The Eröffnungsbilanz of the first year: per account the prior year's closing figure (reading convention:
+    Passiven and Ertrag positive) and the opening balance derived from it, with totals; plus a staged import."""
+    from . import eroeffnung
+    return jsonable({**eroeffnung.view(book), "vorschlag": eroeffnung.staged(book)})
+
+
+def opening_read(book: Book, datei: str, data: bytes) -> dict:
+    """Read a Saldenliste / Bilanz / Erfolgsrechnung of the previous bookkeeping (CSV, Excel, pasted text) into a
+    proposal; nothing is saved until `opening_set`."""
+    from . import eroeffnung
+    proposal = eroeffnung.interpret(book, eroeffnung.read(datei, data), datei)
+    eroeffnung.stage(book, proposal)
+    return jsonable(proposal)
+
+
+def opening_set(book: Book, werte: dict, neue_konten: list | None = None) -> dict:
+    """Set the prior year's closing figures ({konto: amount}, reading convention) of the first year; the opening
+    balance is derived (Privat and the result into equity) and must add up."""
+    from . import eroeffnung
+    _guard(book)
+    clean = {}
+    for nr, v in (werte or {}).items():
+        try:
+            clean[str(nr).strip()] = Decimal(str(v if v not in (None, "") else 0).replace("'", "").replace("’", ""))
+        except Exception:
+            raise BookError(f"Konto {nr}: «{v}» ist kein Betrag") from None
+    result, touched = eroeffnung.apply(book, clean, neue_konten)
+    year = book.settings.erstes_jahr
+    msg = f"Eröffnungsbilanz {year}: Aktiven CHF {result['aktiven']:,.2f}".replace(",", "'")
+    if result["angelegt"]:
+        msg += f", Konten angelegt: {', '.join(result['angelegt'])}"
+    return _done(book, msg, touched, **result)
+
+
 def year_checklist(book: Book, jahr: int) -> dict:
     """What the change from jahr-1 to jahr still needs (prior year locked, Gewinnverwendung, MWST, Lohn …)."""
     from . import jahreswechsel
@@ -1203,7 +1252,8 @@ def invoice_preview(book: Book, positionen: list[dict], kunde: str = "", rabatt=
 from .storage import transactional as _locked
 
 
-WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "year_open", "accruals_book", "reverse_entry", "propose", "approve", "reject",
+WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "year_open", "first_year_set",
+          "opening_set", "accruals_book", "reverse_entry", "propose", "approve", "reject",
           "customer_add", "invoice_create", "invoice_void", "invoice_pay", "invoice_credit", "employee_add",
           "payroll_run", "payroll_close", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
           "allocation_book", "lock", "unlock", "customer_update", "employee_update", "account_update",

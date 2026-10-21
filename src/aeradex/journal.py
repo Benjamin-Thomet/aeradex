@@ -15,6 +15,10 @@ ZERO = Decimal("0")
 
 
 def lock_problem(book: Book, d: date) -> str | None:
+    from .jahreswechsel import year_problem
+    problem = year_problem(book, d)
+    if problem:
+        return problem
     lock = book.settings.sperre_bis
     if lock and d <= lock:
         return f"Die Bücher sind bis {lock.isoformat()} gesperrt ({d.isoformat()} liegt darin)."

@@ -5,7 +5,7 @@ import pytest
 
 from aeradex import api, budget, reports, statements
 from aeradex.book import Book, BookError
-from aeradex.testing import make_book
+from aeradex.testing import make_book, open_years
 
 D = Decimal
 
@@ -81,6 +81,7 @@ def test_cash_flow_reconciles(book):
 
 
 def test_across_the_year_end(book):
+    book = open_years(book, 2027)
     post(book, ("2027-01-05", "1100", "3400", "5000", "Rechnung"), ("2027-02-01", "1020", "1100", "5800", "Zahlung"),
          ("2027-02-10", "2450", "1020", "2000", "Rückzahlung"))
     gf = reports.run(book, "geldfluss", jahr=2026, von="2026-07-01", bis="2027-06-30")
@@ -92,6 +93,7 @@ def test_across_the_year_end(book):
 
 
 def test_budget_from_prior_year_and_comparison(book):
+    book = open_years(book, 2027)
     api.write(Book(book.root), "Budget", budget.from_prior, 2027, 10)
     months = budget.load(Book(book.root), 2027)["3400"]
     assert sum(months, D(0)) == D("49100")                     # 44600 × 1.1 → rounded to 100

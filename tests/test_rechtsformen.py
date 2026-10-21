@@ -6,7 +6,7 @@ import pytest
 from aeradex import api, plugins, statements
 from aeradex.book import Book, BookError
 from aeradex.ledger import BalanceEngine
-from aeradex.testing import assert_clean, make_book, problems
+from aeradex.testing import assert_clean, make_book, problems, open_years
 
 
 def test_templates_are_built_in():
@@ -30,6 +30,7 @@ def test_explicit_template_wins(tmp_path):
 def test_einzelfirma_year_end(tmp_path):
     book = make_book(tmp_path, firma="Maler Muster", rechtsform="Einzelfirma",
                      eroeffnung={"1020": 10000, "2800": -10000})
+    book = open_years(book, 2027)
     assert book.settings.konto("gewinnvortrag") == "2800"
     api.post_entry(book, "2026-03-01", "1100", "3400", "8000", "Malerarbeiten")
     api.post_entry(Book(book.root), "2026-03-20", "1020", "1100", "8000", "Zahlung Kunde")

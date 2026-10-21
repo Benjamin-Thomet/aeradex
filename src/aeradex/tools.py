@@ -385,6 +385,21 @@ def closing_checklist(jahr: int) -> dict:
     return _call(api.closing_checklist, jahr)
 
 
+def business_years() -> dict:
+    """Die Geschäftsjahre: erstes Jahr, welche Jahre Buchungen annehmen (gebucht wird nur in eröffneten, nicht
+    gesperrten Jahren — ein Datum ausserhalb wird abgelehnt), welche gesperrt sind und ob das nächste eröffnet werden
+    kann. Ändert nichts; eröffnen tut ein Mensch unter Einstellungen › Geschäftsjahre."""
+    return _call(api.years_overview)
+
+
+def opening_balance() -> dict:
+    """Die Eröffnungsbilanz des ersten Geschäftsjahres: je Konto die Schlusszahl des Vorjahres aus der bisherigen
+    Buchhaltung (Lesart: Passiven und Ertrag positiv), die daraus abgeleitete Eröffnung (Privat und Gewinn im
+    Eigenkapital), Summen und Differenz, dazu ein eingelesener, noch nicht gespeicherter Vorschlag. Ändert nichts;
+    übernommen wird auf der Seite Eröffnungsbilanz (Einstellungen › Geschäftsjahre)."""
+    return _call(api.opening_balance)
+
+
 def closing_entry(jahr: int, art: str) -> dict:
     """Eine Abschlussbuchung ansehen: angefangene Arbeiten (arbeiten), Materialvorrat (material), Delkredere,
     Ferien-/Überstundenguthaben (ferien) oder Privatanteile (privatanteile) — Saldo ohne diese Buchung, was gebucht
@@ -1293,7 +1308,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
           closing_documents, mwst_details,
           period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year,
-          propose_journal_lines, closing_checklist, closing_entry]
+          propose_journal_lines, closing_checklist, closing_entry, business_years, opening_balance]
 CHAT_ONLY = [read_inbox_file]
 
 # Public names for plugin tools: wrap an api function so errors come back as {"ok": False, …}.

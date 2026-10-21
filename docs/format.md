@@ -17,6 +17,7 @@ qr_referenz_praefix: ''
 waehrung: CHF
 zahlungsfrist_tage: 30
 erstes_jahr: 2026             # Eröffnungssalden im Kontenplan gelten für dieses Jahr
+geschaeftsjahr_offen_bis: 2027  # optional: Folgejahr vor seiner ersten Buchung eröffnet
 sperre_bis: null              # nur über `aeradex lock` / `aeradex unlock` ändern
 agent_modus: vorschlag        # vorschlag | direkt
 konten:                       # Systemkonten
@@ -48,7 +49,15 @@ konten:
 - Vorzeichen: Aktiven und Aufwand positiv, Passiven und Ertrag negativ (wie Banana).
 - `gruppe`: Zeile in Bilanz/Erfolgsrechnung. Standard aus der Kontonummer (KMU-Kontenrahmen), Codes siehe `statements.GROUPS`.
 - `gruppe_negativ`: Darstellung bei Vorzeichenwechsel, z.B. Bank im Minus als Bankverbindlichkeit.
-- `vorjahr`: Vorjahreszahl für das erste Jahr (Spalte «Vorjahr» der ersten Jahresrechnung).
+- `vorjahr`: Vorjahreszahl für das erste Jahr (Spalte «Vorjahr» der ersten Jahresrechnung). Bei Bilanzkonten der
+  Saldo 31.12. der bisherigen Buchhaltung, bei Erfolgskonten die Jahreszahl. Die Seite Eröffnungsbilanz
+  (`aeradex eroeffnung DATEI`) setzt beide Felder aus einer Saldenliste: `eroeffnung` ist dann der gefaltete
+  Schlusssaldo (Privat- und Ergebniskonto sowie ein noch nicht verbuchter Gewinn im Gewinnvortrag/Eigenkapital).
+
+Gebucht wird nur in eröffneten Geschäftsjahren: von `erstes_jahr` bis zum letzten eröffneten Jahr
+(`geschaeftsjahr_offen_bis`, das Jahr der letzten Buchung, und immer das laufende Kalenderjahr). Ein Datum davor oder
+danach wird abgelehnt (`jahreswechsel.year_problem`); `erstes_jahr` lässt sich verschieben, solange keine Buchung
+davor liegt und nichts gesperrt ist (`aeradex jahre --erstes JAHR`).
 - `waehrung`: Fremdwährung eines Bilanzkontos (`EUR`, `USD` …), z.B. `{nr: "1021", name: Bank EUR, klasse: aktiv, waehrung: EUR}`.
   Die Buchhaltung bleibt in CHF; jede Zeile auf diesem Konto trägt zusätzlich den Betrag in der Fremdwährung
   und den Kurs. `eroeffnung_fw`: Eröffnungssaldo in der Fremdwährung (`eroeffnung` ist der CHF-Wert).

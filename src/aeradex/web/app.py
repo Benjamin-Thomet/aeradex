@@ -225,7 +225,7 @@ SECTIONS = [
 ]
 
 # The tabs of the settings page (anchor, label); plugin pages may live in one (`einstellungen:<tab>`).
-EINSTELLUNGEN_TABS = [("firma", "Firma"), ("buchhaltung", "Buchhaltung"), ("lohn", "Lohn"), ("agent", "Agent & KI"),
+EINSTELLUNGEN_TABS = [("firma", "Firma"), ("buchhaltung", "Buchhaltung"), ("jahre", "Geschäftsjahre"), ("lohn", "Lohn"), ("agent", "Agent & KI"),
                       ("funktionen", "Funktionen"), ("buch", "Buch")]
 
 

@@ -3,7 +3,11 @@
 Balances need no opening entry: the balance engine carries every account's closing balance into the
 next year and folds the year's result into the Gewinnvortrag. Opening a year only makes it exist
 before its first booking (`aeradex.yaml → geschaeftsjahr_offen_bis`), so it shows up in every year
-selection. The checklist names what is still open from the year before."""
+selection. The checklist names what is still open from the year before.
+
+Bookings are accepted only in an open business year (`bookable`): from the first year up to the last one
+opened, and always the current calendar year. A date in 2017 or two years ahead is a typo, not a booking that
+should vanish into a year nobody looks at."""
 from __future__ import annotations
 
 from datetime import date
@@ -21,6 +25,77 @@ def _chf(value) -> str:
 
 def next_year(book: Book) -> int:
     return max(book.years()) + 1
+
+
+def last_open(book: Book, today: date | None = None) -> int:
+    """The last year that takes bookings: the last opened year, or the current calendar year once it began."""
+    today = today or date.today()
+    years = book.years()
+    return max(years[-1], today.year) if today.year >= years[0] else years[-1]
+
+
+def year_problem(book: Book, d: date, today: date | None = None) -> str | None:
+    """Why a booking dated `d` is refused because of its business year, or None."""
+    first, last = book.settings.erstes_jahr, last_open(book, today)
+    if d.year < first:
+        return (f"{d:%d.%m.%Y} liegt vor dem ersten Geschäftsjahr {first} — Datum prüfen. Salden von früher "
+                f"gehören in die Eröffnungsbilanz {first}.")
+    if d.year > last:
+        span = f"{first}–{last}" if first != last else str(first)
+        hint = (f"zuerst das Geschäftsjahr {d.year} eröffnen (Einstellungen › Geschäftsjahre)"
+                if d.year == last + 1 else "Datum prüfen")
+        return f"{d:%d.%m.%Y} liegt in keinem eröffneten Geschäftsjahr (offen: {span}) — {hint}."
+    return None
+
+
+def set_first_year(book: Book, jahr: int, today: date | None = None) -> list[Path]:
+    """Move the first business year, while that changes no booking: nothing before it, nothing locked."""
+    today = today or date.today()
+    jahr = int(jahr)
+    if not 1990 <= jahr <= today.year + 1:
+        raise BookError(f"Erstes Geschäftsjahr {jahr}: erlaubt sind 1990 bis {today.year + 1}")
+    old = book.settings.erstes_jahr
+    if jahr == old:
+        raise BookError(f"Das erste Geschäftsjahr ist bereits {jahr}")
+    before = sorted({r.datum.year for r in book.rows if r.datum.year < jahr})
+    if before:
+        raise BookError(f"Es gibt Buchungen in {', '.join(map(str, before))} — das erste Geschäftsjahr kann "
+                        f"nicht nach {before[0]} liegen")
+    lock = book.settings.sperre_bis
+    if lock and lock.year >= min(jahr, old):
+        raise BookError(f"Die Bücher sind bis {lock:%d.%m.%Y} gesperrt — das erste Geschäftsjahr ist fest")
+    book.settings.data["erstes_jahr"] = jahr
+    if int(book.settings.get(KEY) or 0) <= jahr:
+        book.settings.data.pop(KEY, None)
+    book.save_settings()
+    return [book.root / "aeradex.yaml"]
+
+
+def overview(book: Book, today: date | None = None) -> dict:
+    """The business years for the settings page: status, bookings, what can be opened or moved."""
+    today = today or date.today()
+    lock = book.settings.sperre_bis
+    first, last = book.settings.erstes_jahr, last_open(book, today)
+    belege: dict[int, set] = {}
+    for r in book.rows:
+        belege.setdefault(r.datum.year, set()).add(r.beleg)
+    years = []
+    for y in range(first, last + 1):
+        if lock and lock >= date(y, 12, 31):
+            status, text = "gesperrt", "abgeschlossen und gesperrt"
+        elif lock and lock.year == y:
+            status, text = "teilweise", f"gesperrt bis {lock:%d.%m.%Y}"
+        else:
+            status, text = "offen", "offen für Buchungen"
+        years.append({"jahr": y, "status": status, "text": text, "buchungen": len(belege.get(y, ())),
+                      "aktuell": y == today.year})
+    nxt = last + 1
+    rows = bool(book.rows)
+    return {"erstes": first, "letztes": last, "jahre": list(reversed(years)), "naechstes": nxt,
+            "eroeffnen": nxt <= today.year + 1, "sperre_bis": lock,
+            "erstes_aenderbar": not (lock and lock.year >= first),
+            "erstes_bis": min((r.datum.year for r in book.rows), default=today.year + 1),
+            "hat_buchungen": rows}
 
 
 def open_year(book: Book, jahr: int | None = None, today: date | None = None) -> tuple[int, list[Path]]:

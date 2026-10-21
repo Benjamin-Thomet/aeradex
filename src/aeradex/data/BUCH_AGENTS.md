@@ -8,7 +8,10 @@ Du arbeitest damit über das CLI `aeradex` (immer mit `--json`) oder den MCP-Ser
 2. **Nie gebuchte Zeilen löschen oder ändern.** Korrektur = Storno (`aeradex reverse <Beleg>`) plus neue Buchung.
    Rechnungen: `invoice void` (unbezahlt) oder `invoice credit`. Löhne: `payroll reopen` → ändern → `close`.
 3. **Zeilen mit `Quelle`** (rechnung:, zahlung:, gutschrift:, lohn:, abschluss:) gehören ihrem Dokument — nicht anfassen.
-4. **Gesperrte Perioden** (`sperre_bis` in aeradex.yaml) sind unveränderlich.
+4. **Gesperrte Perioden** (`sperre_bis` in aeradex.yaml) sind unveränderlich. Gebucht wird nur in eröffneten
+   Geschäftsjahren (`aeradex jahre`): ein Datum ausserhalb wird abgelehnt — Datum prüfen statt das Jahr zu ändern;
+   ein neues Jahr eröffnet ein Mensch. Salden aus einer früheren Buchhaltung gehören in die Eröffnungsbilanz
+   (`aeradex eroeffnung`), nicht als Buchungen ins Journal.
 5. Nach jeder manuellen Dateiänderung: `aeradex check`. Ein Commit mit Fehlern wird vom git-Hook abgelehnt.
 6. `agent_modus: vorschlag` (Standard): freie Buchungen nur mit `aeradex propose …` vorschlagen,
    mit kurzer Begründung. Der Mensch gibt mit `aeradex approve V-001` frei.

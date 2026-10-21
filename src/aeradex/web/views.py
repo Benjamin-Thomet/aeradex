@@ -2513,10 +2513,86 @@ async def einstellungen(ui: UI, request: Request):
                      plugin_rows=api.plugin_list(book), katalog=_katalog(book), server_mode=ui.auth_dir is not None,
                      neustart=bool(getattr(ui, "neustart_noetig", False)),
                      kantone=__import__("aeradex.qst_estv", fromlist=["CANTONS"]).CANTONS,
-                     qst_geladen=sorted(p.stem.replace("-", " ") for p in (book.root / "lohn" / "qst_tarife").glob("??-????.json")))
+                     qst_geladen=sorted(p.stem.replace("-", " ") for p in (book.root / "lohn" / "qst_tarife").glob("??-????.json")),
+                     jahre=jahreswechsel.overview(book), eb=__import__("aeradex.eroeffnung", fromlist=["view"]).view(book))
 
 
-SETTINGS_TABS = ("firma", "buchhaltung", "lohn", "agent", "funktionen", "buch")
+async def jahre_einstellung(ui: UI, request: Request):
+    """Settings › Geschäftsjahre: open the next year, move the first one."""
+    f = await request.form()
+    book = ui.book()
+    if f.get("aktion") == "erstes":
+        try:
+            jahr = int(f.get("erstes_jahr") or 0)
+        except ValueError:
+            return fail("Jahr als Zahl angeben, z.B. 2027.")
+        return await act(request, api.first_year_set, "/einstellungen#jahre", book, jahr)
+    return await act(request, api.year_open, "/einstellungen#jahre", book, jahreswechsel.next_year(book))
+
+
+async def eroeffnung_seite(ui: UI, request: Request):
+    from .. import eroeffnung
+    book = ui.book()
+    v = eroeffnung.view(book)
+    proposal = eroeffnung.staged(book) or {}
+    werte = proposal.get("werte") or {}
+    for r in v["zeilen"]:
+        r["vorschlag"] = werte.get(r["konto"])
+    used = [r for r in v["zeilen"] if r["wert"] or r["eroeffnung"] or r["vorschlag"] is not None]
+    alle = request.query_params.get("alle") == "1" or not used
+
+    def shown(r):
+        return alle or r in used
+    return ui.render(request, "eroeffnung.html", v=v, vorschlag=proposal, alle=alle, accounts=account_options(book),
+                     neu=[dict(n, betrag=werte.get(n["nr"])) for n in proposal.get("neu") or []],
+                     bilanz=[r for r in v["zeilen"] if r["bilanz"] and shown(r)],
+                     erfolg=[r for r in v["zeilen"] if not r["bilanz"] and shown(r)])
+
+
+async def eroeffnung_speichern(ui: UI, request: Request):
+    f = await request.form()
+    book = ui.book()
+    werte = {k[2:]: (v or "").strip() for k, v in f.multi_items() if k.startswith("w_")}
+    neu = []
+    try:
+        for nr in f.getlist("neu_nr"):
+            amount = parse_amount(f.get(f"n_{nr}") or "0", f"Konto {nr}")
+            ziel = acct(f.get(f"neu_ziel_{nr}") or "")
+            if ziel:                                      # booked onto an existing account instead
+                werte[ziel] = str(parse_amount(werte.get(ziel) or "0", f"Konto {ziel}") + amount)
+            else:
+                neu.append({"nr": nr, "name": (f.get(f"neu_name_{nr}") or "").strip()})
+                werte[nr] = str(amount)
+        result = await asyncio.to_thread(api.opening_set, book, werte, neu)
+    except (BookError, FormatError, ValueError) as exc:
+        return fail(str(exc))
+    from .. import eroeffnung
+    eroeffnung.discard(book)
+    return done(result.get("meldung", "Gespeichert"), "/eroeffnung")
+
+
+async def eroeffnung_einlesen(ui: UI, request: Request):
+    f = await request.form()
+    book = ui.book()
+    if f.get("verwerfen") == "1":
+        from .. import eroeffnung
+        eroeffnung.discard(book)
+        return done("Vorschlag verworfen", "/eroeffnung")
+    upload = f.get("datei")
+    if upload is not None and getattr(upload, "filename", ""):
+        name, data = upload.filename, await upload.read()
+    elif (f.get("text") or "").strip():
+        name, data = "eingefuegt.txt", f.get("text").encode()
+    else:
+        return fail("Datei wählen oder die Saldenliste ins Textfeld einfügen.")
+    try:
+        p = await asyncio.to_thread(api.opening_read, book, name, data)
+    except (BookError, FormatError, ValueError) as exc:
+        return fail(str(exc))
+    return done(f"{len(p['werte'])} Konten eingelesen — prüfen und speichern", "/eroeffnung#salden")
+
+
+SETTINGS_TABS = ("firma", "buchhaltung", "jahre", "lohn", "agent", "funktionen", "buch")
 
 
 async def einstellungen_speichern(ui: UI, request: Request):
@@ -2830,6 +2906,10 @@ def routes(ui: UI) -> list[Route]:
         Route("/einstellungen", h(einstellungen)),
         Route("/einstellungen", h(einstellungen_speichern), methods=["POST"]),
         Route("/einstellungen/lohn", h(lohn_einstellungen), methods=["POST"]),
+        Route("/einstellungen/jahre", h(jahre_einstellung), methods=["POST"]),
+        Route("/eroeffnung", h(eroeffnung_seite)),
+        Route("/eroeffnung", h(eroeffnung_speichern), methods=["POST"]),
+        Route("/eroeffnung/einlesen", h(eroeffnung_einlesen), methods=["POST"]),
         Route("/einstellungen/buch-export", h(buch_export), methods=["POST"]),
         Route("/einstellungen/logo", h(logo_einstellung), methods=["POST"]),
         Route("/einstellungen/logo.bild", h(logo_bild)),

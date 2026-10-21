@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors, accounts_datalist %}
+{% block title %}Eröffnungsbilanz {{ v.jahr }}{% endblock %}
+{% macro amount(x) %}{{ '' if x is none or x == 0 else x }}{% endmacro %}
+{% block main %}
+<div class="crumbs"><a href="/einstellungen#jahre">Einstellungen › Geschäftsjahre</a> /</div>
+<div class="topbar">
+  <div><h1>Eröffnungsbilanz {{ v.jahr }}</h1>
+    <div class="sub">Schlussbilanz und Erfolgsrechnung {{ v.vorjahr }} der bisherigen Buchhaltung → Eröffnung per 01.01.{{ v.jahr }}</div></div>
+</div>
+{{ accounts_datalist(accounts) }}
+
+<div class="figures" id="eb-summen">
+  <div class="figure"><span class="label">Aktiven 31.12.{{ v.vorjahr }}</span><span class="value" data-sum="aktiv">{{ v.aktiven|chf }}</span></div>
+  <div class="figure"><span class="label">Passiven 31.12.{{ v.vorjahr }}</span><span class="value" data-sum="passiv">{{ v.passiven|chf }}</span><span class="meta">inkl. Privat, ohne Gewinn</span></div>
+  <div class="figure"><span class="label">Gewinn {{ v.vorjahr }} lt. Erfolgsrechnung</span><span class="value" data-sum="gewinn">{{ v.ergebnis_vorjahr|chf }}</span></div>
+  <div class="figure"><span class="label">Stand</span><span class="value" style="font-size:16px" data-sum="stand">{% if v.leer %}leer{% elif v.differenz %}Differenz {{ v.differenz|chf }}{% else %}✓ geht auf{% endif %}</span><span class="meta" data-sum="hinweis"></span></div>
+</div>
+
+{% if v.gesperrt %}<div class="alert warn">{{ v.jahr }} ist gesperrt — die Eröffnungsbilanz lässt sich nicht mehr ändern.</div>{% endif %}
+
+{% if not v.gesperrt %}
+<details class="panel drawer" id="einlesen" {{ 'open' if v.leer and not vorschlag }}>
+  <summary><header style="border-bottom:0"><h2>Aus der bisherigen Buchhaltung einlesen</h2><span class="hint">CSV, Excel oder eingefügt</span></header></summary>
+  <form class="body" hx-post="/eroeffnung/einlesen" hx-encoding="multipart/form-data" hx-target="find .errors" style="border-top:1px solid var(--rule)">
+    <p class="small muted" style="max-width:72ch">In der bisherigen Software die <strong>Saldenliste per 31.12.{{ v.vorjahr }}</strong> (oder Bilanz und Erfolgsrechnung) exportieren, nach dem Abschluss {{ v.vorjahr }}. Je Zeile Kontonummer, Bezeichnung und Saldo — oder Soll und Haben. Ob die Passiven positiv oder mit Minus stehen, erkennt aeradex; Titel-, Gruppen- und Totalzeilen werden übersprungen. Es wird noch nichts gespeichert.</p>
+    <div class="form">
+      <div class="field"><label for="eb-d">Datei</label><input class="input" id="eb-d" type="file" name="datei" accept=".csv,.txt,.xlsx,.xlsm,text/csv"></div>
+      <div class="field" style="grid-column: 1 / -1"><label for="eb-t">oder einfügen (aus Excel oder PDF kopiert)</label><textarea class="input" id="eb-t" name="text" rows="5" placeholder="1020	Bank	35'000.00&#10;2800	Eigenkapital	30'000.00" spellcheck="false"></textarea></div>
+    </div>
+    {{ errors() }}
+    <div class="formfoot"><span></span><button class="btn primary" type="submit">Einlesen</button></div>
+  </form>
+</details>
+{% endif %}
+
+{% if vorschlag %}
+<div class="alert warn">
+  <strong>Eingelesen{{ ' aus ' ~ vorschlag.datei if vorschlag.datei and vorschlag.datei != 'eingefuegt.txt' }}:</strong> {{ vorschlag.werte|length }} Konten, markiert. {{ vorschlag.hinweise|join(' · ') }}. Prüfen und unten speichern.
+  <form style="display:inline" hx-post="/eroeffnung/einlesen" hx-target="find .errors"><input type="hidden" name="verwerfen" value="1"><button class="btn small" type="submit">Verwerfen</button><span class="errors"></span></form>
+</div>
+{% endif %}
+
+<form id="salden" hx-post="/eroeffnung" hx-target="#eb-fehler" {% if v.gesperrt %}inert{% endif %}>
+{% if neu %}
+<div class="panel">
+  <header><h2>Konten, die im Kontenplan fehlen</h2><span class="hint">werden angelegt — oder ein bestehendes Konto eintragen</span></header>
+  <div class="tablewrap"><table class="ledger grid">
+    <thead><tr><th>Konto</th><th class="right">Betrag</th><th class="eb-wide">statt anlegen auf Konto</th></tr></thead>
+    <tbody>{% for n in neu %}<tr class="changed">
+      <td><span class="num">{{ n.nr }}</span><input type="hidden" name="neu_nr" value="{{ n.nr }}"> <input class="input" name="neu_name_{{ n.nr }}" value="{{ n.name }}" aria-label="Name" style="width:14em;max-width:100%"></td>
+      <td class="right"><input class="input num" name="n_{{ n.nr }}" value="{{ amount(n.betrag) }}" data-klasse="{{ n.klasse }}" inputmode="decimal" aria-label="Betrag"></td>
+      <td class="eb-wide"><input class="input" name="neu_ziel_{{ n.nr }}" list="konten" placeholder="leer = anlegen" aria-label="Konto"></td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="panel">
+  <header><h2>Bilanz per 31.12.{{ v.vorjahr }}</h2><span class="hint">wie in der Schlussbilanz: Aktiven und Passiven positiv, Privatbezüge und Wertberichtigungen mit Minus</span></header>
+  <div class="tablewrap"><table class="ledger grid">
+    <thead><tr><th>Konto</th><th class="right">31.12.{{ v.vorjahr }}</th><th class="right eb-wide">Eröffnung</th></tr></thead>
+    <tbody>{% for r in bilanz %}<tr class="row{{ ' changed' if r.vorschlag is not none }}">
+      <td><span class="num">{{ r.konto }}</span> {{ r.name }}{% if r.abschluss %} <span class="small muted">→ {{ r.abschluss }}</span>{% endif %}</td>
+      <td class="right"><input class="input num" name="w_{{ r.konto }}" value="{{ amount(r.vorschlag if r.vorschlag is not none else r.wert) }}" data-klasse="{{ r.klasse }}" inputmode="decimal" aria-label="Saldo {{ r.konto }}"></td>
+      <td class="right num muted eb-wide">{{ r.eroeffnung|chf if r.eroeffnung else '' }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="panel">
+  <header><h2>Erfolgsrechnung {{ v.vorjahr }}</h2><span class="hint">für die Vorjahresspalte {{ v.jahr }}; Aufwand und Ertrag positiv — freiwillig</span></header>
+  {% if erfolg %}<div class="tablewrap"><table class="ledger grid">
+    <thead><tr><th>Konto</th><th class="right">{{ v.vorjahr }}</th></tr></thead>
+    <tbody>{% for r in erfolg %}<tr class="row{{ ' changed' if r.vorschlag is not none }}">
+      <td><span class="num">{{ r.konto }}</span> {{ r.name }}</td>
+      <td class="right"><input class="input num" name="w_{{ r.konto }}" value="{{ amount(r.vorschlag if r.vorschlag is not none else r.wert) }}" data-klasse="{{ r.klasse }}" inputmode="decimal" aria-label="Betrag {{ r.konto }}"></td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty">Noch keine Zahlen. <a class="link" href="?alle=1">Alle Konten zeigen</a> oder oben einlesen.</div>{% endif %}
+</div>
+
+<div class="panel">
+  <div class="body">
+    <p class="small muted" style="max-width:72ch">Privatkonten und der Gewinn {{ v.vorjahr }} gehen bei der Eröffnung ins Konto {{ v.gewinnvortrag }}; die Vorjahresspalte zeigt die Zahlen wie in der alten Jahresrechnung. Gespeichert wird nur, wenn die Bilanz aufgeht. Bestehende Buchungen bleiben unverändert; die Eröffnungsbilanz lässt sich ändern, bis {{ v.jahr }} gesperrt ist. {% if alle %}<a class="link" href="/eroeffnung">Nur benutzte Konten zeigen</a>{% else %}<a class="link" href="?alle=1">Alle Konten zeigen</a>{% endif %}</p>
+    <div id="eb-fehler" class="errors"></div>
+    <div class="formfoot"><span class="small muted" data-sum="fuss"></span><button class="btn primary" type="submit">Eröffnungsbilanz speichern</button></div>
+  </div>
+</div>
+</form>
+
+<script>
+(() => {
+  const form = document.getElementById("salden");
+  const num = (t) => {
+    t = (t || "").replace(/[\s'’]/g, "");
+    const m = t.match(/[.,](\d{1,2})$/);
+    t = m ? t.slice(0, m.index).replace(/[.,]/g, "") + "." + m[1] : t.replace(/[.,]/g, "");
+    const v = parseFloat(t); return isNaN(v) ? 0 : v;
+  };
+  const chf = (v) => v.toLocaleString("de-CH", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const out = (k) => document.querySelector(`[data-sum="${k}"]`);
+  function update() {
+    const s = {aktiv: 0, passiv: 0, aufwand: 0, ertrag: 0};
+    form.querySelectorAll("input[data-klasse]").forEach((i) => {
+      const row = i.closest("tr"), ziel = row && row.querySelector("[name^=neu_ziel_]");
+      if (ziel && ziel.value.trim()) return;
+      s[i.dataset.klasse] += num(i.value);
+    });
+    const gewinn = s.ertrag - s.aufwand, diff = s.aktiv - s.passiv;
+    out("aktiv").textContent = chf(s.aktiv); out("passiv").textContent = chf(s.passiv);
+    out("gewinn").textContent = chf(gewinn);
+    const ok = Math.abs(diff) < 0.005 || Math.abs(diff - gewinn) < 0.005;
+    const leer = !s.aktiv && !s.passiv;
+    const text = leer ? "leer" : ok ? "✓ geht auf" : "Differenz " + chf(Math.abs(diff) < 0.005 ? -gewinn : diff - gewinn);
+    out("stand").textContent = text;
+    out("hinweis").textContent = ok || leer ? "" : (gewinn ? "Aktiven − Passiven − Gewinn" : "Aktiven − Passiven");
+    out("fuss").textContent = leer ? "" : text;
+  }
+  form.addEventListener("input", update);
+  update();
+})();
+</script>
+{% endblock %}

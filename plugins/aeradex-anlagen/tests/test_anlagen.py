@@ -5,7 +5,7 @@ import pytest
 
 from aeradex import api, check
 from aeradex.book import Book, BookError
-from aeradex.testing import assert_clean, make_book
+from aeradex.testing import assert_clean, make_book, open_years
 from aeradex_anlagen import anlagen
 
 
@@ -26,6 +26,7 @@ def add_laptop(book, **kw):
 
 
 def test_degressive_pro_rata_and_next_year(book):
+    book = open_years(book, 2035)
     meta = add_laptop(book)
     assert meta["konto"] == "1520" and meta["satz"] == "40"
     assert anlagen.preview(Book(book.root), 2026)[0]["betrag"] == Decimal("800.00")      # 2400 × 40 % × 10/12
@@ -54,6 +55,7 @@ def test_tampering_with_a_booked_depreciation_is_caught(book):
 
 
 def test_disposal_with_proceeds(book):
+    book = open_years(book, 2035)
     add_laptop(book)
     api.write(Book(book.root), "AB", anlagen.depreciate, 2026)
     api.post_entry(Book(book.root), "2027-01-05", "6500", "1020", "10", "x")
@@ -126,6 +128,7 @@ def test_linear_is_the_default_and_a_useful_life_sets_the_rate(book):
 
 
 def test_linear_ends_at_zero(book):
+    book = open_years(book, 2035)
     meta = W(book, anlagen.add, "Monitor", "2026-01-01", "300", "", "1520", nutzungsdauer="2")
     for year in (2026, 2027, 2028):
         api.post_entry(Book(book.root), f"{year}-01-05", "6500", "1020", "1", "x")
@@ -273,6 +276,7 @@ def test_todo_reminds_of_the_depreciation_from_december(book):
 
 
 def test_book_values_rounded_to_100(book):
+    book = open_years(book, 2035)
     [k] = anlagen.kandidaten(Book(book.root))
     W(book, anlagen.add_from_booking, k["beleg"], "1520", "Laptop Lea", "edv", wert="2387.35")   # 20 %, 10 months
     W(book, anlagen.add, "Maus", "2026-01-01", "130", "", "1520", nutzungsdauer="5")             # 26 a year

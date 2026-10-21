@@ -602,3 +602,12 @@ label.busy { opacity: .6; pointer-events: none; }
 .closingcards .card:hover { box-shadow: inset 0 0 0 1px var(--rule-strong); }
 .closingcards .card.done .head strong { color: var(--muted); }
 .closingcards .card.muted { opacity: .6; }
+
+/* Eröffnungsbilanz: rows filled from an import */
+.ledger tr.changed td { background: var(--info-soft); }
+#salden > .panel { margin-bottom: 16px; }
+#salden td { vertical-align: middle; }
+#salden table.grid { min-width: 0; }
+#salden table.grid td:first-child { padding: 8px; }
+#salden table.grid th.right { width: 10em; }
+@media (max-width: 640px) { #salden .eb-wide { display: none; } }

@@ -499,6 +499,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--notiz", default="")
     s = sub.add_parser("jahr-eroeffnen", help="nächstes Geschäftsjahr eröffnen (Salden werden vorgetragen)")
     s.add_argument("jahr", type=int, nargs="?", help="Standard: das Jahr nach dem letzten")
+    s = sub.add_parser("jahre", help="Geschäftsjahre: offen, gesperrt, nächstes; --erstes JAHR verschiebt das erste")
+    s.add_argument("--erstes", type=int, metavar="JAHR", help="erstes Geschäftsjahr setzen (nur ohne Buchungen davor)")
+    s = sub.add_parser("eroeffnung", help="Eröffnungsbilanz: anzeigen, oder eine Saldenliste des Vorjahres einlesen")
+    s.add_argument("datei", nargs="?", help="Saldenliste/Bilanz der bisherigen Buchhaltung (CSV, Excel, Text)")
+    s.add_argument("--speichern", action="store_true", help="den eingelesenen Vorschlag übernehmen (fehlende Konten anlegen)")
     s = sub.add_parser("lock", help="Periode sperren (unveränderlich)")
     s.add_argument("bis")
     s = sub.add_parser("unlock", help="Sperre zurücknehmen (mit Grund)")
@@ -1013,6 +1018,19 @@ def dispatch(a, book_path: Path | None):
         return api.closing_entry_book(book(), a.jahr, a.art, pos, a.wert, a.notiz)
     if c == "jahr-eroeffnen":
         return api.year_open(book(), a.jahr)
+    if c == "jahre":
+        return api.first_year_set(book(), a.erstes) if a.erstes else api.years_overview(book())
+    if c == "eroeffnung":
+        if not a.datei:
+            return api.opening_balance(book())
+        path = Path(a.datei)
+        proposal = api.opening_read(book(), path.name, path.read_bytes())
+        if not a.speichern:
+            return proposal
+        result = api.opening_set(book(), proposal["werte"], proposal["neu"])
+        from . import eroeffnung
+        eroeffnung.discard(book())
+        return result
     if c == "lock":
         return api.lock(book(), a.bis)
     if c == "unlock":

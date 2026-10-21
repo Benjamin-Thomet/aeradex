@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from aeradex import api, check, journal, payroll, qrbill_ch as qr, qst, statements
+from aeradex.testing import open_years
 from aeradex.book import Book, BookError
 from aeradex.files import parse_table, render_table
 
@@ -304,6 +305,7 @@ def test_lohnausweis_employment_months(start, end, year, expected):
 # ---------- statements & year chain ----------
 
 def test_statement_balances_and_year_chain(book):
+    book = open_years(book, 2027)
     api.post_entry(book, "2026-03-01", "1020", "3400", "10000", "Umsatz")
     api.post_entry(Book(book.root), "2026-03-02", "6000", "1020", "4000", "Miete")
     st = api.statement(Book(book.root), 2026)

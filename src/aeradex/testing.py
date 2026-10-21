@@ -39,6 +39,14 @@ def make_book(path: Path, firma: str = "Test GmbH", jahr: int = 2026, plugins: t
     return Book(root)
 
 
+def open_years(book: Book, bis: int) -> Book:
+    """Open the business years up to `bis` without the calendar rule (tests booking into later years)."""
+    book = Book(book.root)
+    book.settings.data["geschaeftsjahr_offen_bis"] = int(bis)
+    book.save_settings()
+    return Book(book.root)
+
+
 def problems(book: Book, levels: tuple[str, ...] = ("fehler", "warnung")) -> list[str]:
     return [str(i) for i in check.run(Book(book.root)) if i.level in levels]
 

@@ -131,6 +131,10 @@ def book_accruals(book: Book, year: int, ids: list[str]) -> tuple[dict, list[Pat
         raise BookError(f"Bereits abgegrenzt: {', '.join(twice)}")
     end, first = date(year, 12, 31), date(year + 1, 1, 1)
     ensure_open(book, end)
+    opened = []
+    from .jahreswechsel import last_open, open_year
+    if first.year > last_open(book) and first.year == max(book.years()) + 1:   # the reversal opens the next year
+        opened = open_year(book, first.year)[1]
     ensure_open(book, first)
     beleg = next_beleg(book, year)
 
@@ -143,7 +147,7 @@ def book_accruals(book: Book, year: int, ids: list[str]) -> tuple[dict, list[Pat
     reversal = next_beleg(book, year + 1)
     back = [Row(first, reversal, text(p, f"Auflösung Abgrenzung 31.12.{year} zu"), p["haben"], p["soll"], p["betrag"])
             for p in chosen]
-    touched += post(book, back)
+    touched += post(book, back) + opened
     reg = registry(book, year)
     entry = {"datum": end.isoformat(), "beleg": beleg, "aufloesung": reversal,
              "ids": [p["id"] for p in chosen], "total": str(sum((p["betrag"] for p in chosen), ZERO))}

@@ -54,6 +54,12 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   per 31.12.: stocks (angefangene Arbeiten, Material, Delkredere, Ferien/Überstunden) booked as the difference to the
   account's balance, Privatanteile Privat an Aufwand; rows owned as `Quelle jahresabschluss:<J>:<art>` (builtin
   Source), proposals from plugins via `aeradex_abschluss_vorschlaege`.
+- `jahreswechsel.py`: business years: bookings only in open years (first year … last opened year or the current
+  calendar year; `year_problem` via `journal.lock_problem`), opening the next year, moving the first year, the
+  change-of-year checklist. `eroeffnung.py`: the Eröffnungsbilanz of the first year from the old bookkeeping:
+  closing figures per account (`vorjahr`, reading convention in the UI) folded into `eroeffnung` (Privat, result
+  account, unbooked profit → Gewinnvortrag); import of a Saldenliste (CSV/Excel/pasted, sign convention detected
+  by what balances), staged in `.aeradex/lokal/eroeffnung.yaml` until saved. UI: Einstellungen › Geschäftsjahre, `/eroeffnung`.
 - `spesen.py`: employee expense claims (own their rows on 2210); `payroll.run/close` add open claims to the payslip
   (`werte.spesen`, `auszahlung`) without touching the wage calculation; Lohnausweis 13.1.2.
 - `mahnungen.py`: reminders (3 steps, PDF with QR-bill for the open amount). Plugin pages: `plugins.Page`, routes

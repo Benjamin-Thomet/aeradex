@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from aeradex import api, check, mwst
+from aeradex.testing import open_years
 from aeradex.book import Book, BookError
 from aeradex.ledger import BalanceEngine
 
@@ -58,6 +59,7 @@ def test_vereinnahmt_counts_on_payment(tmp_path):
 
 def test_umsatzabstimmung_vereinnahmt_with_abgrenzung(tmp_path):
     book = make_book(tmp_path, "vereinnahmt")
+    book = open_years(book, 2027)
     root = book.root
     api.invoice_create(Book(root), "K0001", [{"text": "Beratung", "menge": 1, "preis": "1000"}], "2026-05-04")
     api.invoice_pay(Book(root), "R-2026-0001", None, "2026-05-30")
@@ -131,6 +133,7 @@ def test_abstimmung_finds_differences_and_uncoded_revenue(tmp_path):
 
 def test_cash_credit_and_opening_items(tmp_path):
     root = make_book(tmp_path, "vereinnahmt").root
+    open_years(Book(root), 2027)
     api.invoice_create(Book(root), "K0001", [{"text": "Beratung", "menge": 1, "preis": "1000"}], "2026-12-01")
     api.invoice_credit(Book(root), "R-2026-0001", "540.50", "2027-01-10")
     api.invoice_pay(Book(root), "R-2026-0001", None, "2027-02-10")
@@ -165,6 +168,7 @@ def test_saldo_cash_reconciliation_pdf(tmp_path):
 def test_one_account_for_all_mwst(tmp_path):
     """`mwst.konto`: Umsatz-, Vorsteuer, Abrechnung and Abgrenzung on one account (2200)."""
     book = make_book(tmp_path, "vereinnahmt")
+    book = open_years(book, 2027)
     root = book.root
     api.settings_update(Book(root), mwst={"methode": "effektiv", "abrechnungsart": "vereinnahmt", "konto": "2200"})
     api.invoice_create(Book(root), "K0001", [{"text": "Beratung", "menge": 1, "preis": "1000"}], "2026-05-04")

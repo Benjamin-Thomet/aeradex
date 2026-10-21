@@ -84,6 +84,53 @@
 {{ plugin_seiten('buchhaltung') }}
 </section>
 
+<section data-tab="jahre" id="jahre">
+{% set j = jahre %}
+<div class="panel">
+  <header><h2>Geschäftsjahre</h2><span class="hint">Kalenderjahr 01.01.–31.12.</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Jahr</th><th>Status</th><th class="right">Belege</th><th class="right"></th></tr></thead>
+    <tbody>
+    {% if j.eroeffnen %}<tr class="row muted"><td>{{ j.naechstes }}</td><td><span class="pill muted">noch nicht eröffnet</span></td><td></td><td></td></tr>{% endif %}
+    {% for y in j.jahre %}<tr class="row">
+      <td><strong>{{ y.jahr }}</strong>{% if y.aktuell %} <span class="small muted">laufend</span>{% endif %}{% if y.jahr == j.erstes %} <span class="small muted">erstes Jahr</span>{% endif %}</td>
+      <td><span class="pill {{ {'offen': 'ok', 'teilweise': 'warn'}.get(y.status, 'muted') }}">{{ y.text }}</span></td>
+      <td class="right num">{{ y.buchungen }}</td>
+      <td class="right"><a class="link" href="/journal?jahr={{ y.jahr }}">Journal</a> · <a class="link" href="/abschluss?jahr={{ y.jahr }}">Abschluss</a></td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <form class="body" hx-post="/einstellungen/jahre" hx-target="find .errors" {% if j.eroeffnen %}hx-confirm="Geschäftsjahr {{ j.naechstes }} eröffnen?"{% endif %}>
+    <p class="small muted" style="max-width:72ch">Gebucht wird nur vom 01.01.{{ j.erstes }} bis 31.12.{{ j.letztes }}. Ein Datum ausserhalb — etwa 2017 statt 2027 — wird abgelehnt, statt in einem Jahr zu landen, das niemand ansieht. Das laufende Kalenderjahr ist von selbst offen; das nächste wird hier eröffnet, z.B. für Rechnungen mit Datum im Januar. Gesperrte Jahre (Abschluss › Abschliessen) nehmen keine Buchungen mehr an.</p>
+    {{ errors() }}
+    {% if j.eroeffnen %}<div class="formfoot"><span class="small muted">Die Salden werden automatisch vorgetragen.</span><button class="btn primary" type="submit">Geschäftsjahr {{ j.naechstes }} eröffnen</button></div>
+    {% else %}<p class="small muted">{{ j.naechstes }} lässt sich ab dem 01.01.{{ j.naechstes - 1 }} eröffnen.</p>{% endif %}
+  </form>
+</div>
+
+<div class="panel" id="erstes-jahr">
+  <header><h2>Erstes Geschäftsjahr</h2><span class="hint">ab hier führt aeradex die Bücher</span></header>
+  <form class="body" hx-post="/einstellungen/jahre" hx-target="find .errors" hx-confirm="Erstes Geschäftsjahr ändern?">
+    <input type="hidden" name="aktion" value="erstes">
+    {% if not j.erstes_aenderbar %}<p class="small muted">{{ j.erstes }} ist gesperrt — das erste Geschäftsjahr steht fest.</p>
+    {% else %}
+    <div class="form"><div class="field"><label for="ej">Jahr</label><input class="input num" id="ej" name="erstes_jahr" value="{{ j.erstes }}" inputmode="numeric" maxlength="4" style="text-align:left"></div></div>
+    <p class="small muted" style="max-width:72ch">{% if j.hat_buchungen %}Es gibt Buchungen ab {{ j.erstes_bis }} — das erste Jahr kann früher, aber nicht später liegen.{% else %}Noch keine Buchungen: frei wählbar, z.B. das Jahr, in dem die Firma startet oder zu aeradex wechselt.{% endif %} Die Eröffnungsbilanz gilt für das erste Jahr.</p>
+    {{ errors() }}
+    <div class="formfoot"><span></span><button class="btn" type="submit">Speichern</button></div>
+    {% endif %}
+  </form>
+</div>
+
+<div class="panel" id="eroeffnungsbilanz">
+  <header><h2>Eröffnungsbilanz {{ eb.jahr }}</h2>{% if eb.leer %}<span class="pill muted">leer</span>{% elif eb.differenz %}<span class="pill warn">Differenz {{ eb.differenz|chf }}</span>{% else %}<span class="pill ok">ausgeglichen · Aktiven {{ eb.aktiven|chf }}</span>{% endif %}</header>
+  <div class="body">
+    <p class="small muted" style="max-width:72ch">Wer von einer anderen Buchhaltung zu aeradex wechselt, übernimmt hier die Schlussbilanz und die Erfolgsrechnung {{ eb.vorjahr }}: als Export der bisherigen Software (Saldenliste als CSV oder Excel), eingefügt aus der Zwischenablage oder von Hand. Daraus werden die Eröffnungssalden per 01.01.{{ eb.jahr }} und die Vorjahreszahlen in Bilanz und Erfolgsrechnung.</p>
+    <div class="actions"><a class="btn {{ 'primary' if eb.leer }}" href="/eroeffnung">{{ 'Vorjahreszahlen übernehmen' if eb.leer else 'Eröffnungsbilanz bearbeiten' }}</a></div>
+  </div>
+</div>
+{{ plugin_seiten('jahre') }}
+</section>
+
 <section data-tab="lohn" id="lohn">
 <form class="panel" hx-post="/einstellungen/lohn" hx-target="find .errors">
   <header><h2>Lohn: Sätze und Buchung</h2><span class="hint">in Prozent; an Ausgleichskasse, UVG- und KTG-Police anpassen</span></header>

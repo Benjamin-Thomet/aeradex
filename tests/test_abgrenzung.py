@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from aeradex import abgrenzung, api, check, erfassung, kreditoren, leistung, pdf
+from aeradex.testing import open_years
 from aeradex.book import Book, BookError
 
 D = Decimal
@@ -120,6 +121,7 @@ def test_prepaid_annual_subscription_is_deferred_and_reversed(book):
 
 
 def test_income_invoiced_next_year_for_this_year_is_accrued_net_of_vat(book):
+    book = open_years(book, 2027)
     api.settings_update(book, mwst={"methode": "effektiv"})
     api.invoice_create(Book(book.root), "K0001", [{"text": "Dezember", "menge": 1, "preis": "1000", "mwst": "U81"}],
                        "2027-01-10", leistung_von="2026-12-01", leistung_bis="2026-12-31")
@@ -129,6 +131,7 @@ def test_income_invoiced_next_year_for_this_year_is_accrued_net_of_vat(book):
 
 
 def test_supplier_bill_next_year_for_december_is_accrued(book):
+    book = open_years(book, 2027)
     api.bill_add(book, "L0001", "310.00", datum="2027-01-05", leistung_von="2026-12-01", leistung_bis="2027-01-31")
     (p,) = api.accruals(Book(book.root), 2026)["vorschlaege"]
     assert p["art"] == "aufwand_ausstehend" and (p["soll"], p["haben"]) == ("6570", "2300")

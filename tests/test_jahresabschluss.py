@@ -9,7 +9,7 @@ import pytest
 from aeradex import api, jahresabschluss
 from aeradex.book import Book, BookError
 from aeradex.ledger import BalanceEngine
-from aeradex.testing import assert_clean, make_book
+from aeradex.testing import assert_clean, make_book, open_years
 
 
 @pytest.fixture
@@ -25,6 +25,7 @@ def bal(book, nr, d="2026-12-31"):
 
 
 def test_a_stock_is_booked_to_its_value_and_again_only_the_change(book):
+    book = open_years(book, 2027)
     api.closing_entry_book(book, 2026, "material", [{"text": "Farbe Lager", "betrag": "800"},
                                                    {"text": "Abdeckmaterial", "betrag": "400"}])
     b = Book(book.root)
