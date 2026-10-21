@@ -1,0 +1,72 @@
+{% extends "m/base.html" %}
+{% block title %}Beleg scannen{% endblock %}
+{% block heading %}Beleg scannen{% endblock %}
+{% block bodyclass %}scanpage{% endblock %}
+{% block main %}
+<div id="scanner" data-art="{{ art }}">
+  <!-- 1. start: camera or file -->
+  <section class="sc-start" id="scStart">
+    <div class="m-seg sc-art" role="radiogroup" aria-label="Belegart">
+      <label><input type="radio" name="sc-art" value="" {{ 'checked' if not art }}><span>Automatisch</span></label>
+      <label><input type="radio" name="sc-art" value="kreditor" {{ 'checked' if art == 'kreditor' }}><span>Rechnung</span></label>
+      <label><input type="radio" name="sc-art" value="quittung" {{ 'checked' if art == 'quittung' }}><span>Quittung</span></label>
+      <label><input type="radio" name="sc-art" value="debitor" {{ 'checked' if art == 'debitor' }}><span>Eigene Rg.</span></label>
+    </div>
+    <label class="btn primary m-big sc-camera">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      Foto aufnehmen
+      <input type="file" accept="image/*" capture="environment" id="scCamera" hidden>
+    </label>
+    <label class="btn m-wide">
+      Aus Fotos oder Dateien (Bild oder PDF)
+      <input type="file" accept="image/*,application/pdf,.pdf" id="scFile" hidden>
+    </label>
+    <p class="small muted">Beleg auf einen dunklen, ruhigen Untergrund legen, von oben fotografieren. aeradex sucht die Ränder selbst; du kannst die Ecken danach verschieben. Mehrseitige Belege: Seite für Seite.{% if not ocr %} Hinweis: Texterkennung (Tesseract) fehlt auf dem Server — QR-Zahlteile werden trotzdem gelesen.{% endif %}</p>
+  </section>
+
+  <!-- 2. crop: move the four corners -->
+  <section class="sc-crop" id="scCrop" hidden>
+    <div class="sc-stage" id="scStage">
+      <canvas id="scPhoto"></canvas>
+      <svg id="scFrame" aria-hidden="true"><polygon id="scPoly"></polygon></svg>
+      <button type="button" class="sc-h" data-i="0" aria-label="Ecke oben links"></button>
+      <button type="button" class="sc-h" data-i="1" aria-label="Ecke oben rechts"></button>
+      <button type="button" class="sc-h" data-i="2" aria-label="Ecke unten rechts"></button>
+      <button type="button" class="sc-h" data-i="3" aria-label="Ecke unten links"></button>
+      <canvas id="scLoupe" width="132" height="132" hidden></canvas>
+    </div>
+    <div class="sc-tools">
+      <button type="button" class="btn small" id="scAuto">Automatisch</button>
+      <button type="button" class="btn small" id="scFull">Ganzes Bild</button>
+      <button type="button" class="btn small ghost" id="scDiscard">Verwerfen</button>
+    </div>
+    <p class="small muted sc-hint" id="scFound"></p>
+    <button type="button" class="btn primary m-wide" id="scApply">Zuschneiden</button>
+  </section>
+
+  <!-- 3. pages: preview, filter, rotate, more pages, upload -->
+  <section class="sc-pages" id="scPages" hidden>
+    <div class="sc-preview"><canvas id="scOut"></canvas></div>
+    <div class="sc-tools">
+      <div class="m-seg small" role="radiogroup" aria-label="Darstellung">
+        <label><input type="radio" name="sc-filter" value="dokument" checked><span>Dokument</span></label>
+        <label><input type="radio" name="sc-filter" value="original"><span>Original</span></label>
+      </div>
+      <button type="button" class="btn small" id="scRotate" aria-label="Drehen">↻ Drehen</button>
+      <button type="button" class="btn small" id="scRecrop">Ecken</button>
+      <button type="button" class="btn small ghost" id="scDelete">Seite löschen</button>
+    </div>
+    <div class="sc-strip" id="scStrip" aria-label="Seiten"></div>
+    <div class="sc-foot">
+      <label class="btn m-wide">+ Seite
+        <input type="file" accept="image/*" capture="environment" id="scMore" hidden></label>
+      <button type="button" class="btn primary m-wide" id="scUpload">Hochladen</button>
+    </div>
+    <p class="small muted">Gebucht wird nichts: der Beleg wird gelesen (QR, Text, Agent) und wartet unter «Belege prüfen».</p>
+  </section>
+
+  <div class="sc-busy" id="scBusy" hidden><span class="spinner" aria-hidden="true"></span><span id="scBusyText">Bitte warten …</span></div>
+  <div class="errors" id="scError" role="alert"></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/scan.js?v={{ asset }}"></script>{% endblock %}

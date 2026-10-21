@@ -1,0 +1,25 @@
+{% extends "m/base.html" %}
+{% block title %}Kunden{% endblock %}
+{% block heading %}Kunden{% endblock %}
+{% block main %}
+<div class="m-bar">
+  <input class="input m-search" type="search" data-filter="#kundenliste" placeholder="Suchen: Name, Ort, Telefon, Notiz …" aria-label="Kunden suchen" autocomplete="off">
+  {% if not user or user.can_write %}<a class="btn primary" href="/m/kunden/neu" aria-label="Neuer Kunde">+ Neu</a>{% endif %}
+</div>
+{% if kategorien %}
+<div class="m-chips" role="tablist">
+  <a class="chip {{ 'on' if not kategorie }}" href="/m/kunden">Alle</a>
+  {% for k in kategorien %}<a class="chip {{ 'on' if k == kategorie }}" href="/m/kunden?kategorie={{ k|urlencode }}">{{ k }}</a>{% endfor %}
+</div>
+{% endif %}
+{% if customers %}
+<div class="m-cards" id="kundenliste">{% for nr, c in customers %}{% set st = states.get(nr) or {} %}{% set adr = adresse(c) %}
+  <a class="m-card" href="/m/kunden/{{ nr }}" data-suche="{{ suche[nr] }}">
+    <div class="row"><strong>{{ c.firma or c.name }}</strong>{% if st.offen %}<span class="num">{{ st.offen|chf }}</span>{% endif %}</div>
+    <div class="small muted">{% if c.firma and c.name %}{{ c.name }} · {% endif %}{{ adr or nr }}</div>
+    {% if c.kategorie or nr in wv or st.offen %}<div class="m-pills">{% if nr in wv %}<span class="pill red">nachfassen</span>{% endif %}{% if st.offen %}<span class="pill info">offen</span>{% endif %}{% if c.kategorie %}<span class="pill muted">{{ c.kategorie }}</span>{% endif %}</div>{% endif %}
+  </a>
+{% endfor %}</div>
+<p class="m-empty" data-filter-empty hidden>Kein Kunde gefunden.</p>
+{% else %}<p class="m-empty">Noch keine Kunden. {% if not user or user.can_write %}<a class="link" href="/m/kunden/neu">Ersten Kunden erfassen</a> oder dem <a class="link" href="/m/agent">Agenten</a> diktieren.{% endif %}</p>{% endif %}
+{% endblock %}

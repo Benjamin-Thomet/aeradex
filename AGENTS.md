@@ -88,6 +88,15 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   hook `aeradex_datensicherung`. Each Datensatz names the book files it covers (`pfade`); `ungesichert()` lists the
   rest. **Rule: a feature that stores new data in the book adds a Datensatz** (core here, plugin via the hook) —
   `tests/test_datensicherung.py` fails on any uncovered file of a book with every feature in use.
+- `web/mobil_views.py`: the phone view `/m` (Heute, Kunden, Rechnungen, Scannen, Belege prüfen, Agent), templates
+  in `web/templates/m/`, styles `static/mobil.css`, JS `static/mobil.js`. Same data and api writes as the desktop pages
+  (shared helpers in `views.py`: `customer_states`, `kunde_teile_html`, `kunde_speichern(base=…)`); `/` sends phones
+  here unless the cookie `ansicht=desktop` says otherwise. Installable app: `/manifest.webmanifest` + an empty `/sw.js`
+  (public, nothing cached). Scanner: `static/scan.js` finds the sheet (largest even area → convex hull → 4 corners),
+  lets the person move the corners and flattens in the browser; `scan.pages_to_pdf` makes the PDF, then the normal
+  Belegeingang (`inbox_add` + `bill_draft_create`). Voice: `static/chat.js` (shared by the desktop drawer and `/m/agent`)
+  records with MediaRecorder → `POST /chat/diktat` → `sprache.transcribe` → plugin hook `aeradex_sprache_zu_text`
+  (aeradex-anruf: ElevenLabs or Gemini); the text lands in the input field, nothing is sent without the person.
 - `austausch.py`: the `.aeradex` file (whole book + git bundle, optional AES-256-GCM/scrypt), import with hash,
   path and version checks.
 - `reports.py`: reports for any period, one table shape for every output (`spalten`, `zeilen` with `werte` per

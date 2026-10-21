@@ -1,0 +1,16 @@
+{% extends "m/base.html" %}
+{% block title %}Belege prüfen{% endblock %}
+{% block heading %}Belege prüfen{% endblock %}
+{% block bodyattrs %}data-live{% endblock %}
+{% block main %}
+{% if not user or user.can_write %}<a class="btn primary m-big" href="/m/scannen">Beleg scannen</a>{% endif %}
+{% if drafts %}
+<div class="m-cards">{% for d in drafts %}
+  <a class="m-card" href="/m/belege/{{ d.id }}">
+    <div class="row"><strong>{{ d.name or 'Unbekannt' }}</strong><span class="num">{% if d.waehrung and d.waehrung != 'CHF' %}{{ d.waehrung }} {% endif %}{{ d.betrag|chf if d.betrag else '—' }}</span></div>
+    <div class="row small muted"><span>{{ d.kind }} · {{ d.id }}{% if d.datum %} · {{ d.datum|datum }}{% endif %}</span><span class="pill {{ d.cls }}">{{ d.label }}</span></div>
+  </a>
+{% endfor %}</div>
+{% else %}<p class="m-empty">Keine Belege offen — alles gebucht.</p>{% endif %}
+{% if unread %}<p class="small muted m-note">{{ unread }} Datei(en) liegen ungelesen in der Inbox — einlesen in der <a class="link" href="/#inbox">Desktop-Ansicht</a>.</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "m/base.html" %}
+{% from "_macros.html" import status_pill %}
+{% block title %}{{ meta.nummer }}{% endblock %}
+{% block back %}<a class="m-back" href="/m/rechnungen" onclick="if (document.referrer.startsWith(location.origin)) { history.back(); return false; }" aria-label="Zurück"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>{% endblock %}
+{% block heading %}{{ meta.nummer }}{% endblock %}
+{% block main %}
+{% set offen = state.status in ('offen', 'teilbezahlt') %}{% set ueberfaellig = offen and state.faellig < today %}
+<div class="m-head">
+  <a class="link" href="/m/kunden/{{ meta.kunde }}"><strong>{{ meta.an.name }}</strong></a>
+  <div class="small muted">{{ meta.datum|datum }} · fällig {{ meta.faellig|datum }}{% if meta.objekt %} · Objekt {{ meta.objekt }}{% endif %}{% if meta.referenz %} · Ref. {{ meta.referenz }}{% endif %}</div>
+  <div class="m-pills">{% if ueberfaellig %}<span class="pill red">überfällig</span>{% else %}{{ status_pill(state.status) }}{% endif %}{% if mahnstufe %}<span class="pill warn">{{ mahnstufe }}. Mahnung</span>{% endif %}{% if meta.art == 'akonto' %}<span class="pill info">Akonto</span>{% elif meta.art == 'schluss' %}<span class="pill info">Schlussrechnung</span>{% endif %}{% if meta.extern %}<span class="pill info">extern</span>{% endif %}</div>
+</div>
+
+<div class="m-figs two">
+  <div><span class="label">Total {{ meta.waehrung or 'CHF' }}</span><span class="num">{{ state.total|chf }}</span></div>
+  <div><span class="label">Offen</span><span class="num{{ ' red' if ueberfaellig }}">{{ state.offen|chf }}</span>{% if state.bezahlt %}<span class="small muted">bezahlt {{ state.bezahlt|chf }}</span>{% endif %}</div>
+</div>
+
+{% if pdf %}<a class="btn m-wide" href="/datei/{{ pdf|urlq }}" target="_blank">{{ 'Original öffnen' if meta.extern else 'PDF öffnen' }}</a>{% endif %}
+
+<section class="m-sec">
+  <h2>Positionen</h2>
+  <div class="m-cards">
+    {% for p in meta.positionen if not p.rabatt and not p.akonto %}<div class="m-card"><div class="row"><span style="white-space:pre-line">{{ p.text }}</span><span class="num">{{ p.betrag|chf }}</span></div><div class="small muted">{{ p.menge }} {{ p.einheit }} × {{ p.preis|preis }}</div></div>{% endfor %}
+    {% if meta.mwst %}{% for b in meta.mwst %}<div class="m-card row small"><span>MWST {{ b.satz }} % auf {{ b.netto|chf }}</span><span class="num">{{ b.steuer|chf }}</span></div>{% endfor %}{% endif %}
+    <div class="m-card row"><strong>Total{{ ' inkl. MWST' if meta.mwst }}</strong><strong class="num">{{ meta.total|chf }}</strong></div>
+  </div>
+</section>
+
+{% if paid %}
+<section class="m-sec">
+  <h2>Zahlungen und Gutschriften</h2>
+  <div class="m-cards">{% for r in paid %}<div class="m-card row"><span>{{ r.datum|datum }} · {{ r.text }}</span><span class="num">{{ r.betrag|chf }}</span></div>{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if reminders %}
+<section class="m-sec">
+  <h2>Mahnungen</h2>
+  <div class="m-cards">{% for m in reminders %}<a class="m-card" href="/datei/{{ m.pdf|urlq }}" target="_blank"><div class="row"><strong>{{ m.bezeichnung }}</strong><span class="num">{{ m.offen|chf }}</span></div><div class="small muted">vom {{ m.datum|datum }} · Frist {{ m.frist|datum }}</div></a>{% endfor %}</div>
+</section>
+{% endif %}
+<p class="small muted m-note">Zahlung erfassen, Gutschrift oder Mahnung: in der <a class="link" href="/debitoren/rechnung/{{ meta.nummer }}">Desktop-Ansicht</a>.</p>
+{% endblock %}

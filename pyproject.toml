@@ -48,7 +48,7 @@ aeradex = "aeradex.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-aeradex = ["data/**/*", "web/templates/*", "web/static/*", "web/static/fonts/*"]
+aeradex = ["data/**/*", "web/templates/*", "web/templates/m/*", "web/static/*", "web/static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "plugins"]

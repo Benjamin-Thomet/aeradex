@@ -31,6 +31,17 @@ def aeradex_tools():
     return []
 
 
+@hookimpl
+def aeradex_sprache_zu_text(book):
+    """The microphone of the agent in the browser uses the same speech-to-text as voice notes in Telegram."""
+    from . import transkript
+    from .config import Config
+    cfg = Config.load()
+    if not transkript.available(cfg):
+        return None
+    return lambda audio, filename: transkript.transcribe(cfg, audio, filename)
+
+
 def _setup(parser):
     parser.add_argument("aktion", choices=["serve", "elevenlabs-setup", "status"], nargs="?", default="status",
                         help="serve: Anrufseite und Gateway starten · elevenlabs-setup: Sprach-Agent anlegen/aktualisieren · "

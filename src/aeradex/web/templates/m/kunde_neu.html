@@ -1,0 +1,9 @@
+{% extends "m/base.html" %}
+{% from "_kundenform.html" import kundenform %}
+{% block title %}Neuer Kunde{% endblock %}
+{% block back %}<a class="m-back" href="/m/kunden" aria-label="Zurück zu den Kunden"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>{% endblock %}
+{% block heading %}Neuer Kunde{% endblock %}
+{% block main %}
+<p class="small muted m-note">Schneller gesprochen: <a class="link" href="/m/agent">dem Agenten diktieren</a>, z.B. «Neuer Kunde Hans Muster, Bahnhofstrasse 5, 3000 Bern, 079 123 45 67».</p>
+<section class="m-sec">{{ kundenform({}, "/m/kunden/neu", KATEGORIEN) }}</section>
+{% endblock %}

@@ -120,3 +120,27 @@ GeBüV verlangt die Aufbewahrung über 10 Jahre; der git-Verlauf belegt zusätzl
 Der Agent im Seitenpanel nutzt auf dem Server entweder `ANTHROPIC_API_KEY` (in der systemd-Unit als
 `Environment=` bzw. `EnvironmentFile=`) oder ein dort angemeldetes Claude Code. Benutzer mit Leserecht
 können ihn nicht verwenden. Im Modus `vorschlag` legt er nur Vorschläge an, die eine Person freigibt.
+
+## Handy-Ansicht (`/m`)
+
+Wer sich mit dem Handy anmeldet, landet in einer schlanken Ansicht mit Tab-Leiste unten: **Heute** (Nachfassen,
+überfällige Rechnungen, Belege zum Prüfen, Bankstand), **Kunden** (das ganze Dossier wie am Desktop; Anrufen,
+E-Mail, Navigieren — Apple Karten auf dem iPhone, sonst Google Maps), **Scannen**, **Rechnungen** (Offen, Überfällig,
+Gemahnt, Entwürfe, Bezahlt, Alle) und **Agent**. Erkannt wird das Handy am Browser; im Menü «Desktop-Ansicht» bzw. im
+Firmenmenü am Desktop «Handy-Ansicht» wechselt man, die Wahl gilt auf diesem Gerät (Cookie `ansicht`).
+
+- **Beleg scannen:** Foto aufnehmen, aeradex sucht die Ränder des Blatts, die Ecken lassen sich mit Lupe verschieben,
+  das Bild wird entzerrt («Dokument»: gleichmässig hell, gut lesbar) — alles im Browser, hochgeladen werden nur die
+  fertigen Seiten. Mehrere Seiten werden ein PDF im Belegeingang, daraus ein Entwurf wie beim Hochladen am Desktop.
+  Unter «Belege prüfen» sieht man, was gelesen wurde, wählt das Konto und bucht, wenn der Entwurf bereit ist; neue
+  Lieferanten und IBAN-Abweichungen bleiben dem Desktop.
+- **Agent mit Sprache:** Mikrofon tippen, sprechen, nochmals tippen — der Text erscheint im Eingabefeld und wird erst
+  nach dem Lesen gesendet. Sprache-zu-Text liefert ein Plugin über `aeradex_sprache_zu_text`, z.B. die Funktion
+  «Telegram-Agent» (`aeradex-anruf`) mit `ELEVENLABS_API_KEY` oder dem Gemini-Zugang des Agenten in der Datei, auf die
+  `AERADEX_ANRUF_ENV` zeigt (die Unit des Web-Dienstes braucht diese Variable). Ohne Sprachdienst fehlt das Mikrofon.
+  Mikrofon und Kamera verlangen HTTPS.
+- **Als App:** «Zum Home-Bildschirm» (iPhone: Teilen-Menü; Android: Menü › App installieren) legt ein Icon an, das
+  ohne Browserleiste startet. `/manifest.webmanifest` und `/sw.js` sind ohne Anmeldung erreichbar; der Service Worker
+  speichert nichts (keine Buchdaten auf dem Handy).
+- Rollen gelten wie am Desktop: Leserecht sieht alles, Scannen und Agent fehlen.
+

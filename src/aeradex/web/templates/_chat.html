@@ -13,9 +13,12 @@
     </div>
   </div>
   <div class="ctx" id="chatCtx"><span class="pill lock">Kontext</span> <span id="chatPage"></span></div>
+  <div class="micstate" id="chatMicState" role="status" hidden></div>
   <form class="composer" id="composer">
     <label for="chatInput" hidden>Nachricht an den Agenten</label>
     <textarea class="input" id="chatInput" placeholder="Frag den Agenten …"></textarea>
+    {% if sprache %}<button class="btn mic" type="button" id="chatMic" hidden aria-label="Sprechen" aria-pressed="false" title="Sprechen: der Text erscheint im Feld">{% include "_mic.svg" %}</button>
+    <button class="btn small ghost" type="button" id="chatMicCancel" hidden>Abbrechen</button>{% endif %}
     <button class="btn primary" type="submit" id="chatSend">Senden</button>
   </form>
 </aside>

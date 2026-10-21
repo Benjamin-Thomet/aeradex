@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de-CH" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}aeradex{% endblock %} · {{ settings.firma }}</title>
+<link rel="icon" href="/static/logo.svg?v={{ asset }}" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ asset }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="{{ settings.firma if settings.firma|length <= 14 else 'aeradex' }}">
+<meta name="theme-color" content="#08090a">
+<link rel="stylesheet" href="/static/aeradex.css?v={{ asset }}">
+<link rel="stylesheet" href="/static/mobil.css?v={{ asset }}">
+<script>try{var t=localStorage.getItem("aeradex-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body class="m {% block bodyclass %}{% endblock %}" {% block bodyattrs %}{% endblock %} hx-headers='{"X-CSRF": "{{ csrf }}"}'>
+<header class="m-top">
+  {% block back %}<span class="m-brand"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><mask id="ae-m"><rect width="32" height="32" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M15.85 11.4V20.6"/><circle cx="11.25" cy="16" r="4.6"/><path d="M15.85 16H25.35A4.75 4.75 0 0 0 15.85 16"/><path d="M15.85 16A4.75 4.75 0 0 0 24.24 19.05"/></g></mask><circle cx="16" cy="16" r="15" fill="currentColor" mask="url(#ae-m)"/></svg></span>{% endblock %}
+  <h1>{% block heading %}{{ settings.firma }}{% endblock %}</h1>
+  <details class="m-menu">
+    <summary aria-label="Menü"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></summary>
+    <div class="m-menu-list">
+      <div class="small muted">{{ settings.firma }}{% if user %} · {{ user.anzeige }}{% endif %}</div>
+      <a href="/m/belege">Belege prüfen</a>
+      {% if user %}<a href="/konto">Mein Konto</a>{% endif %}
+      <button type="button" id="themeBtn">Hell / Dunkel</button>
+      <a href="/m/ansicht?zu=desktop">Desktop-Ansicht</a>
+      {% if user %}<form hx-post="/logout"><button type="submit">Abmelden</button></form>{% endif %}
+    </div>
+  </details>
+</header>
+<main class="m-main" id="main">
+  {% if user and not user.can_write %}<div class="alert info">Du hast Leserecht: ansehen ja, ändern nein.</div>{% endif %}
+  {% block main %}{% endblock %}
+</main>
+<nav class="m-tabs" aria-label="Bereiche">
+  <a href="/m" class="{{ 'on' if tab == 'heute' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5M5.5 9.5V20h13V9.5"/></svg>Heute</a>
+  <a href="/m/kunden" class="{{ 'on' if tab == 'kunden' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg>Kunden</a>
+  {% if not user or user.can_write %}<a href="/m/scannen" class="scan {{ 'on' if tab == 'scannen' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M4 12h16"/></svg>Scannen</a>{% endif %}
+  <a href="/m/rechnungen" class="{{ 'on' if tab == 'rechnungen' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7"/></svg>Rechnungen</a>
+  {% if not user or user.can_write %}<a href="/m/agent" class="{{ 'on' if tab == 'agent' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01"/></svg>Agent</a>{% endif %}
+</nav>
+{% if flash %}<div class="toast {{ 'error' if flash.kind in ('error', 'warn') }}" id="toast" role="status">{{ '✓ ' if flash.kind == 'ok' }}{{ flash.msg }}</div>{% endif %}
+<div class="livebar" id="livebar" hidden><button class="btn small primary" type="button" id="reloadBtn">Neue Daten · neu laden</button></div>
+<script src="/static/htmx.min.js?v={{ asset }}"></script>
+<script src="/static/mobil.js?v={{ asset }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

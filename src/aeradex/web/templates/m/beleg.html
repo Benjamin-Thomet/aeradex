@@ -1,0 +1,69 @@
+{% extends "m/base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}{{ d.id }}{% endblock %}
+{% block back %}<a class="m-back" href="/m/belege" aria-label="Zurück zu den Belegen"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>{% endblock %}
+{% block heading %}{{ kind }}{% endblock %}
+{% block bodyattrs %}{{ 'data-live' if d.status == 'agent' }}{% endblock %}
+{% block main %}
+{% set schreiben = not user or user.can_write %}
+<div class="m-head">
+  <div class="row"><strong>{{ v.name or 'Absender noch unbekannt' }}</strong><span class="pill {{ st.cls }}">{{ st.label }}</span></div>
+  <div class="small muted">{{ d.id }}{% if v.rechnungsnr %} · Nr. {{ v.rechnungsnr }}{% endif %}</div>
+</div>
+
+{% if datei %}
+<div class="m-doc">{% if bild %}<a href="/datei/{{ datei|urlq }}" target="_blank"><img src="/datei/{{ datei|urlq }}" alt="Beleg {{ d.id }}"></a>
+  {% else %}<a class="btn m-wide" href="/datei/{{ datei|urlq }}" target="_blank">Beleg öffnen (PDF)</a>{% endif %}</div>
+{% endif %}
+
+<div class="m-cards">
+  <div class="m-card row"><span class="small muted">Betrag</span><strong class="num">{% if v.waehrung and v.waehrung != 'CHF' %}{{ v.waehrung }} {% endif %}{{ v.betrag|chf if v.betrag else '—' }}</strong></div>
+  <div class="m-card row"><span class="small muted">Datum</span><span class="num">{{ v.datum|datum if v.datum else '—' }}</span></div>
+  {% if v.faellig %}<div class="m-card row"><span class="small muted">Fällig</span><span class="num">{{ v.faellig|datum }}</span></div>{% endif %}
+  {% if art != 'debitor' %}<div class="m-card row"><span class="small muted">Konto</span><span>{% if konto %}<span class="num">{{ konto }}</span> {{ konto_name }}{% if d.konto and d.konto.quelle %} <span class="pill muted">{{ d.konto.quelle }}</span>{% endif %}{% else %}<span class="pill warn">offen</span>{% endif %}</span></div>{% endif %}
+  {% if v.mwst %}<div class="m-card row"><span class="small muted">MWST</span><span class="num">{{ v.mwst }}</span></div>{% endif %}
+  {% if v.iban %}<div class="m-card row"><span class="small muted">IBAN</span><span class="num small">{{ v.iban }}</span></div>{% endif %}
+  {% if v.leistung_von %}<div class="m-card row"><span class="small muted">Leistung</span><span class="num">{{ v.leistung_von|datum }}{% if v.leistung_bis %} – {{ v.leistung_bis|datum }}{% endif %}</span></div>{% endif %}
+</div>
+
+{% for w in warnings %}<div class="alert warn">{{ w }}</div>{% endfor %}
+{% if st.hold and st.hold not in warnings %}<div class="alert warn">{{ st.hold }}</div>{% endif %}
+{% if d.status == 'agent' %}<div class="alert info">Der Agent liest den Beleg — die Seite aktualisiert sich, sobald er fertig ist.</div>{% endif %}
+{% if hinweise %}<p class="small muted m-note">{{ hinweise|join(' · ') }}</p>{% endif %}
+
+{% if schreiben %}
+<div class="m-stack">
+  {% if buchbar %}
+  <form hx-post="/m/belege/{{ d.id }}/buchen" hx-target="find .errors" hx-confirm="{{ v.name or 'Beleg' }} über {{ v.betrag|chf if v.betrag }} buchen?">
+    <button class="btn primary m-wide" type="submit">Buchen</button>{{ errors() }}</form>
+  {% elif art == 'debitor' or st.hold or d.status == 'konflikt' %}
+  <a class="btn m-wide" href="{{ desktop }}">Am PC prüfen und freigeben</a>
+  {% endif %}
+
+  {% if art != 'debitor' and d.status != 'agent' %}
+  <details class="m-details"{{ ' open' if not konto }}><summary><h2>Konto {{ 'wählen' if not konto else 'ändern' }}</h2></summary>
+    <form class="m-form" hx-post="/m/belege/{{ d.id }}/konto" hx-target="find .errors">
+      <select class="input" name="konto" aria-label="Konto" required>
+        <option value="">Konto wählen …</option>
+        {% for a in accounts %}<option value="{{ a.nr }}" {{ 'selected' if a.nr == konto }}>{{ a.nr }} {{ a.name }}</option>{% endfor %}
+      </select>
+      {{ errors() }}<button class="btn" type="submit">Übernehmen</button>
+    </form>
+  </details>
+  {% endif %}
+
+  <details class="m-details"><summary><h2>Art ändern</h2></summary>
+    <form class="m-form" hx-post="/m/belege/{{ d.id }}/art" hx-target="find .errors">
+      <div class="m-seg">{% for a, l in {'kreditor': 'Lieferantenrechnung', 'quittung': 'Quittung', 'debitor': 'Eigene Rechnung'}.items() %}<label><input type="radio" name="art" value="{{ a }}" {{ 'checked' if a == art }}><span>{{ l }}</span></label>{% endfor %}</div>
+      {{ errors() }}<button class="btn" type="submit">Übernehmen</button>
+    </form>
+  </details>
+
+  <div class="m-row-actions">
+    {% if d.status != 'agent' and art != 'debitor' %}<form hx-post="/m/belege/{{ d.id }}/agent" hx-target="find .errors"><button class="btn" type="submit">Agent fragen</button>{{ errors() }}</form>{% endif %}
+    <form hx-post="/m/belege/{{ d.id }}/verwerfen" hx-target="find .errors" hx-confirm="Entwurf {{ d.id }} verwerfen? Die Datei bleibt in der Inbox."><button class="btn ghost danger" type="submit">Verwerfen</button>{{ errors() }}</form>
+  </div>
+  <p class="small muted">Lieferant, Beträge oder MWST im Detail ändern: <a class="link" href="{{ desktop }}">in der Desktop-Ansicht</a>.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "m/base.html" %}
+{% from "_macros.html" import errors, status_pill %}
+{% from "_kundenform.html" import kundenform %}
+{% block title %}{{ c.firma or c.name }}{% endblock %}
+{% block back %}<a class="m-back" href="/m/kunden" aria-label="Zurück zu den Kunden"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>{% endblock %}
+{% block heading %}{{ c.firma or c.name }}{% endblock %}
+{% block main %}
+{% set k = d.kennzahlen %}{% set zm = d.zahlungsmoral %}{% set schreiben = not user or user.can_write %}
+<div class="m-head">
+  <div class="small muted">{{ nr }}{% if c.firma and c.name %} · {{ c.name }}{% endif %}{% if c.herkunft %} · via {{ c.herkunft }}{% endif %}{% if k.kunde_seit %} · Kunde seit {{ k.kunde_seit|datum }}{% endif %}</div>
+  <div class="m-pills">{% if c.kategorie %}<span class="pill muted">{{ c.kategorie }}</span>{% endif %}{% if zm.ampel %}<span class="pill {{ zm.ampel }}">{{ zm.label }}</span>{% endif %}</div>
+</div>
+
+<div class="m-actions">
+  {% set tel = c.mobil or c.telefon %}
+  {% if tel %}<a class="m-action" href="tel:{{ tel|replace(' ', '') }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h3.5l1.5 4.5-2 1.5a11 11 0 0 0 6 6l1.5-2L20 15.5V19a1.5 1.5 0 0 1-1.6 1.5C10.6 20 4 13.4 3.5 5.6A1.5 1.5 0 0 1 5 4z"/></svg>Anrufen</a>{% endif %}
+  {% if c.email %}<a class="m-action" href="mailto:{{ c.email }}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>E-Mail</a>{% endif %}
+  {% if karte %}<a class="m-action" href="{{ karte }}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Navigieren</a>{% endif %}
+  {% if schreiben %}<a class="m-action" href="/m/agent?kunde={{ nr }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>Agent</a>{% endif %}
+</div>
+
+<div class="m-cards m-contact">
+  {% if adresse %}<a class="m-card row" href="{{ karte }}" target="_blank" rel="noopener"><span class="small muted">Adresse</span><span>{{ adresse }}</span></a>{% endif %}
+  {% if c.telefon %}<a class="m-card row" href="tel:{{ c.telefon|replace(' ', '') }}"><span class="small muted">Telefon</span><span class="num">{{ c.telefon }}</span></a>{% endif %}
+  {% if c.mobil %}<a class="m-card row" href="tel:{{ c.mobil|replace(' ', '') }}"><span class="small muted">Mobile</span><span class="num">{{ c.mobil }}</span></a>{% endif %}
+  {% if c.email %}<a class="m-card row" href="mailto:{{ c.email }}"><span class="small muted">E-Mail</span><span>{{ c.email }}</span></a>{% endif %}
+</div>
+
+<div class="m-figs">
+  <div><span class="label">Umsatz {{ k.jahr }}</span><span class="num">{{ k.umsatz_jahr|chf }}</span><span class="small muted">Vorjahr {{ k.umsatz_vorjahr|chf }}</span></div>
+  <div><span class="label">Offen</span><span class="num">{{ k.offen|chf }}</span>{% if k.ueberfaellig %}<span class="pill red">überfällig {{ k.ueberfaellig|chf }}</span>{% else %}<span class="small muted">nichts überfällig</span>{% endif %}</div>
+  <div><span class="label">Umsatz total</span><span class="num">{{ k.umsatz_total|chf }}</span><span class="small muted">{{ k.anzahl }} Rechnung(en)</span></div>
+  {% if k.akonto_offen %}<div><span class="label">Akonto offen</span><span class="num">{{ k.akonto_offen|chf }}</span></div>{% endif %}
+  {% for t in teile %}{% for f in t.kennzahlen %}<div><span class="label">{{ f.label }}</span><span class="num">{{ f.wert|chf }}</span><span class="small muted">{{ f.meta }}</span></div>{% endfor %}{% endfor %}
+</div>
+
+{% if schreiben %}
+<section class="m-sec">
+  <h2>Notieren</h2>
+  <form class="m-form" hx-post="/m/kunden/{{ nr }}/log" hx-target="find .errors">
+    <div class="m-seg" role="radiogroup" aria-label="Art">{% for key, label in arten.items() %}<label><input type="radio" name="art" value="{{ key }}" {{ 'checked' if key == 'notiz' }}><span>{{ label }}</span></label>{% endfor %}</div>
+    <textarea class="input" name="text" required placeholder="Was wurde besprochen oder vereinbart?" rows="3" aria-label="Text"></textarea>
+    <div class="m-two">
+      <label class="field"><span class="small muted">Datum</span><input class="input" type="date" name="datum" value="{{ today }}"></label>
+      <label class="field"><span class="small muted">Nachfassen am</span><input class="input" type="date" name="nachfassen"></label>
+    </div>
+    {{ errors() }}<button class="btn primary" type="submit">Speichern</button>
+    <p class="small muted">Lieber sprechen? <a class="link" href="/m/agent?kunde={{ nr }}">Dem Agenten diktieren</a>.</p>
+  </form>
+</section>
+{% endif %}
+
+{% if d.wiedervorlagen %}
+<section class="m-sec">
+  <h2>Wiedervorlagen</h2>
+  <div class="m-cards">{% for e in d.wiedervorlagen %}
+    <div class="m-card"><div class="row"><strong>{{ e.nachfassen|datum }} · {{ e.art_label }}</strong>
+      {% if schreiben %}<form hx-post="/m/kunden/{{ nr }}/log/{{ e.index }}" hx-target="find .errors"><button class="btn small" type="submit">Erledigt</button>{{ errors() }}</form>{% endif %}</div>
+      <div class="small">{{ e.text }}</div></div>
+  {% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="m-sec">
+  <h2>Rechnungen <span class="count">{{ d.rechnungen|length }}</span></h2>
+  {% if d.rechnungen %}<div class="m-cards">{% for r in d.rechnungen %}
+    <a class="m-card{{ ' muted' if r.status == 'storniert' }}" href="/m/rechnungen/{{ r.nummer }}">
+      <div class="row"><strong>{{ r.nummer }}</strong><span class="num">{{ r.total|chf }}{{ ' ' ~ r.waehrung if r.waehrung != 'CHF' }}</span></div>
+      <div class="row small muted"><span>{{ r.datum|datum }} · {{ r.art_label }}{% if r.offen and r.status != 'storniert' %} · offen {{ r.offen|chf }}{% endif %}</span>
+        <span class="m-pills">{% if r.ueberfaellig %}<span class="pill red">überfällig</span>{% else %}{{ status_pill(r.status) }}{% endif %}{% if r.mahnstufe %}<span class="pill warn">{{ r.mahnstufe }}. Mahnung</span>{% endif %}</span></div></a>
+  {% endfor %}</div>
+  {% else %}<p class="m-empty">Noch keine Rechnungen.</p>{% endif %}
+</section>
+
+{% for t in teile %}<section class="m-sec m-plugin">{{ t.html|safe }}</section>{% endfor %}
+
+<section class="m-sec">
+  <h2>Feste Infos</h2>
+  {% if schreiben %}
+  <form class="m-form" hx-post="/m/kunden/{{ nr }}/infos" hx-target="find .errors">
+    <textarea class="input" name="notizen" rows="4" aria-label="Feste Infos" placeholder="z.B. Schlüssel beim Nachbarn, nur vormittags erreichbar">{{ c._notizen }}</textarea>
+    {{ errors() }}<button class="btn" type="submit">Speichern</button>
+  </form>
+  {% elif c._notizen %}<p class="m-text">{{ c._notizen }}</p>{% else %}<p class="m-empty">Keine.</p>{% endif %}
+</section>
+
+<section class="m-sec">
+  <h2>Verlauf</h2>
+  {% if d.zeitachse %}
+  <ul class="m-timeline">{% for e in d.zeitachse[:60] %}
+    <li class="z-{{ e.art }}"><div class="small muted">{{ e.datum|datum }}{{ ' ' ~ e.zeit if e.zeit }}{% if e.wer %} · {{ e.wer }}{% endif %}</div>
+      <div><strong>{% if e.link and e.link.startswith('/debitoren/rechnung/') %}<a class="link" href="/m/rechnungen/{{ e.link.rsplit('/', 1)[-1] }}">{{ e.titel }}</a>{% elif e.link %}<a class="link" href="{{ e.link }}">{{ e.titel }}</a>{% else %}{{ e.titel }}{% endif %}</strong>
+        {% if e.nachfassen %}<span class="pill {{ 'ok' if e.erledigt else ('red' if e.nachfassen <= today else 'info') }}">nachfassen {{ e.nachfassen|datum }}{{ ' ✓' if e.erledigt }}</span>{% endif %}</div>
+      {% if e.text %}<div class="small">{{ e.text }}</div>{% endif %}</li>
+  {% endfor %}</ul>
+  {% else %}<p class="m-empty">Noch nichts.</p>{% endif %}
+</section>
+
+<section class="m-sec">
+  <h2>Zahlungsmoral</h2>
+  {% if zm.bezahlte %}
+  <div class="m-cards">
+    <div class="m-card row"><span>Ø Tage nach Fälligkeit</span><span class="num">{{ zm.tage_schnitt }}</span></div>
+    <div class="m-card row"><span>Pünktlich bezahlt</span><span class="num">{{ zm.puenktlich_prozent }} %</span></div>
+    <div class="m-card row"><span>Bezahlte Rechnungen</span><span class="num">{{ zm.bezahlte }}</span></div>
+    <div class="m-card row"><span>Mahnungen</span><span class="num">{{ zm.mahnungen }}{% if zm.hoechste_stufe %} (bis Stufe {{ zm.hoechste_stufe }}){% endif %}</span></div>
+  </div>
+  {% else %}<p class="m-empty">Noch keine bezahlte Rechnung.</p>{% endif %}
+</section>
+
+{% if d.akonto_offen %}
+<section class="m-sec">
+  <h2>Offene Akontorechnungen</h2>
+  <div class="m-cards">{% for ak in d.akonto_offen %}<a class="m-card row" href="/m/rechnungen/{{ ak.nummer }}"><span>{{ ak.nummer }} · {{ ak.datum|datum }}</span><span class="num">{{ ak.total|chf }}</span></a>{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if schreiben %}
+<details class="m-sec m-details" id="bearbeiten"><summary><h2>Stammdaten bearbeiten</h2></summary>
+  {{ kundenform(c, "/m/kunden/" ~ nr, KATEGORIEN) }}
+</details>
+{% endif %}
+{% endblock %}

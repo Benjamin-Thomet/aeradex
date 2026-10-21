@@ -287,6 +287,11 @@ class Spec:
         """Kinds of data this plugin keeps in the book, for the Datensicherung (CSV/PDF and originals)."""
 
     @hookspec
+    def aeradex_sprache_zu_text(self, book: Book) -> Callable[[bytes, str], str] | None:
+        """Speech to text for voice input in the browser (the agent's microphone): a function
+        ``(audio, filename) -> text`` when this plugin is set up for it (e.g. a speech service key), else None."""
+
+    @hookspec
     def aeradex_kunde_teile(self, book: Book, kunde: str) -> list[KundeTeil]:
         """Parts of a customer's detail page (objects, quotes, open work …)."""
 
@@ -545,6 +550,18 @@ def kunde_teile(book: Book, kunde: str) -> list[tuple[str, KundeTeil]]:
         except Exception:
             continue
     return out
+
+
+def sprache_zu_text(book: Book) -> Callable[[bytes, str], str] | None:
+    """The first speech-to-text a plugin offers for this book; a broken plugin is skipped."""
+    for impl in manager(book).hook.aeradex_sprache_zu_text.get_hookimpls():
+        try:
+            fn = impl.function(book=book)
+        except Exception:
+            continue
+        if callable(fn):
+            return fn
+    return None
 
 
 def todos(book: Book) -> list[Todo]:

@@ -1,0 +1,62 @@
+{% extends "m/base.html" %}
+{% block title %}Heute{% endblock %}
+{% block bodyattrs %}data-live{% endblock %}
+{% block main %}
+<div class="m-hello">
+  <div class="small muted">{{ wochentag }}, {{ today|datum }}</div>
+  {% if not user or user.can_write %}<a class="btn primary m-big" href="/m/scannen"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M4 12h16"/></svg>Beleg scannen</a>{% endif %}
+</div>
+
+{% if liquid %}
+<section class="m-sec">
+  <h2>Geld</h2>
+  <div class="m-cards">{% for a in liquid %}
+    <div class="m-card row"><span>{{ a.name }}<span class="small muted"> · {{ a.nr }}</span></span><span class="num{{ ' neg' if a.saldo < 0 }}">{{ a.saldo|chf }}</span></div>
+  {% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="m-sec">
+  <h2>Nachfassen <span class="count">{{ wiedervorlagen|length }}</span></h2>
+  {% if wiedervorlagen %}<div class="m-cards">{% for e in wiedervorlagen %}
+    <a class="m-card" href="/m/kunden/{{ e.kunde }}">
+      <div class="row"><strong>{{ e.name }}</strong><span class="pill {{ 'red' if e.nachfassen <= today else 'info' }}">{{ 'heute' if e.nachfassen == today else e.nachfassen|datum }}</span></div>
+      <div class="small muted">{{ e.art_label }} · {{ e.text|truncate(110) }}</div></a>
+  {% endfor %}</div>
+  {% else %}<p class="m-empty">Diese Woche ist nichts zum Nachfassen fällig.</p>{% endif %}
+</section>
+
+<section class="m-sec">
+  <h2>Überfällige Rechnungen <span class="count">{{ overdue|length }}</span>{% if overdue %} <span class="num small muted">{{ overdue_total|chf }}</span>{% endif %}</h2>
+  {% if overdue %}<div class="m-cards">{% for r in overdue[:8] %}
+    <a class="m-card" href="/m/rechnungen/{{ r.nummer }}">
+      <div class="row"><strong>{{ r.name }}</strong><span class="num">{{ r.offen|chf }}{{ ' ' ~ r.waehrung if r.waehrung != 'CHF' }}</span></div>
+      <div class="row small muted"><span>{{ r.nummer }} · fällig {{ r.faellig|datum }}</span>{% if r.mahnstufe %}<span class="pill warn">{{ r.mahnstufe }}. Mahnung</span>{% endif %}</div></a>
+  {% endfor %}</div>
+  {% if overdue|length > 8 %}<a class="m-more" href="/m/rechnungen?status=ueberfaellig">Alle {{ overdue|length }} überfälligen</a>{% endif %}
+  {% else %}<p class="m-empty">Keine Rechnung ist überfällig.</p>{% endif %}
+</section>
+
+<section class="m-sec">
+  <h2>Belege zum Prüfen <span class="count">{{ drafts|length }}</span>{% if unread %} <span class="pill muted">{{ unread }} in der Inbox</span>{% endif %}</h2>
+  {% if drafts %}<div class="m-cards">{% for d in drafts[:6] %}
+    <a class="m-card" href="/m/belege/{{ d.id }}">
+      <div class="row"><strong>{{ d.name or d.kind }}</strong><span class="num">{{ d.betrag|chf if d.betrag else '—' }}</span></div>
+      <div class="row small muted"><span>{{ d.kind }} · {{ d.id }}</span><span class="pill {{ d.cls }}">{{ d.label }}</span></div></a>
+  {% endfor %}</div>
+  {% if drafts|length > 6 %}<a class="m-more" href="/m/belege">Alle {{ drafts|length }} Belege</a>{% endif %}
+  {% else %}<p class="m-empty">Keine Belege offen.</p>{% endif %}
+</section>
+
+{% if todos %}
+<section class="m-sec">
+  <h2>Sonst noch</h2>
+  <div class="m-cards">{% for t in todos %}
+    <a class="m-card" href="{{ t.href }}">
+      <div class="row"><strong>{{ t.title }}</strong><span class="pill {{ t.level if t.level in ('red', 'warn', 'info', 'ok') else 'muted' }}">{{ t.tag }}</span></div>
+      {% if t.detail %}<div class="small muted">{{ t.detail|truncate(120) }}</div>{% endif %}</a>
+  {% endfor %}</div>
+  <p class="small muted m-note">Diese Punkte öffnen die Desktop-Seite.</p>
+</section>
+{% endif %}
+{% endblock %}

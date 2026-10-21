@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{% block title %}aeradex{% endblock %} · {{ settings.firma }}</title>
 <link rel="icon" href="/static/logo.svg?v={{ asset }}" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ asset }}">
 <link rel="stylesheet" href="/static/aeradex.css?v={{ asset }}">
 <script>try{var t=localStorage.getItem("aeradex-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
@@ -41,7 +43,7 @@
           <span class="small muted" title="{{ book.root }}">Ordner: {{ book.root.name }}</span>
           {% if user %}<span class="small">{{ user.anzeige }} · {{ {"lesen": "Leserecht", "buchhaltung": "Buchhaltung", "admin": "Admin"}[user.rolle] }}</span>
           <span class="small"><a class="link" href="/konto">Mein Konto</a> · <a class="link" href="/benutzer">Benutzer</a></span>{% endif %}
-          <a class="link small" href="/datensicherung">Datensicherung</a>{% if user %}
+          <span class="small"><a class="link" href="/datensicherung">Datensicherung</a> · <a class="link" href="/m/ansicht?zu=handy" title="Die schlanke Ansicht fürs Handy: Kunden, Rechnungen, Belege scannen, Agent">Handy-Ansicht</a></span>{% if user %}
           <form hx-post="/logout"><button class="btn small ghost" type="submit">Abmelden</button></form>{% endif %}
         </div>
       </details>
@@ -68,5 +70,6 @@
 <div class="livebar" id="livebar" hidden><button class="btn small primary" type="button" id="reloadBtn">Buch wurde geändert · neu laden</button></div>
 <script src="/static/htmx.min.js?v={{ asset }}"></script>
 <script src="/static/app.js?v={{ asset }}"></script>
+<script src="/static/chat.js?v={{ asset }}"></script>
 </body>
 </html>

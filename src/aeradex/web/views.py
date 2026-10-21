@@ -201,6 +201,9 @@ def todo_items(book: Book) -> list[dict]:
 
 
 async def uebersicht(ui: UI, request: Request):
+    from .mobil_views import wants_phone
+    if wants_phone(request):
+        return RedirectResponse("/m", status_code=303)
     book = ui.book()
     data = await asyncio.to_thread(overview_data, book)
     return ui.render(request, "uebersicht.html", book=book, d=data, todos=todo_items(book), inbox=unread_inbox(book))
@@ -948,10 +951,9 @@ async def kreditoren_offene_posten(ui: UI, request: Request):
     return ui.render(request, "kreditoren_offene_posten.html", book=book, ap=ap)
 
 
-async def kunden(ui: UI, request: Request):
+def customer_states(book: Book) -> dict:
+    """Per customer: invoice count, open amount, open Akonto and this year's revenue (customer lists)."""
     from .. import kunden as crm
-    book = ui.book()
-    custs = invoices.customers(book)
     states = defaultdict(lambda: {"anzahl": 0, "offen": ZERO})
     paid = invoices.settlements(book)
     metas = invoices.invoices(book)
@@ -964,6 +966,15 @@ async def kunden(ui: UI, request: Request):
     year = date.today().year
     for nr, per in crm.revenue_by_year(book, metas).items():
         states[nr]["umsatz"] = per.get(year, ZERO)
+    return states
+
+
+async def kunden(ui: UI, request: Request):
+    from .. import kunden as crm
+    book = ui.book()
+    custs = invoices.customers(book)
+    states = customer_states(book)
+    year = date.today().year
     kategorien = sorted({c.get("kategorie") for c in custs.values() if c.get("kategorie")})
     kat = request.query_params.get("kategorie", "")
     shown = {nr: c for nr, c in custs.items() if not kat or c.get("kategorie") == kat}
@@ -984,6 +995,13 @@ async def kunde(ui: UI, request: Request):
         d = await asyncio.to_thread(crm.dossier, book, nr)
     except BookError as exc:
         return PlainTextResponse(str(exc), status_code=404)
+    return ui.render(request, "kunde.html", book=book, d=d, c=d["kunde"], nr=nr, teile=kunde_teile_html(ui, book, nr, d),
+                     arten=crm.LOG_ARTEN, KATEGORIEN=crm.KATEGORIEN, today=date.today().isoformat(),
+                     filter=request.query_params.get("rechnungen", "alle"))
+
+
+def kunde_teile_html(ui: UI, book: Book, nr: str, d: dict) -> list[dict]:
+    """The plugin parts of a customer's dossier, rendered (a broken part shows a line instead of the page failing)."""
     teile = []
     for plugin, teil in d["teile"]:
         html = ""
@@ -994,9 +1012,7 @@ async def kunde(ui: UI, request: Request):
             except Exception as exc:          # a broken plugin part must not take the customer page down
                 html = f'<div class="panel"><div class="body small muted">{teil.titel}: nicht verfügbar ({type(exc).__name__})</div></div>'
         teile.append({"titel": teil.titel, "html": html, "kennzahlen": teil.kennzahlen, "aktionen": teil.aktionen})
-    return ui.render(request, "kunde.html", book=book, d=d, c=d["kunde"], nr=nr, teile=teile,
-                     arten=crm.LOG_ARTEN, KATEGORIEN=crm.KATEGORIEN, today=date.today().isoformat(),
-                     filter=request.query_params.get("rechnungen", "alle"))
+    return teile
 
 
 async def kunde_log(ui: UI, request: Request):
@@ -1020,7 +1036,8 @@ async def kunde_infos(ui: UI, request: Request):
                      notizen=f.get("notizen") or "")
 
 
-async def kunde_speichern(ui: UI, request: Request):
+async def kunde_speichern(ui: UI, request: Request, base: str = "/debitoren/kunden"):
+    """New customer or changed master data; `base` is where the customer's page lives (desktop or phone)."""
     f = await request.form()
     fields = {k: (f.get(k) or "").strip() for k in ("name", "firma", "strasse", "nr", "plz", "ort", "land", "email",
                                                     "telefon", "mobil", "kategorie", "herkunft")}
@@ -1033,8 +1050,8 @@ async def kunde_speichern(ui: UI, request: Request):
         if satz:
             fields["stundensatz"] = satz
         notes = {"notizen": f.get("notizen")} if "notizen" in f else {}
-        return await act(request, api.customer_update, f"/debitoren/kunden/{nr}", ui.book(), nr, **notes, **fields)
-    return await act(request, api.customer_add, lambda r: f"/debitoren/kunden/{r['kunde']['nummer']}", ui.book(),
+        return await act(request, api.customer_update, f"{base}/{nr}", ui.book(), nr, **notes, **fields)
+    return await act(request, api.customer_add, lambda r: f"{base}/{r['kunde']['nummer']}", ui.book(),
                      notizen=f.get("notizen", ""), stundensatz=satz or None, **fields)
 
 

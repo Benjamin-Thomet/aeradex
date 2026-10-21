@@ -174,6 +174,10 @@ class UI:
         except Exception:
             ctx.setdefault("plugin_pages", [])
         ctx.setdefault("einstellungen_seiten", settings_pages(ctx["plugin_pages"]))
+        if "sprache" not in ctx:
+            from .. import sprache
+            user = getattr(request.state, "user", None)
+            ctx["sprache"] = (user is None or user.can_write) and sprache.available(book)
         ctx.setdefault("navigation", navigation(request.url.path, ctx["nav"], ctx["plugin_pages"],
                                                 ctx["vat"].get("methode", "") if isinstance(ctx["vat"], dict) else "",
                                                 str(ctx.get("status") or request.query_params.get("status") or "")))
@@ -393,7 +397,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path.startswith("/static/"):
+        if path.startswith("/static/") or path in PUBLIC_PATHS:
             return await call_next(request)
         if self.ui.users is not None:
             return await self.server_mode(request, call_next)
@@ -461,6 +465,9 @@ class SessionMiddleware(BaseHTTPMiddleware):
         host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
         return not origin or origin.split("://", 1)[-1] == host
 
+
+# Served without a session: the app manifest (fetched by the browser without cookies) and the empty service worker.
+PUBLIC_PATHS = ("/manifest.webmanifest", "/sw.js")
 
 LOCKED_PAGE = """<!doctype html><meta charset="utf-8"><title>aeradex</title>
 <body style="font-family:system-ui;padding:3rem;max-width:36rem;margin:auto;line-height:1.5">
@@ -592,8 +599,8 @@ def create_app(root: Path, token: str | None = None, auth_dir: Path | None = Non
     from . import berichte_views, views, chat
 
     ui = UI(root, token, auth_dir, https)
-    from . import benutzer_views
-    routes = views.routes(ui) + berichte_views.routes(ui) + chat.routes(ui) + benutzer_views.routes(ui) + (login_routes(ui) if auth_dir is not None else []) + [
+    from . import benutzer_views, mobil_views
+    routes = views.routes(ui) + mobil_views.routes(ui) + berichte_views.routes(ui) + chat.routes(ui) + benutzer_views.routes(ui) + (login_routes(ui) if auth_dir is not None else []) + [
         Route("/datei/{path:path}", serve_file(ui)),
         Route("/events", events(ui)),
         Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),

@@ -15,7 +15,8 @@ PROMPT = ("Schreib diese Sprachnachricht wörtlich ab. Spricht die Person Schwei
           "werden. Gib nur den Text zurück, ohne Kommentar. Ist nichts zu verstehen, antworte nur mit: -")
 
 MIME = {"oga": "audio/ogg", "ogg": "audio/ogg", "opus": "audio/ogg", "mp3": "audio/mpeg", "m4a": "audio/mp4",
-        "mp4": "audio/mp4", "aac": "audio/aac", "wav": "audio/wav", "flac": "audio/flac"}
+        "mp4": "audio/mp4", "aac": "audio/aac", "wav": "audio/wav", "flac": "audio/flac",
+        "webm": "audio/webm", "weba": "audio/webm"}
 
 
 class TranscriptionError(RuntimeError):

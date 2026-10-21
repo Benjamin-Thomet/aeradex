@@ -741,8 +741,28 @@ def routes(ui) -> list[Route]:
         """The visible transcript, so the drawer survives page loads."""
         return JSONResponse({"items": agent(ui).items, "busy": agent(ui).busy})
 
+    async def diktat(request: Request):
+        """A voice recording from the microphone → text for the input field (the person reads it before sending)."""
+        from ..book import Book
+        from .. import sprache
+        user = getattr(request.state, "user", None)
+        if user is not None and not user.can_write:
+            return JSONResponse({"ok": False, "fehler": "Der Agent ist mit Leserecht nicht verfügbar."}, status_code=403)
+        form = await request.form()
+        upload = form.get("audio")
+        if upload is None or not hasattr(upload, "read"):
+            return JSONResponse({"ok": False, "fehler": "Keine Aufnahme erhalten"}, status_code=400)
+        audio = await upload.read()
+        name = getattr(upload, "filename", "") or "sprache.webm"
+        try:
+            text = await asyncio.to_thread(sprache.transcribe, Book(ui.root), audio, name)
+        except sprache.SpeechError as exc:
+            return JSONResponse({"ok": False, "fehler": str(exc)}, status_code=400)
+        return JSONResponse({"ok": True, "text": text})
+
     return [
         Route("/chat/send", send, methods=["POST"]),
+        Route("/chat/diktat", diktat, methods=["POST"]),
         Route("/chat/stream/{turn:str}", stream),
         Route("/chat/neu", reset, methods=["POST"]),
         Route("/chat/verlauf", history),

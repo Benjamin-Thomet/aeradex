@@ -1,0 +1,37 @@
+{% extends "m/base.html" %}
+{% block title %}Agent{% endblock %}
+{% block heading %}Agent{% endblock %}
+{% block bodyclass %}agentpage{% endblock %}
+{% block main %}
+{% if not schreiben %}
+<p class="m-empty">Der Agent ist mit Leserecht nicht verfügbar.</p>
+{% else %}
+<div class="m-chat">
+  <div class="m-chat-head">
+    <span class="small muted">Modus «{{ settings.get('agent_modus') or 'vorschlag' }}»{% if (settings.get('agent_modus') or 'vorschlag') == 'vorschlag' %} · bucht nichts ohne dich{% endif %}</span>
+    <button class="btn small ghost" type="button" id="chatReset">Neues Gespräch</button>
+  </div>
+  {% if not bereit %}<div class="alert warn">{{ hinweis or 'Der Agent ist noch nicht eingerichtet (Einstellungen › Agent & KI).' }}</div>{% endif %}
+  <div class="msgs" id="msgs" aria-live="polite" data-page="{{ page }}"{% if ctx %} data-ctx="{{ ctx }}"{% endif %}{% if preset %} data-preset="{{ preset }}"{% endif %}>
+    <div class="msg ai" id="chatHello"><p>Sag oder schreib, was ich tun soll{{ ' — ich höre zu, wenn du auf das Mikrofon tippst' if sprache }}.</p></div>
+    <div class="suggest" id="chatSuggest">
+      <button type="button" data-fill="Neuer Kunde: ">Neuen Kunden erfassen …</button>
+      <button type="button" data-fill="Notiz zu Kunde ">Notiz zu einem Kunden …</button>
+      <button type="button">Welche Rechnungen sind offen?</button>
+      <button type="button">Was muss ich diese Woche nachfassen?</button>
+    </div>
+  </div>
+  {% if ctx %}<div class="ctx" id="chatCtx"><span class="pill lock">Kontext</span> <span id="chatPage"></span></div>{% endif %}
+  <div class="micstate" id="chatMicState" role="status" hidden></div>
+  <form class="composer m-composer" id="composer">
+    <label for="chatInput" hidden>Nachricht an den Agenten</label>
+    <textarea class="input" id="chatInput" rows="1" data-grow placeholder="Nachricht …"></textarea>
+    {% if sprache %}<button class="btn mic" type="button" id="chatMic" hidden aria-label="Sprechen" aria-pressed="false">{% include "_mic.svg" %}</button>
+    <button class="btn small ghost" type="button" id="chatMicCancel" hidden>Abbrechen</button>{% endif %}
+    <button class="btn primary" type="submit" id="chatSend" aria-label="Senden"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+  </form>
+  {% if not sprache %}<p class="small muted m-note">Spracheingabe: in den Einstellungen die Funktion «Telegram-Agent» mit Sprachdienst (ElevenLabs oder Gemini) einrichten.</p>{% endif %}
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% if schreiben %}<script src="/static/chat.js?v={{ asset }}"></script>{% endif %}{% endblock %}
