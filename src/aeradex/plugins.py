@@ -155,6 +155,28 @@ class DossierTeil:
 
 
 @dataclass
+class Datensatz:
+    """A kind of data for the Datensicherung (backup as CSV/PDF), e.g. «Anlagen» or «Zeiterfassung».
+
+    ``build(book, jahr, fmt)`` returns ``[(file name, bytes)]`` for one of ``formate`` ("csv", "pdf" …);
+    ``jahr`` is None unless ``jahresweise``. ``pfade`` are globs of the book files it covers (relative to the book,
+    e.g. "anlagen/**"): every file of a book must be covered by some Datensatz, so new data is never left out;
+    the originals of these files are offered too («dateien»). ``anzahl(book, jahr)`` counts the records (None =
+    unknown); a Datensatz with 0 is shown as empty. ``vertraulich``: personal data (wages, health …).
+    """
+    key: str
+    gruppe: str
+    label: str
+    formate: tuple[str, ...]
+    build: Callable[[Book, int | None, str], list[tuple[str, bytes]]]
+    pfade: tuple[str, ...] = ()
+    jahresweise: bool = False
+    anzahl: Callable[[Book, int | None], int | None] | None = None
+    beschreibung: str = ""
+    vertraulich: bool = False
+
+
+@dataclass
 class Todo:
     """A line in the to-do list of the Übersicht: work waiting for a person, leading to where it is done.
     ``level`` info | warn | red."""
@@ -259,6 +281,10 @@ class Spec:
     @hookspec
     def aeradex_dossier_teile(self) -> list[DossierTeil]:
         """Parts for the Abschlussunterlagen of a year."""
+
+    @hookspec
+    def aeradex_datensicherung(self, book: Book) -> list[Datensatz]:
+        """Kinds of data this plugin keeps in the book, for the Datensicherung (CSV/PDF and originals)."""
 
     @hookspec
     def aeradex_kunde_teile(self, book: Book, kunde: str) -> list[KundeTeil]:
@@ -448,6 +474,10 @@ def sources(book: Book | None) -> dict[str, Source]:
 
 def dossier_teile(book: Book | None) -> list[DossierTeil]:
     return list(_flat(manager(book).hook.aeradex_dossier_teile()))
+
+
+def datensicherung_teile(book: Book) -> list[Datensatz]:
+    return list(_flat(manager(book).hook.aeradex_datensicherung(book=book)))
 
 
 def check_findings(book: Book, rows: list[Row]) -> list[Finding]:

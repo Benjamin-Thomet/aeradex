@@ -846,6 +846,25 @@ def unlock(book: Book, bis, grund: str) -> dict:
     return _done(book, f"Sperre zurückgenommen auf {data['bis'] or '—'}: {grund}", touched)
 
 
+def backup_overview(book: Book, jahr: int | None = None) -> dict:
+    """Datensicherung: every kind of data (group, description, count, formats) and files no Datensatz covers."""
+    from . import datensicherung
+    return jsonable(datensicherung.overview(book, int(jahr) if jahr else None))
+
+
+def backup_part(book: Book, key: str, format: str = "csv", jahr: int | None = None) -> tuple[str, bytes]:
+    """One kind of data in one format (csv, pdf, dateien) → (file name, bytes)."""
+    from . import datensicherung
+    return datensicherung.build_one(book, key, format, int(jahr) if jahr else None)
+
+
+def backup_zip(book: Book, keys: list[str] | None = None, jahr: int | None = None, formate: list[str] | None = None,
+               originale: bool = False) -> tuple[str, bytes, dict]:
+    """The chosen kinds of data (default all) as one ZIP with contents PDF and manifest (SHA-256 per file)."""
+    from . import datensicherung
+    return datensicherung.build(book, keys or None, int(jahr) if jahr else None, formate or None, originale)
+
+
 def history(book: Book, limit: int = 20, beleg: str = "", von: str = "", suche: str = "") -> list[dict]:
     """The audit trail: commits, newest first; filtered by a Beleg, a server user (`von`) or text in the message."""
     commits = None

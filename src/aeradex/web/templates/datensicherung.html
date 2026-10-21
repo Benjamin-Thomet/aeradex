@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Datensicherung{% endblock %}
+{% block main %}
+{% set fl = {"csv": "CSV", "pdf": "PDF", "dateien": "Dateien"} %}
+<div class="crumbs"><a href="/einstellungen#buch">Einstellungen › Buch</a> /</div>
+<div class="topbar"><div><h1>Datensicherung</h1>
+  <div class="sub">Alle Daten des Buchs zum Lesen und Archivieren — als CSV für Excel, als PDF oder als Originaldateien, einzeln oder als ZIP.</div></div>
+  <form class="actions" method="get" action="/datensicherung">
+    <select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr">
+      <option value="">alle Jahre</option>{% for y in ov.jahre|reverse %}<option value="{{ y }}" {{ 'selected' if y == jahr }}>{{ y }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+
+<div class="panel">
+  <header><h2>Vollständige Sicherung (.aeradex)</h2><span class="hint">zum Wiederherstellen</span></header>
+  <div class="body">
+    <p class="small muted" style="max-width:72ch">Eine Datei mit dem ganzen Buch und dem kompletten Änderungsverlauf — die Sicherung, aus der sich das Buch wiederherstellen oder an einen anderen aeradex-Nutzer weitergeben lässt. Am besten regelmässig herunterladen und mit Passwort an einem zweiten Ort ablegen. CSV und PDF unten sind zum Lesen und Archivieren gedacht, nicht zum Zurückspielen.</p>
+    <div class="actions"><a class="btn" href="/einstellungen#weitergeben">.aeradex-Datei erstellen</a></div>
+  </div>
+</div>
+
+{% if ov.ungesichert %}
+<div class="alert warn">Diese Dateien gehören zu keiner Datenart und kommen im ZIP unter «Rohdaten» im Original mit: {{ ov.ungesichert[:8]|join(', ') }}{% if ov.ungesichert|length > 8 %} und {{ ov.ungesichert|length - 8 }} weitere{% endif %}.</div>
+{% endif %}
+
+<form method="get" action="/datensicherung/zip" id="sicherung">
+  {% if jahr %}<input type="hidden" name="jahr" value="{{ jahr }}">{% endif %}
+  {% for gruppe, items in gruppen.items() %}
+  <div class="panel">
+    <header><h2>{{ gruppe }}</h2><span class="hint">{{ 'Jahr ' ~ jahr if jahr else 'alle Jahre' }}</span></header>
+    <div class="tablewrap"><table class="ledger backup">
+      <tbody>{% for d in items %}<tr class="row{{ ' muted' if d.anzahl == 0 }}">
+        <td class="sel"><input type="checkbox" name="key" value="{{ d.key }}" {{ 'checked' if d.anzahl != 0 }} aria-label="{{ d.label }} auswählen"></td>
+        <td><strong>{{ d.label }}</strong>{% if d.vertraulich %} <span class="pill warn">vertraulich</span>{% endif %}
+          {% if d.beschreibung %}<div class="small muted">{{ d.beschreibung }}</div>{% endif %}</td>
+        <td class="right num small muted hide-narrow">{% if d.anzahl == 0 %}leer{% elif d.anzahl %}{{ d.anzahl }}{% endif %}{% if d.jahresweise and not jahr %} <span title="je Jahr ein Ordner">· je Jahr</span>{% endif %}</td>
+        <td class="right fmt">{% for f in d.formate %}<a class="btn small" href="/datensicherung/datei?key={{ d.key }}&format={{ f }}{{ '&jahr=' ~ jahr if jahr }}"{% if f == 'pdf' %} target="_blank"{% endif %}>{{ fl.get(f, f|upper) }}</a> {% endfor %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  {% endfor %}
+
+  <div class="panel">
+    <header><h2>Als ZIP herunterladen</h2><span class="hint">ein Ordner je Bereich, mit Inhaltsverzeichnis und Prüfsummen</span></header>
+    <div class="body">
+      <div class="actions" style="flex-wrap:wrap;gap:16px">
+        <label class="check"><input type="checkbox" name="format" value="csv" checked> CSV</label>
+        <label class="check"><input type="checkbox" name="format" value="pdf" checked> PDF</label>
+        <label class="check"><input type="checkbox" name="originale" value="1"> mit Originaldateien (Belege, Rechnungen, Auszüge — kann gross werden)</label>
+      </div>
+      <p class="small muted" style="max-width:72ch">Die angekreuzten Daten {{ 'des Jahres ' ~ jahr if jahr else 'aller Jahre (je Jahr ein Ordner)' }}. Das Erstellen kann bei vielen Belegen etwas dauern.</p>
+      <div class="formfoot"><span class="small"><a class="link" href="#" data-alle>alle</a> · <a class="link" href="#" data-keine>keine</a></span>
+        <button class="btn primary" type="submit">ZIP herunterladen</button></div>
+    </div>
+  </div>
+</form>
+<script>
+(() => {
+  const form = document.getElementById("sicherung");
+  const set = (on) => (e) => { e.preventDefault(); form.querySelectorAll("input[name=key]").forEach((c) => c.checked = on); };
+  form.querySelector("[data-alle]").addEventListener("click", set(true));
+  form.querySelector("[data-keine]").addEventListener("click", set(false));
+})();
+</script>
+{% endblock %}

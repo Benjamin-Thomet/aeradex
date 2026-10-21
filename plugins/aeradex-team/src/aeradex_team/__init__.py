@@ -193,3 +193,14 @@ def aeradex_dienste(book):
     if not verbindung.config()["url"]:
         return []
     return [Dienst("team-abgleich", ["team", "sync", "--wiederholen", "300", "--pruefen", "15", "--still"])]
+
+
+@hookimpl
+def aeradex_datensicherung(book):
+    from aeradex.datensicherung import liste
+    return [liste("team_antraege", "Lohn", "Anträge aus der Team-App", lambda b, jahr: [
+        r for r in daten.requests(b) if jahr is None or r["von"].year == jahr],
+        [("id", "ID"), ("wer", "Wer"), ("art", "Art"), ("von", "Von"), ("bis", "Bis"), ("status", "Status"),
+         ("grund", "Grund"), ("notiz", "Notiz")], ("team/**",), True,
+        "Ferien- und Abwesenheitsanträge; Zugänge, Abgleich und Texte bei «Dateien»", vertraulich=True)]
+

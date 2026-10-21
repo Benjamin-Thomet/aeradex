@@ -373,6 +373,15 @@ CSV: Semikolon, UTF-8 mit BOM, Datum ISO, Beträge mit Punkt ohne Tausendertrenn
 
 Plugins steuern weitere Teile über den Hook `aeradex_dossier_teile` bei (siehe docs/plugins.md).
 
+## Datensicherung (`aeradex sicherung`)
+
+Alle Daten zum Lesen und Archivieren, ohne aeradex: Einstellungen › Buch › Datensicherung oder
+`aeradex sicherung [-o datei.zip] [--jahr J] [--nur journal,kunden] [--format csv,pdf] [--originale]`.
+Der ZIP hat je Bereich einen Ordner (Buchhaltung, MWST, Verkauf, Einkauf, Bank, Belege, Lohn, Einstellungen), bei
+Jahresdaten je Jahr einen Unterordner, dazu `00 Inhalt.pdf` und `manifest.json` (SHA-256 jeder Datei). CSV: Semikolon,
+UTF-8 mit BOM (Excel). Dateien, die keiner Datenart zugeordnet sind, kommen unter `Rohdaten/` im Original mit.
+Zum Wiederherstellen dient die .aeradex-Datei.
+
 ## .aeradex-Datei (Buch weitergeben)
 
 Ein ZIP-Container:

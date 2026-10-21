@@ -300,6 +300,13 @@
 </section>
 
 <section data-tab="buch" id="buch">
+<div class="panel" id="datensicherung">
+  <header><h2>Datensicherung</h2><span class="hint">CSV, PDF und Originale — einzeln oder als ZIP</span></header>
+  <div class="body">
+    <p class="small muted" style="max-width:72ch">Alle Daten zum Lesen und Archivieren: Journal, Kontoblätter, MWST, Kunden, Rechnungen, Lieferanten, Bank, Mitarbeitende, Lohnabrechnungen, Spesen, Einstellungen und was Funktionen dazu speichern. Zum Wiederherstellen dient die .aeradex-Datei unten.</p>
+    <div class="actions"><a class="btn primary" href="/datensicherung">Datensicherung öffnen</a></div>
+  </div>
+</div>
 <div class="panel" id="pruefung">
   <header><h2>Prüfung des Buchs</h2><span class="hint">aeradex check</span></header>
   {% if issues %}<ul class="todo">{% for i in issues %}<li><a href="#pruefung"><span class="stripe {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}"></span><div><div class="t">{{ i.message }}</div><div class="d">{{ i.where }}</div></div><span class="pill {{ {'fehler': 'red', 'warnung': 'warn'}.get(i.level, 'muted') }}">{{ i.level }}</span></a></li>{% endfor %}</ul>

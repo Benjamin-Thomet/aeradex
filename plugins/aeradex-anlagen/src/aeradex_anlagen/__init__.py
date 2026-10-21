@@ -374,3 +374,16 @@ def aeradex_pages():
                   "aendern": _update, "entfernen": _remove, "abschreiben": _depreciate, "abgang": _dispose,
                   "einstellungen": _settings},
                  bereich="buchhaltung")]
+
+
+@hookimpl
+def aeradex_datensicherung(book):
+    from aeradex.datensicherung import liste
+    return [liste("anlagenverzeichnis", "Buchhaltung", "Anlagenverzeichnis",
+                  lambda b, jahr: [{**meta, "nummer": meta.get("nummer") or nr}
+                                   for nr, meta in sorted(anlagen.assets(b).items())],
+                  [("nummer", "Nr"), ("bezeichnung", "Bezeichnung"), ("kategorie", "Kategorie"), ("konto", "Konto"),
+                   ("datum", "Anschaffung"), ("wert", "Wert"), ("methode", "Methode"), ("satz", "Satz %"),
+                   ("nutzungsdauer", "Nutzungsdauer")],
+                  ("anlagen/**",), beschreibung="alle Anlagen mit Anschaffung und Abschreibungsmethode")]
+

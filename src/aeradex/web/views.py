@@ -2749,7 +2749,8 @@ async def pdf_report(ui: UI, request: Request):
 
 # ---------- Abschlussunterlagen and the .aeradex file ----------
 
-MIME = {".pdf": "application/pdf", ".csv": "text/csv; charset=utf-8", ".zip": "application/zip",
+MIME = {".pdf": "application/pdf", ".csv": "text/csv; charset=utf-8", ".zip": "application/zip", ".xml": "application/xml",
+        ".yaml": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
         ".aeradex": "application/vnd.aeradex+zip"}
 
 
@@ -2802,6 +2803,51 @@ async def buch_export(ui: UI, request: Request):
         except BookError as exc:
             return PlainTextResponse(str(exc), status_code=400)
         return download(target.read_bytes(), name)
+
+
+# ---------- Datensicherung ----------
+
+async def datensicherung_seite(ui: UI, request: Request):
+    book = ui.book()
+    raw = request.query_params.get("jahr", "")
+    jahr = int(raw) if raw.isdigit() and int(raw) in book.years() else None
+    ov = await asyncio.to_thread(api.backup_overview, book, jahr)
+    gruppen: dict[str, list] = {}
+    for d in ov["datensaetze"]:
+        gruppen.setdefault(d["gruppe"], []).append(d)
+    return ui.render(request, "datensicherung.html", book=book, ov=ov, gruppen=gruppen, jahr=jahr)
+
+
+def _log_backup(ui: UI, request: Request, was: str) -> None:
+    user = getattr(request.state, "user", None)
+    if user is not None and ui.userlog is not None:
+        ui.userlog.add(user.name, "datensicherung", notiz=was)
+
+
+async def datensicherung_datei(ui: UI, request: Request):
+    book = ui.book()
+    qp = request.query_params
+    jahr = int(qp["jahr"]) if qp.get("jahr", "").isdigit() else None
+    try:
+        name, data = await asyncio.to_thread(api.backup_part, book, qp.get("key", ""), qp.get("format", "csv"), jahr)
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    _log_backup(ui, request, name)
+    return download(data, name, inline=name.endswith(".pdf"))
+
+
+async def datensicherung_zip(ui: UI, request: Request):
+    book = ui.book()
+    qp = request.query_params
+    jahr = int(qp["jahr"]) if qp.get("jahr", "").isdigit() else None
+    keys = qp.getlist("key") or None
+    formate = qp.getlist("format") or None
+    try:
+        name, data, _ = await asyncio.to_thread(api.backup_zip, book, keys, jahr, formate, qp.get("originale") == "1")
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    _log_backup(ui, request, name)
+    return download(data, name)
 
 
 # ---------- routing ----------
@@ -2938,6 +2984,9 @@ def routes(ui: UI) -> list[Route]:
         Route("/eroeffnung", h(eroeffnung_speichern), methods=["POST"]),
         Route("/eroeffnung/einlesen", h(eroeffnung_einlesen), methods=["POST"]),
         Route("/einstellungen/buch-export", h(buch_export), methods=["POST"]),
+        Route("/datensicherung", h(datensicherung_seite)),
+        Route("/datensicherung/datei", h(datensicherung_datei)),
+        Route("/datensicherung/zip", h(datensicherung_zip)),
         Route("/einstellungen/logo", h(logo_einstellung), methods=["POST"]),
         Route("/einstellungen/logo.bild", h(logo_bild)),
         Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),

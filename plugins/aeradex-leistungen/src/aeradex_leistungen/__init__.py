@@ -659,3 +659,29 @@ def aeradex_kunde_teile(book, kunde):
                       zeitachse=zeit, kennzahlen=figures,
                       aktionen=[("Offerte", f"/p/leistungen/offerten?kunde={kunde}"),
                                 ("Leistung erfassen", f"/p/leistungen/leistungen?tab=erfassen&neu_kunde={kunde}")])]
+
+
+@hookimpl
+def aeradex_datensicherung(book):
+    from aeradex.datensicherung import liste
+
+    def in_year(items, jahr, field="datum"):
+        return [e for e in items if jahr is None or str(e.get(field) or "")[:4] == str(jahr)]
+    return [
+        liste("leistungen", "Verkauf", "Erfasste Leistungen", lambda b, jahr: in_year(daten.entries(b), jahr),
+              [("id", "ID"), ("datum", "Datum"), ("wer", "Wer"), ("kunde", "Kunde"), ("projekt", "Projekt"),
+               ("art", "Art"), ("text", "Text"), ("menge", "Menge"), ("betrag", "Betrag"), ("status", "Status")],
+              ("leistungen/**",), True, "Zeiten und Material je Kunde/Projekt; Einstellungen, Produkte, "
+              "Abwesenheiten bei «Dateien»"),
+        liste("projekte", "Verkauf", "Projekte", lambda b, jahr: [{"nr": nr, **m} for nr, m in sorted(daten.projects(b).items())],
+              [("nr", "Nr"), ("name", "Name"), ("kunde", "Kunde"), ("abrechnung", "Abrechnung"), ("status", "Status")],
+              ("projekte/**",)),
+        liste("offerten", "Verkauf", "Offerten", lambda b, jahr: in_year(
+              [{"nummer": nr, **m} for nr, m in sorted(offerten.quotes(b).items())], jahr),
+              [("nummer", "Nummer"), ("datum", "Datum"), ("kunde", "Kunde"), ("titel", "Titel"), ("total", "Total"),
+               ("status", "Status")], ("offerten/**",), True),
+        liste("produkte", "Verkauf", "Produkte und Leistungsarten",
+              lambda b, jahr: [{"nr": nr, **m} for nr, m in sorted(daten.products(b).items())],
+              [("nr", "Nr"), ("text", "Text"), ("preis", "Preis"), ("einheit", "Einheit"), ("konto", "Konto")]),
+    ]
+

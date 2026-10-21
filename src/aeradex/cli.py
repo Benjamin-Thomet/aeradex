@@ -282,6 +282,13 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--jahr", type=int)
     c.add_argument("--prozent", default="0")
     c.add_argument("--basis", type=int, help="anderes Basisjahr")
+    s = sub.add_parser("sicherung", help="Datensicherung: alle Daten als CSV/PDF (ZIP) oder eine Datenart")
+    s.add_argument("-o", "--out", help="Zieldatei (Standard: im aktuellen Ordner)")
+    s.add_argument("--jahr", type=int, help="nur dieses Jahr (Standard: alle)")
+    s.add_argument("--nur", default="", help="Datenarten, z.B. journal,kunden,personal (Standard: alle)")
+    s.add_argument("--format", default="", help="csv,pdf (Standard: beide; eine Datenart: csv, pdf oder dateien)")
+    s.add_argument("--originale", action="store_true", help="Originaldateien mit in den ZIP")
+    s.add_argument("--liste", action="store_true", help="nur anzeigen, was es gibt")
     s = sub.add_parser("dossier", help="Abschlussunterlagen eines Jahres: alles als ZIP oder einzelne Teile")
     s.add_argument("--jahr", type=int)
     s.add_argument("--teil", default="", help="nur diesen Teil als Datei (statt ZIP): jahresrechnung, saldenliste, "
@@ -703,6 +710,19 @@ def dispatch(a, book_path: Path | None):
             months = [x.strip() for x in a.monate.split(",")] if a.monate else None
             return api.budget_set(b, jahr, a.konto, a.betrag, months)
         return api.budget_from_prior(b, jahr, a.prozent, a.basis)
+    if c == "sicherung":
+        b = book()
+        if a.liste:
+            return api.backup_overview(b, a.jahr)
+        split = lambda v: [x.strip() for x in v.split(",") if x.strip()]  # noqa: E731
+        keys = split(a.nur)
+        if len(keys) == 1 and len(split(a.format)) <= 1:
+            name, data = api.backup_part(b, keys[0], a.format or "csv", a.jahr)
+        else:
+            name, data, _ = api.backup_zip(b, keys, a.jahr, split(a.format), a.originale)
+        target = Path(a.out or name)
+        target.write_bytes(data)
+        return {"meldung": f"Datensicherung geschrieben: {target} ({len(data) // 1024} KB)", "datei": str(target)}
     if c == "dossier":
         b = book()
         if a.liste:

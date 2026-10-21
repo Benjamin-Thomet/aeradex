@@ -82,6 +82,12 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   `aeradex_dossier_teile`) that build PDF/CSV for both the ZIP and single downloads; Belegordner with stamped pages,
   Lückenverzeichnis (`belegluecken`), manifest with SHA-256. The Beleg number in the journal is the only running
   number; `Book.remember_numbers` keeps the high-water mark in `.aeradex/belegnummern.yaml` so it is never reused.
+- `datensicherung.py`: the Datensicherung (`/datensicherung`, `aeradex sicherung`): every kind of data as CSV/PDF and
+  its original files, one by one or as a ZIP with contents PDF and manifest (SHA-256). Registry of `plugins.Datensatz`
+  (the Abschlussunterlagen parts of `dossier.py` incl. plugin parts, plus master data and documents) and the plugin
+  hook `aeradex_datensicherung`. Each Datensatz names the book files it covers (`pfade`); `ungesichert()` lists the
+  rest. **Rule: a feature that stores new data in the book adds a Datensatz** (core here, plugin via the hook) —
+  `tests/test_datensicherung.py` fails on any uncovered file of a book with every feature in use.
 - `austausch.py`: the `.aeradex` file (whole book + git bundle, optional AES-256-GCM/scrypt), import with hash,
   path and version checks.
 - `reports.py`: reports for any period, one table shape for every output (`spalten`, `zeilen` with `werte` per
