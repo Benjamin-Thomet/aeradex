@@ -20,10 +20,10 @@
 </div>
 
 <div class="m-cards m-contact">
-  {% if adresse %}<a class="m-card row" href="{{ karte }}" target="_blank" rel="noopener"><span class="small muted">Adresse</span><span>{{ adresse }}</span></a>{% endif %}
-  {% if c.telefon %}<a class="m-card row" href="tel:{{ c.telefon|replace(' ', '') }}"><span class="small muted">Telefon</span><span class="num">{{ c.telefon }}</span></a>{% endif %}
-  {% if c.mobil %}<a class="m-card row" href="tel:{{ c.mobil|replace(' ', '') }}"><span class="small muted">Mobile</span><span class="num">{{ c.mobil }}</span></a>{% endif %}
-  {% if c.email %}<a class="m-card row" href="mailto:{{ c.email }}"><span class="small muted">E-Mail</span><span>{{ c.email }}</span></a>{% endif %}
+  {% if adresse %}<a class="m-kv" href="{{ karte }}" target="_blank" rel="noopener"><span class="small">Adresse</span><span>{{ adresse }}</span></a>{% endif %}
+  {% if c.telefon %}<a class="m-kv" href="tel:{{ c.telefon|replace(' ', '') }}"><span class="small">Telefon</span><span class="num">{{ c.telefon }}</span></a>{% endif %}
+  {% if c.mobil %}<a class="m-kv" href="tel:{{ c.mobil|replace(' ', '') }}"><span class="small">Mobile</span><span class="num">{{ c.mobil }}</span></a>{% endif %}
+  {% if c.email %}<a class="m-kv" href="mailto:{{ c.email }}"><span class="small">E-Mail</span><span>{{ c.email }}</span></a>{% endif %}
 </div>
 
 <div class="m-figs">
@@ -66,8 +66,8 @@
   {% if d.rechnungen %}<div class="m-cards">{% for r in d.rechnungen %}
     <a class="m-card{{ ' muted' if r.status == 'storniert' }}" href="/m/rechnungen/{{ r.nummer }}">
       <div class="row"><strong>{{ r.nummer }}</strong><span class="num">{{ r.total|chf }}{{ ' ' ~ r.waehrung if r.waehrung != 'CHF' }}</span></div>
-      <div class="row small muted"><span>{{ r.datum|datum }} · {{ r.art_label }}{% if r.offen and r.status != 'storniert' %} · offen {{ r.offen|chf }}{% endif %}</span>
-        <span class="m-pills">{% if r.ueberfaellig %}<span class="pill red">überfällig</span>{% else %}{{ status_pill(r.status) }}{% endif %}{% if r.mahnstufe %}<span class="pill warn">{{ r.mahnstufe }}. Mahnung</span>{% endif %}</span></div></a>
+      <div class="row small muted"><span class="m-meta">{{ r.datum|datum }}{% if r.art_label != 'Rechnung' %} · {{ r.art_label }}{% endif %}{% if r.status in ('offen', 'teilbezahlt') %} · fällig {{ r.faellig|datum }}{% endif %}</span>
+        {% if r.mahnstufe and r.status in ('offen', 'teilbezahlt') %}<span class="pill red">{{ r.mahnstufe }}. Mahnung</span>{% elif r.ueberfaellig %}<span class="pill red">überfällig</span>{% else %}{{ status_pill(r.status) }}{% endif %}</div></a>
   {% endfor %}</div>
   {% else %}<p class="m-empty">Noch keine Rechnungen.</p>{% endif %}
 </section>

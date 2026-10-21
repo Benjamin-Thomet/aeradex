@@ -31,7 +31,7 @@
   {% if overdue %}<div class="m-cards">{% for r in overdue[:8] %}
     <a class="m-card" href="/m/rechnungen/{{ r.nummer }}">
       <div class="row"><strong>{{ r.name }}</strong><span class="num">{{ r.offen|chf }}{{ ' ' ~ r.waehrung if r.waehrung != 'CHF' }}</span></div>
-      <div class="row small muted"><span>{{ r.nummer }} · fällig {{ r.faellig|datum }}</span>{% if r.mahnstufe %}<span class="pill warn">{{ r.mahnstufe }}. Mahnung</span>{% endif %}</div></a>
+      <div class="row small muted"><span class="m-meta">{{ r.nummer }} · fällig {{ r.faellig|datum }}</span>{% if r.mahnstufe %}<span class="pill red">{{ r.mahnstufe }}. Mahnung</span>{% endif %}</div></a>
   {% endfor %}</div>
   {% if overdue|length > 8 %}<a class="m-more" href="/m/rechnungen?status=ueberfaellig">Alle {{ overdue|length }} überfälligen</a>{% endif %}
   {% else %}<p class="m-empty">Keine Rechnung ist überfällig.</p>{% endif %}
@@ -42,7 +42,7 @@
   {% if drafts %}<div class="m-cards">{% for d in drafts[:6] %}
     <a class="m-card" href="/m/belege/{{ d.id }}">
       <div class="row"><strong>{{ d.name or d.kind }}</strong><span class="num">{{ d.betrag|chf if d.betrag else '—' }}</span></div>
-      <div class="row small muted"><span>{{ d.kind }} · {{ d.id }}</span><span class="pill {{ d.cls }}">{{ d.label }}</span></div></a>
+      <div class="row small muted"><span class="m-meta">{{ d.kurz }}{% if d.datum %} · {{ d.datum|datum }}{% endif %}</span><span class="pill {{ d.cls }}">{{ d.label }}</span></div></a>
   {% endfor %}</div>
   {% if drafts|length > 6 %}<a class="m-more" href="/m/belege">Alle {{ drafts|length }} Belege</a>{% endif %}
   {% else %}<p class="m-empty">Keine Belege offen.</p>{% endif %}

@@ -3,7 +3,7 @@
 {% block heading %}Kunden{% endblock %}
 {% block main %}
 <div class="m-bar">
-  <input class="input m-search" type="search" data-filter="#kundenliste" placeholder="Suchen: Name, Ort, Telefon, Notiz …" aria-label="Kunden suchen" autocomplete="off">
+  <input class="input m-search" type="search" data-filter="#kundenliste" placeholder="Suchen: Name, Ort, Telefon …" aria-label="Kunden suchen" autocomplete="off">
   {% if not user or user.can_write %}<a class="btn primary" href="/m/kunden/neu" aria-label="Neuer Kunde">+ Neu</a>{% endif %}
 </div>
 {% if kategorien %}

@@ -2,19 +2,19 @@
 {% macro kundenform(c, action, kategorien=()) %}
 <form class="body" hx-post="{{ action }}" hx-target="find .errors">
   <div class="form four">
-    <div class="field" style="grid-column: span 2"><label>Firma</label><input class="input" name="firma" value="{{ c.firma or '' }}" placeholder="leer bei Privatpersonen"></div>
-    <div class="field" style="grid-column: span 2"><label>Name (Kontakt oder Privatperson)</label><input class="input" name="name" value="{{ c.name or '' }}" required></div>
-    <div class="field" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ (c.adresse or {}).strasse or '' }}"></div>
-    <div class="field"><label>Nr.</label><input class="input" name="nr" value="{{ (c.adresse or {}).nr or '' }}"></div>
-    <div class="field"><label>Land</label><input class="input" name="land" value="{{ (c.adresse or {}).land or 'CH' }}" maxlength="2"></div>
-    <div class="field"><label>PLZ</label><input class="input" name="plz" value="{{ (c.adresse or {}).plz or '' }}"></div>
-    <div class="field"><label>Ort</label><input class="input" name="ort" value="{{ (c.adresse or {}).ort or '' }}"></div>
-    <div class="field" style="grid-column: span 2"><label>E-Mail</label><input class="input" name="email" type="email" value="{{ c.email or '' }}"></div>
-    <div class="field"><label>Telefon</label><input class="input" name="telefon" type="tel" value="{{ c.telefon or '' }}"></div>
-    <div class="field"><label>Mobile</label><input class="input" name="mobil" type="tel" value="{{ c.mobil or '' }}"></div>
-    <div class="field"><label>Kategorie</label><input class="input" name="kategorie" value="{{ c.kategorie or '' }}" list="kategorien" placeholder="Privat, Verwaltung …"></div>
-    <div class="field"><label>Stundensatz</label><input class="input num" name="stundensatz" value="{{ c.stundensatz or '' }}" placeholder="Standard"></div>
-    <div class="field wide"><label>Herkunft (wie kam der Kontakt zustande)</label><input class="input" name="herkunft" value="{{ c.herkunft or '' }}" placeholder="z.B. Empfehlung Hans Muster, Website, Inserat"></div>
+    <div class="field f-firma" style="grid-column: span 2"><label>Firma</label><input class="input" name="firma" value="{{ c.firma or '' }}" placeholder="leer bei Privatpersonen"></div>
+    <div class="field f-name" style="grid-column: span 2"><label>Name (Kontakt oder Privatperson)</label><input class="input" name="name" value="{{ c.name or '' }}" required></div>
+    <div class="field f-strasse" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ (c.adresse or {}).strasse or '' }}"></div>
+    <div class="field f-nr"><label>Nr.</label><input class="input" name="nr" value="{{ (c.adresse or {}).nr or '' }}"></div>
+    <div class="field f-land"><label>Land</label><input class="input" name="land" value="{{ (c.adresse or {}).land or 'CH' }}" maxlength="2"></div>
+    <div class="field f-plz"><label>PLZ</label><input class="input" name="plz" value="{{ (c.adresse or {}).plz or '' }}"></div>
+    <div class="field f-ort"><label>Ort</label><input class="input" name="ort" value="{{ (c.adresse or {}).ort or '' }}"></div>
+    <div class="field f-email" style="grid-column: span 2"><label>E-Mail</label><input class="input" name="email" type="email" value="{{ c.email or '' }}"></div>
+    <div class="field f-telefon"><label>Telefon</label><input class="input" name="telefon" type="tel" value="{{ c.telefon or '' }}"></div>
+    <div class="field f-mobil"><label>Mobile</label><input class="input" name="mobil" type="tel" value="{{ c.mobil or '' }}"></div>
+    <div class="field f-kategorie"><label>Kategorie</label><input class="input" name="kategorie" value="{{ c.kategorie or '' }}" list="kategorien" placeholder="Privat, Verwaltung …"></div>
+    <div class="field f-stundensatz"><label>Stundensatz</label><input class="input num" name="stundensatz" value="{{ c.stundensatz or '' }}" placeholder="Standard"></div>
+    <div class="field wide f-herkunft"><label>Herkunft (wie kam der Kontakt zustande)</label><input class="input" name="herkunft" value="{{ c.herkunft or '' }}" placeholder="z.B. Empfehlung Hans Muster, Website, Inserat"></div>
     <div class="field wide"><span class="lbl">Rechnung adressieren an</span><span class="actions"><label class="check"><input type="radio" name="rechnung_an" value="firma" {{ 'checked' if c.rechnung_an != 'person' }}> Firma</label><label class="check"><input type="radio" name="rechnung_an" value="person" {{ 'checked' if c.rechnung_an == 'person' }}> Person</label></span></div>
     {% if not c.nummer %}<div class="field wide"><label>Feste Infos (Zugang, Wünsche, Erreichbarkeit)</label><textarea class="input" name="notizen" style="min-height:60px">{{ c._notizen or '' }}</textarea></div>{% endif %}
   </div>

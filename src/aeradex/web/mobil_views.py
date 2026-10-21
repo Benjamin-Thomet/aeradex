@@ -32,6 +32,7 @@ WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"
 INVOICE_FILTERS = [("offen", "Offen"), ("ueberfaellig", "Überfällig"), ("gemahnt", "Gemahnt"), ("entwurf", "Entwürfe"),
                    ("bezahlt", "Bezahlt"), ("alle", "Alle")]
 DRAFT_KINDS = {"kreditor": "Lieferantenrechnung", "quittung": "Quittung", "debitor": "Eigene Rechnung"}
+DRAFT_SHORT = {"kreditor": "Rechnung", "quittung": "Quittung", "debitor": "Eigene Rg."}
 DESKTOP_REVIEW = {"kreditor": "/kreditoren/neu?entwurf=", "quittung": "/eingang/quittung?entwurf=",
                   "debitor": "/debitoren/extern?entwurf="}
 
@@ -118,6 +119,7 @@ def draft_list(book: Book) -> list[dict]:
     out = []
     for d in sorted(erfassung.drafts(book).values(), key=lambda d: d["id"], reverse=True):
         out.append({"id": d["id"], "art": d.get("art", "kreditor"), "kind": DRAFT_KINDS.get(d.get("art", "kreditor"), ""),
+                    "kurz": DRAFT_SHORT.get(d.get("art", "kreditor"), ""),
                     "name": erfassung.value(d, "name"), "betrag": erfassung.value(d, "betrag"),
                     "waehrung": erfassung.value(d, "waehrung"), "datum": erfassung.value(d, "datum"),
                     "datei": d.get("datei", ""), **draft_state(book, d)})

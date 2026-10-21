@@ -9,7 +9,7 @@
 <div class="m-cards">{% for d in drafts %}
   <a class="m-card" href="/m/belege/{{ d.id }}">
     <div class="row"><strong>{{ d.name or 'Unbekannt' }}</strong><span class="num">{% if d.waehrung and d.waehrung != 'CHF' %}{{ d.waehrung }} {% endif %}{{ d.betrag|chf if d.betrag else '—' }}</span></div>
-    <div class="row small muted"><span>{{ d.kind }} · {{ d.id }}{% if d.datum %} · {{ d.datum|datum }}{% endif %}</span><span class="pill {{ d.cls }}">{{ d.label }}</span></div>
+    <div class="row small muted"><span class="m-meta">{{ d.kurz }}{% if d.datum %} · {{ d.datum|datum }}{% endif %}</span><span class="pill {{ d.cls }}">{{ d.label }}</span></div>
   </a>
 {% endfor %}</div>
 {% else %}<p class="m-empty">Keine Belege offen — alles gebucht.</p>{% endif %}

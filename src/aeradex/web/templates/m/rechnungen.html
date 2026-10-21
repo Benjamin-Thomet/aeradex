@@ -14,20 +14,20 @@
   <p class="small muted m-note">Eigene Rechnungen aus einem anderen Programm, eingelesen und noch nicht gebucht. Rechnungen aus aeradex sind sofort ausgestellt.</p>
   {% if drafts %}<div class="m-cards">{% for d in drafts %}
     <a class="m-card" href="/m/belege/{{ d.id }}"><div class="row"><strong>{{ d.name or 'Unbekannt' }}</strong><span class="num">{{ d.betrag|chf if d.betrag else '—' }}</span></div>
-      <div class="row small muted"><span>{{ d.id }}{% if d.datum %} · {{ d.datum|datum }}{% endif %}</span><span class="pill {{ d.cls }}">{{ d.label }}</span></div></a>
+      <div class="row small muted"><span class="m-meta">{{ d.id }}{% if d.datum %} · {{ d.datum|datum }}{% endif %}</span><span class="pill {{ d.cls }}">{{ d.label }}</span></div></a>
   {% endfor %}</div>
   {% else %}<p class="m-empty">Keine Entwürfe.</p>{% endif %}
 {% else %}
   <div class="m-bar">
-    <input class="input m-search" type="search" data-filter="#rechnungsliste" placeholder="Suchen: Kunde, Nummer, Betrag …" aria-label="Rechnungen suchen" autocomplete="off">
+    <input class="input m-search" type="search" data-filter="#rechnungsliste" placeholder="Suchen …" aria-label="Rechnungen suchen" autocomplete="off">
     {% if status in ('bezahlt', 'alle') %}<form method="get" action="/m/rechnungen"><input type="hidden" name="status" value="{{ status }}">
       <select class="input" name="jahr" onchange="this.form.submit()" aria-label="Jahr"><option value="">alle Jahre</option>{% for y in years %}<option value="{{ y }}" {{ 'selected' if y == jahr }}>{{ y }}</option>{% endfor %}</select></form>{% endif %}
   </div>
   {% if rows %}<div class="m-cards" id="rechnungsliste">{% for r in rows %}
     <a class="m-card{{ ' muted' if r.status == 'storniert' }}" href="/m/rechnungen/{{ r.nummer }}" data-suche="{{ r.nummer }} {{ r.name }} {{ r.total }} {{ r.referenz }} {{ r.extern or '' }}">
       <div class="row"><strong>{{ r.name or r.kunde }}</strong><span class="num">{{ (r.offen if r.status in ('offen', 'teilbezahlt') else r.total)|chf }}{{ ' ' ~ r.waehrung if r.waehrung != 'CHF' }}</span></div>
-      <div class="row small muted"><span>{{ r.nummer }} · {{ r.datum|datum }}{% if r.status in ('offen', 'teilbezahlt') %} · fällig {{ r.faellig|datum }}{% endif %}</span>
-        <span class="m-pills">{% if r.ueberfaellig %}<span class="pill red">überfällig</span>{% else %}{{ status_pill(r.status) }}{% endif %}{% if r.mahnstufe %}<span class="pill warn">{{ r.mahnstufe }}. M.</span>{% endif %}</span></div></a>
+      <div class="row small muted"><span class="m-meta">{{ r.nummer }} · {% if r.status in ('offen', 'teilbezahlt') %}fällig {{ r.faellig|datum }}{% else %}{{ r.datum|datum }}{% endif %}</span>
+        {% if r.mahnstufe and r.status in ('offen', 'teilbezahlt') %}<span class="pill red">{{ r.mahnstufe }}. Mahnung</span>{% elif r.ueberfaellig %}<span class="pill red">überfällig</span>{% else %}{{ status_pill(r.status) }}{% endif %}</div></a>
   {% endfor %}</div>
   <p class="m-empty" data-filter-empty hidden>Keine Rechnung gefunden.</p>
   {% else %}<p class="m-empty">{{ {'offen': 'Keine offenen Rechnungen.', 'ueberfaellig': 'Keine Rechnung ist überfällig.', 'gemahnt': 'Keine gemahnten Rechnungen offen.', 'bezahlt': 'Keine bezahlten Rechnungen.'}.get(status, 'Keine Rechnungen.') }}</p>{% endif %}
