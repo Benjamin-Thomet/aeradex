@@ -155,6 +155,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--art", choices=["anruf", "besuch", "email", "notiz"], default="notiz")
     c.add_argument("--datum")
     c.add_argument("--nachfassen", help="Wiedervorlage am JJJJ-MM-TT")
+    c = cs.add_parser("renumber", help="Kundennummer ändern (nur ohne Rechnungen und andere Verweise)")
+    c.add_argument("nummer")
+    c.add_argument("neu", help="z.B. K0001")
     c = cs.add_parser("followups", help="offene Wiedervorlagen")
     c.add_argument("--bis", help="nur bis zu diesem Datum fällige")
 
@@ -780,6 +783,8 @@ def dispatch(a, book_path: Path | None):
             return api.customer_log_add(book(), a.nummer, a.text, a.art, a.datum, a.nachfassen)
         if a.sub == "followups":
             return api.customer_followups(book(), a.bis)
+        if a.sub == "renumber":
+            return api.customer_renumber(book(), a.nummer, a.neu)
         return api.customer_add(book(), name=a.name, firma=a.firma, strasse=a.strasse, nr=a.nr, plz=a.plz,
                                 ort=a.ort, land=a.land, email=a.email, telefon=a.telefon, mobil=a.mobil,
                                 rechnung_an=a.rechnung_an, stundensatz=a.stundensatz, kategorie=a.kategorie,

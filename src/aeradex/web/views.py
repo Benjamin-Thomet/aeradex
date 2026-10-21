@@ -1036,6 +1036,18 @@ async def kunde_infos(ui: UI, request: Request):
                      notizen=f.get("notizen") or "")
 
 
+async def kunde_nummer(ui: UI, request: Request, base: str = "/debitoren/kunden"):
+    f = await request.form()
+    return await act(request, api.customer_renumber, lambda r: f"{base}/{r['kunde']}", ui.book(),
+                     request.path_params["nr"], f.get("neu") or "")
+
+
+async def inbox_loeschen(ui: UI, request: Request):
+    f = await request.form()
+    return await act(request, api.inbox_remove, request.headers.get("hx-current-url") or "/#inbox", ui.book(),
+                     f.get("datei") or "")
+
+
 async def kunde_speichern(ui: UI, request: Request, base: str = "/debitoren/kunden"):
     """New customer or changed master data; `base` is where the customer's page lives (desktop or phone)."""
     f = await request.form()
@@ -2880,6 +2892,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/", h(uebersicht)),
         Route("/pruefen", h(pruefen)),
         Route("/pruefen/upload", h(inbox_upload), methods=["POST"]),
+        Route("/inbox/loeschen", h(inbox_loeschen), methods=["POST"]),
         Route("/pruefen/buchen", h(pruefen_buchen), methods=["POST"]),
         Route("/vorschlaege/{aktion:str}", h(vorschlag), methods=["POST"]),
         Route("/journal", h(journal_page)),
@@ -2910,6 +2923,7 @@ def routes(ui: UI) -> list[Route]:
         Route("/debitoren/kunden/{nr:str}/log", h(kunde_log), methods=["POST"]),
         Route("/debitoren/kunden/{nr:str}/log/{index:int}", h(kunde_log_erledigt), methods=["POST"]),
         Route("/debitoren/kunden/{nr:str}/infos", h(kunde_infos), methods=["POST"]),
+        Route("/debitoren/kunden/{nr:str}/nummer", h(kunde_nummer), methods=["POST"]),
         Route("/debitoren/rechnung/{nr:str}", h(rechnung)),
         Route("/debitoren/rechnung/{nr:str}/{aktion:str}", h(rechnung_aktion), methods=["POST"]),
         Route("/bank/bewegungen", h(bank_bewegungen), methods=["GET"]),

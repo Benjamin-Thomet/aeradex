@@ -121,6 +121,10 @@
 
     <details class="panel" id="bearbeiten"><summary><h2 style="display:inline">Stammdaten bearbeiten</h2></summary>
       {{ kundenform(c, "/debitoren/kunden/" ~ nr, KATEGORIEN) }}
+      <form class="body" hx-post="/debitoren/kunden/{{ nr }}/nummer" hx-target="find .errors" hx-confirm="Kundennummer {{ nr }} ändern?" style="border-top:1px solid var(--rule)">
+        <div class="form"><div class="field"><label for="k-neu">Kundennummer</label><input class="input" id="k-neu" name="neu" value="{{ nr }}" pattern="[Kk][0-9]{4,}" required></div></div>
+        {{ errors() }}<div class="formfoot"><span class="small muted">Nur solange keine Rechnung und keine anderen Daten auf {{ nr }} zeigen.</span><button class="btn small" type="submit">Nummer ändern</button></div>
+      </form>
     </details>
   </div>
 </div>

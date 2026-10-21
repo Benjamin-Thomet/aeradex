@@ -84,7 +84,8 @@
       <div class="d">{{ (f.stat().st_size / 1024)|round(1) }} KB · {% if f in readable %}wird ein Entwurf unter Einkauf oder Verkauf{% elif sfx in ('.xml', '.camt', '.053') %}Kontoauszug{% else %}Kontoauszug oder andere Datei{% endif %}</div></div>
       {% if f in readable %}<form hx-post="/eingang/einlesen" hx-target="find .errors"><input type="hidden" name="datei" value="inbox/{{ f.name }}"><button class="btn small" type="submit">Einlesen</button>{{ errors() }}</form>
       {% elif sfx in ('.xml', '.camt', '.053') %}<form hx-post="/bank/karte/importieren" hx-target="find .errors"><input type="hidden" name="datei" value="inbox/{{ f.name }}"><button class="btn small" type="submit">Bei der Bank importieren</button>{{ errors() }}</form>
-      {% else %}<a class="btn small ghost" href="/bank/bewegungen#neu">Zur Bank</a>{% endif %}</div></li>
+      {% else %}<a class="btn small ghost" href="/bank/bewegungen#neu">Zur Bank</a>{% endif %}
+      <form hx-post="/inbox/loeschen" hx-target="find .errors" hx-confirm="{{ f.name }} aus der Inbox löschen?"><input type="hidden" name="datei" value="inbox/{{ f.name }}"><button class="btn small ghost danger" type="submit" title="Aus der Inbox löschen" aria-label="{{ f.name }} löschen">✕</button>{{ errors() }}</form></div></li>
   {% endfor %}</ul>
 </div>
 {% endif %}

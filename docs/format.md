@@ -175,6 +175,11 @@ offene Wiedervorlage (Übersicht, `aeradex customer followups`). Die Kundenseite
 `aeradex customer show K0001` rechnen Umsatz (wie der Bericht «Umsatz nach Kunde»), Zahlungsmoral und Verlauf aus
 den Rechnungen, Zahlungen und Mahnungen; gespeichert wird davon nichts.
 
+Neue Kunden bekommen die nächste Nummer nach der höchsten vorhandenen. Eine Kundennummer lässt sich ändern
+(Kundenseite › Stammdaten, `aeradex customer renumber K0004 K0001`), solange keine andere Datei im Buch sie nennt —
+Rechnungen sind mit ihrer Kundennummer eingefroren. Dateien in `inbox/` lassen sich löschen (Übersicht › Inbox,
+Handy › Belege prüfen), ausser ein Entwurf wurde aus ihnen gelesen; der git-Verlauf behält sie.
+
 ## rechnungen/JJJJ/R-JJJJ-NNNN.md
 
 Frontmatter mit `nummer, kunde, an` (Adress-Snapshot), `datum, faellig, waehrung, positionen[], total, referenz_typ, referenz, debitorenkonto, status, fingerprint`. Der Text nach dem Frontmatter erscheint als Einleitung auf der Rechnung. Nach der Ausstellung nur noch `status` (via `void`) änderbar.

@@ -1,4 +1,5 @@
 {% extends "m/base.html" %}
+{% from "_macros.html" import errors %}
 {% block title %}Belege prüfen{% endblock %}
 {% block heading %}Belege prüfen{% endblock %}
 {% block bodyattrs %}data-live{% endblock %}
@@ -12,5 +13,18 @@
   </a>
 {% endfor %}</div>
 {% else %}<p class="m-empty">Keine Belege offen — alles gebucht.</p>{% endif %}
-{% if unread %}<p class="small muted m-note">{{ unread }} Datei(en) liegen ungelesen in der Inbox — einlesen in der <a class="link" href="/#inbox">Desktop-Ansicht</a>.</p>{% endif %}
+{% if inbox %}
+<section class="m-sec">
+  <h2>Inbox <span class="count">{{ inbox|length }}</span></h2>
+  <div class="m-cards">{% for f in inbox %}
+    <div class="m-card">
+      <div class="row"><a class="link" href="/datei/inbox/{{ f.name|urlq }}" target="_blank">{{ f.name }}</a><span class="small muted">{{ (f.stat().st_size / 1024)|round|int }} KB</span></div>
+      {% if not user or user.can_write %}<div class="m-row-actions">
+        {% if f.suffix|lower in lesbar %}<form hx-post="/m/inbox/einlesen" hx-target="find .errors"><input type="hidden" name="datei" value="inbox/{{ f.name }}"><button class="btn small" type="submit">Einlesen</button>{{ errors() }}</form>{% endif %}
+        <form hx-post="/m/inbox/loeschen" hx-target="find .errors" hx-confirm="{{ f.name }} löschen?"><input type="hidden" name="datei" value="inbox/{{ f.name }}"><button class="btn small ghost danger" type="submit">Löschen</button>{{ errors() }}</form>
+      </div>{% endif %}
+    </div>
+  {% endfor %}</div>
+</section>
+{% endif %}
 {% endblock %}

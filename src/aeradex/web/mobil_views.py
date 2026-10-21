@@ -9,6 +9,7 @@ import json
 import re
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
 from urllib.parse import quote
 
 from starlette.requests import Request
@@ -26,6 +27,7 @@ VIEW_COOKIE = "ansicht"
 PHONE = re.compile(r"iPhone|iPod|Android.+Mobile|Mobile.+Firefox|Windows Phone|BlackBerry|Opera Mini", re.I)
 APPLE = re.compile(r"iPhone|iPad|iPod", re.I)
 
+READABLE = (".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".txt")
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 INVOICE_FILTERS = [("offen", "Offen"), ("ueberfaellig", "Überfällig"), ("gemahnt", "Gemahnt"), ("entwurf", "Entwürfe"),
                    ("bezahlt", "Bezahlt"), ("alle", "Alle")]
@@ -190,6 +192,31 @@ async def kunde_speichern(ui: UI, request: Request):
     return await save(ui, request, base="/m/kunden")
 
 
+async def kunde_nummer(ui: UI, request: Request):
+    from .views import kunde_nummer as renumber
+    return await renumber(ui, request, base="/m/kunden")
+
+
+async def inbox_einlesen(ui: UI, request: Request):
+    """A file lying in the inbox → a draft, then its page."""
+    from .. import erfassung
+    from .views import _agent_in_background
+    f = await request.form()
+    try:
+        res = await asyncio.to_thread(api.bill_draft_create, ui.book(), f"inbox/{Path(f.get('datei') or '').name}", "")
+    except (BookError, FormatError, ValueError) as exc:
+        return fail(str(exc))
+    draft = res["entwurf"]
+    if erfassung.agent_auto(ui.book()) and erfassung.needs_agent(draft):
+        _agent_in_background(ui.root, [draft["id"]])
+    return done(f"{draft['id']} eingelesen", f"/m/belege/{draft['id']}")
+
+
+async def inbox_loeschen(ui: UI, request: Request):
+    f = await request.form()
+    return await act(request, api.inbox_remove, "/m/belege", ui.book(), f.get("datei") or "")
+
+
 async def kunde_log(ui: UI, request: Request):
     f = await request.form()
     nr = request.path_params["nr"]
@@ -301,7 +328,7 @@ async def belege(ui: UI, request: Request):
     from .views import unread_inbox
     book = ui.book()
     return render(ui, request, "belege.html", book=book, tab="scannen", drafts=draft_list(book),
-                  unread=len(unread_inbox(book)))
+                  inbox=unread_inbox(book), lesbar=READABLE)
 
 
 async def beleg(ui: UI, request: Request):
@@ -430,6 +457,9 @@ def routes(ui: UI) -> list[Route]:
         Route("/m/kunden/{nr:str}/log", h(kunde_log), methods=["POST"]),
         Route("/m/kunden/{nr:str}/log/{index:int}", h(kunde_log_erledigt), methods=["POST"]),
         Route("/m/kunden/{nr:str}/infos", h(kunde_infos), methods=["POST"]),
+        Route("/m/kunden/{nr:str}/nummer", h(kunde_nummer), methods=["POST"]),
+        Route("/m/inbox/einlesen", h(inbox_einlesen), methods=["POST"]),
+        Route("/m/inbox/loeschen", h(inbox_loeschen), methods=["POST"]),
         Route("/m/kunden/{nr:str}", h(kunde_speichern), methods=["POST"]),
         Route("/m/rechnungen", h(rechnungen)),
         Route("/m/rechnungen/{nr:str}", h(rechnung)),

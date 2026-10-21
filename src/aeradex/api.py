@@ -927,6 +927,54 @@ def customer_update(book: Book, nummer: str, notizen: str | None = None, **field
     return _done(book, f"Kunde {nr} geändert", [cust["_pfad"]], kunde=meta)
 
 
+REFERENCE_SUFFIXES = (".md", ".yaml", ".yml", ".csv", ".json", ".txt", ".xml", ".jsonl")
+
+
+def customer_references(book: Book, nummer: str) -> list[str]:
+    """Book files besides the customer's own that name this customer number (invoices, reminders, plugin data …)."""
+    own = invoices.customer(book, nummer)["_pfad"].resolve()
+    pattern = re.compile(rf"\b{re.escape(nummer)}\b")
+    out = []
+    for path in sorted(book.root.rglob("*")):
+        rel = path.relative_to(book.root)
+        if (not path.is_file() or path.suffix.lower() not in REFERENCE_SUFFIXES or path.resolve() == own
+                or any(part.startswith(".") for part in rel.parts) or (len(rel.parts) == 1 and path.suffix == ".md")):
+            continue
+        try:
+            if pattern.search(path.read_text(encoding="utf-8")):
+                out.append(rel.as_posix())
+        except (UnicodeDecodeError, OSError):
+            continue
+    return out
+
+
+def customer_renumber(book: Book, nummer: str, neu: str) -> dict:
+    """Give a customer another number, e.g. K0001 once test customers were removed. Only while nothing else in the
+    book refers to the customer: invoices are frozen with their customer number, plugin data points to it."""
+    from .files import read_frontmatter, slug, write_frontmatter
+    _guard(book)
+    neu = (neu or "").strip().upper()
+    if not re.fullmatch(r"K\d{4,}", neu):
+        raise BookError("Die Kundennummer hat die Form K0001")
+    cust = invoices.customer(book, nummer)
+    if neu == nummer:
+        raise BookError(f"{nummer} hat schon diese Nummer")
+    if neu in invoices.customers(book):
+        raise BookError(f"{neu} ist schon vergeben")
+    used = customer_references(book, nummer)
+    if used:
+        raise BookError(f"{nummer} kommt noch vor in {', '.join(used[:4])}{' …' if len(used) > 4 else ''} — "
+                        "umnummerieren geht nur bei einem Kunden ohne Rechnungen und andere Verweise")
+    old = cust["_pfad"]
+    meta, body = read_frontmatter(old)
+    meta["nummer"] = neu
+    target = old.parent / f"{neu}-{slug(cust.get('firma') or cust.get('name') or neu)}.md"
+    write_frontmatter(target, meta, body)
+    if target != old:
+        old.unlink()
+    return _done(book, f"Kunde {nummer} hat neu die Nummer {neu}", [old, target], kunde=neu)
+
+
 def customer_dossier(book: Book, nummer: str) -> dict:
     """Everything about one customer: figures, invoices, open Akonto, payment behaviour, log and timeline."""
     from . import kunden
@@ -1291,7 +1339,7 @@ WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "y
           "opening_set", "accruals_book", "reverse_entry", "propose", "approve", "reject",
           "customer_add", "invoice_create", "invoice_void", "invoice_pay", "invoice_credit", "employee_add",
           "payroll_run", "payroll_close", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
-          "allocation_book", "lock", "unlock", "customer_update", "employee_update", "account_update",
+          "allocation_book", "lock", "unlock", "customer_update", "customer_renumber", "employee_update", "account_update",
           "settings_update", "payroll_config_update", "anhang_save", "closing_mark", "closing_entry_book",
           "closing_entry_remove")
 for _name in WRITES:
@@ -1361,6 +1409,22 @@ def inbox_add(book: Book, filename: str, data: bytes) -> dict:
     return _done(book, f"Datei {target.name} in die Inbox gelegt", [target], datei=book.rel(target))
 
 
+def inbox_remove(book: Book, datei: str) -> dict:
+    """Delete a file from the inbox (a wrong upload, a duplicate). A file a draft was read from stays until the draft
+    is discarded; git keeps the file in the history."""
+    from . import erfassung
+    _guard(book)
+    name = Path(datei or "").name
+    target = book.root / "inbox" / name
+    if not name or name.startswith(".") or not target.is_file():
+        raise BookError(f"{name or datei} liegt nicht in der Inbox")
+    used = [d["id"] for d in erfassung.drafts(book).values() if d.get("datei") == f"inbox/{name}"]
+    if used:
+        raise BookError(f"{name} gehört zum Entwurf {', '.join(used)} — zuerst den Entwurf verwerfen")
+    target.unlink()
+    return _done(book, f"Datei {name} aus der Inbox gelöscht", [target], datei=f"inbox/{name}")
+
+
 def attach_receipt(book: Book, beleg: str, source: str) -> dict:
     """Attach a receipt file to an already booked Beleg."""
     _guard(book)
@@ -1372,7 +1436,7 @@ def attach_receipt(book: Book, beleg: str, source: str) -> dict:
     return _done(book, f"Beleg-Datei an {beleg} angehängt", [target, src], datei=book.rel(target))
 
 
-for _name in ("inbox_add", "attach_receipt"):
+for _name in ("inbox_add", "inbox_remove", "attach_receipt"):
     globals()[_name] = _locked(globals()[_name])
 
 

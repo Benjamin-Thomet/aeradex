@@ -118,6 +118,10 @@
 {% if schreiben %}
 <details class="m-sec m-details" id="bearbeiten"><summary><h2>Stammdaten bearbeiten</h2></summary>
   {{ kundenform(c, "/m/kunden/" ~ nr, KATEGORIEN) }}
+  <form class="m-form" hx-post="/m/kunden/{{ nr }}/nummer" hx-target="find .errors" hx-confirm="Kundennummer {{ nr }} ändern?">
+    <label class="field"><span class="small muted">Kundennummer (nur solange keine Rechnung auf {{ nr }} zeigt)</span><input class="input" name="neu" value="{{ nr }}" pattern="[Kk][0-9]{4,}" required></label>
+    {{ errors() }}<button class="btn" type="submit">Nummer ändern</button>
+  </form>
 </details>
 {% endif %}
 {% endblock %}
