@@ -83,7 +83,7 @@ $lnk.Description = "Beleg in den Eingang der Buchhaltung schicken"
 $lnk.Save()
 
 Write-Host ""
-Write-Host "Fertig. Diesen Schlüssel in aeradex unter Plugins > Zugriff (Claude Code) eintragen (lassen):"
+Write-Host "Fertig. Diesen Schlüssel in aeradex unter Einstellungen > Buch > Zugriff eintragen (lassen):"
 Write-Host ""
 Get-Content "$key.pub"
 Write-Host ""

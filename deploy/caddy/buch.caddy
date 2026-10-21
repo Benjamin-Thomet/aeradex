@@ -27,7 +27,7 @@
 		reverse_proxy 127.0.0.1:{{BUCH_PORT}}
 	}
 	log {
-		output file /var/log/caddy/aeradex.log {
+		output file /var/log/caddy/{{BENUTZER}}.log {
 			roll_size 10MiB
 			roll_keep 5
 		}

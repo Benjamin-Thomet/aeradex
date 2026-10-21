@@ -77,7 +77,7 @@ Bestätigen und die PDFs, die er erstellt. Wer Telegram dazu will, nimmt das Plu
 
 ## Die Seite in aeradex
 
-Unter **Plugins → Susi** (bzw. dem Namen aus `AERADEX_ANRUF_NAME`):
+Unter **Einstellungen › Agent & KI › Telegram-Agent**:
 - ob der Dienst läuft, mit dem Knopf **Anrufen**; der laufende Dienst meldet sich in `.aeradex/lokal/anruf/dienst.json`
 - **Wartet auf dich**: Karten (Rechnung ausstellen, Vorschläge freigeben) direkt in aeradex bestätigen
 - **Was sie sich merkt**: das Gedächtnis bearbeiten, eine Notiz pro Zeile

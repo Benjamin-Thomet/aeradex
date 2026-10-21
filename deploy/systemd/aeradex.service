@@ -7,9 +7,10 @@ User={{BENUTZER}}
 Group={{BENUTZER}}
 Environment=AERADEX_CONFIG={{BASIS}}/config
 Environment=AERADEX_ANRUF_ENV={{BASIS}}/config/bot.env
-# Claude API when config/anthropic.env has ANTHROPIC_API_KEY; else the agent set in aeradex (Einstellungen › Agent)
+# Claude API when config/anthropic.env has ANTHROPIC_API_KEY; else the agent set in aeradex (Einstellungen › Agent & KI)
 EnvironmentFile=-{{BASIS}}/config/anthropic.env
-# aeradex › Plugins › Zugriff writes the ssh keys (each locked to the forced command)
+Environment=AERADEX_MODEL={{MODELL_AGENT}}
+# aeradex › Einstellungen › Buch › Zugriff writes the ssh keys (each locked to the forced command)
 Environment=AERADEX_ZUGRIFF_KEYS={{BASIS}}/.ssh/authorized_keys
 Environment=AERADEX_ZUGRIFF_SERVER={{DOMAIN}}
 Environment=AERADEX_ZUGRIFF_BENUTZER={{BENUTZER}}

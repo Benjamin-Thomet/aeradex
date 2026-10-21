@@ -21,6 +21,17 @@ sudo -u "$U" "$VENV/bin/pip" install -q --upgrade "${PKGS[@]}"
 # pip skips a git install whose version number did not change: reinstall our own packages every time
 sudo -u "$U" "$VENV/bin/pip" install -q --upgrade --force-reinstall --no-deps "${PKGS[@]}"
 
+# own plugins from private repos (cloned by setup.sh with a read-only deploy key): pull, then install the folder
+for entry in ${EXTRA_REPOS:-}; do
+  slug="${entry%%#*}"; slug="${slug#https://}"; slug="${slug%.git}"; slug="${slug#github.com/}"; repo="${slug##*/}"
+  sub=""; [[ "$entry" == *"#"* ]] && sub="${entry#*#}"
+  src="$BASIS/src/$repo"
+  [ -d "$src/.git" ] || { echo "$src fehlt: zuerst setup.sh (Deploy-Key für $slug)"; exit 1; }
+  sudo -u "$U" git -C "$src" pull -q --ff-only
+  sudo -u "$U" "$VENV/bin/pip" install -q --upgrade "$src${sub:+/$sub}"
+  sudo -u "$U" "$VENV/bin/pip" install -q --upgrade --force-reinstall --no-deps "$src${sub:+/$sub}"
+done
+
 if [ -n "${PORTAL_DOMAIN:-}" ]; then
   P=/srv/aeradex-team-portal/venv
   [ -d "$P" ] || python3 -m venv "$P"

@@ -9,6 +9,7 @@ Group={{BENUTZER}}
 Environment=AERADEX_CONFIG={{BASIS}}/config
 Environment=AERADEX_ANRUF_ENV={{BASIS}}/config/bot.env
 EnvironmentFile=-{{BASIS}}/config/anthropic.env
+Environment=AERADEX_CHAT_MODEL_REMOTE={{MODELL_TELEGRAM}}
 WorkingDirectory={{BASIS}}/buch
 # waits until the bot's access is entered in aeradex and restarts by itself when it changes
 ExecStart={{BASIS}}/venv/bin/aeradex --buch {{BASIS}}/buch telegram serve --dienst

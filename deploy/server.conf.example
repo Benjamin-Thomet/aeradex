@@ -1,5 +1,5 @@
 # Server mit einem aeradex-Buch. Kopieren nach /etc/aeradex-server.conf (root, 600) und anpassen; setup.sh liest es.
-# Nur Pfade und Namen, keine Schlüssel: die trägt man danach in aeradex ein (Einstellungen › Agent, Plugins).
+# Nur Pfade und Namen, keine Schlüssel: die trägt man danach in aeradex ein (Einstellungen › Agent & KI, Funktionen).
 
 DOMAIN=buch.example.ch            # aeradex mit Login (aeradex serve)
 PORTAL_DOMAIN=team.example.ch     # Team-App für Mitarbeitende (leer = ohne Team-App); Adresse: https://PORTAL_DOMAIN/app
@@ -19,3 +19,15 @@ PORTAL_KENNUNG=aeradex            # Kennung der Team-App (Cookie, Schlüssel); n
 PORTAL_BRANDING=                  # optional: Ordner mit logo.png, icon-192.png, icon-512.png, branding.css, Schriften
 
 QUELLE="git+https://github.com/Benjamin-Thomet/aeradex"   # woher aeradex und die Plugins kommen (auch ein Ordner)
+
+# Eigene Plugins aus privaten GitHub-Repos: «github.com/org/repo» oder «github.com/org/repo#unterordner», mehrere mit
+# Leerzeichen. setup.sh legt je Repo einen Deploy-Key (nur Lesen) an und sagt, wo man ihn bei GitHub einträgt.
+EXTRA_REPOS=""
+
+# Modell je Dienst (Claude API); leer = Standard von aeradex. Der Agent im Browser braucht mehr als Telegram und
+# die Textkorrektur der Team-App.
+MODELL_AGENT=claude-sonnet-5-5
+MODELL_TEAM=claude-haiku-5-5
+MODELL_TELEGRAM=claude-haiku-5-5
+
+SICHERUNG=/var/backups/aeradex    # aeradex-sicherung legt hier täglich Buch, Konfiguration und Team-App ab (für restic/borg)

@@ -30,7 +30,7 @@ from starlette.routing import Route
 
 from .. import gitlog, tools
 
-MODEL = os.environ.get("AERADEX_MODEL", "claude-opus-5-5")
+MODEL = os.environ.get("AERADEX_MODEL") or "claude-opus-5-5"
 MAX_ITERATIONS = 16
 
 PAGE_LABELS = {"/": "Übersicht", "/kreditoren": "Einkauf", "/debitoren": "Verkauf", "/bank": "Bank",

@@ -1,0 +1,9 @@
+[Unit]
+Description=aeradex: Buch, Konfiguration und Team-App nach {{SICHERUNG}} sichern (für restic/borg)
+After=aeradex.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/aeradex-sicherung
+Nice=10
+IOSchedulingClass=idle

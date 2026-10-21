@@ -49,6 +49,9 @@ vergessen»). **Mein Konto** ändert Anzeigename und Passwort. Was mit den Benut
 
 ### systemd
 
+Das kleinste Beispiel; die Vorlage mit Härtung (`ProtectSystem`, `ReadWritePaths` …), Schlüsseln aus
+`EnvironmentFile` und Modell je Dienst steht in [deploy/systemd](../deploy/systemd).
+
 `/etc/systemd/system/aeradex-muster.service`:
 
 ```ini
@@ -95,6 +98,10 @@ Ohne systemd genügt cron: `0 6 5 * * aeradex --buch … bericht monat --mail`. 
 
 ### Caddy (HTTPS automatisch)
 
+Das kleinste Beispiel; die Vorlage [deploy/caddy/buch.caddy](../deploy/caddy/buch.caddy) setzt dazu die
+Sicherheits-Header (HSTS, `X-Frame-Options SAMEORIGIN` — die PDF-Vorschau ist ein iframe), eine Grenze für Uploads,
+und leitet die Pfade des Anrufs ohne Kompression weiter (sonst kommt die gestreamte Antwort verzögert an).
+
 ```
 muster.buchhaltung.example.ch {
     reverse_proxy 127.0.0.1:8080
@@ -106,7 +113,10 @@ proxy_set_header X-Forwarded-For $remote_addr;` und für die Live-Aktualisierung
 
 ## Datensicherung
 
-Das Buch ist ein git-Repository. Eine zweite Kopie ausserhalb des Servers entsteht mit einem Remote:
+Auf einem Server mit den Vorlagen aus `deploy/` legt `aeradex-sicherung` täglich Buch (git bundle), Dateien
+ausserhalb von git, Konfiguration und Team-App ab; restic oder borg sichern das Verzeichnis weg
+([deploy/README.md](../deploy/README.md#sicherung)). Ohne die Vorlagen: das Buch ist ein git-Repository, eine zweite
+Kopie ausserhalb des Servers entsteht mit einem Remote:
 
 ```bash
 cd ~/buecher/muster && git remote add backup <ssh-url> && git push backup HEAD
@@ -120,6 +130,9 @@ GeBüV verlangt die Aufbewahrung über 10 Jahre; der git-Verlauf belegt zusätzl
 Der Agent im Seitenpanel nutzt auf dem Server entweder `ANTHROPIC_API_KEY` (in der systemd-Unit als
 `Environment=` bzw. `EnvironmentFile=`) oder ein dort angemeldetes Claude Code. Benutzer mit Leserecht
 können ihn nicht verwenden. Im Modus `vorschlag` legt er nur Vorschläge an, die eine Person freigibt.
+Das Modell wählt `AERADEX_MODEL` (Standard Opus); auf einem Server mit Claude API lohnt sich je Dienst ein passendes
+Modell — die Vorlagen in `deploy/` setzen Sonnet für den Agenten im Browser und Haiku für Telegram und die
+Textkorrektur der Team-App (`MODELL_*` in `server.conf.example`).
 
 ## Handy-Ansicht (`/m`)
 

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Tägliche Sicherung eines aeradex-Servers in ein Ablage-Verzeichnis, das restic, borg o.ä. danach wegsichern.
+# Legt nur ab, schickt nichts weg. Als root (systemd-Timer aeradex-sicherung.timer): aeradex-sicherung
+#
+#   SICHERUNG/buch.bundle        das Buch mit dem ganzen Verlauf (git bundle, konsistent auch während Schreibzugriffen)
+#   SICHERUNG/buch-dateien.tar.gz  Dateien des Buchs ausserhalb von git (inbox/, .aeradex/lokal/ …), ohne .git
+#   SICHERUNG/config/            Logins, Sitzungen, Zugänge, Schlüssel (BASIS/config) — vertraulich, Ablage nur root
+#   SICHERUNG/team-app/          Datenbank der Team-App (sqlite3 .backup) und ihre Konfiguration, falls vorhanden
+#
+# Wiederherstellen: git clone buch.bundle buch && tar -C buch -xzf buch-dateien.tar.gz; config/ zurück nach BASIS.
+set -euo pipefail
+[ "$(id -u)" = 0 ] || { echo "bitte mit sudo"; exit 1; }
+CONF="${AERADEX_SERVER_CONF:-/etc/aeradex-server.conf}"
+# shellcheck source=/dev/null
+. "$CONF"
+: "${BENUTZER:?}" "${BASIS:?}"
+ZIEL="${SICHERUNG:-/var/backups/aeradex}"
+BUCH=$BASIS/buch
+umask 077
+install -d -m 700 "$ZIEL"
+NEU="$(mktemp -d "$ZIEL/.neu.XXXXXX")"
+trap 'rm -rf "$NEU"' EXIT
+
+runuser -u "$BENUTZER" -- git -C "$BUCH" bundle create - --all > "$NEU/buch.bundle"
+git -c safe.directory="*" -C "$BUCH" bundle verify -q "$NEU/buch.bundle" >/dev/null 2>&1 || { echo "git bundle ungültig"; exit 1; }
+tar -C "$BUCH" -czf "$NEU/buch-dateien.tar.gz" --exclude=.git .
+[ -d "$BASIS/config" ] && cp -a "$BASIS/config" "$NEU/config"
+
+if [ -e /var/lib/aeradex-team-portal/portal.db ]; then
+  install -d -m 700 "$NEU/team-app"
+  if command -v sqlite3 >/dev/null; then
+    sqlite3 /var/lib/aeradex-team-portal/portal.db ".backup '$NEU/team-app/portal.db'"
+  else   # the online backup API of Python's sqlite3, consistent like the CLI's .backup
+    python3 -c 'import sqlite3, sys; s = sqlite3.connect(sys.argv[1]); d = sqlite3.connect(sys.argv[2]); s.backup(d); d.close()' \
+      /var/lib/aeradex-team-portal/portal.db "$NEU/team-app/portal.db"
+  fi
+  [ -d /etc/aeradex-team-portal ] && cp -a /etc/aeradex-team-portal "$NEU/team-app/etc"
+fi
+
+# replace the previous copy only once the new one is complete
+for item in buch.bundle buch-dateien.tar.gz config team-app; do
+  [ -e "$NEU/$item" ] || continue
+  rm -rf "${ZIEL:?}/$item"
+  mv "$NEU/$item" "$ZIEL/$item"
+done
+date -Iseconds > "$ZIEL/stand.txt"
+echo "Sicherung abgelegt: $ZIEL ($(du -sh "$ZIEL" | cut -f1))"

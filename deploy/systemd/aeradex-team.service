@@ -7,6 +7,7 @@ User={{BENUTZER}}
 Group={{BENUTZER}}
 Environment=AERADEX_CONFIG={{BASIS}}/config
 EnvironmentFile=-{{BASIS}}/config/anthropic.env
+Environment=AERADEX_MODEL={{MODELL_TEAM}}
 WorkingDirectory={{BASIS}}/buch
 # sync at once when the book changes or entries wait on the portal (checked every 15 s), at the latest every 5 min
 ExecStart={{BASIS}}/venv/bin/aeradex --buch {{BASIS}}/buch team sync --wiederholen 300 --pruefen 15

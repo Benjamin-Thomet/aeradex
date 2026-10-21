@@ -3,13 +3,18 @@
 # Telegram/Anruf und Zugriff für Claude Code per SSH. Vom Admin ausführen (nicht von einem Agenten), idempotent:
 #
 #   sudo cp deploy/server.conf.example /etc/aeradex-server.conf && sudo nano /etc/aeradex-server.conf
-#   sudo bash deploy/setup.sh [/etc/aeradex-server.conf]
+#   sudo bash deploy/setup.sh [--portal-zuruecksetzen] [/etc/aeradex-server.conf]
+#
+# --portal-zuruecksetzen: die Datenbank der Team-App neu anlegen (Sicherung daneben); Konten und Stammdaten kommen
+# beim nächsten Abgleich wieder aus dem Buch, noch nicht abgeglichene Einträge auf dem Portal gehen verloren.
 #
 # Ein bestehendes Buch unter BASIS/buch bleibt, wie es ist (z.B. vorher mit `aeradex import-buch` hingelegt).
 # Schlüssel (Agent, Telegram, ElevenLabs) trägt man danach in aeradex ein, nicht hier.
 # Vor jeder Änderung an einer bestehenden Datei: Sicherung «<datei>.vor-aeradex».
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+RESET_PORTAL=0
+[ "${1:-}" = "--portal-zuruecksetzen" ] && { RESET_PORTAL=1; shift; }
 CONF="${1:-/etc/aeradex-server.conf}"
 [ "$(id -u)" = 0 ] || { echo "bitte mit sudo"; exit 1; }
 [ -r "$CONF" ] || { echo "$CONF fehlt (Vorlage: $HERE/server.conf.example)"; exit 1; }
@@ -18,11 +23,14 @@ CONF="${1:-/etc/aeradex-server.conf}"
 : "${DOMAIN:?}" "${BENUTZER:?}" "${BASIS:?}" "${QUELLE:?}"
 PORTAL_DOMAIN="${PORTAL_DOMAIN:-}"; PLUGINS="${PLUGINS:-}"; PORTAL_KENNUNG="${PORTAL_KENNUNG:-aeradex}"
 BUCH_PORT="${BUCH_PORT:-4200}"; PORTAL_PORT="${PORTAL_PORT:-4100}"; GATEWAY_PORT="${GATEWAY_PORT:-8765}"
+EXTRA_REPOS="${EXTRA_REPOS:-}"; SICHERUNG="${SICHERUNG:-/var/backups/aeradex}"
+MODELL_AGENT="${MODELL_AGENT:-}"; MODELL_TEAM="${MODELL_TEAM:-}"; MODELL_TELEGRAM="${MODELL_TELEGRAM:-}"
 U=$BENUTZER; BUCH=$BASIS/buch; VENV=$BASIS/venv; CFG=$BASIS/config
 TS=vor-aeradex
 backup() { for f in "$@"; do [ -e "$f" ] && [ ! -e "$f.$TS" ] && cp -a "$f" "$f.$TS"; done; return 0; }
 say() { printf '\n== %s\n' "$*"; }
 has() { [[ " $PLUGINS " == *" $1 "* ]]; }
+repo_slug() { local p="${1%%#*}"; p="${p#https://}"; p="${p%.git}"; printf '%s' "${p#github.com/}"; }   # org/repo
 # a package from QUELLE: a git URL (…#subdirectory=…) or a local checkout
 pkg() {
   local name="$1" extras="${2:-}" dir="${3:-}"
@@ -32,10 +40,13 @@ pkg() {
     printf '%s%s' "$QUELLE${dir:+/$dir}" "$extras"
   fi
 }
-render() {   # template → stdout, {{VAR}} from the config
+render() {   # template → stdout, {{VAR}} from the config; an Environment= without a value is left out
   sed -e "s|{{DOMAIN}}|$DOMAIN|g" -e "s|{{PORTAL_DOMAIN}}|$PORTAL_DOMAIN|g" -e "s|{{BENUTZER}}|$U|g" \
       -e "s|{{BASIS}}|$BASIS|g" -e "s|{{FIRMA}}|${FIRMA:-}|g" -e "s|{{BUCH_PORT}}|$BUCH_PORT|g" \
-      -e "s|{{PORTAL_PORT}}|$PORTAL_PORT|g" -e "s|{{GATEWAY_PORT}}|$GATEWAY_PORT|g" "$1"
+      -e "s|{{PORTAL_PORT}}|$PORTAL_PORT|g" -e "s|{{GATEWAY_PORT}}|$GATEWAY_PORT|g" \
+      -e "s|{{MODELL_AGENT}}|$MODELL_AGENT|g" -e "s|{{MODELL_TEAM}}|$MODELL_TEAM|g" \
+      -e "s|{{MODELL_TELEGRAM}}|$MODELL_TELEGRAM|g" -e "s|{{SICHERUNG}}|$SICHERUNG|g" "$1" |
+    sed -E '/^Environment=[A-Z_]+=$/d'
 }
 caddy_site() {   # add a site block once, validate, roll back if invalid
   local file="$1" marker="$2" CADDY=/etc/caddy/Caddyfile
@@ -43,7 +54,7 @@ caddy_site() {   # add a site block once, validate, roll back if invalid
   backup "$CADDY"
   { printf '\n'; render "$file" | grep -v '^#'; } >> "$CADDY"
   if caddy validate --config "$CADDY" --adapter caddyfile >/dev/null 2>&1; then
-    chown caddy:caddy /var/log/caddy/aeradex.log 2>/dev/null || true   # validate (as root) creates it
+    chown caddy:caddy "/var/log/caddy/$U.log" 2>/dev/null || true   # validate (as root) creates it
     systemctl reload caddy && echo "caddy: $marker"
   else
     cp -a "$CADDY.$TS" "$CADDY"; echo "Caddyfile ungültig, zurückgesetzt"; exit 1
@@ -58,6 +69,32 @@ id "$U" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$BASIS" --
 passwd -l "$U" >/dev/null                                 # no password login, keys only
 install -d -o "$U" -g "$U" -m 750 "$BASIS" "$BASIS/.cache"
 install -d -o "$U" -g "$U" -m 700 "$BASIS/.ssh" "$CFG"
+
+if [ -n "$EXTRA_REPOS" ]; then
+  say "Eigene Plugins aus privaten Repos (Deploy-Key, nur Lesen)"
+  GH_FP="SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU"   # github.com ed25519 (docs.github.com)
+  KH="$BASIS/.ssh/known_hosts_github"
+  if [ ! -s "$KH" ]; then
+    ssh-keyscan -t ed25519 github.com 2>/dev/null > "/tmp/gh_kh.$$"
+    [ "$(ssh-keygen -lf "/tmp/gh_kh.$$" | awk '{print $2}')" = "$GH_FP" ] || { echo "github.com-Schlüssel stimmt nicht"; exit 1; }
+    install -o "$U" -g "$U" -m 600 "/tmp/gh_kh.$$" "$KH"; rm -f "/tmp/gh_kh.$$"
+  fi
+  install -d -o "$U" -g "$U" -m 750 "$BASIS/src"
+  for entry in $EXTRA_REPOS; do
+    slug="$(repo_slug "$entry")"; repo="${slug##*/}"; k="$BASIS/.ssh/github-$repo"
+    [ -e "$k" ] || sudo -u "$U" ssh-keygen -q -t ed25519 -N "" -C "$U@$(hostname) $repo (nur Lesen)" -f "$k"
+    if ! grep -q "^Host github-$repo\$" "$BASIS/.ssh/config" 2>/dev/null; then
+      printf 'Host github-%s\n    HostName github.com\n    User git\n    IdentityFile %s\n    IdentitiesOnly yes\n    UserKnownHostsFile %s\n    StrictHostKeyChecking yes\n' \
+        "$repo" "$k" "$KH" | sudo -u "$U" tee -a "$BASIS/.ssh/config" >/dev/null
+    fi
+    chmod 600 "$BASIS/.ssh/config"
+    if [ ! -d "$BASIS/src/$repo/.git" ] && ! sudo -u "$U" git clone -q "git@github-$repo:$slug.git" "$BASIS/src/$repo"; then
+      echo; echo "Kein Lesezugang auf $slug. Diesen Schlüssel als Deploy-Key (nur Lesen) eintragen, dann setup.sh nochmals:"
+      echo "  https://github.com/$slug/settings/keys"; cat "$k.pub"
+      exit 1
+    fi
+  done
+fi
 
 say "Programme (venv)"
 [ -d "$VENV" ] || sudo -u "$U" python3 -m venv "$VENV"
@@ -95,20 +132,33 @@ if [ -n "$PORTAL_DOMAIN" ]; then
   install -d -o root -g aeradex-portal -m 750 /etc/aeradex-team-portal
   ENV=/etc/aeradex-team-portal/portal.env
   if [ ! -f "$ENV" ]; then
-    TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
     umask 027
     cat > "$ENV" <<EOF
 AERADEX_PORTAL_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(40))')
-AERADEX_PORTAL_SYNC_TOKEN_SHA256=$(printf '%s' "$TOKEN" | sha256sum | cut -d' ' -f1)
+AERADEX_PORTAL_SYNC_TOKEN_SHA256=
 AERADEX_PORTAL_KENNUNG=$PORTAL_KENNUNG
 AERADEX_PORTAL_TITEL=Team · ${FIRMA:-aeradex}
 ${PORTAL_BRANDING:+AERADEX_PORTAL_BRANDING=$PORTAL_BRANDING}
 EOF
     umask 022
     chown root:aeradex-portal "$ENV"; chmod 640 "$ENV"
-    # the sync runs on this server: the book talks to the portal over localhost
+  fi
+  # the sync runs on this server: the book talks to the portal over localhost. Without team.yaml (new, lost, or a
+  # new BASIS) a new token is made and its hash written into portal.env; an older token stops working.
+  if [ ! -s "$CFG/team.yaml" ] || ! grep -Eq '^AERADEX_PORTAL_SYNC_TOKEN_SHA256=[0-9a-f]{64}$' "$ENV"; then
+    TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+    backup "$ENV"
+    sed -i "s/^AERADEX_PORTAL_SYNC_TOKEN_SHA256=.*/AERADEX_PORTAL_SYNC_TOKEN_SHA256=$(printf '%s' "$TOKEN" | sha256sum | cut -d' ' -f1)/" "$ENV"
     printf 'url: http://127.0.0.1:%s\ntoken: %s\n' "$PORTAL_PORT" "$TOKEN" > "$CFG/team.yaml"
     chown "$U:$U" "$CFG/team.yaml"; chmod 600 "$CFG/team.yaml"
+    echo "Neues Sync-Token für den Abgleich gesetzt."
+  fi
+  if [ "$RESET_PORTAL" = 1 ] && [ -e /var/lib/aeradex-team-portal/portal.db ]; then
+    systemctl stop aeradex-team-portal 2>/dev/null || true
+    D=/var/lib/aeradex-team-portal
+    cp -a "$D/portal.db" "$D/portal.db.$(date +%F-%H%M).bak"
+    rm -f "$D/portal.db" "$D/portal.db-wal" "$D/portal.db-shm"
+    echo "Team-App zurückgesetzt (Sicherung daneben). Konten kommen beim nächsten Abgleich aus dem Buch."
   fi
   render "$HERE/systemd/aeradex-team-portal.service" > /etc/systemd/system/aeradex-team-portal.service
   render "$HERE/systemd/aeradex-team.service" > /etc/systemd/system/aeradex-team.service
@@ -135,6 +185,14 @@ fi
 systemctl daemon-reload
 for unit in "${UNITS[@]}"; do systemctl enable --quiet "$unit.service"; systemctl restart "$unit.service"; done
 
+say "Sicherung (täglich nach $SICHERUNG)"
+install -o root -g root -m 755 "$HERE/aeradex-sicherung" /usr/local/sbin/aeradex-sicherung
+install -d -o root -g root -m 700 "$SICHERUNG"
+render "$HERE/systemd/aeradex-sicherung.service" > /etc/systemd/system/aeradex-sicherung.service
+install -m 644 "$HERE/systemd/aeradex-sicherung.timer" /etc/systemd/system/aeradex-sicherung.timer
+systemctl daemon-reload
+systemctl enable --quiet --now aeradex-sicherung.timer
+
 say "Caddy"
 caddy_site "$HERE/caddy/buch.caddy" "$DOMAIN"
 [ -n "$PORTAL_DOMAIN" ] && caddy_site "$HERE/caddy/portal.caddy" "$PORTAL_DOMAIN"
@@ -152,10 +210,11 @@ cat <<EOF
 1. DNS: A-Eintrag $DOMAIN${PORTAL_DOMAIN:+ und $PORTAL_DOMAIN} → $(hostname -I | awk '{print $1}')
 2. Logins anlegen (fragt nach dem Passwort):
      sudo -u $U AERADEX_CONFIG=$CFG $VENV/bin/aeradex --buch $BUCH user add NAME --rolle admin --anzeige "Vorname Name"
-3. In aeradex (https://$DOMAIN, als admin): Einstellungen › Agent; Claude API alternativ in $CFG/anthropic.env
+3. In aeradex (https://$DOMAIN, als admin): Einstellungen › Agent & KI; Claude API alternativ in $CFG/anthropic.env
    (ANTHROPIC_API_KEY=…, Besitzer $U, 600), dann: sudo systemctl restart ${UNITS[*]}
 EOF
-has telegram && echo "   Telegram: Plugins › (Sekretärin, Standard «Susi») › Zugänge: Bot-Token, erlaubte IDs; der Bot startet dann von selbst."
-has zugriff && echo "4. Claude Code: öffentliche Schlüssel unter Plugins › Zugriff (Claude Code) eintragen."
-[ -n "$PORTAL_DOMAIN" ] && echo "5. Team-App: https://$PORTAL_DOMAIN/app — Mitarbeitende unter Plugins › Team-App einladen."
+has telegram && echo "   Telegram: Einstellungen › Agent & KI › Telegram-Agent › Zugänge: Bot-Token, erlaubte IDs; der Bot startet dann von selbst."
+has zugriff && echo "4. Claude Code: öffentliche Schlüssel unter Einstellungen › Buch › Zugriff eintragen."
+[ -n "$PORTAL_DOMAIN" ] && echo "5. Team-App: https://$PORTAL_DOMAIN/app — Mitarbeitende unter Lohn › Team-App einladen."
+echo "6. Sicherung: $SICHERUNG täglich mit restic oder borg wegsichern (aeradex-sicherung legt dort nur ab)."
 echo "Prüfen: systemctl status ${UNITS[*]}"
