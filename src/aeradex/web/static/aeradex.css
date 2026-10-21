@@ -611,3 +611,11 @@ label.busy { opacity: .6; pointer-events: none; }
 #salden table.grid td:first-child { padding: 8px; }
 #salden table.grid th.right { width: 10em; }
 @media (max-width: 640px) { #salden .eb-wide { display: none; } }
+
+/* Benutzer */
+@media (max-width: 640px) { .hide-narrow { display: none; } }
+.linkbox .actions { display: flex; gap: 8px; margin-top: 8px; }
+.linkbox .actions .input { flex: 1; min-width: 0; font-family: var(--f-num); font-size: 12px; }
+td.von { white-space: nowrap; }
+td.von a.who { font-family: var(--f-num); font-size: 12px; color: var(--muted); text-decoration: none; border-bottom: 1px dotted var(--rule-strong); }
+td.von a.who:hover { color: var(--ink); }

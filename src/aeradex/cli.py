@@ -533,6 +533,15 @@ def build_parser() -> argparse.ArgumentParser:
             c.add_argument("--anzeige", default="", help="Name im Änderungsverlauf, z.B. 'Anna Muster'")
         if name in ("add", "passwort"):
             c.add_argument("--passwort-stdin", action="store_true", help="Passwort von stdin lesen (für Skripte)")
+    c = us.add_parser("rolle", help="Rolle ändern (beendet die Anmeldungen der Person)")
+    c.add_argument("--config")
+    c.add_argument("name")
+    c.add_argument("rolle", choices=["lesen", "buchhaltung", "admin"])
+    c = us.add_parser("einladen", help="Einladungslink erstellen (7 Tage, einmal verwendbar)")
+    c.add_argument("--config")
+    c.add_argument("--rolle", choices=["lesen", "buchhaltung", "admin"], default="buchhaltung")
+    c.add_argument("--notiz", default="", help="für wen, z.B. 'Lea Muster'")
+    c.add_argument("--url", required=True, help="öffentliche Adresse, z.B. https://buch.example.ch")
     s = sub.add_parser("ui", help="Oberfläche im Browser starten (lokal)")
     s.add_argument("--port", type=int, default=5151)
     s.add_argument("--kein-browser", action="store_true", help="Browser nicht automatisch öffnen")
@@ -1256,7 +1265,7 @@ def main(argv: list[str] | None = None) -> int:
         serve()
         return 0
     if a.cmd == "user":
-        from .web.auth import UserStore, config_dir
+        from .web.auth import Invites, UserLog, UserStore, config_dir
         store = UserStore(config_dir(a.config))
         try:
             if a.sub == "list":
@@ -1265,7 +1274,18 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             if a.sub == "remove":
                 store.remove(a.name)
+                UserLog(store.dir).add("cli", "entfernt", benutzer=a.name)
                 print(f"✓ Benutzer {a.name} entfernt")
+                return 0
+            if a.sub == "rolle":
+                store.set_role(a.name, a.rolle)
+                UserLog(store.dir).add("cli", "rolle", benutzer=a.name, rolle=a.rolle)
+                print(f"✓ {a.name}: {a.rolle}")
+                return 0
+            if a.sub == "einladen":
+                token, entry = Invites(store.dir).create("cli", a.rolle, a.notiz)
+                UserLog(store.dir).add("cli", "eingeladen", rolle=a.rolle, notiz=entry["notiz"])
+                print(f"{a.url.rstrip('/')}/einladung/{token}")
                 return 0
             if a.passwort_stdin:
                 password = sys.stdin.readline().rstrip("\n")

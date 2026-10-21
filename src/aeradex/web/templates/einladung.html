@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de-CH" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>{{ 'Passwort setzen' if entry and entry.art == 'reset' else 'Einladung' }} · {{ firma }}</title>
+<link rel="icon" href="/static/logo.svg?v={{ asset }}" type="image/svg+xml">
+<link rel="stylesheet" href="/static/aeradex.css?v={{ asset }}">
+<style>
+  .loginwrap { min-height: 100%; display: grid; place-items: center; padding-inline: 16px; padding-block: 40px; }
+  .loginbox { width: min(400px, 100%); display: flex; flex-direction: column; gap: 18px; }
+  .loginbox .panel { padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+</style>
+</head>
+<body>
+<div class="loginwrap">
+  <div class="loginbox">
+    <div class="brand"><span class="coin" aria-hidden="true"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><mask id="ae-einladung"><rect width="32" height="32" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M15.85 11.4V20.6"/><circle cx="11.25" cy="16" r="4.6"/><path d="M15.85 16H25.35A4.75 4.75 0 0 0 15.85 16"/><path d="M15.85 16A4.75 4.75 0 0 0 24.24 19.05"/></g></mask><circle cx="16" cy="16" r="15" fill="currentColor" mask="url(#ae-einladung)"/></svg></span><b>aeradex</b></div>
+    {% if not entry %}
+    <div class="panel">
+      <h1 style="font-size:20px;margin:0">Link ungültig</h1>
+      <p class="small muted">Dieser Link wurde schon verwendet, zurückgezogen oder ist abgelaufen (7 Tage). Bitte um einen neuen Link.</p>
+      <a class="btn" href="/login" style="justify-content:center">Zur Anmeldung</a>
+    </div>
+    {% else %}
+    <form class="panel" method="post">
+      <div><h1 style="font-size:20px;margin:0">{{ firma }}</h1>
+        {% if entry.art == 'reset' %}<p class="small muted">Neues Passwort für <strong>{{ entry.benutzer }}</strong> setzen.</p>
+        {% else %}<p class="small muted">{{ von.anzeige if von else 'Jemand' }} lädt dich zur Buchhaltung ein — mit {{ rolle_text }}. Wähle Benutzername und Passwort.</p>{% endif %}</div>
+      {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+      {% if entry.art == 'reset' %}
+      <input type="text" name="username" value="{{ entry.benutzer }}" autocomplete="username" hidden>
+      {% else %}
+      <div class="field"><label for="n">Benutzername</label><input class="input" id="n" name="name" value="{{ werte.name or '' }}" autocomplete="username" required autofocus autocapitalize="none" spellcheck="false"><span class="small muted">Kleinbuchstaben, Ziffern, . - _</span></div>
+      <div class="field"><label for="a">Anzeigename</label><input class="input" id="a" name="anzeige" value="{{ werte.anzeige or '' }}" placeholder="Vorname Nachname" maxlength="80"></div>
+      {% endif %}
+      <div class="field"><label for="p">Passwort (mindestens 10 Zeichen)</label><input class="input" id="p" name="passwort" type="password" autocomplete="new-password" minlength="10" required></div>
+      <div class="field"><label for="p2">Passwort wiederholen</label><input class="input" id="p2" name="passwort2" type="password" autocomplete="new-password" minlength="10" required></div>
+      <button class="btn primary" type="submit" style="justify-content:center">{{ 'Passwort setzen' if entry.art == 'reset' else 'Konto erstellen' }}</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

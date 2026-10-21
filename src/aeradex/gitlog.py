@@ -8,7 +8,9 @@ agent.
 from __future__ import annotations
 
 import contextvars
+import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -104,16 +106,105 @@ def commit(root: Path, message: str, paths: list[Path] | None = None, verified: 
     return _git(root, "rev-parse", "--short", "HEAD").stdout.strip()
 
 
-def log(root: Path, limit: int = 20) -> list[dict]:
+def log(root: Path, limit: int = 20, autor: str = "", suche: str = "", commits: list[str] | None = None) -> list[dict]:
+    """The latest commits; `autor` matches name or e-mail (a server user is `<name>@aeradex`), `suche` the message,
+    `commits` limits to these commits (e.g. the ones that touched a Beleg)."""
     if not is_repo(root):
         return []
-    out = _git(root, "log", f"-{limit}", "--pretty=format:%h\x1f%ad\x1f%an\x1f%s", "--date=iso",
-               check=False).stdout
+    args = ["log", f"-{limit}", "--pretty=format:%h\x1f%ad\x1f%an\x1f%s", "--date=iso"]
+    if autor:
+        args.append(f"--author={autor}")
+    if suche:
+        args += ["-i", "--fixed-strings", f"--grep={suche}"]
+    if commits is not None:
+        if not commits:
+            return []
+        args += ["--no-walk", *commits]
+    out = _git(root, *args, check=False).stdout
     rows = []
     for line in out.splitlines():
         h, d, a, s = line.split("\x1f", 3)
         rows.append({"commit": h, "datum": d, "autor": a, "nachricht": s})
     return rows
+
+
+# ---------- who booked what ----------
+
+_INDEX = ".aeradex/lokal/belegindex.json"
+_DATE_CELL = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _journal_belege(lines: list[str], sign: str) -> set[str]:
+    found = set()
+    for line in lines:
+        if not line.startswith(sign + "|"):
+            continue
+        cells = [c.strip() for c in line[1:].strip().strip("|").split("|")]
+        if len(cells) > 1 and _DATE_CELL.match(cells[0]) and cells[1]:
+            found.add(cells[1])
+    return found
+
+
+def _scan(root: Path, rng: str, index: dict) -> None:
+    out = _git(root, "log", "--reverse", "--no-color", "-p", "--unified=0", "--date=iso",
+               "--format=\x1e%h\x1f%ad\x1f%an\x1f%ae\x1f%s", *([rng] if rng else []), "--", "journal/",
+               check=False).stdout
+    for chunk in out.split("\x1e")[1:]:
+        head, _, diff = chunk.partition("\n")
+        h, d, name, mail, subject = (head.split("\x1f", 4) + [""] * 5)[:5]
+        lines = diff.splitlines()
+        added, removed = _journal_belege(lines, "+"), _journal_belege(lines, "-")
+        for beleg in sorted(added | removed):
+            events = index.setdefault(beleg, [])
+            if beleg in added and not events:
+                art = "erfasst"
+            elif beleg in added:
+                art = "geändert"
+            else:
+                art = "entfernt"
+            events.append({"commit": h, "datum": d, "autor": name, "email": mail, "art": art, "nachricht": subject})
+
+
+def beleg_index(root: Path) -> dict[str, list[dict]]:
+    """Per Beleg number the commits that added, changed or removed its journal rows, oldest first — who booked
+    what, from the audit trail itself. Cached per HEAD in `.aeradex/lokal/` and extended by the new commits only."""
+    if not is_repo(root):
+        return {}
+    head = _git(root, "rev-parse", "--short", "HEAD", check=False).stdout.strip()
+    if not head:
+        return {}
+    path = Path(root) / _INDEX
+    cached = {}
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except ValueError:
+        cached = {}
+    if cached.get("head") == head:
+        return cached.get("index", {})
+    index, old = cached.get("index", {}), cached.get("head")
+    if old and _git(root, "merge-base", "--is-ancestor", old, head, check=False).returncode == 0:
+        _scan(root, f"{old}..{head}", index)
+    else:
+        index = {}
+        _scan(root, "", index)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"head": head, "index": index}, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+    return index
+
+
+def is_agent(author: str, email: str = "") -> bool:
+    return "agent@aeradex" in (email or "") or (author or "").startswith("aeradex Agent")
+
+
+def short_name(author: str, email: str = "") -> str:
+    """'Delia Thomet' → 'DT', an agent → 'Agent'."""
+    if is_agent(author, email):
+        return "Agent"
+    parts = [p for p in re.split(r"[\s.\-_]+", author or "") if p and p[0].isalpha()]
+    return ("".join(p[0] for p in parts[:2]).upper() or (author or "?")[:2]).strip()
 
 
 BINARY = (".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".woff2")

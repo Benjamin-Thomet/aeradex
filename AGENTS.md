@@ -27,7 +27,14 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   `mcp_server.py` serves only the tools named in `AERADEX_MCP_TOOLS` when it is set.
   Templates are Jinja in `web/templates/`, styles in `web/static/aeradex.css` (tokens at the top, light + dark).
 - `web/auth.py`: server mode (`aeradex serve`): users outside the book, scrypt hashes, signed session cookies,
-  roles, login throttle. The middleware in `web/app.py` sets the git author per request.
+  roles, login throttle. The middleware in `web/app.py` sets the git author per request. Without e-mail, `Invites`
+  are one-time links (only their SHA-256 stored, 7 days): an invitation up to the inviter's own role, or a password
+  link an admin makes; `UserLog` (`benutzer-log.jsonl`) is the users' own trail. Pages in `web/benutzer_views.py`:
+  `/konto` (own name and password), `/benutzer` (list, invite; roles/removal/password links admin only, `ADMIN_ONLY`),
+  `/einladung/<token>` (public like `/login`); `/konto` and `/benutzer/einladen` are open to every role (`SELF_SERVICE`).
+- `gitlog.beleg_index`: who booked what, read from the audit trail itself (journal rows added/changed/removed per
+  commit, cached per HEAD in `.aeradex/lokal/belegindex.json`, extended incrementally). Journal column «Von»,
+  `/verlauf?beleg=|von=|q=`, `api.booking_history`.
 - `plugins.py`: plugin API (pluggy hooks, discovery via entry points `aeradex.plugins`, per-book activation in
   `aeradex.yaml → plugins`). `builtin.py` provides the core's own data and the camt.053 format through the same hooks.
   `testing.py`: helpers for plugin tests. Example plugins and the template live in `plugins/`; docs in `docs/plugins.md`.

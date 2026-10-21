@@ -287,6 +287,18 @@
 {{ plugin_seiten('funktionen') }}
 </section>
 
+<section data-tab="benutzer" id="benutzer">
+<div class="panel">
+  <header><h2>Benutzer</h2>{% if server_mode %}<span class="pill muted">{{ benutzer_zahl }} mit Login</span>{% endif %}</header>
+  <div class="body">
+    {% if server_mode %}<p class="small muted" style="max-width:72ch">Wer sich anmelden kann, mit welcher Rolle; Personen einladen (Link zum Weitergeben, ohne E-Mail), Passwort-Links und das eigene Passwort.</p>
+    <div class="actions"><a class="btn primary" href="/benutzer">Benutzer verwalten</a><a class="btn" href="/konto">Mein Konto</a></div>
+    {% else %}<p class="small muted">Benutzer gibt es nur, wenn aeradex mit Login läuft (<code>aeradex serve</code>). Lokal steht im Verlauf der git-Name dieses Computers.</p>{% endif %}
+  </div>
+</div>
+{{ plugin_seiten('benutzer') }}
+</section>
+
 <section data-tab="buch" id="buch">
 <div class="panel" id="pruefung">
   <header><h2>Prüfung des Buchs</h2><span class="hint">aeradex check</span></header>

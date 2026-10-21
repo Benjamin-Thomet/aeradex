@@ -846,8 +846,24 @@ def unlock(book: Book, bis, grund: str) -> dict:
     return _done(book, f"Sperre zurückgenommen auf {data['bis'] or '—'}: {grund}", touched)
 
 
-def history(book: Book, limit: int = 20) -> list[dict]:
-    return gitlog.log(book.root, limit)
+def history(book: Book, limit: int = 20, beleg: str = "", von: str = "", suche: str = "") -> list[dict]:
+    """The audit trail: commits, newest first; filtered by a Beleg, a server user (`von`) or text in the message."""
+    commits = None
+    if beleg:
+        commits = [e["commit"] for e in gitlog.beleg_index(book.root).get(beleg.strip(), [])]
+    autor = (re.escape(von.strip().lower()) + "@aeradex") if von.strip() else ""
+    return gitlog.log(book.root, limit, autor=autor, suche=suche.strip(), commits=commits)
+
+
+def booking_history(book: Book, beleg: str) -> dict:
+    """Who booked a Beleg: every commit that added, changed or removed its journal rows (erfasst, geändert,
+    entfernt) with person or agent, time and commit."""
+    beleg = (beleg or "").strip()
+    events = gitlog.beleg_index(book.root).get(beleg, [])
+    rows = [r for r in book.rows if r.beleg == beleg]
+    return jsonable({"beleg": beleg, "gebucht": bool(rows), "datum": rows[0].datum if rows else None,
+                     "text": rows[0].text if rows else "", "quelle": rows[0].quelle if rows else "",
+                     "ereignisse": [dict(e, agent=gitlog.is_agent(e["autor"], e.get("email", ""))) for e in events]})
 
 
 # ---------- updates (used by the UI; also callable from CLI/MCP) ----------

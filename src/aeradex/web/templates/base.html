@@ -40,6 +40,7 @@
           <span class="small muted">{{ settings.adresse.ort or "" }}{% if settings.sperre_bis %} · gesperrt bis {{ settings.sperre_bis|datum }}{% else %} · nichts gesperrt{% endif %}</span>
           <span class="small muted" title="{{ book.root }}">Ordner: {{ book.root.name }}</span>
           {% if user %}<span class="small">{{ user.anzeige }} · {{ {"lesen": "Leserecht", "buchhaltung": "Buchhaltung", "admin": "Admin"}[user.rolle] }}</span>
+          <span class="small"><a class="link" href="/konto">Mein Konto</a> · <a class="link" href="/benutzer">Benutzer</a></span>
           <form hx-post="/logout"><button class="btn small ghost" type="submit">Abmelden</button></form>{% endif %}
         </div>
       </details>

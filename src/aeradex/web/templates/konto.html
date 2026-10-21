@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Mein Konto{% endblock %}
+{% block main %}
+<div class="topbar"><div><h1>Mein Konto</h1>
+  <div class="sub">{{ ich.anzeige }} · Benutzername {{ ich.name }} · {{ ich.rolle_text }}{% if ich.eingeladen_von %} · eingeladen von {{ ich.eingeladen_von }}{% endif %}</div></div>
+  <div class="actions"><a class="btn" href="/benutzer">Benutzer</a></div></div>
+
+<form class="panel" hx-post="/konto" hx-target="find .errors">
+  <header><h2>Anzeigename</h2><span class="hint">steht im Verlauf und im Journal bei jeder Buchung</span></header>
+  <div class="body">
+    <input type="hidden" name="aktion" value="anzeige">
+    <div class="form"><div class="field"><label for="k-a">Anzeigename</label><input class="input" id="k-a" name="anzeige" value="{{ ich.anzeige }}" maxlength="80" required></div></div>
+    {{ errors() }}
+    <div class="formfoot"><span class="small muted">Frühere Buchungen behalten den Namen, mit dem sie gemacht wurden.</span><button class="btn" type="submit">Speichern</button></div>
+  </div>
+</form>
+
+<form class="panel" hx-post="/konto" hx-target="find .errors">
+  <header><h2>Passwort ändern</h2><span class="hint">mindestens 10 Zeichen</span></header>
+  <div class="body">
+    <input type="hidden" name="aktion" value="passwort">
+    <input type="text" name="username" value="{{ ich.name }}" autocomplete="username" hidden>
+    <div class="form">
+      <div class="field"><label for="k-p0">Aktuelles Passwort</label><input class="input" id="k-p0" name="aktuell" type="password" autocomplete="current-password" required></div>
+      <div class="field"><label for="k-p1">Neues Passwort</label><input class="input" id="k-p1" name="neu" type="password" autocomplete="new-password" minlength="10" required></div>
+      <div class="field"><label for="k-p2">Neues Passwort wiederholen</label><input class="input" id="k-p2" name="neu2" type="password" autocomplete="new-password" minlength="10" required></div>
+    </div>
+    {{ errors() }}
+    <div class="formfoot"><span class="small muted">Danach sind andere Geräte abgemeldet; dieses bleibt angemeldet.</span><button class="btn primary" type="submit">Passwort ändern</button></div>
+  </div>
+</form>
+{% endblock %}

@@ -385,6 +385,16 @@ def closing_checklist(jahr: int) -> dict:
     return _call(api.closing_checklist, jahr)
 
 
+def booking_history(beleg: str) -> dict:
+    """Wer einen Beleg gebucht hat: jede Änderung an seinen Journalzeilen (erfasst, geändert, entfernt) mit Person
+    oder Agent, Zeit und Commit — aus dem Verlauf (git). Ändert nichts.
+
+    Args:
+        beleg: Belegnummer, z.B. "27-003".
+    """
+    return _call(api.booking_history, beleg)
+
+
 def business_years() -> dict:
     """Die Geschäftsjahre: erstes Jahr, welche Jahre Buchungen annehmen (gebucht wird nur in eröffneten, nicht
     gesperrten Jahren — ein Datum ausserhalb wird abgelehnt), welche gesperrt sind und ob das nächste eröffnet werden
@@ -1308,7 +1318,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
           closing_documents, mwst_details,
           period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year,
-          propose_journal_lines, closing_checklist, closing_entry, business_years, opening_balance]
+          propose_journal_lines, closing_checklist, closing_entry, business_years, opening_balance, booking_history]
 CHAT_ONLY = [read_inbox_file]
 
 # Public names for plugin tools: wrap an api function so errors come back as {"ok": False, …}.

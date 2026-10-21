@@ -1,7 +1,33 @@
 {% extends "base.html" %}
-{% block title %}Verlauf{% endblock %}
+{% block title %}Verlauf{% if beleg %} · Beleg {{ beleg }}{% endif %}{% endblock %}
 {% block main %}
-<div class="topbar"><div><h1>Verlauf</h1><div class="sub">Jede Änderung am Buch ist ein git-Commit: wer, wann, was. Das ist das Audit-Trail.</div></div></div>
+{% set art_pill = {'erfasst': 'ok', 'geändert': 'warn', 'entfernt': 'red'} %}
+<div class="topbar"><div><h1>Verlauf{% if beleg %} · Beleg {{ beleg }}{% endif %}</h1><div class="sub">Jede Änderung am Buch ist ein git-Commit: wer, wann, was. Das ist das Audit-Trail.</div></div></div>
+
+<form class="panel" method="get" action="/verlauf">
+  <div class="body">
+    <div class="form">
+      <div class="field"><label for="v-b">Beleg</label><input class="input" id="v-b" name="beleg" value="{{ beleg }}" placeholder="z.B. 27-003"></div>
+      {% if benutzer %}<div class="field"><label for="v-v">Von</label><select class="input" id="v-v" name="von" style="width:100%"><option value="">alle</option>{% for u in benutzer %}<option value="{{ u.name }}" {{ 'selected' if u.name == von }}>{{ u.anzeige }}</option>{% endfor %}</select></div>{% endif %}
+      <div class="field"><label for="v-q">Text</label><input class="input" id="v-q" name="q" value="{{ q }}" placeholder="Rechnung, Lohn, Kunde …"></div>
+    </div>
+    <div class="formfoot"><span>{% if beleg or von or q %}<a class="link small" href="/verlauf">Filter zurücksetzen</a>{% endif %}</span><button class="btn" type="submit">Filtern</button></div>
+  </div>
+</form>
+
+{% if belegverlauf %}{% set bv = belegverlauf %}
+<div class="panel">
+  <header><h2>Beleg {{ bv.beleg }}</h2><span class="hint">{% if bv.gebucht %}{{ bv.datum|datum }} · {{ bv.text }}{% if bv.quelle %} · {{ bv.quelle }}{% endif %}{% else %}nicht mehr im Journal{% endif %}</span></header>
+  {% if bv.ereignisse %}
+  <ul class="todo">{% for e in bv.ereignisse %}
+    <li><a href="/verlauf/{{ e.commit }}"><span class="stripe {{ {'erfasst': 'ok', 'entfernt': 'red'}.get(e.art, 'warn') }}"></span>
+      <div><div class="t">{{ e.art|capitalize }} von {% if e.agent %}<span class="pill info">Agent</span>{% else %}{{ e.autor }}{% endif %}</div>
+        <div class="d">{{ e.datum[:16] }} · {{ e.nachricht|replace("aeradex: ", "") }}</div></div>
+      <span class="pill {{ art_pill.get(e.art, 'muted') }}">{{ e.commit }}</span></a></li>{% endfor %}</ul>
+  {% else %}<div class="empty">Zu diesem Beleg gibt es keinen Eintrag im Verlauf.</div>{% endif %}
+</div>
+{% endif %}
+
 <div class="panel">
   {% if log %}
   <div class="tablewrap"><table class="ledger">
@@ -11,6 +37,7 @@
         <td>{% if agent %}<span class="pill info">Agent</span>{% else %}{{ c.autor }}{% endif %}</td><td>{{ c.nachricht|replace("aeradex: ", "") }}</td></tr>
     {% endfor %}</tbody>
   </table></div>
+  {% elif beleg or von or q %}<div class="empty">Keine Änderungen für diesen Filter.</div>
   {% else %}<div class="empty">Dieses Buch ist kein git-Repository. <code>aeradex init</code> legt eines an.</div>{% endif %}
 </div>
 {% endblock %}

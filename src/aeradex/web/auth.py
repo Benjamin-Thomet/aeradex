@@ -4,13 +4,19 @@ Users live outside the book (never in its git history):
 
     <config>/users.yaml    name, display name, role, scrypt hash
     <config>/secret        random key that signs session cookies (created on first start)
+    <config>/einladungen.yaml   open invitation / password links (only the SHA-256 of each token)
+    <config>/benutzer-log.jsonl what happened to the users: invited, joined, role, password, removed
+
+Without an e-mail service an invitation is a link the inviter passes on (WhatsApp, SMS): whoever opens it picks
+a user name and password. Anyone may invite, up to their own role; changing roles, removing users and password
+links are for admins.
 
 Default <config> is ~/.config/aeradex, or $AERADEX_CONFIG, or `aeradex serve --config DIR`.
 
 Roles:
     lesen        sees everything, changes nothing
     buchhaltung  books, invoices, payroll, bank, MWST — everything except the two below
-    admin        additionally settings and locking/unlocking periods, and user management (CLI)
+    admin        additionally settings, locking/unlocking periods, roles, removing users, password links
 """
 from __future__ import annotations
 
@@ -27,10 +33,38 @@ from pathlib import Path
 import yaml
 
 ROLES = ("lesen", "buchhaltung", "admin")
+RANK = {r: i for i, r in enumerate(ROLES)}
+ROLE_LABEL = {"lesen": "Leserecht", "buchhaltung": "Buchhaltung", "admin": "Admin"}
+INVITE_DAYS = 7
 SESSION_COOKIE = "aeradex_login"
 SESSION_DAYS = 14
 # Paths only an admin may POST to.
-ADMIN_ONLY = ("/einstellungen", "/abschluss/sperre", "/abschluss/entsperren")
+ADMIN_ONLY = ("/einstellungen", "/abschluss/sperre", "/abschluss/entsperren", "/benutzer/rolle",
+              "/benutzer/entfernen", "/benutzer/passwort-link")
+# Paths every signed-in role may POST to (their own account, inviting up to their own role).
+SELF_SERVICE = ("/konto", "/benutzer/einladen", "/benutzer/zurueckziehen")
+
+
+def may_grant(rolle_von: str, rolle: str) -> bool:
+    return rolle in RANK and RANK[rolle] <= RANK.get(rolle_von, -1)
+
+
+def check_password(password: str, name: str = "") -> None:
+    if len(password or "") < 10:
+        raise ValueError("Passwort: mindestens 10 Zeichen")
+    if name and password.strip().lower() == name.strip().lower():
+        raise ValueError("Passwort darf nicht der Benutzername sein")
+
+
+def check_name(name: str) -> str:
+    name = (name or "").strip().lower()
+    if not name or len(name) > 40 or not name.replace(".", "").replace("-", "").replace("_", "").isalnum():
+        raise ValueError("Benutzername: Buchstaben, Ziffern, . - _ (höchstens 40 Zeichen)")
+    return name
+
+
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def token_matches(sent: str, expected: str) -> bool:
@@ -47,8 +81,7 @@ def config_dir(explicit: str | Path | None = None) -> Path:
 # ---------- password hashing (scrypt, stdlib) ----------
 
 def hash_password(password: str) -> str:
-    if len(password) < 10:
-        raise ValueError("Passwort: mindestens 10 Zeichen")
+    check_password(password)
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, n=2 ** 15, r=8, p=1, maxmem=64 * 1024 * 1024)
     return "scrypt$32768$8$1$" + base64.b64encode(salt).decode() + "$" + base64.b64encode(digest).decode()
@@ -73,6 +106,13 @@ class User:
     name: str
     anzeige: str
     rolle: str
+    erstellt: str = ""
+    eingeladen_von: str = ""
+    letzter_login: str = ""
+
+    @property
+    def rolle_text(self) -> str:
+        return ROLE_LABEL.get(self.rolle, self.rolle)
 
     @property
     def can_write(self) -> bool:
@@ -102,23 +142,30 @@ class UserStore:
         self.path.write_text(yaml.safe_dump({"benutzer": users}, allow_unicode=True, sort_keys=True), encoding="utf-8")
         os.chmod(self.path, 0o600)
 
+    @staticmethod
+    def _user(name: str, u: dict) -> User:
+        return User(name, u.get("anzeige") or name, u.get("rolle", "lesen"), str(u.get("erstellt") or ""),
+                    str(u.get("eingeladen_von") or ""), str(u.get("letzter_login") or ""))
+
     def list(self) -> list[User]:
-        return [User(n, u.get("anzeige") or n, u.get("rolle", "lesen")) for n, u in sorted(self._load().items())]
+        return [self._user(n, u) for n, u in sorted(self._load().items())]
 
     def get(self, name: str) -> User | None:
         u = self._load().get(name)
-        return User(name, u.get("anzeige") or name, u.get("rolle", "lesen")) if u else None
+        return self._user(name, u) if u else None
 
-    def add(self, name: str, password: str, rolle: str, anzeige: str = "") -> User:
-        name = name.strip().lower()
-        if not name or not name.replace(".", "").replace("-", "").replace("_", "").isalnum():
-            raise ValueError("Benutzername: Buchstaben, Ziffern, . - _")
+    def add(self, name: str, password: str, rolle: str, anzeige: str = "", eingeladen_von: str = "") -> User:
+        name = check_name(name)
         if rolle not in ROLES:
             raise ValueError(f"Rolle: {', '.join(ROLES)}")
+        check_password(password, name)
         users = self._load()
         if name in users:
             raise ValueError(f"Benutzer {name} existiert bereits")
-        users[name] = {"anzeige": anzeige or name, "rolle": rolle, "hash": hash_password(password)}
+        users[name] = {"anzeige": (anzeige or "").strip() or name, "rolle": rolle, "hash": hash_password(password),
+                       "erstellt": _now()}
+        if eingeladen_von:
+            users[name]["eingeladen_von"] = eingeladen_von
         self._save(users)
         return self.get(name)
 
@@ -126,15 +173,48 @@ class UserStore:
         users = self._load()
         if name not in users:
             raise ValueError(f"Benutzer {name} unbekannt")
+        check_password(password, name)
         users[name]["hash"] = hash_password(password)
         users[name]["version"] = int(users[name].get("version", 0)) + 1   # ends existing sessions
         self._save(users)
+
+    def set_role(self, name: str, rolle: str) -> None:
+        users = self._load()
+        if name not in users:
+            raise ValueError(f"Benutzer {name} unbekannt")
+        if rolle not in ROLES:
+            raise ValueError(f"Rolle: {', '.join(ROLES)}")
+        if users[name].get("rolle") == "admin" and rolle != "admin" and self._admins(users) == 1:
+            raise ValueError("Der letzte Admin bleibt Admin")
+        users[name]["rolle"] = rolle
+        users[name]["version"] = int(users[name].get("version", 0)) + 1   # the new role applies from the next login
+        self._save(users)
+
+    def set_display(self, name: str, anzeige: str) -> None:
+        users = self._load()
+        if name not in users:
+            raise ValueError(f"Benutzer {name} unbekannt")
+        anzeige = (anzeige or "").strip()
+        if not anzeige or len(anzeige) > 80:
+            raise ValueError("Anzeigename: 1 bis 80 Zeichen")
+        users[name]["anzeige"] = anzeige
+        self._save(users)
+
+    def touch_login(self, name: str) -> None:
+        users = self._load()
+        if name in users:
+            users[name]["letzter_login"] = _now()
+            self._save(users)
+
+    @staticmethod
+    def _admins(users: dict) -> int:
+        return sum(1 for u in users.values() if u.get("rolle") == "admin")
 
     def remove(self, name: str) -> None:
         users = self._load()
         if name not in users:
             raise ValueError(f"Benutzer {name} unbekannt")
-        if users[name].get("rolle") == "admin" and sum(1 for u in users.values() if u.get("rolle") == "admin") == 1:
+        if users[name].get("rolle") == "admin" and self._admins(users) == 1:
             raise ValueError("Der letzte Admin kann nicht entfernt werden")
         del users[name]
         self._save(users)
@@ -151,6 +231,94 @@ class UserStore:
 
     def has_admin(self) -> bool:
         return any(u.rolle == "admin" for u in self.list())
+
+
+# ---------- invitations and password links ----------
+
+class Invites:
+    """One-time links: `einladung` (a new user with a role) or `reset` (a new password for a user)."""
+
+    def __init__(self, directory: Path):
+        self.dir = Path(directory)
+        self.path = self.dir / "einladungen.yaml"
+
+    @staticmethod
+    def key(token: str) -> str:
+        return hashlib.sha256((token or "").encode()).hexdigest()
+
+    def _load(self) -> dict:
+        if not self.path.exists():
+            return {}
+        items = (yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}).get("einladungen", {}) or {}
+        now = time.time()
+        return {k: v for k, v in items.items() if float(v.get("bis", 0)) > now}
+
+    def _save(self, items: dict) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(yaml.safe_dump({"einladungen": items}, allow_unicode=True, sort_keys=True), encoding="utf-8")
+        os.chmod(self.path, 0o600)
+
+    def _create(self, entry: dict) -> tuple[str, dict]:
+        token = secrets.token_urlsafe(24)
+        items = self._load()
+        entry = {**entry, "erstellt": _now(), "bis": int(time.time()) + INVITE_DAYS * 86400}
+        items[self.key(token)] = entry
+        self._save(items)
+        return token, entry
+
+    def create(self, von: str, rolle: str, notiz: str = "") -> tuple[str, dict]:
+        if rolle not in ROLES:
+            raise ValueError(f"Rolle: {', '.join(ROLES)}")
+        return self._create({"art": "einladung", "rolle": rolle, "von": von, "notiz": (notiz or "").strip()[:80]})
+
+    def create_reset(self, von: str, benutzer: str) -> tuple[str, dict]:
+        items = {k: v for k, v in self._load().items() if not (v.get("art") == "reset" and v.get("benutzer") == benutzer)}
+        self._save(items)                                   # one open password link per user
+        return self._create({"art": "reset", "benutzer": benutzer, "von": von})
+
+    def find(self, token: str) -> dict | None:
+        return self._load().get(self.key(token))
+
+    def consume(self, token: str) -> dict | None:
+        items = self._load()
+        entry = items.pop(self.key(token), None)
+        if entry is not None:
+            self._save(items)
+        return entry
+
+    def revoke(self, key: str) -> dict | None:
+        items = self._load()
+        entry = items.pop(key, None)
+        if entry is not None:
+            self._save(items)
+        return entry
+
+    def list(self) -> list[dict]:
+        return sorted(({"id": k, **v} for k, v in self._load().items()), key=lambda e: e.get("erstellt", ""))
+
+
+class UserLog:
+    """Append-only log of what happened to the users (outside the book, like the users)."""
+
+    def __init__(self, directory: Path):
+        self.path = Path(directory) / "benutzer-log.jsonl"
+
+    def add(self, wer: str, was: str, **detail) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"zeit": _now(), "wer": wer, "was": was, **detail}, ensure_ascii=False) + "\n")
+        os.chmod(self.path, 0o600)
+
+    def recent(self, n: int = 50) -> list[dict]:
+        if not self.path.exists():
+            return []
+        out = []
+        for line in self.path.read_text(encoding="utf-8").splitlines()[-n:]:
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+        return list(reversed(out))
 
 
 # ---------- sessions ----------

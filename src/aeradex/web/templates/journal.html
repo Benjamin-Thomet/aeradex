@@ -111,7 +111,7 @@
   <div id="umbuchenVorschau"></div>
   <div class="tablewrap">
     <table class="ledger">
-      <thead><tr><th class="sel"><input type="checkbox" data-selall title="Alle umbuchbaren Belege auswählen" aria-label="Alle auswählen"></th><th>Datum</th><th>Beleg</th><th>Text</th><th>Soll</th><th>Haben</th><th class="right">Betrag</th><th>Quelle</th><th></th></tr></thead>
+      <thead><tr><th class="sel"><input type="checkbox" data-selall title="Alle umbuchbaren Belege auswählen" aria-label="Alle auswählen"></th><th>Datum</th><th>Beleg</th><th>Text</th><th>Soll</th><th>Haben</th><th class="right">Betrag</th><th>Quelle</th><th title="Wer gebucht hat">Von</th><th></th></tr></thead>
       <tbody>
       {% set total = namespace(v=0) %}
       {% for g in groups %}{% set total.v = total.v + g.total %}
@@ -130,6 +130,7 @@
           {{ acc(g.soll, names) }}{{ acc(g.haben, names) }}
           <td class="right num">{{ g.total|chf }}</td>
           <td class="src">{% if g.doc %}<a class="pill lock" href="{{ g.doc }}">🔒 {{ g.kind|capitalize }}</a>{% elif g.quelle %}<span class="pill lock">🔒 {{ g.kind|capitalize }}</span>{% elif g.locked %}<span class="pill lock">🔒 gesperrt</span>{% else %}manuell{% endif %}</td>
+          <td class="von">{% set w = wer.get(g.beleg) %}{% if w %}<a class="{{ 'pill info' if w.agent else 'who' }}" href="/verlauf?beleg={{ g.beleg|urlq }}" title="{{ w.tip }} — Verlauf öffnen">{{ w.kurz }}{% if w.geaendert %}*{% endif %}</a>{% endif %}</td>
           <td class="right" style="white-space:nowrap">
             {% if g.edit %}<button class="btn small ghost" type="button" data-editopen="e{{ gi }}" title="Bearbeiten" aria-label="Beleg {{ g.beleg }} bearbeiten">✎</button>{% endif %}
             {% if g.kind == 'manuell' and not g.locked %}
@@ -153,11 +154,11 @@
         {% if multi %}{% for r in g.rows %}
         <tr class="sub" data-of="g{{ gi }}" hidden>
           <td></td><td></td><td></td><td>{{ r.text.split(" · ")[-1] if " · " in r.text else r.text }}{% if r.mwst %} <span class="pill muted">{{ r.mwst }}</span>{% endif %}{% if r.waehrung %} <span class="pill muted" title="Kurs {{ r.kurs }}">{{ r.waehrung }} {{ r.fw|chf }}</span>{% endif %}</td>
-          {{ acc(r.soll, names) }}{{ acc(r.haben, names) }}<td class="right num">{{ r.betrag|chf }}</td><td></td><td></td>
+          {{ acc(r.soll, names) }}{{ acc(r.haben, names) }}<td class="right num">{{ r.betrag|chf }}</td><td></td><td></td><td></td>
         </tr>
         {% endfor %}{% endif %}
         {% if g.edit %}
-        <tr class="editrow" id="e{{ gi }}" hidden><td colspan="9">
+        <tr class="editrow" id="e{{ gi }}" hidden><td colspan="10">
           <form class="editform" hx-post="/journal/aendern" hx-target="find .errors">
             <input type="hidden" name="beleg" value="{{ g.beleg }}">
             <div class="form four">
@@ -178,7 +179,7 @@
         {% endif %}
       {% endfor %}
       </tbody>
-      <tfoot><tr><td colspan="6">Total {{ MONTHS[month] if month else "Jahr " ~ year }} · {{ groups|length }} Belege</td><td class="right num total">{{ total.v|chf }}</td><td colspan="2"></td></tr></tfoot>
+      <tfoot><tr><td colspan="6">Total {{ MONTHS[month] if month else "Jahr " ~ year }} · {{ groups|length }} Belege</td><td class="right num total">{{ total.v|chf }}</td><td colspan="3"></td></tr></tfoot>
     </table>
   </div>
   {% else %}

@@ -374,6 +374,7 @@ async def journal_page(ui: UI, request: Request):
         month = int(month_raw) if month_raw.isdigit() and 1 <= int(month_raw) <= 12 else None
     groups = journal_groups(book, year, month, *filters)
     return ui.render(request, "journal.html", book=book, year=year, month=month, counts=counts, groups=groups,
+                     wer=_who_booked(book, groups),
                      names={a.nr: a.name for a in book.accounts.values()}, accounts=account_options(book),
                      quellen=QUELLEN, q=qp.get("q", ""), konto=konto, quelle=qp.get("quelle", ""),
                      mwst_filter=filters[4], betrag_filter=filters[5],
@@ -381,6 +382,26 @@ async def journal_page(ui: UI, request: Request):
                      currencies=currencies(book),
                      account_names={a.nr: a.name + (f" ({a.waehrung})" if a.is_foreign else "")
                                     for a in book.accounts.values() if a.aktiv_})
+
+
+def _who_booked(book: Book, groups: list[dict]) -> dict:
+    """Per Beleg shown: short name of who booked it, and a tooltip with who booked and changed it when."""
+    from .. import gitlog
+    index = gitlog.beleg_index(book.root)
+    out = {}
+    for g in groups:
+        events = index.get(g["beleg"]) or []
+        if not events:
+            continue
+        first = next((e for e in events if e["art"] == "erfasst"), events[0])
+        changed = [e for e in events if e["art"] == "geändert"]
+        tip = f"erfasst von {first['autor']}, {first['datum'][:16]}"
+        if changed:
+            tip += f" · zuletzt geändert von {changed[-1]['autor']}, {changed[-1]['datum'][:16]}"
+        out[g["beleg"]] = {"kurz": gitlog.short_name(first["autor"], first.get("email", "")),
+                           "agent": gitlog.is_agent(first["autor"], first.get("email", "")),
+                           "geaendert": bool(changed), "tip": tip}
+    return out
 
 
 async def journal_buchen(ui: UI, request: Request):
@@ -2484,7 +2505,12 @@ async def mwst_pdf(ui: UI, request: Request):
 
 async def verlauf(ui: UI, request: Request):
     book = ui.book()
-    return ui.render(request, "verlauf.html", book=book, log=api.history(book, 200), agent_mark="Agent")
+    qp = request.query_params
+    beleg, von, suche = qp.get("beleg", "").strip(), qp.get("von", "").strip(), qp.get("q", "").strip()
+    users = ui.users.list() if ui.users is not None else []
+    return ui.render(request, "verlauf.html", book=book, log=api.history(book, 200, beleg, von, suche),
+                     agent_mark="Agent", beleg=beleg, von=von, q=suche, benutzer=users,
+                     belegverlauf=api.booking_history(book, beleg) if beleg else None)
 
 
 async def commit(ui: UI, request: Request):
@@ -2514,6 +2540,7 @@ async def einstellungen(ui: UI, request: Request):
                      neustart=bool(getattr(ui, "neustart_noetig", False)),
                      kantone=__import__("aeradex.qst_estv", fromlist=["CANTONS"]).CANTONS,
                      qst_geladen=sorted(p.stem.replace("-", " ") for p in (book.root / "lohn" / "qst_tarife").glob("??-????.json")),
+                     benutzer_zahl=len(ui.users.list()) if ui.users is not None else 0,
                      jahre=jahreswechsel.overview(book), eb=__import__("aeradex.eroeffnung", fromlist=["view"]).view(book))
 
 

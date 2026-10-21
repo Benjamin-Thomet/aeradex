@@ -35,7 +35,17 @@ git clone <repo-des-buchs> ~/buecher/muster       # oder: aeradex init ~/buecher
 ```
 
 Weitere Befehle: `aeradex user list`, `aeradex user passwort NAME` (beendet bestehende Anmeldungen),
-`aeradex user remove NAME`. Nach 5 Fehlversuchen ist ein Benutzer bzw. eine Adresse 5 Minuten gesperrt.
+`aeradex user rolle NAME ROLLE`, `aeradex user remove NAME`,
+`aeradex user einladen --rolle lesen --notiz "Lea Muster" --url https://buch.example.ch` (druckt einen Einladungslink).
+Nach 5 Fehlversuchen ist ein Benutzer bzw. eine Adresse 5 Minuten gesperrt.
+
+Im Browser: **Benutzer** (im Firmenmenü oben rechts, oder Einstellungen › Benutzer) zeigt alle Logins. Jede Person
+kann jemanden einladen, höchstens mit der eigenen Rolle; aeradex verschickt keine E-Mails, sondern zeigt einen Link
+(7 Tage gültig, einmal verwendbar), den man per WhatsApp, SMS oder persönlich weitergibt. Wer ihn öffnet, wählt
+Benutzername und Passwort. Admins ändern Rollen, entfernen Logins und erstellen Passwort-Links (statt «Passwort
+vergessen»). **Mein Konto** ändert Anzeigename und Passwort. Was mit den Benutzern geschah, steht in
+`benutzer-log.jsonl` im Konfigurationsverzeichnis und auf der Seite Benutzer; was jemand im Buch tat, im Verlauf
+(git) und im Journal in der Spalte «Von».
 
 ### systemd
 

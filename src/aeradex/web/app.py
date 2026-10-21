@@ -141,11 +141,12 @@ class UI:
         self.auth_dir = auth_dir  # set = server mode (login, no plugin installs from the browser)
         self.neustart_noetig = False
         # Server mode: users and signed sessions instead of the one-time token.
-        self.users = self.sessions = self.throttle = None
+        self.users = self.sessions = self.throttle = self.invites = self.userlog = None
         self.https = https
         if auth_dir is not None:
-            from .auth import Sessions, Throttle, UserStore
+            from .auth import Invites, Sessions, Throttle, UserLog, UserStore
             self.users, self.sessions, self.throttle = UserStore(auth_dir), Sessions(auth_dir), Throttle()
+            self.invites, self.userlog = Invites(auth_dir), UserLog(auth_dir)
 
     def book(self) -> Book:
         return Book(self.root)
@@ -226,7 +227,7 @@ SECTIONS = [
 
 # The tabs of the settings page (anchor, label); plugin pages may live in one (`einstellungen:<tab>`).
 EINSTELLUNGEN_TABS = [("firma", "Firma"), ("buchhaltung", "Buchhaltung"), ("jahre", "Geschäftsjahre"), ("lohn", "Lohn"), ("agent", "Agent & KI"),
-                      ("funktionen", "Funktionen"), ("buch", "Buch")]
+                      ("funktionen", "Funktionen"), ("benutzer", "Benutzer"), ("buch", "Buch")]
 
 
 def page_place(pg: dict) -> str:
@@ -419,9 +420,9 @@ class SessionMiddleware(BaseHTTPMiddleware):
 
     async def server_mode(self, request: Request, call_next):
         from .. import gitlog
-        from .auth import ADMIN_ONLY, SESSION_COOKIE
+        from .auth import ADMIN_ONLY, SELF_SERVICE, SESSION_COOKIE
         ui, path = self.ui, request.url.path
-        if path in ("/login", "/healthz"):
+        if path in ("/login", "/healthz") or path.startswith("/einladung/"):
             if request.method == "POST" and not self._same_origin(request):
                 return PlainTextResponse("Fremde Herkunft abgelehnt.", status_code=403)
             return await call_next(request)
@@ -439,12 +440,12 @@ class SessionMiddleware(BaseHTTPMiddleware):
                 return PlainTextResponse("Fremde Herkunft abgelehnt.", status_code=403)
             if not token_matches(request.headers.get("x-csrf", ""), request.state.csrf):
                 return PlainTextResponse("CSRF-Token fehlt oder ist falsch.", status_code=403)
-            if path != "/logout":
+            if path != "/logout" and not any(path == p or path.startswith(p + "/") for p in SELF_SERVICE):
                 refusal = None
                 if not user.can_write:
                     refusal = "Nur Leserecht — Änderungen sind deiner Rolle nicht erlaubt."
                 elif any(path == p or path.startswith(p + "/") for p in ADMIN_ONLY) and not user.is_admin:
-                    refusal = "Nur Admins dürfen Einstellungen ändern und Perioden sperren."
+                    refusal = "Nur Admins dürfen Einstellungen ändern, Perioden sperren und Benutzer verwalten."
                 if refusal:
                     # HTMX forms show it in their error box; anything else gets a plain 403.
                     return fail(refusal) if request.headers.get("hx-request") else PlainTextResponse(refusal, status_code=403)
@@ -559,6 +560,7 @@ def login_routes(ui: UI) -> list[Route]:
                 user = await asyncio.to_thread(ui.users.check, name, form.get("passwort") or "")
                 if user:
                     ui.throttle.clear(f"u:{name}", f"a:{address}")
+                    await asyncio.to_thread(ui.users.touch_login, user.name)
                     response = RedirectResponse(weiter, status_code=303)
                     response.set_cookie(SESSION_COOKIE, ui.sessions.issue(user.name, ui.users.version(user.name)),
                                         max_age=SESSION_DAYS * 86400, httponly=True, samesite="lax",
@@ -590,7 +592,8 @@ def create_app(root: Path, token: str | None = None, auth_dir: Path | None = Non
     from . import berichte_views, views, chat
 
     ui = UI(root, token, auth_dir, https)
-    routes = views.routes(ui) + berichte_views.routes(ui) + chat.routes(ui) + (login_routes(ui) if auth_dir is not None else []) + [
+    from . import benutzer_views
+    routes = views.routes(ui) + berichte_views.routes(ui) + chat.routes(ui) + benutzer_views.routes(ui) + (login_routes(ui) if auth_dir is not None else []) + [
         Route("/datei/{path:path}", serve_file(ui)),
         Route("/events", events(ui)),
         Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),

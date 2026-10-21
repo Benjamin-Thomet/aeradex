@@ -102,3 +102,7 @@ Danach die Abstimmung erneut prüfen und das PDF für die Abschlussunterlagen er
   Selbständigerwerbender): Soll 2851 Privat AHV — nicht 5700 (das ist der Arbeitgeberanteil für Angestellte).
 - Einkommens- und Vermögenssteuern des Inhabers: Soll 2852 Privat Steuern (es gibt kein Konto Direkte Steuern).
 - Privatanteile an Geschäftsaufwand: Privat an 6270 (Fahrzeug) bzw. 6512 (Telefon) — vom Treuhänder bestätigen lassen.
+
+**Wer hat was gebucht:** `booking_history(beleg)` nennt für einen Beleg, wer ihn erfasst, geändert oder entfernt hat
+(Person oder Agent, Zeit, Commit) — aus dem Verlauf. Benutzer und Einladungen verwalten Menschen auf der Seite
+Benutzer (mit Login); Agenten laden niemanden ein.

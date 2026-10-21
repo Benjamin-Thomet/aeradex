@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Benutzer{% endblock %}
+{% block main %}
+<div class="topbar"><div><h1>Benutzer</h1><div class="sub">Wer sich bei {{ settings.firma }} anmelden kann. Was jemand bucht, steht mit seinem Namen im Verlauf.</div></div>
+  {% if not lokal %}<div class="actions"><a class="btn" href="/konto">Mein Konto</a></div>{% endif %}</div>
+
+{% if lokal %}
+<div class="panel"><div class="empty">Benutzer gibt es nur, wenn aeradex mit Login läuft (<code>aeradex serve</code>). Lokal arbeitet, wer den Computer benutzt; im Verlauf steht der git-Name.</div></div>
+{% else %}
+{% set is_admin = ich.rolle == 'admin' %}
+<div class="panel">
+  <header><h2>{{ benutzer|length }} Benutzer</h2><span class="hint">Leserecht sieht alles · Buchhaltung bucht · Admin auch Einstellungen, Sperren und Benutzer</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Name</th><th>Rolle</th><th class="hide-narrow">Eingeladen von</th><th class="hide-narrow">Letzte Anmeldung</th>{% if is_admin %}<th class="right"></th>{% endif %}</tr></thead>
+    <tbody>{% for u in benutzer %}<tr class="row">
+      <td><strong>{{ u.anzeige }}</strong> <span class="small muted">{{ u.name }}</span>{% if u.name == ich.name %} <span class="pill muted">du</span>{% endif %}
+        <div class="small muted"><a class="link" href="/verlauf?von={{ u.name }}">Änderungen ansehen</a></div></td>
+      <td>{% if is_admin and u.name != ich.name %}
+        <form hx-post="/benutzer/rolle" hx-target="#benutzer-fehler" hx-trigger="change" hx-confirm="Rolle von {{ u.anzeige }} ändern?">
+          <input type="hidden" name="name" value="{{ u.name }}">
+          <select class="input small" name="rolle" aria-label="Rolle">{% for k, l in rollen %}<option value="{{ k }}" {{ 'selected' if k == u.rolle }}>{{ l }}</option>{% endfor %}</select></form>
+        {% else %}<span class="pill {{ 'ok' if u.rolle == 'admin' else 'muted' }}">{{ u.rolle_text }}</span>{% endif %}</td>
+      <td class="hide-narrow">{{ namen.get(u.eingeladen_von, u.eingeladen_von) or '—' }}</td>
+      <td class="hide-narrow num small">{{ u.letzter_login[:16]|replace('T', ' ') if u.letzter_login else '—' }}</td>
+      {% if is_admin %}<td class="right">{% if u.name != ich.name %}
+        <form style="display:inline" hx-post="/benutzer/passwort-link" hx-target="#link-ausgabe"><input type="hidden" name="name" value="{{ u.name }}"><button class="btn small" type="submit">Passwort-Link</button></form>
+        <form style="display:inline" hx-post="/benutzer/entfernen" hx-target="#benutzer-fehler" hx-confirm="{{ u.anzeige }} entfernen? Die Anmeldung geht nicht mehr; die Buchungen bleiben."><input type="hidden" name="name" value="{{ u.name }}"><button class="btn small danger" type="submit">Entfernen</button></form>
+      {% endif %}</td>{% endif %}
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="body"><div id="benutzer-fehler" class="errors"></div><div id="link-ausgabe"></div></div>
+</div>
+
+<form class="panel" hx-post="/benutzer/einladen" hx-target="#einladung-ausgabe">
+  <header><h2>Person einladen</h2><span class="hint">ohne E-Mail: du bekommst einen Link zum Weitergeben</span></header>
+  <div class="body">
+    <div class="form">
+      <div class="field"><label for="ei-n">Für wen (Name, optional)</label><input class="input" id="ei-n" name="notiz" maxlength="80" placeholder="z.B. Lea Muster, Treuhand"></div>
+      <div class="field"><label for="ei-r">Rolle</label><select class="input" id="ei-r" name="rolle" style="width:100%">{% for k, l in einladbar %}<option value="{{ k }}" {{ 'selected' if k == 'lesen' }}>{{ l }}</option>{% endfor %}</select></div>
+    </div>
+    <p class="small muted" style="max-width:72ch">Der Link gilt 7 Tage und nur einmal. Wer ihn öffnet, wählt Benutzername und Passwort und ist danach angemeldet. Einladen kannst du höchstens mit deiner eigenen Rolle ({{ ich.rolle_text }}).</p>
+    <div id="einladung-ausgabe" class="errors"></div>
+    <div class="formfoot"><span></span><button class="btn primary" type="submit">Einladungslink erstellen</button></div>
+  </div>
+</form>
+
+{% if offen %}
+<div class="panel">
+  <header><h2>Offene Links</h2><span class="hint">noch nicht verwendet</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Art</th><th class="hide-narrow">Erstellt von</th><th>Gültig bis</th><th class="right"></th></tr></thead>
+    <tbody>{% for e in offen %}<tr class="row">
+      <td>{% if e.art == 'reset' %}Passwort für {{ namen.get(e.benutzer, e.benutzer) }}{% else %}Einladung · {{ dict(rollen)[e.rolle] }}{% if e.notiz %} · {{ e.notiz }}{% endif %}{% endif %}</td>
+      <td class="hide-narrow">{{ namen.get(e.von, e.von) }}</td><td class="num">{{ e.bis_text }}</td>
+      <td class="right">{% if e.von == ich.name or is_admin %}<form hx-post="/benutzer/zurueckziehen" hx-target="#benutzer-fehler" hx-confirm="Link zurückziehen?"><input type="hidden" name="id" value="{{ e.id }}"><button class="btn small" type="submit">Zurückziehen</button></form>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if protokoll %}
+<details class="panel drawer">
+  <summary><header style="border-bottom:0"><h2>Protokoll</h2><span class="hint">Einladungen, Rollen, Passwörter — die letzten 50</span></header></summary>
+  <div class="tablewrap" style="border-top:1px solid var(--rule)"><table class="ledger">
+    <tbody>{% for p in protokoll %}{% set t = {'eingeladen': 'hat eingeladen', 'angenommen': 'ist beigetreten', 'rolle': 'hat die Rolle geändert', 'entfernt': 'hat entfernt', 'passwort': 'hat das Passwort geändert', 'passwort-link': 'hat einen Passwort-Link erstellt', 'passwort-zurueckgesetzt': 'hat das Passwort über einen Link gesetzt', 'zurueckgezogen': 'hat einen Link zurückgezogen', 'anzeigename': 'hat den Anzeigenamen geändert'} %}
+      <tr class="row"><td class="num small">{{ p.zeit[:16]|replace('T', ' ') }}</td>
+        <td>{{ namen.get(p.wer, p.wer) }} {{ t.get(p.was, p.was) }}{% if p.benutzer and p.benutzer != p.wer %}: {{ namen.get(p.benutzer, p.benutzer) }}{% endif %}{% if p.rolle %} ({{ dict(rollen).get(p.rolle, p.rolle) }}){% endif %}{% if p.notiz %} · {{ p.notiz }}{% endif %}{% if p.von and p.was == 'angenommen' %} · Einladung von {{ namen.get(p.von, p.von) }}{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</details>
+{% endif %}
+{% endif %}
+{% endblock %}
