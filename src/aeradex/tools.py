@@ -58,6 +58,11 @@ Regeln:
 - Kontoauszüge, die nicht camt.053 sind: CSV/Excel → bank_file_preview, dann propose_bank_format (nur das
   Format beschreiben, ein Mensch bestätigt). Kreditkartenabrechnung (PDF) → card_statement_text, dann
   propose_card_statement mit allen Transaktionen; Beträge nur abschreiben, nie umrechnen oder ergänzen.
+- Mitarbeitende: vor add_employee mit employees() prüfen. Aus einem Arbeitsvertrag alles übernehmen, was er
+  hergibt (Adresse, Geburtsdatum, AHV-Nr., Eintritt, Lohnart, Lohn, Pensum, Wochenstunden, Ferienentschädigung,
+  BVG, Aufenthalt, IBAN); was kein Feld hat (Funktion, Probezeit, Kündigungsfrist, Ferienanspruch, 13. Monatslohn,
+  Spesenregelung) in notizen. Den Vertrag mit file_employee_document bei der Person ablegen. Fehlt etwas Nötiges
+  (Geschlecht, AHV-Nr., Aufenthalt, Quellensteuer-Tarif), nicht raten, sondern am Schluss danach fragen.
 - Fremdwährung: Beleg in EUR/USD … → waehrung mitgeben und den Betrag in der Fremdwährung; umgerechnet wird
   zum BAZG-Tageskurs (exchange_rate). Konten mit Fremdwährung (accounts() zeigt waehrung) gehen nur so.
   Die Bewertung per Stichtag (revaluation_preview) bucht ein Mensch im Abschluss.
@@ -1173,6 +1178,620 @@ def wage_declarations(jahr: int) -> dict:
     return _call(api.lohnmeldungen, jahr)
 
 
+# ---------- Personal ----------
+
+_EMPLOYEE_ARGS = ("strasse", "nr", "plz", "ort", "land", "ahv_nr", "geburtsdatum", "geschlecht", "eintritt", "lohnart",
+                  "monatslohn", "pensum", "stundenlohn", "standard_stunden", "vollzeit_stunden_woche",
+                  "ferienzuschlag_satz", "bvg_betrag", "ag_bvg_betrag", "kinderzulagen", "aufenthalt", "qst_pflicht",
+                  "qst_tarif", "qst_kanton", "qst_satz", "iban", "notizen")
+
+
+def _employee_fields(values: dict) -> dict:
+    """Tool arguments → the record's fields: empty ones left out, the Quellensteuer tariff as {code, kanton}."""
+    fields = {k: v for k, v in values.items() if v not in ("", None)}
+    tarif, kanton = fields.pop("qst_tarif", ""), fields.pop("qst_kanton", "")
+    if tarif:
+        fields["qst"] = {"code": str(tarif).upper(), **({"kanton": str(kanton).upper()} if kanton else {})}
+    elif kanton:
+        raise ValueError("qst_kanton nur zusammen mit qst_tarif")
+    return fields
+
+
+def employee_details(nummer: str) -> dict:
+    """Alles zu einer Person: Stammdaten, Lohn, Sozialversicherungen, Quellensteuer, Notizen, abgelegte Dokumente.
+
+    Args:
+        nummer: z.B. "M0001".
+    """
+    return _call(api.employee_show, nummer)
+
+
+def add_employee(vorname: str, nachname: str, strasse: str = "", nr: str = "", plz: str = "", ort: str = "",
+                 land: str = "", ahv_nr: str = "", geburtsdatum: str = "", geschlecht: str = "", eintritt: str = "",
+                 lohnart: str = "", monatslohn: str = "", pensum: str = "", stundenlohn: str = "",
+                 standard_stunden: str = "", vollzeit_stunden_woche: str = "", ferienzuschlag_satz: str = "",
+                 ferien_inbegriffen: bool = False, bvg_betrag: str = "", ag_bvg_betrag: str = "",
+                 kinderzulagen: str = "", aufenthalt: str = "", qst_pflicht: str = "", qst_tarif: str = "",
+                 qst_kanton: str = "", qst_satz: str = "", iban: str = "", notizen: str = "") -> dict:
+    """Mitarbeiter:in für den Lohn erfassen (vorher employees() prüfen, nie doppelt). Nur Angaben übernehmen, die
+    vorliegen; was kein eigenes Feld hat (Probezeit, Kündigungsfrist, Ferienanspruch, 13. Monatslohn, Spesen,
+    Funktion …), in notizen.
+
+    Args:
+        vorname: Vorname.
+        nachname: Nachname.
+        strasse: Strasse ohne Nummer.
+        nr: Hausnummer.
+        plz: PLZ.
+        ort: Ort.
+        land: CH (Standard), DE, FR, IT, AT, LI …
+        ahv_nr: 756.xxxx.xxxx.xx
+        geburtsdatum: JJJJ-MM-TT.
+        geschlecht: "w" oder "m" (für die Lohnmeldungen).
+        eintritt: Eintrittsdatum JJJJ-MM-TT.
+        lohnart: "monat" (Standard) oder "stunde".
+        monatslohn: Monatslohn bei 100 % in CHF (lohnart monat), z.B. "5200".
+        pensum: Pensum in %, z.B. "80" (Standard 100).
+        stundenlohn: CHF pro Stunde (lohnart stunde).
+        standard_stunden: Stunden pro Monat als Vorgabe (lohnart stunde).
+        vollzeit_stunden_woche: Vollzeit-Wochenstunden des Betriebs (Standard 42).
+        ferienzuschlag_satz: Ferienentschädigung als Anteil, z.B. "0.1064" für 10.64 % (lohnart stunde).
+        ferien_inbegriffen: true, wenn die Ferienentschädigung im Stundenlohn schon enthalten ist.
+        bvg_betrag: BVG-Abzug Arbeitnehmer CHF/Monat.
+        ag_bvg_betrag: BVG Arbeitgeber CHF/Monat, nur wenn abweichend.
+        kinderzulagen: Kinder-/Ausbildungszulagen CHF/Monat.
+        aufenthalt: CH, C, B, L, G oder andere.
+        qst_pflicht: auto (aus Aufenthalt, Standard), ja oder nein.
+        qst_tarif: Quellensteuer-Tarifcode, z.B. "A0N" (Tarif, Kinder, Kirche Y/N); leer = keiner.
+        qst_kanton: Kanton der Quellensteuer, nur wenn abweichend vom Wohnort.
+        qst_satz: Satz vereinfachtes Verfahren als Anteil statt Tarif, z.B. "0.05".
+        iban: Lohnkonto.
+        notizen: alles Weitere zum Arbeitsverhältnis (Markdown).
+    """
+    loc = locals()
+    try:
+        fields = _employee_fields({k: loc[k] for k in _EMPLOYEE_ARGS})
+    except ValueError as exc:
+        return {"ok": False, "fehler": str(exc)}
+    if ferien_inbegriffen:
+        fields["ferien_inbegriffen"] = True
+    return _call(api.employee_add, vorname, nachname, **fields)
+
+
+def update_employee(nummer: str, felder: dict) -> dict:
+    """Angaben einer Person ändern; nur die genannten Felder. Abgeschlossene Lohnabrechnungen bleiben unverändert.
+
+    Args:
+        nummer: z.B. "M0001".
+        felder: wie add_employee (vorname, nachname, strasse, nr, plz, ort, land, ahv_nr, geburtsdatum, geschlecht,
+            eintritt, lohnart, monatslohn, pensum, stundenlohn, standard_stunden, vollzeit_stunden_woche,
+            ferienzuschlag_satz, ferien_inbegriffen, bvg_betrag, ag_bvg_betrag, kinderzulagen, aufenthalt,
+            qst_pflicht, qst_tarif, qst_kanton, qst_satz, iban, notizen) plus austritt (JJJJ-MM-TT, "" = keiner)
+            und aktiv (false = nicht mehr im Lohnlauf). notizen ersetzt den ganzen Text: zuerst employee_details lesen.
+    """
+    felder = dict(felder or {})
+    if "qst_tarif" in felder or "qst_kanton" in felder:
+        tarif, kanton = felder.pop("qst_tarif", ""), felder.pop("qst_kanton", "")
+        if tarif:
+            felder["qst"] = {"code": str(tarif).upper(), **({"kanton": str(kanton).upper()} if kanton else {})}
+        elif kanton:
+            return {"ok": False, "fehler": "qst_kanton nur zusammen mit qst_tarif"}
+        else:
+            felder["qst"] = None
+    return _call(api.employee_update, nummer, **felder)
+
+
+def file_employee_document(mitarbeiter: str, datei: str) -> dict:
+    """Ein Dokument bei der Person ablegen (Arbeitsvertrag, Bewilligung, Zeugnis, Diplom). Aus der Inbox wird die
+    Datei verschoben, ein Anhang aus dem Chat kopiert.
+
+    Args:
+        mitarbeiter: z.B. "M0001".
+        datei: Pfad relativ zum Buch, z.B. "inbox/vertrag.pdf" oder der Pfad eines Anhangs.
+    """
+    try:
+        b = book()
+        path = _source_file(b, datei)
+    except (BookError, ValueError) as exc:
+        return {"ok": False, "fehler": str(exc)}
+    out = _call(api.employee_document_add, mitarbeiter, path.name, path.read_bytes())
+    if out.get("ok", True) is not False and b.rel(path).startswith("inbox/"):
+        removed = _call(api.inbox_remove, path.name)
+        if removed.get("ok") is False:
+            out["hinweis"] = f"Kopie abgelegt; die Datei bleibt in der Inbox: {removed['fehler']}"
+    return out
+
+
+def payslip_inputs(monat: str, mitarbeiter: str, eingaben: dict) -> dict:
+    """Eingaben einer Lohnabrechnung im Entwurf ändern und neu rechnen.
+
+    Args:
+        monat: JJJJ-MM.
+        mitarbeiter: z.B. "M0001".
+        eingaben: stunden, bvg, kinderzulagen, korrektur, korrektur_text, qst_satzbestimmend, qst_gesamtpensum.
+    """
+    return _call(api.payslip_inputs, monat, mitarbeiter, eingaben)
+
+
+def reopen_payslip(monat: str, mitarbeiter: str) -> dict:
+    """Abgeschlossene Lohnabrechnung wieder öffnen (nimmt sie aus der Sammelbuchung), z.B. für eine Korrektur.
+
+    Args:
+        monat: JJJJ-MM.
+        mitarbeiter: z.B. "M0001".
+    """
+    return _call(api.payslip_reopen, monat, mitarbeiter)
+
+
+def cancel_payroll_payment(monat: str) -> dict:
+    """Die Lohnzahlungsdatei eines Monats zurücknehmen (wenn sie nicht an die Bank ging).
+
+    Args:
+        monat: JJJJ-MM.
+    """
+    return _call(api.payroll_payment_cancel, monat)
+
+
+def payroll_settings(saetze_an: dict | None = None, saetze_ag: dict | None = None, ag_bvg: str = "",
+                     konten: dict | None = None) -> dict:
+    """Lohneinstellungen ändern: Beitragssätze (als Anteil, 0.053 = 5.3 %), BVG Arbeitgeber, Lohnkonten.
+
+    Args:
+        saetze_an: Arbeitnehmer-Sätze je Code, z.B. {"ahv": "0.053", "nbu": "0.012", "ktg": "0.005"}.
+        saetze_ag: Arbeitgeber-Sätze je Code, z.B. {"fak": "0.012", "vk": "0.003", "bu": "0.008"}.
+        ag_bvg: "gleich_an" oder "betrag".
+        konten: Konten je Rolle, z.B. {"lohnaufwand": "5000"}.
+    """
+    return _call(api.payroll_config_update, saetze_an, saetze_ag, ag_bvg or None, None, konten)
+
+
+def add_expense(mitarbeiter: str, datum: str, text: str, betrag: str, konto: str = "", mwst: str = "",
+                art: str = "uebrige", datei: str = "") -> dict:
+    """Spesen, die eine Person ausgelegt hat: auf 2210 gebucht, mit dem nächsten Lohn ausbezahlt.
+
+    Args:
+        mitarbeiter: z.B. "M0001".
+        datum: JJJJ-MM-TT.
+        text: wofür.
+        betrag: CHF brutto, z.B. "48.60".
+        konto: Aufwandkonto; leer = Standard.
+        mwst: MWST-Code bei effektiver Methode.
+        art: "uebrige" oder "reise" (Reise, Verpflegung, Übernachtung; für den Lohnausweis).
+        datei: Quittung in inbox/ (optional).
+    """
+    return _call(api.expense_add, mitarbeiter, datum, text, betrag, konto, mwst, None, art, datei)
+
+
+def remove_expense(nummer: str) -> dict:
+    """Spesenbeleg zurücknehmen, solange er nicht ausbezahlt ist.
+
+    Args:
+        nummer: Nummer des Spesenbelegs.
+    """
+    return _call(api.expense_remove, nummer)
+
+
+# ---------- Konten und Einstellungen ----------
+
+def add_account(nr: str, name: str, klasse: str = "", gruppe: str = "", waehrung: str = "") -> dict:
+    """Neues Konto im Kontenplan (zuerst accounts() durchsuchen, ob es schon eines gibt).
+
+    Args:
+        nr: Kontonummer, z.B. "6570".
+        name: Kontoname.
+        klasse: aktiv, passiv, aufwand oder ertrag; leer = aus der Nummer.
+        gruppe: Gruppe für die Jahresrechnung; leer = aus der Nummer.
+        waehrung: nur für Fremdwährungskonten, z.B. "EUR".
+    """
+    return _call(api.add_account, nr, name, klasse, gruppe, waehrung)
+
+
+def update_account(nr: str, name: str = "", gruppe: str = "", aktiv: bool | None = None, abschluss: str | None = None) -> dict:
+    """Konto ändern: Name, Gruppe, aktiv/inaktiv, Abschluss in ein Eigenkapitalkonto (Privat → 2800).
+
+    Args:
+        nr: Kontonummer.
+        name: neuer Name.
+        gruppe: neue Gruppe.
+        aktiv: false = ausblenden.
+        abschluss: Eigenkapitalkonto, in das es bei der Eröffnung schliesst; "" = keines.
+    """
+    return _call(api.account_update, nr, name=name or None, gruppe=gruppe or None, aktiv=aktiv, abschluss=abschluss)
+
+
+def update_settings(firma: str = "", uid: str = "", telefon: str = "", email: str = "", iban: str = "",
+                    zahlungs_iban: str = "", zahlungsfrist_tage: int | None = None, co: str = "",
+                    adresse: dict | None = None, konten: dict | None = None, mwst: dict | None = None) -> dict:
+    """Einstellungen der Firma ändern. Den Modus des Agenten (vorschlag/direkt) stellt nur ein Mensch um.
+
+    Args:
+        firma: Firmenname.
+        uid: UID / MWST-Nummer.
+        telefon: Telefon.
+        email: E-Mail.
+        iban: IBAN für Rechnungen (QR-Rechnung).
+        zahlungs_iban: IBAN, von der Zahlungen ausgehen.
+        zahlungsfrist_tage: Zahlungsfrist auf Rechnungen.
+        co: Zusatzzeile der Adresse.
+        adresse: {"strasse", "nr", "plz", "ort", "land"}.
+        konten: Konten je Rolle, z.B. {"bank": "1020", "debitoren": "1100"}.
+        mwst: {"methode": keine|effektiv|saldo, "periode": quartal|semester, "saldosteuersatz": "6.2"}.
+    """
+    loc = locals()
+    fields = {k: loc[k] for k in ("firma", "uid", "telefon", "email", "iban", "zahlungs_iban", "co") if loc[k]}
+    if zahlungsfrist_tage is not None:
+        fields["zahlungsfrist_tage"] = zahlungsfrist_tage
+    return _call(api.settings_update, adresse, konten, mwst, **fields)
+
+
+def plugins_overview() -> list | dict:
+    """Verfügbare Plugins und welche dieses Buch eingeschaltet hat."""
+    return _call(api.plugin_list)
+
+
+def enable_plugin(name: str) -> dict:
+    """Ein installiertes Plugin für dieses Buch einschalten.
+
+    Args:
+        name: Name aus plugins_overview, z.B. "leistungen".
+    """
+    return _call(api.plugin_enable, name)
+
+
+def disable_plugin(name: str) -> dict:
+    """Ein Plugin für dieses Buch ausschalten (seine Daten bleiben).
+
+    Args:
+        name: Name aus plugins_overview.
+    """
+    return _call(api.plugin_disable, name)
+
+
+# ---------- Kunden, Rechnungen, Lieferanten ----------
+
+def renumber_customer(nummer: str, neu: str) -> dict:
+    """Kundennummer ändern; nur solange nichts im Buch auf den Kunden verweist.
+
+    Args:
+        nummer: heutige Nummer, z.B. "K0004".
+        neu: neue Nummer, z.B. "K0001".
+    """
+    return _call(api.customer_renumber, nummer, neu)
+
+
+def complete_follow_up(kunde: str, index: int, erledigt: bool = True) -> dict:
+    """Einen Nachfass-Eintrag des Kundenverlaufs als erledigt markieren (Index aus customer_details/follow_ups).
+
+    Args:
+        kunde: Kundennummer.
+        index: Index des Eintrags im Verlauf.
+        erledigt: false = wieder offen.
+    """
+    return _call(api.customer_log_done, kunde, index, erledigt)
+
+
+def invoice_details(nummer: str) -> dict:
+    """Eine Rechnung mit Positionen, Zahlungen und Mahnungen.
+
+    Args:
+        nummer: Rechnungsnummer.
+    """
+    return _call(api.invoice_show, nummer)
+
+
+def reminders() -> list | dict:
+    """Überfällige Rechnungen mit den bisherigen Mahnungen und der nächsten Stufe."""
+    return _call(api.reminders)
+
+
+def create_reminder(nummern: list[str], datum: str = "", frist_tage: int | None = None) -> dict:
+    """Nächste Mahnung (PDF mit QR-Zahlteil) je Rechnung erstellen; verschickt nichts.
+
+    Args:
+        nummern: Rechnungsnummern.
+        datum: Mahndatum JJJJ-MM-TT; leer = heute.
+        frist_tage: neue Zahlungsfrist in Tagen; leer = Standard.
+    """
+    return _call(api.reminder_create, nummern, datum or None, frist_tage)
+
+
+def record_external_invoice(kunde: str, betrag: str, datum: str = "", rechnungsnr: str = "", text: str = "",
+                            konto: str = "", mwst: str = "", faellig: str = "", datei: str = "") -> dict:
+    """Eine ausserhalb von aeradex geschriebene eigene Rechnung als offenen Posten erfassen (Debitoren an Ertrag).
+
+    Args:
+        kunde: Kundennummer.
+        betrag: Total CHF.
+        datum: Rechnungsdatum JJJJ-MM-TT.
+        rechnungsnr: Nummer auf der Rechnung.
+        text: Bezeichnung.
+        konto: Ertragskonto; leer = Standard.
+        mwst: MWST-Code.
+        faellig: Fälligkeit JJJJ-MM-TT.
+        datei: die Rechnung in inbox/ (optional).
+    """
+    loc = locals()
+    fields = {k: loc[k] for k in ("datum", "rechnungsnr", "text", "konto", "mwst", "faellig", "datei") if loc[k]}
+    return _call(api.invoice_external, kunde, betrag, **fields)
+
+
+def update_supplier(nummer: str, felder: dict) -> dict:
+    """Lieferant ändern: name, strasse, nr, plz, ort, land, iban, konto, mwst, notizen.
+
+    Args:
+        nummer: Lieferantennummer.
+        felder: nur die zu ändernden Felder.
+    """
+    felder = dict(felder or {})
+    return _call(api.supplier_update, nummer, felder.pop("notizen", None), **felder)
+
+
+def pay_supplier_bill(nummer: str, datum: str = "", betrag: str = "", konto: str = "") -> dict:
+    """Zahlung einer Lieferantenrechnung verbuchen (ohne Zahlungslauf, z.B. per E-Banking oder bar bezahlt).
+
+    Args:
+        nummer: Kreditorennummer.
+        datum: Zahldatum; leer = heute.
+        betrag: leer = offener Betrag.
+        konto: Zahlkonto; leer = Bank.
+    """
+    return _call(api.bill_pay, nummer, datum or None, betrag or None, konto or None)
+
+
+def void_supplier_bill(nummer: str, grund: str) -> dict:
+    """Lieferantenrechnung stornieren (falsch erfasst, Gutschrift erhalten).
+
+    Args:
+        nummer: Kreditorennummer.
+        grund: warum.
+    """
+    return _call(api.bill_void, nummer, grund)
+
+
+def book_payment_run(datei: str, datum: str = "") -> dict:
+    """Einen ausgeführten Zahlungslauf (pain.001) als bezahlt verbuchen.
+
+    Args:
+        datei: die Zahlungsdatei aus create_payment_run.
+        datum: Ausführungsdatum; leer = das in der Datei.
+    """
+    return _call(api.payment_run_book, datei, datum or None)
+
+
+def payables() -> dict:
+    """Offene Lieferantenrechnungen (Kreditoren) mit Fälligkeit."""
+    return _call(api.payables)
+
+
+# ---------- Belegeingang, Inbox, Bank ----------
+
+def book_bill_draft(id: str) -> dict:
+    """Einen bereiten Beleg-Entwurf so buchen, wie er steht (nur agent_modus: direkt; sonst bucht ein Mensch).
+
+    Args:
+        id: Entwurf, z.B. "ENT-0001".
+    """
+    return _direct(api.bill_draft_approve, id)
+
+
+def discard_bill_draft(id: str) -> dict:
+    """Beleg-Entwurf verwerfen (Duplikat, kein Beleg); die Datei bleibt in der Inbox.
+
+    Args:
+        id: Entwurf.
+    """
+    return _call(api.bill_draft_discard, id)
+
+
+def remove_inbox_file(datei: str) -> dict:
+    """Datei aus der Inbox löschen (falsch hochgeladen, doppelt). Nur auf Wunsch des Menschen.
+
+    Args:
+        datei: Dateiname oder inbox/…
+    """
+    return _call(api.inbox_remove, datei)
+
+
+def attach_receipt(beleg: str, datei: str) -> dict:
+    """Eine Quittung aus der Inbox an eine schon gebuchte Buchung hängen.
+
+    Args:
+        beleg: Belegnummer, z.B. "27-001".
+        datei: z.B. "inbox/quittung.pdf".
+    """
+    return _call(api.attach_receipt, beleg, datei)
+
+
+def import_bank_statement(datei: str) -> dict:
+    """Kontoauszug camt.053 (oder ein bestätigtes Format) aus der Inbox importieren.
+
+    Args:
+        datei: z.B. "inbox/auszug.xml".
+    """
+    return _call(api.bank_import, datei)
+
+
+def link_bank_transaction(id: str, beleg: str) -> dict:
+    """Bankbewegung mit einer schon gebuchten Buchung abgleichen (nichts wird neu gebucht).
+
+    Args:
+        id: ID der Bankbewegung.
+        beleg: Belegnummer.
+    """
+    return _call(api.bank_link, id, beleg)
+
+
+def ignore_bank_transaction(id: str, grund: str) -> dict:
+    """Bankbewegung als erledigt ohne Buchung markieren (z.B. schon anders erfasst).
+
+    Args:
+        id: ID der Bankbewegung.
+        grund: warum.
+    """
+    return _call(api.bank_ignore, id, grund)
+
+
+def unlink_bank_transaction(id: str) -> dict:
+    """Abgleich oder Ignorieren einer Bankbewegung zurücknehmen (eine Buchung daraus bleibt, ggf. stornieren).
+
+    Args:
+        id: ID der Bankbewegung.
+    """
+    return _call(api.bank_unlink, id)
+
+
+def add_bank_rule(konto: str, gegenpartei: str = "", text: str = "", betrag: str = "", richtung: str = "",
+                  mwst: str = "", buchungstext: str = "", anwenden: bool = True) -> dict:
+    """Bankregel: erkannte Bewegungen beim Import gegen ein Konto buchen (z.B. Swisscom → 6510).
+
+    Args:
+        konto: Gegenkonto.
+        gegenpartei: Teil des Namens der Gegenpartei.
+        text: Teil des Bankbuchungstexts.
+        betrag: nur bei genau diesem Betrag.
+        richtung: "ein" oder "aus"; leer = beide.
+        mwst: MWST-Code.
+        buchungstext: Text der Buchung.
+        anwenden: true = auch die offenen Bewegungen jetzt.
+    """
+    return _call(api.bank_rule_add, konto, gegenpartei, text, betrag or None, richtung, mwst, buchungstext, anwenden)
+
+
+def remove_bank_rule(regel: str) -> dict:
+    """Bankregel löschen.
+
+    Args:
+        regel: ID aus bank_rules.
+    """
+    return _call(api.bank_rule_remove, regel)
+
+
+def bank_reconciliation() -> list | dict:
+    """Abstimmung je Bankkonto: Saldo laut Bank und laut Buchhaltung, Differenz."""
+    return _call(api.bank_reconciliation)
+
+
+# ---------- Journal, MWST, Abschluss, Budget ----------
+
+def reject_proposals(ids: list[str]) -> dict:
+    """Buchungsvorschläge verwerfen.
+
+    Args:
+        ids: IDs aus list_proposals.
+    """
+    return _call(api.reject, ids)
+
+
+def amend_entry(beleg: str, datum: str, text: str, zeilen: list[dict]) -> dict:
+    """Eine von Hand erfasste Buchung an Ort korrigieren (gleiche Nummer; nur agent_modus: direkt).
+
+    Args:
+        beleg: Belegnummer.
+        datum: JJJJ-MM-TT.
+        text: Buchungstext.
+        zeilen: [{"soll": "6500", "haben": "1020", "betrag": "48.60", "mwst": ""}].
+    """
+    return _direct(api.amend_entry, beleg, datum, text, zeilen)
+
+
+def book_mwst(periode: str) -> dict:
+    """MWST-Abrechnung einer Periode verbuchen (Umbuchung auf die Abrechnungsschuld; nur agent_modus: direkt).
+
+    Args:
+        periode: z.B. "2026-Q3" oder "2026-S2".
+    """
+    return _direct(api.mwst_book, periode)
+
+
+def mark_closing_step(jahr: int, schritt: str, erledigt: bool = True, notiz: str = "") -> dict:
+    """Einen Schritt der Abschluss-Checkliste abhaken (Schlüssel aus closing_checklist).
+
+    Args:
+        jahr: Geschäftsjahr.
+        schritt: Schlüssel des Schritts.
+        erledigt: false = wieder offen.
+        notiz: optional.
+    """
+    from .gitlog import AUTHOR
+    return _call(api.closing_mark, jahr, schritt, erledigt, notiz, AUTHOR.get() or "Agent")
+
+
+def book_closing_entry(jahr: int, art: str, wert: str = "", positionen: list[dict] | None = None, notiz: str = "") -> dict:
+    """Abschlussbuchung per 31.12. (arbeiten, material, delkredere, ferien, privatanteile) nach closing_entry;
+    nochmals buchen ersetzt sie (nur agent_modus: direkt).
+
+    Args:
+        jahr: Geschäftsjahr.
+        art: arbeiten, material, delkredere, ferien oder privatanteile.
+        wert: Bestand CHF (für die Bestände).
+        positionen: Einzelposten wie closing_entry sie zeigt.
+        notiz: Grundlage (Inventar vom …).
+    """
+    from .gitlog import AUTHOR
+    return _direct(api.closing_entry_book, jahr, art, positionen, wert or None, notiz, AUTHOR.get() or "Agent")
+
+
+def open_year(jahr: int | None = None) -> dict:
+    """Das nächste Geschäftsjahr eröffnen (Saldovorträge).
+
+    Args:
+        jahr: das zu eröffnende Jahr; leer = das nächste.
+    """
+    return _call(api.year_open, jahr)
+
+
+def set_budget(jahr: int, konto: str, betrag: str = "", monate: list[str] | None = None) -> dict:
+    """Budget eines Kontos setzen: Jahresbetrag (gleichmässig verteilt) oder 12 Monatswerte (nur agent_modus: direkt).
+
+    Args:
+        jahr: Budgetjahr.
+        konto: Erfolgskonto.
+        betrag: Jahresbetrag CHF.
+        monate: 12 Beträge Jan–Dez statt betrag.
+    """
+    return _direct(api.budget_set, jahr, konto, betrag or None, monate)
+
+
+def save_notes_to_statements(jahr: int, text: str) -> dict:
+    """Text des Anhangs zur Jahresrechnung speichern (Markdown).
+
+    Args:
+        jahr: Geschäftsjahr.
+        text: Anhang.
+    """
+    return _call(api.anhang_save, jahr, text)
+
+
+# ---------- chat only: files the person attached ----------
+
+ATTACHMENTS = Path(".aeradex") / "lokal" / "chat"
+
+
+def _source_file(b: Book, datei: str) -> Path:
+    """A file the agent may read: inbox/, belege/ or an attachment from the chat."""
+    path = (b.root / (datei or "")).resolve()
+    rel = path.relative_to(b.root) if path.is_relative_to(b.root) else None
+    if rel is None or not path.is_file() or not (rel.parts[:1] in (("inbox",), ("belege",))
+                                                  or rel.parts[:3] == ATTACHMENTS.parts):
+        raise ValueError(f"{datei} ist keine Datei in inbox/, belege/ oder den Anhängen")
+    return path
+
+
+def attachment_to_inbox(datei: str) -> dict:
+    """Einen Anhang aus dem Chat in die Inbox legen — für Belege (danach create_bill_draft), Kontoauszüge
+    (import_bank_statement) oder attach_receipt.
+
+    Args:
+        datei: Pfad des Anhangs, wie in der Nachricht genannt.
+    """
+    try:
+        b = book()
+        path = _source_file(b, datei)
+    except (BookError, ValueError) as exc:
+        return {"ok": False, "fehler": str(exc)}
+    return _call(api.inbox_add, path.name, path.read_bytes())
+
+
 # ---------- chat only: let Claude look at a receipt ----------
 
 def propose_journal_lines(ref: str, zeilen: list[dict], art: str = "beleg", datum: str = "", hinweis: str = "") -> dict:
@@ -1192,18 +1811,16 @@ def propose_journal_lines(ref: str, zeilen: list[dict], art: str = "beleg", datu
 
 
 def read_inbox_file(datei: str) -> list[dict] | str:
-    """Liest eine Datei aus inbox/ oder belege/ (PDF, Bild oder Text), damit du den Inhalt siehst.
+    """Liest eine Datei aus inbox/, belege/ oder einen Anhang aus dem Chat (PDF, Bild, Word oder Text), damit du
+    den Inhalt siehst.
 
     Args:
         datei: Pfad relativ zum Buch, z.B. "inbox/quittung.pdf".
     """
     try:
-        b = book()
-    except BookError as exc:
+        path = _source_file(book(), datei)
+    except (BookError, ValueError) as exc:
         return f"Fehler: {exc}"
-    path = (b.root / datei).resolve()
-    if not path.is_relative_to(b.root) or path.parts[len(b.root.parts)] not in ("inbox", "belege") or not path.is_file():
-        return f"Fehler: {datei} ist keine Datei in inbox/ oder belege/"
     data = path.read_bytes()
     if len(data) > 20 * 1024 * 1024:
         return f"Fehler: {datei} ist grösser als 20 MB"
@@ -1217,7 +1834,32 @@ def read_inbox_file(datei: str) -> list[dict] | str:
         return [{"type": "image", "source": {"type": "base64", "media_type": images[suffix],
                                               "data": base64.b64encode(data).decode()}},
                 {"type": "text", "text": f"Inhalt von {datei}"}]
+    if suffix == ".docx":
+        return _docx_text(data)[:40000] or f"Fehler: in {datei} steht kein Text"
+    if suffix in (".doc", ".xls", ".xlsx", ".odt", ".pages", ".heic", ".zip"):
+        return (f"Fehler: {suffix} kann ich nicht lesen — bitte als PDF, Bild oder Word (.docx). Kontoauszüge (CSV/Excel): "
+                "attachment_to_inbox, dann bank_file_preview")
     return data.decode("utf-8", errors="replace")[:20000]
+
+
+def _docx_text(data: bytes) -> str:
+    """The text of a Word file, paragraph by paragraph (tables cell by cell), without any extra package."""
+    import io
+    import re
+    import zipfile
+    from xml.etree import ElementTree
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            root = ElementTree.fromstring(z.read("word/document.xml"))
+    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError):
+        return ""
+    w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    lines = []
+    for para in root.iter(f"{w}p"):
+        text = "".join(t.text or "" if t.tag == f"{w}t" else "\t" if t.tag == f"{w}tab" else ""
+                       for t in para.iter() if t.tag in (f"{w}t", f"{w}tab"))
+        lines.append(text)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 # ---------- Berichte ----------
@@ -1318,7 +1960,16 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
           closing_documents, mwst_details,
           period_report, report_catalog, save_report_comment, budget_overview, budget_from_prior_year,
-          propose_journal_lines, closing_checklist, closing_entry, business_years, opening_balance, booking_history]
+          propose_journal_lines, closing_checklist, closing_entry, business_years, opening_balance, booking_history,
+          employee_details, add_employee, update_employee, file_employee_document, payslip_inputs, reopen_payslip,
+          cancel_payroll_payment, payroll_settings, add_expense, remove_expense,
+          add_account, update_account, update_settings, plugins_overview, enable_plugin, disable_plugin,
+          renumber_customer, complete_follow_up, invoice_details, reminders, create_reminder, record_external_invoice,
+          update_supplier, pay_supplier_bill, void_supplier_bill, book_payment_run, payables,
+          book_bill_draft, discard_bill_draft, remove_inbox_file, attach_receipt, import_bank_statement,
+          link_bank_transaction, ignore_bank_transaction, unlink_bank_transaction, add_bank_rule, remove_bank_rule,
+          bank_reconciliation, reject_proposals, amend_entry, book_mwst, mark_closing_step, book_closing_entry,
+          open_year, set_budget, save_notes_to_statements, attachment_to_inbox]
 CHAT_ONLY = [read_inbox_file]
 
 # Public names for plugin tools: wrap an api function so errors come back as {"ok": False, …}.

@@ -41,19 +41,62 @@
     es.onerror = () => { es.close(); wait.remove(); $("#chatSend").disabled = false; };
   }
 
+  // ---- attachments: chosen with the clip or dropped on the panel, sent with the next message ----
+  const MAX_FILES = 5, MAX_BYTES = 20 * 1024 * 1024;
+  let pending = [];
+  const fileList = $("#chatFileList"), picker = $("#chatFiles");
+  const sizeLabel = (n) => n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + " KB" : (n / 1024 / 1024).toFixed(1) + " MB";
+  function showFiles() {
+    if (!fileList) return;
+    fileList.hidden = !pending.length;
+    fileList.replaceChildren(...pending.map((f, i) => {
+      const chip = document.createElement("span");
+      chip.className = "chatfile";
+      chip.textContent = f.name + " · " + sizeLabel(f.size);
+      const x = document.createElement("button");
+      x.type = "button"; x.textContent = "✕"; x.setAttribute("aria-label", f.name + " entfernen");
+      x.addEventListener("click", () => { pending.splice(i, 1); showFiles(); });
+      chip.appendChild(x);
+      return chip;
+    }));
+  }
+  function addFiles(list) {
+    for (const f of list) {
+      if (f.size > MAX_BYTES) { add("err", f.name + ": grösser als 20 MB"); continue; }
+      if (pending.length >= MAX_FILES) { add("err", "Höchstens " + MAX_FILES + " Dateien pro Nachricht"); break; }
+      pending.push(f);
+    }
+    showFiles();
+    input.focus();
+  }
+  const clip = $("#chatAttach");
+  if (clip && picker) {
+    clip.addEventListener("click", () => picker.click());
+    picker.addEventListener("change", () => { addFiles(picker.files); picker.value = ""; });
+    const zone = $("#chat") || $(".m-chat") || msgs;
+    zone.addEventListener("dragover", (e) => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); zone.classList.add("dropping"); } });
+    zone.addEventListener("dragleave", (e) => { if (!zone.contains(e.relatedTarget)) zone.classList.remove("dropping"); });
+    zone.addEventListener("drop", (e) => { if (!e.dataTransfer.files.length) return; e.preventDefault(); zone.classList.remove("dropping"); addFiles(e.dataTransfer.files); });
+  }
+
   async function send(text) {
     text = (text || "").trim();
-    if (!text) return;
+    if (!text && !pending.length) return;
     hideIntro();
-    add("me", text);
+    add("me", text + (pending.length ? (text ? "\n" : "") + "📎 " + pending.map(f => f.name).join(", ") : ""));
     input.value = ""; grow();
-    const body = new URLSearchParams({ message: text, page: msgs.dataset.page || location.pathname });
+    const body = new FormData();
+    body.append("message", text);
+    body.append("page", msgs.dataset.page || location.pathname);
+    pending.forEach(f => body.append("dateien", f, f.name));
+    const sent = pending;
+    pending = []; showFiles();
     try {
       const r = await fetch("/chat/send", { method: "POST", body, headers: { "X-CSRF": csrf } });
       const data = await r.json();
-      if (!data.ok) { add("err", data.fehler || "Fehler"); return; }
+      if (!data.ok) { add("err", data.fehler || "Fehler"); pending = sent; showFiles(); return; }
       follow(data.turn);
-    } catch (e) { add("err", "aeradex ist nicht erreichbar."); }
+    } catch (e) { add("err", "aeradex ist nicht erreichbar."); pending = sent; showFiles(); }
   }
 
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send(input.value); });

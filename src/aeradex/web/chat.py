@@ -32,6 +32,8 @@ from .. import gitlog, tools
 
 MODEL = os.environ.get("AERADEX_MODEL") or "claude-opus-5-5"
 MAX_ITERATIONS = 16
+MAX_FILES = 5
+MAX_FILE_BYTES = 20 * 1024 * 1024
 
 PAGE_LABELS = {"/": "Übersicht", "/kreditoren": "Einkauf", "/debitoren": "Verkauf", "/bank": "Bank",
                "/vorschlaege": "Vorschläge", "/journal": "Journal", "/konten": "Konten", "/lohn": "Lohn",
@@ -239,18 +241,48 @@ class BaseAgent:
             self.items.append(event)
         events.put(event)
 
-    def start(self, message: str, page: str) -> str:
+    def start(self, message: str, page: str, files: list[tuple[str, bytes]] = ()) -> str:
         with self.lock:
             if self.busy:
                 raise RuntimeError("Der Agent arbeitet noch an der letzten Anfrage.")
             self.busy = True
         turn = uuid.uuid4().hex[:12]
+        try:
+            saved = self.save_attachments(turn, files)
+        except Exception:
+            with self.lock:
+                self.busy = False
+            raise
         events: queue.Queue = queue.Queue()
         self.turns[turn] = events
-        self.items.append({"type": "me", "text": message})
+        names = ", ".join(Path(p).name for p in saved)
+        self.items.append({"type": "me", "text": message + (f"\n📎 {names}" if saved else "")})
         context = f"[Heute: {date.today().isoformat()} · Seite: {page_label(page)}]\n"
+        if saved:
+            context += "[Angehängte Dateien: " + ", ".join(saved) + "]\n"
         threading.Thread(target=self._guarded, args=(events, context + message), daemon=True).start()
         return turn
+
+    def attachments_dir(self) -> Path:
+        return self.root / tools.ATTACHMENTS
+
+    def save_attachments(self, turn: str, files) -> list[str]:
+        """Files the person attached to a message: kept outside git (`.aeradex/lokal/chat/<turn>/`) until the
+        agent files them (inbox, employee) or the conversation starts anew. Returns paths relative to the book."""
+        from ..files import slug
+        out = []
+        for name, data in files:
+            name = Path(name or "datei").name
+            stem, suffix = slug(Path(name).stem) or "datei", Path(name).suffix.lower()
+            target = self.attachments_dir() / turn / f"{stem}{suffix}"
+            n = 2
+            while target.exists():
+                target = target.with_name(f"{stem}-{n}{suffix}")
+                n += 1
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            out.append(target.relative_to(self.root).as_posix())
+        return out
 
     def _guarded(self, events: queue.Queue, prompt: str) -> None:
         try:
@@ -270,6 +302,7 @@ class BaseAgent:
             if not self.busy:
                 self.items.clear()
                 self.forget()
+                shutil.rmtree(self.attachments_dir(), ignore_errors=True)
 
     def forget(self) -> None:
         pass
@@ -281,7 +314,13 @@ class BaseAgent:
             book_rules = agents_md.read_text(encoding="utf-8")
         return (tools.instructions_for(self.root) + "\n\nDu arbeitest in der aeradex-Oberfläche; der Mensch sieht deine "
                 "Vorschläge sofort: Buchungsvorschläge unter «Buchhaltung › Vorschläge», eingelesene Belege unter «Einkauf/Verkauf › Entwürfe», Bankbewegungen unter «Bank › Abgleichen». Antworte knapp auf Deutsch (Schweizer Schreibweise, kein ß), "
-                "nenne Belegnummern und Beträge, die die Tools zurückgeben.\n\n" + book_rules
+                "nenne Belegnummern und Beträge, die die Tools zurückgeben.\n"
+                "Hängt der Mensch Dateien an, nennt die Nachricht ihre Pfade (relativ zum Buch): zuerst lesen "
+                "(read_inbox_file oder dein Lese-Werkzeug), dann tun, "
+                "was er dazu schreibt. Ohne Anweisung sagen, was drinsteht, und vorschlagen, was du damit tun würdest. "
+                "Belege und Kontoauszüge mit attachment_to_inbox in die Inbox legen (dann create_bill_draft bzw. "
+                "import_bank_statement), Personaldokumente mit file_employee_document bei der Person ablegen. "
+                "Anhänge, die du nirgends ablegst, verschwinden mit dem nächsten neuen Gespräch.\n\n" + book_rules
                 + (f"\n\n{self.extra_instructions}" if self.extra_instructions else ""))
 
 
@@ -557,7 +596,7 @@ class CodeAgent(CLIAgent):
     def command(self, prompt: str) -> list[str]:
         cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose",
                "--mcp-config", str(self._config), "--strict-mcp-config",
-               "--allowedTools", "mcp__aeradex__*", "Read(./inbox/**)", "Read(./belege/**)",
+               "--allowedTools", "mcp__aeradex__*", "Read(./inbox/**)", "Read(./belege/**)", "Read(./.aeradex/lokal/chat/**)",
                "--append-system-prompt", self.system_prompt_text(),
                "--max-turns", str(MAX_ITERATIONS * 2)]
         if os.environ.get("AERADEX_CHAT_MODEL"):
@@ -699,16 +738,25 @@ def routes(ui) -> list[Route]:
         user = getattr(request.state, "user", None)
         if user is not None and not user.can_write:
             return JSONResponse({"ok": False, "fehler": "Der Agent ist mit Leserecht nicht verfügbar."}, status_code=403)
-        form = await request.form()
+        form = await request.form(max_files=MAX_FILES, max_part_size=MAX_FILE_BYTES)
         message = (form.get("message") or "").strip()
-        if not message:
+        files = []
+        for upload in form.getlist("dateien"):
+            if not hasattr(upload, "read"):
+                continue
+            data = await upload.read()
+            if len(data) > MAX_FILE_BYTES:
+                return JSONResponse({"ok": False, "fehler": f"{upload.filename}: grösser als 20 MB"}, status_code=400)
+            if data:
+                files.append((upload.filename or "datei", data))
+        if not message and not files:
             return JSONResponse({"ok": False, "fehler": "Leere Nachricht"}, status_code=400)
         from ..book import Book
         cred = credentials_status(Book(ui.root).settings.get("agent_backend"))
         if not cred["ok"]:
             return JSONResponse({"ok": False, "fehler": cred["hinweis"]}, status_code=400)
         try:
-            turn = agent(ui).start(message, form.get("page") or "/")
+            turn = agent(ui).start(message, form.get("page") or "/", files)
         except RuntimeError as exc:
             return JSONResponse({"ok": False, "fehler": str(exc)}, status_code=409)
         return JSONResponse({"ok": True, "turn": turn})

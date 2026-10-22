@@ -376,3 +376,20 @@ def test_month_end_billing_leaves_the_akonto_open_and_says_so(book):
     W(book, daten.add_time, "2026-10-01", "M0001", "2", "Fassade", "K0001")
     res = W(book, abrechnung.bill_all, "2026-10-31")
     assert len(res["warnungen"]) == 1 and len(invoices.open_akonto(Book(book.root))) == 1
+
+
+def test_agent_sets_up_a_new_employee(tmp_path, monkeypatch):
+    """After add_employee the agent sets rate and holidays, changes the Pensum and keeps the master data."""
+    from aeradex import tools as core_tools
+    import aeradex_leistungen as plugin
+    b = make_book(tmp_path, plugins=["leistungen"])
+    monkeypatch.setenv("AERADEX_BUCH", str(b.root))
+    nr = core_tools.add_employee("Eva", "Beispiel", monatslohn="5000", eintritt="2026-01-01")["mitarbeiter"]["nummer"]
+    assert plugin.set_person_rates(nr, satz="95", ferien_tage="25")["ok"]
+    p = daten.person(Book(b.root), nr)
+    assert Decimal(str(p["satz"])) == 95 and Decimal(str(p["ferien_tage"])) == 25
+    assert plugin.change_pensum(nr, "2026-07-01", "80")["ok"]
+    assert plugin.add_product("Dispersionsfarbe", "12.50", "l")["ok"]
+    k = api.customer_add(Book(b.root), name="Hans Huber")["kunde"]["nummer"]
+    assert plugin.add_project(k, "Treppenhaus")["ok"]
+    assert_clean(Book(b.root))

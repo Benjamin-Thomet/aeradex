@@ -1211,6 +1211,7 @@ async def mitarbeiter(ui: UI, request: Request):
     from .. import qst_estv
     emps = payroll.employees(book)
     return ui.render(request, "mitarbeiter.html", book=book, emps=emps,
+                     dokumente={nr: payroll.documents(book, e) for nr, e in emps.items()},
                      edit=request.query_params.get("edit"), neu=request.query_params.get("neu"),
                      qst_info={nr: qst_info(book, e) for nr, e in emps.items()},
                      aufenthalt=payroll.AUFENTHALT, tarife=payroll.QST_TARIFE, kantone=qst_estv.CANTONS,
@@ -1267,6 +1268,10 @@ EMP_NUM = ("monatslohn", "pensum", "stundenlohn", "standard_stunden", "vollzeit_
 async def mitarbeiter_speichern(ui: UI, request: Request):
     f = await request.form()
     fields = {k: (f.get(k) or "").strip() for k in EMP_TEXT}
+    upload = f.get("dokument")
+    doc = None
+    if upload is not None and hasattr(upload, "read") and upload.filename:
+        doc = (upload.filename, await upload.read())
     for k in EMP_NUM:
         raw = (f.get(k) or "").strip()
         if raw:
@@ -1284,16 +1289,27 @@ async def mitarbeiter_speichern(ui: UI, request: Request):
         return fail("Kanton abweichend nur zusammen mit einem Tarif erfassen")
     nr = request.path_params.get("nr")
     book = ui.book()
+
+    def with_document(fn, *args, **kwargs):
+        out = fn(*args, **kwargs)
+        if doc:
+            api.employee_document_add(Book(book.root), out["mitarbeiter"]["nummer"], *doc)
+            out["meldung"] += f" · Dokument {doc[0]} abgelegt"
+        return out
+
     if nr:
         fields["aktiv"] = f.get("aktiv") == "1"
         fields = {k: v for k, v in fields.items() if v != "" or k in ("austritt",)}
-        return await act(request, api.employee_update, "/lohn/mitarbeiter", book, nr, **fields)
+        fields["notizen"] = f.get("notizen") or ""
+        return await act(request, with_document, "/lohn/mitarbeiter", api.employee_update, book, nr, **fields)
     if not (fields["vorname"] and fields["nachname"]):
         return fail("Vor- und Nachname sind nötig.")
     vorname, nachname = fields.pop("vorname"), fields.pop("nachname")
     fields.pop("austritt", None)
     fields = {k: v for k, v in fields.items() if v not in ("", None) or k == "qst"}
-    return await act(request, api.employee_add, "/lohn/mitarbeiter", book, vorname, nachname, **fields)
+    if (f.get("notizen") or "").strip():
+        fields["notizen"] = f.get("notizen")
+    return await act(request, with_document, "/lohn/mitarbeiter", api.employee_add, book, vorname, nachname, **fields)
 
 
 async def lohnkonto(ui: UI, request: Request):

@@ -4,9 +4,9 @@
 {% macro empform(e, action, isnew, fid) %}
 {% set a = e.adresse or {} %}
 {% set code = (e.qst or {}).code or "" %}
-<form class="body empform" hx-post="{{ action }}" hx-target="find .errors">
+<form class="body empform" hx-post="{{ action }}" hx-target="find .errors" hx-encoding="multipart/form-data">
   <div class="tabset" role="tablist">
-    {% for key, label in [("person", "Person"), ("anstellung", "Anstellung & Lohn"), ("sv", "Sozialversicherungen"), ("qst", "Quellensteuer"), ("auszahlung", "Auszahlung")] %}
+    {% for key, label in [("person", "Person"), ("anstellung", "Anstellung & Lohn"), ("sv", "Sozialversicherungen"), ("qst", "Quellensteuer"), ("auszahlung", "Auszahlung"), ("notizen", "Notizen & Dokumente")] %}
     <input type="radio" name="_tab" id="{{ fid }}-{{ key }}" class="tabradio" {{ 'checked' if loop.first }}><label for="{{ fid }}-{{ key }}" role="tab">{{ label }}</label>
     {% endfor %}
 
@@ -79,6 +79,14 @@
         <div class="field" style="grid-column: span 2"><label>Lohnkonto IBAN</label><input class="input" name="iban" value="{{ e.iban or '' }}" placeholder="CH… / LI…"></div>
       </div>
       <p class="small muted">Für die Lohnzahlungsdatei (pain.001) und als Angabe auf der Lohnabrechnung.</p>
+    </section>
+
+    <section class="tabpane">
+      <div class="field"><label>Notizen zum Arbeitsverhältnis</label><textarea class="input" name="notizen" rows="6" placeholder="Funktion, Probezeit, Kündigungsfrist, Ferienanspruch, 13. Monatslohn, Spesenregelung …">{{ e._notizen or '' }}</textarea></div>
+      {% set docs = dokumente.get(e.nummer, []) if e.nummer else [] %}
+      {% if docs %}<ul class="doclist">{% for d in docs %}<li><a class="link" href="/datei/{{ d|urlencode }}" target="_blank" rel="noopener">{{ d.split('/')[-1] }}</a></li>{% endfor %}</ul>{% endif %}
+      <div class="field"><label>Dokument ablegen</label><input class="input" type="file" name="dokument" accept=".pdf,.png,.jpg,.jpeg,.docx,image/*,application/pdf"></div>
+      <p class="small muted">Arbeitsvertrag, Bewilligung, Zeugnisse. Liegt im Buch unter personal/dokumente/ und ist in der Datensicherung (vertraulich). Oder dem Agenten den Vertrag anhängen: er erfasst daraus die Person.</p>
     </section>
   </div>
   {{ errors() }}<div class="formfoot"><span class="small muted">* Pflichtfelder. Änderungen gelten für Entwürfe und künftige Monate; abgeschlossene Abrechnungen bleiben unverändert.</span><button class="btn primary" type="submit">{{ 'Erfassen' if isnew else 'Speichern' }}</button></div>

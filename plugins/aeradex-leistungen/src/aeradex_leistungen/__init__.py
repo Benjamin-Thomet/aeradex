@@ -302,11 +302,133 @@ def update_object(nummer: str, name: str = "", strasse: str = "", hausnr: str = 
     return _w(f"Objekt {nummer} geändert", daten.update_project, nummer, None, **fields)
 
 
+def set_person_rates(nummer: str = "", name: str = "", satz: str = "", kostensatz: str = "", soll_woche: str = "",
+                     ferien_tage: str = "", ferien_jahr: int | None = None, ferien_vortrag: str = "",
+                     vortrag_jahr: int | None = None, vortrag: str = "") -> dict:
+    """Stundenansatz, Ferienanspruch und Vorträge einer Person (M0001 aus dem Lohn) — oder eine Person ohne Lohn
+    anlegen/ändern (name, ohne nummer; z.B. die Inhaberin). Nur die mitgegebenen Werte.
+
+    Args:
+        nummer: M0001 oder X01; leer mit name = neue Person ohne Lohn.
+        name: Name einer Person ohne Lohn.
+        satz: verrechneter Stundenansatz CHF, z.B. "95".
+        kostensatz: interne Kosten pro Stunde CHF.
+        soll_woche: Wochenstunden (nur Personen ohne Lohn; bei Angestellten aus Pensum × Betriebswoche).
+        ferien_tage: Ferientage pro Jahr (z.B. "25"); leer = allgemeine Einstellung.
+        ferien_jahr: Jahr für ferien_vortrag.
+        ferien_vortrag: Ferientage aus dem Vorjahr in ferien_jahr.
+        vortrag_jahr: Jahr für vortrag.
+        vortrag: Stundensaldo aus dem Vorjahr (Überstunden +, Minusstunden −).
+    """
+    loc = locals()
+    kwargs = {k: loc[k] for k in ("satz", "kostensatz", "soll_woche", "ferien_tage", "ferien_vortrag", "vortrag")
+              if str(loc[k]).strip()}
+    if ferien_jahr:
+        kwargs["ferien_jahr"] = ferien_jahr
+    if vortrag_jahr:
+        kwargs["vortrag_jahr"] = vortrag_jahr
+    return _w(f"Person {nummer or name}: Ansätze", daten.set_person, nummer, name=name, **kwargs)
+
+
+def change_pensum(nummer: str, ab: str, wert: str = "", entfernen: bool = False) -> dict:
+    """Pensum (Angestellte, %) bzw. Wochenstunden (Personen ohne Lohn) ab einem Datum ändern, für die Soll-Stunden.
+    Den Lohn ändert das nicht (update_employee).
+
+    Args:
+        nummer: M0001 oder X01.
+        ab: ab Datum JJJJ-MM-TT.
+        wert: neues Pensum in % bzw. Wochenstunden.
+        entfernen: true = die Änderung an diesem Datum löschen.
+    """
+    return _w(f"Pensum {nummer} ab {ab}", daten.set_pensum, nummer, ab, wert or None, entfernen)
+
+
+def add_product(text: str, preis: str, einheit: str = "Stk", konto: str = "", mwst: str = "") -> dict:
+    """Produkt/Material oder Leistungsart in die Stammdaten (vorher services_master_data prüfen).
+
+    Args:
+        text: Bezeichnung.
+        preis: Verkaufspreis CHF pro Einheit.
+        einheit: Stk, l, kg, m, m2, h …
+        konto: Ertragskonto; leer = Standard.
+        mwst: MWST-Code.
+    """
+    return _w(f"Produkt {text} angelegt", daten.add_product, text, preis, einheit, konto, mwst)
+
+
+def update_product(nummer: str, text: str = "", preis: str = "", einheit: str = "", aktiv: bool | None = None,
+                   kunde: str = "", kundenpreis: str | None = None) -> dict:
+    """Produkt ändern; ein neuer Preis gilt für neue Einträge. Mit kunde + kundenpreis ein Kundenpreis
+    (kundenpreis "" entfernt ihn).
+
+    Args:
+        nummer: Produktnummer.
+        text: Bezeichnung.
+        preis: Preis CHF.
+        einheit: Einheit.
+        aktiv: false = nicht mehr anbieten.
+        kunde: Kundennummer für einen Kundenpreis.
+        kundenpreis: Preis für diesen Kunden.
+    """
+    return _w(f"Produkt {nummer} geändert", daten.update_product, nummer, text or None, preis or None,
+              einheit or None, None, None, aktiv, kunde, kundenpreis)
+
+
+def add_project(kunde: str, name: str, abrechnung: str = "aufwand", budget_stunden: str = "", budget_chf: str = "",
+                satz: str = "", offerte: str = "", notizen: str = "") -> dict:
+    """Projekt/Auftrag für einen Kunden (für eine Liegenschaft mit Adresse: add_object).
+
+    Args:
+        kunde: Kundennummer.
+        name: Bezeichnung.
+        abrechnung: "aufwand" (nach Stunden) oder "pauschal".
+        budget_stunden: Budget in Stunden.
+        budget_chf: Budget CHF.
+        satz: eigener Stundenansatz für dieses Projekt.
+        offerte: Offertnummer, falls daraus.
+        notizen: Notizen.
+    """
+    return _w(f"Projekt {name} für {kunde} angelegt", daten.add_project, kunde, name, abrechnung,
+              budget_stunden or None, budget_chf or None, satz or None, offerte, notizen)
+
+
+def update_project(nummer: str, status: str = "", felder: dict | None = None) -> dict:
+    """Projekt ändern oder abschliessen.
+
+    Args:
+        nummer: Projektnummer.
+        status: offen oder abgeschlossen.
+        felder: name, abrechnung, budget_stunden, budget_chf, satz, notizen …
+    """
+    return _w(f"Projekt {nummer} geändert", daten.update_project, nummer, status or None, **(felder or {}))
+
+
+def update_service_entry(id: str, felder: dict) -> dict:
+    """Erfasste Zeit oder Material korrigieren, solange nicht verrechnet (datum, menge, preis, text, abrechenbar,
+    kategorie, kunde, projekt, leistung; neu_bewerten=true bestimmt den Stundenansatz neu).
+
+    Args:
+        id: Eintrag-ID aus open_services.
+        felder: die zu ändernden Felder.
+    """
+    return _w(f"Eintrag {id} geändert", daten.update_entry, id, **(felder or {}))
+
+
+def delete_service_entry(id: str) -> dict:
+    """Erfasste Zeit oder Material löschen, solange nicht verrechnet. Nur auf Wunsch des Menschen.
+
+    Args:
+        id: Eintrag-ID.
+    """
+    return _w(f"Eintrag {id} gelöscht", daten.delete_entry, id)
+
+
 @hookimpl
 def aeradex_tools():
     return [record_time, record_material, quick_entry, record_absence, holiday_balance, services_master_data,
             open_services, billing_preview, draft_quote, update_quote, hours_control, project_status,
-            customer_objects, add_object, update_object]
+            customer_objects, add_object, update_object, set_person_rates, change_pensum, add_product,
+            update_product, add_project, update_project, update_service_entry, delete_service_entry]
 
 
 @hookimpl
@@ -316,7 +438,8 @@ def aeradex_instructions():
             "mit record_absence, Ferienkonto mit holiday_balance. Offene Leistungen: open_services, Rechnungsvorschau: billing_preview — "
             "Rechnungen stellt ein Mensch aus. Offerten nur als Entwurf (draft_quote), ändern mit update_quote. Stundenkontrolle: hours_control, "
             "Projekte: project_status. Objekte/Liegenschaften eines Kunden (mit Adresse und Zugang): customer_objects, "
-            "neu add_object, ändern update_object.")
+            "neu add_object, ändern update_object. Neue Mitarbeiter:in: nach add_employee Stundenansatz und "
+            "Ferientage mit set_person_rates; Pensum-Wechsel mit change_pensum.")
 
 
 # ---------- CLI ----------

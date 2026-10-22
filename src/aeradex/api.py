@@ -617,6 +617,31 @@ def employee_add(book: Book, vorname: str, nachname: str, **fields) -> dict:
     return _done(book, f"Mitarbeiter {meta['nummer']} {vorname} {nachname} erfasst", [path], mitarbeiter=meta)
 
 
+def employee_show(book: Book, nummer: str) -> dict:
+    """Everything stored about one employee: the record, the notes and the documents filed with it."""
+    emp = payroll.employee(book, nummer)
+    return jsonable({**{k: v for k, v in emp.items() if not k.startswith("_")}, "notizen": emp["_notizen"],
+                     "dokumente": payroll.documents(book, emp)})
+
+
+def employee_document_add(book: Book, nummer: str, filename: str, data: bytes) -> dict:
+    """File a document with an employee (contract, work permit, certificate); never overwrites."""
+    from .files import slug
+    _guard(book)
+    emp = payroll.employee(book, nummer)
+    if not data:
+        raise BookError("Die Datei ist leer")
+    name = Path(filename or "dokument").name
+    stem, suffix = slug(Path(name).stem) or "dokument", Path(name).suffix.lower()
+    folder = payroll.documents_dir(book, emp)
+    target, n = folder / f"{stem}{suffix}", 2
+    while target.exists():
+        target, n = folder / f"{stem}-{n}{suffix}", n + 1
+    folder.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return _done(book, f"Dokument {target.name} bei Mitarbeiter {nummer} abgelegt", [target], datei=book.rel(target))
+
+
 def _ym(monat: str) -> tuple[int, int]:
     y, m = str(monat).split("-")
     return int(y), int(m)
@@ -1019,7 +1044,7 @@ def employee_update(book: Book, nummer: str, **fields) -> dict:
     nr = nummer
     emp = payroll.employee(book, nr)
     allowed = {"vorname", "nachname", "ahv_nr", "geburtsdatum", "geschlecht", "eintritt", "austritt", "lohnart",
-               "ferien_inbegriffen", "qst", "aktiv", "iban", "aufenthalt", "qst_pflicht",
+               "ferien_inbegriffen", "qst", "aktiv", "iban", "aufenthalt", "qst_pflicht", "notizen",
                *EMPLOYEE_NUMERIC, *_ADDRESS_KEYS}
     unknown = set(fields) - allowed
     if unknown:
@@ -1034,7 +1059,9 @@ def employee_update(book: Book, nummer: str, **fields) -> dict:
     payroll.check_geschlecht({**emp, **fields})
     payroll.check_qst_fields({**emp, **fields})
     payroll.check_dates({**emp, **fields})
-    meta = _update_record(emp["_pfad"], fields, numeric=EMPLOYEE_NUMERIC, nullable=("qst", "austritt"))
+    notes = fields.pop("notizen", None)
+    meta = _update_record(emp["_pfad"], fields, numeric=EMPLOYEE_NUMERIC, nullable=("qst", "austritt"),
+                          notes=None if notes is None else (notes.strip() or payroll.NOTES_PLACEHOLDER))
     return _done(book, f"Mitarbeiter {nr} geändert", [emp["_pfad"]], mitarbeiter=meta)
 
 
@@ -1339,7 +1366,8 @@ WRITES = ("add_account", "post_entry", "post_split", "amend_entry", "recode", "y
           "opening_set", "accruals_book", "reverse_entry", "propose", "approve", "reject",
           "customer_add", "invoice_create", "invoice_void", "invoice_pay", "invoice_credit", "employee_add",
           "payroll_run", "payroll_close", "payslip_close", "payslip_reopen", "lohnausweis_create", "allocation_set",
-          "allocation_book", "lock", "unlock", "customer_update", "customer_renumber", "employee_update", "account_update",
+          "allocation_book", "lock", "unlock", "customer_update", "customer_renumber", "employee_update",
+          "employee_document_add", "account_update",
           "settings_update", "payroll_config_update", "anhang_save", "closing_mark", "closing_entry_book",
           "closing_entry_remove")
 for _name in WRITES:

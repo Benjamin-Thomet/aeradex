@@ -1,5 +1,6 @@
 """End to end: the plugin syncs a throwaway book with an in-process portal; a simulated phone talks to the portal."""
 import base64
+import re
 import hashlib
 import uuid as uuidlib
 from datetime import date, timedelta
@@ -718,3 +719,13 @@ def test_app_entries_are_authored_under_the_portals_host(book, portal, send, mon
     monkeypatch.setattr(uebernahme, "_book_it", lambda *a: authors.append(gitlog.AUTHOR.get()) or real(*a))
     abgleich.run(Book(book.root), send)
     assert authors == ["Anna Muster (App) <m0001@app.muster.example>"]
+
+
+def test_agent_invites_a_person(book, send, monkeypatch):
+    import aeradex_team
+    monkeypatch.setattr(verbindung, "transport", lambda: send)
+    monkeypatch.setenv("AERADEX_BUCH", str(book.root))
+    out = aeradex_team.team_invite("M0001")
+    assert out["ok"] and out["zugestellt"] and re.fullmatch(r"[A-Z0-9]{4}-[A-Z0-9]{4}", out["code"])
+    assert aeradex_team.team_account("M0001", aktiv=False)["ok"]
+    assert daten.accounts(Book(book.root))["M0001"]["aktiv"] is False

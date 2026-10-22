@@ -12,18 +12,25 @@ This file is for developing aeradex itself. Agents *operating a book* read the
 - `invoices.py`, `qrbill_ch.py`: customers, frozen invoices, payments/credit notes as `Quelle` rows, Swiss QR-bill.
 - `kunden.py`: the customer as a CRM: `dossier` (invoices, revenue like `reports.umsatz`, payment behaviour, timeline),
   contact log + follow-ups in the customer's frontmatter; plugins add panels via `aeradex_kunde_teile` (`KundeTeil`).
-- `payroll.py`, `qst.py`, `qst_import.py`, `lohnausweis.py`: payroll.
+- `payroll.py`, `qst.py`, `qst_import.py`, `lohnausweis.py`: payroll. An employee's notes are the body of
+  `personal/M0001-<name>.md`, documents (contract, permits) lie in `personal/dokumente/M0001-<name>/`.
 - `lohnmeldung.py`: company Lohnkonto (`payroll.lohnkonto_matrix`, month matrix like the Command Station) and the
   annual wage declarations (Ausgleichskasse, UVG, KTG, BVG, QST) from closed payslips, with Prüfhinweise for what
   the calculation does not model (Rentnerfreibetrag, Jugendliche, Höchstlohn, NBU < 8 h) and a ledger check.
 - `check.py`: every invariant + period lock hashes. `api.py`: the operations (guard → write → check → git commit).
 - `cli.py`, `mcp_server.py` and `web/` are thin layers over `api.py`. New features go into `api.py` first.
-- `tools.py`: the one agent tool registry, used by the MCP server and the UI's chat panel.
+- `tools.py`: the one agent tool registry, used by the MCP server and the UI's chat panel. The agent can do what a
+  person can do in the UI (a new api operation gets a tool); left out on purpose: what guards the agent itself
+  (`agent_modus`, users, unlocking periods, installing plugins). Postings outside a document stay with a person in
+  `agent_modus: vorschlag` (`_direct`).
 - `web/app.py`: Starlette app, token/CSRF middleware, file serving, SSE live refresh (watchfiles).
   `web/views.py`: one handler per page/form; forms post via HTMX and get `204 + HX-Redirect` or an error box.
   `web/chat.py`: Claude via the SDK tool runner over `tools.py`; commits it makes are attributed to the agent.
   Subclasses (other channels, plugins) narrow `tool_list()`, add `server_tools()` (e.g. web search) and
   `extra_instructions`, and set `author_label`/`effort`; text events carry `raw` besides the rendered `html`.
+  Files attached to a message (clip or drop, `static/chat.js`) wait in `.aeradex/lokal/chat/<turn>/` (outside git,
+  not in the `.aeradex` file) until the agent files them (`attachment_to_inbox`, `file_employee_document`) or the
+  conversation starts anew; the prompt names their paths, `read_inbox_file` reads PDF, images, Word and text.
   `mcp_server.py` serves only the tools named in `AERADEX_MCP_TOOLS` when it is set.
   Templates are Jinja in `web/templates/`, styles in `web/static/aeradex.css` (tokens at the top, light + dark).
 - `web/auth.py`: server mode (`aeradex serve`): users outside the book, scrypt hashes, signed session cookies,

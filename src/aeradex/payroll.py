@@ -97,14 +97,28 @@ def write_default_config(book: Book) -> Path:
 
 # ---------- employees ----------
 
+NOTES_PLACEHOLDER = "Notizen zum Arbeitsverhältnis."
+
+
 def employees(book: Book) -> dict[str, dict]:
     out = {}
     folder = book.root / "personal"
     for path in sorted(folder.glob("*.md")) if folder.exists() else []:
         meta, body = read_frontmatter(path)
         meta["_pfad"] = path
+        meta["_notizen"] = "" if body.strip() == NOTES_PLACEHOLDER else body.strip()
         out[str(meta.get("nummer"))] = meta
     return out
+
+
+def documents_dir(book: Book, emp: dict) -> Path:
+    """Where an employee's documents (contract, permits, certificates) live: next to the record, by its file name."""
+    return book.root / "personal" / "dokumente" / Path(emp["_pfad"]).stem
+
+
+def documents(book: Book, emp: dict) -> list[str]:
+    folder = documents_dir(book, emp)
+    return [book.rel(p) for p in sorted(folder.iterdir()) if p.is_file()] if folder.is_dir() else []
 
 
 def employee(book: Book, nr: str) -> dict:
@@ -119,6 +133,7 @@ def display_name(emp: dict) -> str:
 
 
 def add_employee(book: Book, vorname: str, nachname: str, **fields) -> tuple[dict, Path]:
+    notes = (fields.pop("notizen", "") or "").strip()
     nums = [int(k[1:]) for k in employees(book) if re.fullmatch(r"M\d+", k)]
     number = f"M{max(nums, default=0) + 1:04d}"
     meta = {"nummer": number, "vorname": vorname, "nachname": nachname,
@@ -153,7 +168,7 @@ def add_employee(book: Book, vorname: str, nachname: str, **fields) -> tuple[dic
     check_dates(meta)
     meta["ferien_inbegriffen"] = bool(meta["ferien_inbegriffen"])
     path = book.root / "personal" / f"{number}-{slug(vorname + ' ' + nachname)}.md"
-    write_frontmatter(path, meta, "Notizen zum Arbeitsverhältnis.")
+    write_frontmatter(path, meta, notes or NOTES_PLACEHOLDER)
     return meta, path
 
 

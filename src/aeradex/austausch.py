@@ -40,6 +40,7 @@ SUFFIX = ".aeradex"
 MAX_TOTAL = 4 * 1024 ** 3          # uncompressed size an import accepts
 SKIP_DIRS = {".git", "berichte", "__pycache__", "node_modules"}
 SKIP_FILES = {".aeradex/write.lock", ".DS_Store"}
+SKIP_PREFIXES = (".aeradex/lokal/chat/",)    # files attached to the agent chat: the person's, not the book's
 SCRYPT = {"n": 2 ** 15, "r": 8, "p": 1}
 
 
@@ -92,7 +93,8 @@ def book_files(book: Book, with_inbox: bool = True) -> list[Path]:
         from .storage import internal
         if internal(rel.as_posix()):
             continue
-        if rel.parts[0] in SKIP_DIRS or rel.as_posix() in SKIP_FILES or path.name in SKIP_FILES:
+        if (rel.parts[0] in SKIP_DIRS or rel.as_posix() in SKIP_FILES or path.name in SKIP_FILES
+                or rel.as_posix().startswith(SKIP_PREFIXES)):
             continue
         if not with_inbox and rel.parts[0] == "inbox" and path.name != ".gitkeep":
             continue

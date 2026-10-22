@@ -86,16 +86,48 @@ def team_sync() -> dict:
     return call(lambda b: api.jsonable({"ok": True, **abgleich.run(b)}))
 
 
+def team_account(person: str, benutzer: str = "", aktiv: bool = True) -> dict:
+    """App-Konto einer Person in der Team-App anlegen oder sperren (aktiv=false). Der Benutzername ist sonst der
+    Vorname. Danach team_invite für den Aktivierungscode.
+
+    Args:
+        person: M0001 oder X01.
+        benutzer: Benutzername; leer = Vorname.
+        aktiv: false = sperren.
+    """
+    from aeradex.tools import call
+    return call(lambda b: api.write(b, f"Team: App-Konto {person}", daten.set_account, person, benutzer, aktiv))
+
+
+def team_invite(person: str) -> dict:
+    """Einmal-Code für die Team-App (setzt ein bestehendes Konto zurück). Den Code nur dem Menschen im Chat nennen,
+    der ihn der Person gibt; er wird nirgends gespeichert.
+
+    Args:
+        person: M0001 oder X01; ohne App-Konto wird eines angelegt.
+    """
+    from aeradex.tools import call
+
+    def run(b):
+        out = abgleich.invite(b, person)
+        out["adresse"] = f"{verbindung.config()['url'] or 'https://<portal>'}/app"
+        if not out.get("zugestellt"):
+            out["hinweis"] = "Portal nicht erreicht: der Code gilt erst nach dem nächsten Abgleich"
+        return api.jsonable({"ok": True, **out})
+    return call(run)
+
+
 @hookimpl
 def aeradex_tools():
-    return [team_status, team_requests, decide_request, team_sync]
+    return [team_status, team_requests, decide_request, team_sync, team_account, team_invite]
 
 
 @hookimpl
 def aeradex_instructions():
     return ("Team-App: Mitarbeitende erfassen Zeit, Material und Abwesenheiten auf dem Handy; `team_sync` übernimmt "
             "sie in die Leistungen. Ferien-Anträge stehen in `team_requests`; entscheiden (`decide_request`) nur auf "
-            "Anweisung der Inhaberin. Übernommene Einträge sind normale Leistungen (Autor «… (App)» im Verlauf).")
+            "Anweisung der Inhaberin. Übernommene Einträge sind normale Leistungen (Autor «… (App)» im Verlauf). "
+            "Neue Person in die App: team_invite (legt das Konto an; Code dem Menschen nennen).")
 
 
 # ---------- CLI ----------
