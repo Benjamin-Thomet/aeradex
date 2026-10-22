@@ -59,6 +59,8 @@ def test_reader_invites_a_reader_who_joins_with_a_one_time_link(server):
     c.cookies.clear()
     page = c.get(path).text
     assert "Lea Lesen lädt dich" in page and 'value="tom"' in page
+    # Safari sends «Origin: null» from a no-referrer page, which the origin check refuses
+    assert '<meta name="referrer" content="same-origin">' in page
     r = c.post(path, data={"name": "tom", "anzeige": "Tom Treuhand", "passwort": "kurz", "passwort2": "kurz"})
     assert r.status_code == 400 and "mindestens 10" in r.text
     r = c.post(path, data={"name": "tom", "anzeige": "Tom Treuhand", "passwort": "tom-sein-pw-1",
