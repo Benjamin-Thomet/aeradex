@@ -167,3 +167,23 @@ def test_attachments_stay_out_of_the_exchange_file(book):
     (folder / "vertrag.pdf").write_bytes(b"%PDF-1.4 x")
     files = [p.relative_to(book.root).as_posix() for p in austausch.book_files(Book(book.root))]
     assert files and not [f for f in files if "lokal/chat" in f]
+
+
+def test_mcp_reads_files_on_the_server(book):
+    """Claude Code on a PC (MCP over ssh) cannot read the server's files itself: the MCP server reads them."""
+    pytest.importorskip("mcp")
+    import asyncio
+    from aeradex import mcp_server
+    (book.root / "inbox").mkdir(exist_ok=True)
+    (book.root / "inbox" / "notiz.txt").write_text("Rechnung Muster AG 120.00", encoding="utf-8")
+    (book.root / "inbox" / "foto.png").write_bytes(
+        bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+                      "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082"))
+    server = mcp_server.build_server()
+
+    async def call(datei):
+        return (await server.call_tool("read_inbox_file", {"datei": datei})).content[0]
+
+    assert "Muster AG 120.00" in asyncio.run(call("inbox/notiz.txt")).text
+    assert asyncio.run(call("inbox/foto.png")).type == "image"
+    assert asyncio.run(call("aeradex.yaml")).text.startswith("Fehler")
