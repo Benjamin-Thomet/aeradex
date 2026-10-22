@@ -147,7 +147,32 @@ _PERIOD_HINT = re.compile(r"\b(abo|abonnement|miete|mietzins|pacht|versicherung|
                           r"jaehrlich|quartal|jahresgebühr|jahresbeitrag|mitgliederbeitrag|wartungsvertrag|"
                           r"abonnement|loyer|assurance|période|abbonamento|affitto|assicurazione|periodo|"
                           r"subscription|rent|insurance|billing period|service period)\b", re.I)
-_LEGAL = re.compile(r"\b(AG|GmbH|SA|Sàrl|Sarl|S\.A\.|Genossenschaft|KlG|& Co|Ltd|Inc)\b")
+_LEGAL = re.compile(r"\b(AG|GmbH|SA|Sàrl|Sarl|S\.A\.|Genossenschaft|KlG|& Co|Ltd|Inc|B\.V\.|BV|N\.V\.|LLC|S\.r\.l\.|Srl|"
+                    r"Sagl|SE|KG|S\.L\.|SAS|e\.K\.)(?!\w)")
+# words on top of a document that are not its sender
+_DOC_LABEL = re.compile(r"^(original|kopie|duplikat|doppel|copy|copie|copia|seite|page|lieferschein|gutschrift|"
+                        r"auftragsbestätigung|bestellbestätigung|beleg|zahlungsbestätigung)\b", re.I)
+# lines with an amount that are not a bought item
+_NOT_ITEM = re.compile(r"(total|gesamt|summe|zwischen|subtotal|mwst|mw\.?st|mehrwertsteuer|tva|iva|vat|steuer|liefer|"
+                       r"versand|porto|fracht|shipping|rabatt|skonto|discount|rundung|bezahlt|rückgeld|wechselgeld|saldo|"
+                       r"betrag|zahlung|\bkarte\b|\bvisa\b|mastercard|twint|\bbar\b|netto|brutto|exkl|inkl|datum|nummer|iban|"
+                       r"\bseite\b|\bpage\b|montant|importo|amount)", re.I)
+
+
+def items(text: str, limit: int = 2) -> str:
+    """What was bought, for a booking text: the first item lines (a description followed by quantity, rate and
+    amount), without the numbers. "" when none reads like an item."""
+    found = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not amounts(line) or _NOT_ITEM.search(line) or len(line) > 90:
+            continue
+        desc = re.sub(r"(\s+(CHF|EUR|USD|Fr\.?|x|Stk\.?|St\.?|kg|g|l|m|m2|m²|h|Std\.?|%|[-+]?\d[\d'’.,]*\s*%?))+\s*$", "", line).strip(" .:-")
+        if re.search(r"[A-Za-zÀ-ÿ]{3,}", desc) and len(desc) <= 60 and desc not in found:
+            found.append(desc)
+    if not found:
+        return ""
+    return ", ".join(found[:limit]) + (" …" if len(found) > limit else "")
 
 
 def amounts(line: str) -> list[Decimal]:
@@ -263,7 +288,7 @@ def parse_text(text: str, own_name: str = "") -> dict:
     if "name" not in out:
         # no company with a legal form: take the first line that reads like a name (shop receipts)
         for line in lines[:4]:
-            if (own and own in line.lower()) or len(line) > 50 or re.search(r"\d{3,}|[:@/]", line):
+            if (own and own in line.lower()) or len(line) > 50 or re.search(r"\d{3,}|[:@/]", line) or _DOC_LABEL.match(line):
                 continue
             if re.search(r"[A-Za-zÀ-ÿ]{3,}", line) and not _RECEIPT.search(line) and not re.search(
                     r"\b(rechnung|facture|fattura|invoice|datum|date)\b", line, re.I):

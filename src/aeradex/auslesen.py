@@ -97,7 +97,9 @@ def read(book: Book, filename: str, data: bytes) -> dict:
         return {"ref": ref, "datei": path.name, "agent": True, "art": "beleg", "hinweise": meta["hinweise"]}
     name = erfassung.value(meta, "name") or Path(path.name).stem
     nr = erfassung.value(meta, "rechnungsnr")
-    line = {"datum": datum, "text": f"{name} {nr}".strip(), "konto": konto, "betrag": betrag,
+    bought = erfassung.items(text)
+    line = {"datum": datum, "text": f"{name}: {bought}" if bought else f"{name} {nr}".strip(), "konto": konto,
+            "betrag": betrag,
             "mwst": (meta.get("mwst") or {}).get("wert") or ""}
     out = {"art": "beleg", "datum": datum, "zeilen": [line], "quelle": (meta["konto"].get("quelle") or "Leser"),
            "hinweise": meta["hinweise"] + [a["text"] for a in meta.get("abweichungen") or []]}
