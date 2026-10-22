@@ -288,3 +288,21 @@ def test_voice_note_without_any_transcriber(book, cfg, monkeypatch):
     fake.download = lambda file_id: pytest.fail("nothing to transcribe with")
     tg.handle({"message": {"from": {"id": USER}, "chat": {"id": USER, "type": "private"}, "voice": {"file_id": "v1"}}})
     assert "noch nicht eingerichtet" in fake.sent[-1][1]
+
+
+def test_upload_is_an_attachment_and_the_caption_says_what_to_do(book, cfg, monkeypatch):
+    from aeradex_anruf.agent import ALLOWED
+    tg, fake = _bot(book, cfg)
+    prompts = []
+    monkeypatch.setattr(RemoteAgent, "ask", lambda self, prompt, on_event=None: prompts.append(prompt) or "ok")
+    fake.download = lambda file_id: (b"%PDF-1.4 vertrag", "file_9.pdf")
+    tg.handle({"message": {"from": {"id": USER}, "chat": {"id": USER, "type": "private"}, "caption": "Erfasse sie komplett",
+                           "document": {"file_id": "d1", "file_name": "Arbeitsvertrag Anna.pdf"}}})
+    assert prompts[-1].startswith("[Angehängte Datei aus Telegram: .aeradex/lokal/chat/")
+    assert prompts[-1].endswith("Erfasse sie komplett")
+    rel = prompts[-1].split(": ", 1)[1].split("]")[0]
+    assert (book.root / rel).read_bytes() == b"%PDF-1.4 vertrag" and not list((book.root / "inbox").glob("*.pdf"))
+    tg.handle({"message": {"from": {"id": USER}, "chat": {"id": USER, "type": "private"},
+                           "photo": [{"file_id": "p1"}]}})
+    assert "create_bill_draft" in prompts[-1]                     # without a caption: a receipt goes to the Belegeingang
+    assert {"add_employee", "file_employee_document", "attachment_to_inbox"} <= ALLOWED

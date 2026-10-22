@@ -30,7 +30,7 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   `extra_instructions`, and set `author_label`/`effort`; text events carry `raw` besides the rendered `html`.
   Files attached to a message (clip or drop, `static/chat.js`) wait in `.aeradex/lokal/chat/<turn>/` (outside git,
   not in the `.aeradex` file) until the agent files them (`attachment_to_inbox`, `file_employee_document`) or the
-  conversation starts anew; the prompt names their paths, `read_inbox_file` reads PDF, images, Word and text.
+  conversation starts anew (left-overs after a week); the prompt names their paths, `read_inbox_file` reads PDF, images, Word and text.
   `mcp_server.py` serves only the tools named in `AERADEX_MCP_TOOLS` when it is set.
   Templates are Jinja in `web/templates/`, styles in `web/static/aeradex.css` (tokens at the top, light + dark).
 - `web/auth.py`: server mode (`aeradex serve`): users outside the book, scrypt hashes, signed session cookies,

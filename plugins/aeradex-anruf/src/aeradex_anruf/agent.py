@@ -38,13 +38,18 @@ ALLOWED = {
     "bank_rules", "expenses", "customers", "customer_details", "invoices", "match_payment", "receivables", "suppliers", "supplier_bills",
     "bank_transactions", "bank_suggestions", "suggest_bank_accounts", "employees", "payslip", "period_report",
     "report_catalog", "budget_overview", "scan_qr_bill", "read_inbox_file", "recode_preview", "revaluation_preview",
+    "employee_details", "invoice_details", "reminders", "payables", "bank_reconciliation", "plugins_overview",
     # drafts and proposals (a person approves them)
     "propose_booking", "create_bill_draft", "complete_bill_draft", "propose_bank_booking", "add_customer",
-    "update_customer", "log_customer", "follow_ups",
+    "update_customer", "log_customer", "follow_ups", "attachment_to_inbox",
+    # master data: employees from a contract (the document filed with them), suppliers; nothing is booked
+    "add_employee", "update_employee", "file_employee_document", "update_supplier", "renumber_customer",
+    "complete_follow_up",
     # plugin aeradex-leistungen: time, material, offer drafts
     "quick_entry", "record_time", "record_material", "record_absence", "holiday_balance", "services_master_data",
     "open_services", "billing_preview", "draft_quote", "update_quote", "hours_control", "project_status",
-    "customer_objects", "add_object", "update_object",
+    "customer_objects", "add_object", "update_object", "set_person_rates", "change_pensum", "add_product",
+    "update_product", "add_project", "update_project",
     # plugin aeradex-team: team overview, leave requests, take over the app entries
     "team_status", "team_requests", "team_sync",
     # plugin aeradex-anlagen: asset schedule; recording an asset books nothing (depreciation is for a person)
@@ -68,7 +73,8 @@ CONFIRM_FULL = """Du hast alle aeradex-Werkzeuge wie im Chat. Bevor du etwas tus
 zurück und wartest auf ein klares Ja. Das Total nennst du erst, wenn ein Werkzeug es geliefert hat. Ist der Mensch
 unsicher oder will er es lieber anschauen, legst du es als Karte vor (request_invoice, request_approval)."""
 
-CONFIRM_DRAFTS = """Du darfst lesen und Entwürfe vorbereiten (Offerten mit draft_quote, Belege mit create_bill_draft/
+CONFIRM_DRAFTS = """Du darfst lesen, Stammdaten pflegen (Kunden, Mitarbeitende mit ihren Dokumenten, Produkte, Projekte)
+und Entwürfe vorbereiten (Offerten mit draft_quote, Belege mit create_bill_draft/
 complete_bill_draft, Buchungsvorschläge mit propose_booking). Du stellst nie selbst aus und buchst nie: Rechnungen
 legst du mit request_invoice als Karte vor (nie create_invoice), Vorschläge mit request_approval. Danach sagst du:
 «Die Karte zum Bestätigen liegt bereit.»"""

@@ -34,6 +34,7 @@ MODEL = os.environ.get("AERADEX_MODEL") or "claude-opus-5-5"
 MAX_ITERATIONS = 16
 MAX_FILES = 5
 MAX_FILE_BYTES = 20 * 1024 * 1024
+ATTACHMENT_DAYS = 7
 
 PAGE_LABELS = {"/": "Übersicht", "/kreditoren": "Einkauf", "/debitoren": "Verkauf", "/bank": "Bank",
                "/vorschlaege": "Vorschläge", "/journal": "Journal", "/konten": "Konten", "/lohn": "Lohn",
@@ -235,6 +236,7 @@ class BaseAgent:
         self.items: list[dict] = []          # visible transcript, restored on page load
         self.busy = False
         self.lock = threading.Lock()
+        self.attached: set[Path] = set()     # this conversation's attachment folders, removed when it starts anew
 
     def emit(self, events: queue.Queue, event: dict) -> None:
         if event["type"] in ("text", "tool", "tool_error", "error", "me"):
@@ -268,8 +270,14 @@ class BaseAgent:
 
     def save_attachments(self, turn: str, files) -> list[str]:
         """Files the person attached to a message: kept outside git (`.aeradex/lokal/chat/<turn>/`) until the
-        agent files them (inbox, employee) or the conversation starts anew. Returns paths relative to the book."""
+        agent files them (inbox, employee) or the conversation starts anew; left-overs of conversations that ended
+        otherwise go after a week. Returns paths relative to the book."""
+        import time
         from ..files import slug
+        base = self.attachments_dir()
+        for old in base.iterdir() if base.is_dir() else []:
+            if old.is_dir() and time.time() - old.stat().st_mtime > ATTACHMENT_DAYS * 86400:
+                shutil.rmtree(old, ignore_errors=True)
         out = []
         for name, data in files:
             name = Path(name or "datei").name
@@ -281,6 +289,7 @@ class BaseAgent:
                 n += 1
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
+            self.attached.add(target.parent)
             out.append(target.relative_to(self.root).as_posix())
         return out
 
@@ -302,7 +311,9 @@ class BaseAgent:
             if not self.busy:
                 self.items.clear()
                 self.forget()
-                shutil.rmtree(self.attachments_dir(), ignore_errors=True)
+                for folder in self.attached:
+                    shutil.rmtree(folder, ignore_errors=True)
+                self.attached.clear()
 
     def forget(self) -> None:
         pass

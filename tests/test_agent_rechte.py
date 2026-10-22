@@ -135,7 +135,7 @@ def test_chat_send_takes_files(book, monkeypatch):
         while events.get(timeout=5)["type"] != "done":
             pass
         assert c.post("/chat/neu", headers=h).status_code == 200
-        assert not (book.root / tools.ATTACHMENTS).exists()
+        assert not list((book.root / tools.ATTACHMENTS).rglob("*.*"))
         assert c.post("/chat/send", data={"message": ""}, headers=h).json()["ok"] is False
 
 

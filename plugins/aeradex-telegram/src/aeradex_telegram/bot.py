@@ -36,7 +36,7 @@ def help_text(cfg: Config) -> str:
     return HELP.format(name=cfg.assistant_name or "dein aeradex-Agent",
                        anrufen="/anrufen live sprechen · " if cfg.voice_ready() else "")
 
-UPLOAD_SUFFIXES = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp")
+UPLOAD_SUFFIXES = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp", ".docx")
 
 
 def human_author(user: dict) -> str:
@@ -234,7 +234,8 @@ class TelegramBot:
         self.on_text(chat_id, text, speak=True if chat_id in self.voice_replies else None)
 
     def on_upload(self, chat_id: int, msg: dict) -> None:
-        """A receipt or invoice → inbox → Belegeingang (draft). Nothing is booked."""
+        """A file for the agent, like an attachment in the browser: with a caption it does what the caption says (a
+        contract → the employee), without one a receipt goes to the Belegeingang (draft). Nothing is booked."""
         if msg.get("photo"):
             file_id, name = msg["photo"][-1]["file_id"], None
         else:
@@ -242,20 +243,15 @@ class TelegramBot:
         data, server_name = self.bot.download(file_id)
         name = _safe_name(name or server_name)
         if not name.lower().endswith(UPLOAD_SUFFIXES):
-            self.bot.send_text(chat_id, "Bitte PDF oder Foto schicken.")
+            self.bot.send_text(chat_id, "Bitte PDF, Foto oder Word-Datei schicken.")
             return
-        inbox = self.root / "inbox"
-        inbox.mkdir(exist_ok=True)
-        target = inbox / name
-        n = 1
-        while target.exists():
-            target = inbox / f"{Path(name).stem}-tg{n}{Path(name).suffix}"
-            n += 1
-        target.write_bytes(data)
+        saved = self.agent_for(chat_id).save_attachments(f"tg-{chat_id}-{int(time.time() * 1000)}", [(name, data)])
         caption = (msg.get("caption") or "").strip()
-        prompt = (f"Neuer Beleg aus Telegram: inbox/{target.name}. Lege ihn mit create_bill_draft an und kontiere ihn, "
-                  "wenn nötig (bill_draft, complete_bill_draft). Sag mir kurz, was es ist und was ich noch prüfen muss.")
-        self.on_text(chat_id, prompt + (f"\nHinweis von mir: {caption}" if caption else ""))
+        prompt = f"[Angehängte Datei aus Telegram: {saved[0]}]\n" + (caption or (
+            "Lies sie. Ist es eine Rechnung oder Quittung: mit attachment_to_inbox in die Inbox, mit create_bill_draft "
+            "anlegen und kontieren, wenn nötig (bill_draft, complete_bill_draft); sag mir kurz, was es ist und was ich "
+            "noch prüfen muss. Sonst sag mir, was drinsteht, und frag, was ich damit will."))
+        self.on_text(chat_id, prompt)
 
     def on_button(self, cb: dict) -> None:
         user = cb.get("from") or {}
