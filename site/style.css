@@ -506,3 +506,13 @@ footer li a:hover { color: var(--ink); }
 .nav ul a { white-space: nowrap; }
 @media (max-width: 1180px) { .nav ul a { padding: 6px 6px; } }
 @media (max-width: 960px) { .nav nav { display: none; } }
+
+/* ---------- Auf dem Handy ---------- */
+.mobil-grid { grid-template-columns: 1fr 520px; }
+.mobil-grid .sec-head { margin-bottom: 24px; }
+.phones { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.phones .phone:last-child { margin-top: 48px; }
+.phone.shot { padding: 8px; border-radius: 30px; }
+.phone.shot > img { border-radius: 23px; width: 100%; height: auto; background: none; }
+@media (max-width: 1040px) { .mobil-grid { grid-template-columns: 1fr; } .phones { max-width: 520px; } }
+@media (max-width: 640px) { .phones { gap: 12px; } .phones .phone:last-child { margin-top: 28px; } }

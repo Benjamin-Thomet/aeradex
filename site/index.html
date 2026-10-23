@@ -7,7 +7,7 @@
 <meta name="description" content="aeradex ist ein offenes, agentisches ERP für Schweizer KMU, mit einer vollständigen Buchhaltung im Kern. Dein Agent bereitet vor, die Engine rechnet, du gibst frei. Open Source unter der AGPL.">
 <meta name="theme-color" content="#08090a">
 <meta property="og:title" content="aeradex — Das offene ERP, das dein Agent führen kann">
-<meta property="og:description" content="Offenes, agentisches ERP für Schweizer KMU, mit Buchhaltung im Kern. Belege, QR-Rechnungen, Bank, MWST, Lohn, Offerten, Zeiterfassung im Team — als lesbare Dateien in git. Im Browser, per Chat, am Telefon oder in Telegram.">
+<meta property="og:description" content="Offenes, agentisches ERP für Schweizer KMU, mit Buchhaltung im Kern. Belege, QR-Rechnungen, Kunden, Bank, MWST, Lohn, Offerten, Zeiterfassung im Team — als lesbare Dateien in git. Im Browser, per Chat, am Telefon oder in Telegram.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="de_CH">
 <meta property="og:image" content="https://aeradex.ch/img/og.png">
@@ -172,10 +172,12 @@
         <button type="button" role="tab" aria-selected="true" id="tab-uebersicht" aria-controls="panel-uebersicht" data-shot="uebersicht" data-cap="<b>Übersicht.</b> Geld auf dem Konto, Ergebnis, offene Rechnungen und «Was ansteht». Jede Zeile führt dorthin, wo du es erledigst.">Übersicht</button>
         <button type="button" role="tab" aria-selected="false" id="tab-entwuerfe" aria-controls="panel-entwuerfe" data-shot="entwuerfe" data-cap="<b>Einkauf.</b> Eingelesene Quittungen und Lieferantenrechnungen als Entwürfe. Der Agent hat kontiert und begründet, du prüfst und gibst frei.">Einkauf</button>
         <button type="button" role="tab" aria-selected="false" id="tab-rechnung" aria-controls="panel-rechnung" data-shot="rechnung" data-cap="<b>Rechnung.</b> Positionen erfassen, MWST und Total rechnen sich live. Beim Ausstellen wird die Rechnung eingefroren, verbucht und als PDF mit QR-Zahlteil abgelegt.">Rechnung</button>
+        <button type="button" role="tab" aria-selected="false" id="tab-kunde" aria-controls="panel-kunde" data-shot="kunde" data-cap="<b>Kunden.</b> Umsatz, offene Rechnungen und Zahlungsverhalten, dazu ein Verlauf aus Gesprächen, Rechnungen und Zahlungen. Was du notierst, kommt mit Datum zum Nachfassen zurück.">Kunden</button>
         <button type="button" role="tab" aria-selected="false" id="tab-bank" aria-controls="panel-bank" data-shot="bank" data-cap="<b>Bank.</b> Eine Karte pro offener Bewegung, daneben der passende Vorschlag. Ein Klick auf OK bucht, sichere Vorschläge auch alle auf einmal.">Bank</button>
         <button type="button" role="tab" aria-selected="false" id="tab-lohn" aria-controls="panel-lohn" data-shot="lohn" data-cap="<b>Lohn.</b> Jede Abrechnung mit Basis, Satz und Betrag pro Abzug. Abgeschlossen ist sie eingefroren und trägt einen Fingerprint.">Lohn</button>
         <button type="button" role="tab" aria-selected="false" id="tab-mwst" aria-controls="panel-mwst" data-shot="mwst" data-cap="<b>MWST.</b> Die Abrechnung nach ESTV-Ziffern, daneben jeder Code mit seinen Belegen. Als PDF oder eMWST-Datei fürs ESTV-Portal.">MWST</button>
         <button type="button" role="tab" aria-selected="false" id="tab-berichte" aria-controls="panel-berichte" data-shot="berichte" data-cap="<b>Berichte.</b> Erfolgsrechnung und Bilanz nach OR-Gliederung für jede Periode, mit Vergleich. Als PDF, Excel oder CSV.">Berichte</button>
+        <button type="button" role="tab" aria-selected="false" id="tab-abschluss" aria-controls="panel-abschluss" data-shot="abschluss" data-cap="<b>Abschluss.</b> Eine Checkliste durch das Jahresende; aeradex hakt ab, was es selbst erkennt. Bestände wie Material oder angefangene Arbeiten bucht es als Differenz zum Saldo.">Abschluss</button>
         <button type="button" role="tab" aria-selected="false" id="tab-verlauf" aria-controls="panel-verlauf" data-shot="verlauf" data-cap="<b>Verlauf.</b> Jede Änderung ist ein git-Commit: wer, wann, was. Was der Agent getan hat, ist markiert.">Verlauf</button>
       </div>
       <div class="window shot-wrap" id="shotWrap">
@@ -183,13 +185,39 @@
         <div class="product-panel" id="panel-uebersicht" role="tabpanel" aria-labelledby="tab-uebersicht" tabindex="0"><h3 class="fallback-title">Übersicht</h3><div class="frames"><img class="l" src="img/ui-uebersicht-light.webp" alt="aeradex Übersicht: flüssige Mittel, Ergebnis, offene Debitoren, was ansteht, und das Agent-Panel" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-uebersicht-dark.webp" alt="aeradex Übersicht: flüssige Mittel, Ergebnis, offene Debitoren, was ansteht, und das Agent-Panel" width="2000" height="1250" loading="lazy"></div></div>
         <div class="product-panel" id="panel-entwuerfe" role="tabpanel" aria-labelledby="tab-entwuerfe" tabindex="0"><h3 class="fallback-title">Einkauf</h3><div class="frames"><img class="l" src="img/ui-entwuerfe-light.webp" alt="aeradex Einkauf › Entwürfe: drei Quittungen, vom Agenten kontiert, bereit zur Freigabe" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-entwuerfe-dark.webp" alt="aeradex Einkauf › Entwürfe: drei Quittungen, vom Agenten kontiert, bereit zur Freigabe" width="2000" height="1250" loading="lazy"></div></div>
         <div class="product-panel" id="panel-rechnung" role="tabpanel" aria-labelledby="tab-rechnung" tabindex="0"><h3 class="fallback-title">Rechnung</h3><div class="frames"><img class="l" src="img/ui-rechnung-light.webp" alt="aeradex Verkauf › Neue Rechnung: drei Positionen, MWST 8.1 % und Total live berechnet" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-rechnung-dark.webp" alt="aeradex Verkauf › Neue Rechnung: drei Positionen, MWST 8.1 % und Total live berechnet" width="2000" height="1250" loading="lazy"></div></div>
+        <div class="product-panel" id="panel-kunde" role="tabpanel" aria-labelledby="tab-kunde" tabindex="0"><h3 class="fallback-title">Kunden</h3><div class="frames"><img class="l" src="img/ui-kunde-light.webp" alt="aeradex Verkauf › Kunden: Umsatz, Rechnungen, Verlauf und Wiedervorlagen eines Kunden" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-kunde-dark.webp" alt="aeradex Verkauf › Kunden: Umsatz, Rechnungen, Verlauf und Wiedervorlagen eines Kunden" width="2000" height="1250" loading="lazy"></div></div>
         <div class="product-panel" id="panel-bank" role="tabpanel" aria-labelledby="tab-bank" tabindex="0"><h3 class="fallback-title">Bank</h3><div class="frames"><img class="l" src="img/ui-bank-light.webp" alt="aeradex Bank › Abgleichen: offene Bankbewegungen mit sicheren Vorschlägen und OK-Knopf" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-bank-dark.webp" alt="aeradex Bank › Abgleichen: offene Bankbewegungen mit sicheren Vorschlägen und OK-Knopf" width="2000" height="1250" loading="lazy"></div></div>
         <div class="product-panel" id="panel-lohn" role="tabpanel" aria-labelledby="tab-lohn" tabindex="0"><h3 class="fallback-title">Lohn</h3><div class="frames"><img class="l" src="img/ui-lohn-light.webp" alt="aeradex Lohn: Lohnabrechnung September mit AHV/IV/EO, ALV, NBU, KTG, BVG und Nettolohn" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-lohn-dark.webp" alt="aeradex Lohn: Lohnabrechnung September mit AHV/IV/EO, ALV, NBU, KTG, BVG und Nettolohn" width="2000" height="1250" loading="lazy"></div></div>
         <div class="product-panel" id="panel-mwst" role="tabpanel" aria-labelledby="tab-mwst" tabindex="0"><h3 class="fallback-title">MWST</h3><div class="frames"><img class="l" src="img/ui-mwst-light.webp" alt="aeradex Buchhaltung › MWST: Abrechnung 3. Quartal nach ESTV-Ziffern mit Aufteilung nach Code und Belegen" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-mwst-dark.webp" alt="aeradex Buchhaltung › MWST: Abrechnung 3. Quartal nach ESTV-Ziffern mit Aufteilung nach Code und Belegen" width="2000" height="1250" loading="lazy"></div></div>
         <div class="product-panel" id="panel-berichte" role="tabpanel" aria-labelledby="tab-berichte" tabindex="0"><h3 class="fallback-title">Berichte</h3><div class="frames"><img class="l" src="img/ui-berichte-light.webp" alt="aeradex Buchhaltung › Berichte: Erfolgsrechnung 2026" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-berichte-dark.webp" alt="aeradex Buchhaltung › Berichte: Erfolgsrechnung 2026" width="2000" height="1250" loading="lazy"></div></div>
+        <div class="product-panel" id="panel-abschluss" role="tabpanel" aria-labelledby="tab-abschluss" tabindex="0"><h3 class="fallback-title">Abschluss</h3><div class="frames"><img class="l" src="img/ui-abschluss-light.webp" alt="aeradex Buchhaltung › Abschluss: Checkliste für den Jahresabschluss" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-abschluss-dark.webp" alt="aeradex Buchhaltung › Abschluss: Checkliste für den Jahresabschluss" width="2000" height="1250" loading="lazy"></div></div>
         <div class="product-panel" id="panel-verlauf" role="tabpanel" aria-labelledby="tab-verlauf" tabindex="0"><h3 class="fallback-title">Verlauf</h3><div class="frames"><img class="l" src="img/ui-verlauf-light.webp" alt="aeradex Verlauf: Commits von Anna Muster und vom Agenten, jeweils markiert" width="2000" height="1250" loading="lazy"><img class="d" src="img/ui-verlauf-dark.webp" alt="aeradex Verlauf: Commits von Anna Muster und vom Agenten, jeweils markiert" width="2000" height="1250" loading="lazy"></div></div>
       </div>
       <p class="ui-caption" id="uiCap" aria-live="polite"><b>Übersicht.</b> Geld auf dem Konto, Ergebnis, offene Rechnungen und «Was ansteht». Jede Zeile führt dorthin, wo du es erledigst.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Unterwegs ============ -->
+<section class="sec sec-mobil" id="unterwegs" aria-labelledby="mo-h">
+  <div class="wrap">
+    <div class="team-grid mobil-grid">
+      <div>
+        <div class="sec-head reveal">
+          <p class="label"><span>Neu</span>Auf dem Handy</p>
+          <h2 id="mo-h">Beleg fotografieren.<br><span class="dim">Kunde anrufen. Erledigt.</span></h2>
+          <p class="intro">Eine eigene Ansicht fürs Handy, als App installierbar. Was heute ansteht, die Kunden mit Anruf, E-Mail und Navigation, Rechnungen und Belege zum Freigeben.</p>
+        </div>
+        <ul class="os-points">
+          <li class="reveal"><h3>Scannen statt abtippen</h3><p>aeradex findet das Blatt im Foto, du kannst die Ecken verschieben, daraus wird ein PDF im Belegeingang. Gelesen und kontiert wird wie im Büro.</p></li>
+          <li class="reveal"><h3>Notieren, was besprochen wurde</h3><p>Nach dem Anruf ein Satz zum Kunden, mit Datum zum Nachfassen. Er erscheint in «Was ansteht», auf dem Handy und am Schreibtisch.</p></li>
+          <li class="reveal"><h3>Dem Agenten diktieren</h3><p>Statt tippen sprechen: Der Text landet im Eingabefeld, gesendet wird erst, wenn du willst (mit dem Plugin aeradex-anruf).</p></li>
+        </ul>
+      </div>
+      <div class="phones reveal" aria-label="aeradex auf dem Handy">
+        <figure class="phone shot"><img class="l" src="img/ui-handy-heute-light.webp" alt="Handy-Ansicht Heute: Geld, Nachfassen, überfällige Rechnungen, Belege" width="780" height="1688" loading="lazy"><img class="d" src="img/ui-handy-heute-dark.webp" alt="Handy-Ansicht Heute: Geld, Nachfassen, überfällige Rechnungen, Belege" width="780" height="1688" loading="lazy"></figure>
+        <figure class="phone shot"><img class="l" src="img/ui-handy-kunde-light.webp" alt="Handy-Ansicht eines Kunden mit Anrufen, E-Mail, Navigieren und Notieren" width="780" height="1688" loading="lazy"><img class="d" src="img/ui-handy-kunde-dark.webp" alt="Handy-Ansicht eines Kunden mit Anrufen, E-Mail, Navigieren und Notieren" width="780" height="1688" loading="lazy"></figure>
+      </div>
     </div>
   </div>
 </section>
@@ -332,7 +360,7 @@
       <article class="card c-lohn reveal">
         <span class="card-tag">Lohn</span>
         <h3>Lohnlauf, Quellensteuer, Lohnausweis.</h3>
-        <p>AHV/IV/EO, ALV, UVG, KTG, BVG, FAK und Quellensteuer nach ESTV-Tarifen. Lohnausweis Formular 11.</p>
+        <p>AHV/IV/EO, ALV, UVG, KTG, BVG, FAK und Quellensteuer nach ESTV-Tarifen. Lohnausweis Formular 11, Lohnkonto und Jahres-Lohnmeldungen.</p>
       </article>
       <article class="card c-dossier reveal">
         <span class="card-tag">Treuhand</span>
@@ -357,6 +385,14 @@
         <li><b>Spesen und Budget</b>Auslagen mit dem nächsten Lohn auszahlen, Budget gegen Ist pro Monat.</li>
         <li><b>Gesellschaft</b>Gewinnverwendung, Dividende mit Verrechnungssteuer und Anhang zur Jahresrechnung.</li>
         <li><b>Rechtsformen</b>GmbH, AG, Einzelfirma und Verein, jeweils mit passendem Kontenplan.</li>
+        <li><b>Kunden</b>Umsatz, Zahlungsverhalten, Verlauf aus Gesprächen und Rechnungen, Wiedervorlagen zum Nachfassen.</li>
+        <li><b>Rabatt und Akonto</b>Rabatt in Prozent, Akontorechnungen, die die Schlussrechnung anrechnet. Logo im Briefkopf.</li>
+        <li><b>Jahresabschluss</b>Checkliste durchs Jahresende, Abschlussbuchungen für Bestände, Delkredere und Privatanteile.</li>
+        <li><b>Umstieg</b>Eröffnungsbilanz aus der Saldenliste der bisherigen Buchhaltung, Geschäftsjahre eröffnen und sperren.</li>
+        <li><b>Beleg auslesen</b>Quittung oder Kartenabrechnung ins Journal ziehen: aeradex macht daraus fertige Zeilen.</li>
+        <li><b>Benutzer</b>Einladungslinks statt E-Mail, Rollen lesen, buchhaltung und admin; im Journal steht, wer gebucht hat.</li>
+        <li><b>Lohnmeldungen</b>Lohnkonto der Firma und die Jahresmeldungen an AHV, UVG, KTG, BVG und Quellensteuer.</li>
+        <li><b>Datensicherung</b>Alle Daten als CSV und PDF mit den Originalen, als ein ZIP mit Prüfsummen.</li>
         <li><b>Jev, optional</b>Schlägt für offene Bankbewegungen das Gegenkonto vor, mit kalibrierter Sicherheit. Gebucht wird nie automatisch.</li>
       </ul>
     </div>
@@ -504,7 +540,7 @@
           <li>camt.054: Sammelgutschriften im Detail</li>
           <li>Lohnmeldungen über ELM, sofern eine Zertifizierung durch Swissdec gelingt</li>
         </ul>
-        <ul class="stack" aria-label="Heute in v0.8"><li>Finanzbuchhaltung</li><li>MWST + eMWST</li><li>Bank camt.053</li><li>QR-Rechnung CHF/EUR</li><li>Mahnwesen</li><li>Kreditoren + pain.001</li><li>Fremdwährungen</li><li>Lohn + Spesen</li><li>Abschluss-Dossier</li><li>Zeiterfassung (Plugin)</li><li>Team-App</li><li>Telegram + Anruf</li><li>CLI + MCP</li><li>Server mit Login</li><li>Server-Vorlagen</li></ul>
+        <ul class="stack" aria-label="Heute in v0.8"><li>Finanzbuchhaltung</li><li>MWST + eMWST</li><li>Bank camt.053</li><li>QR-Rechnung CHF/EUR</li><li>Mahnwesen</li><li>Kunden + Wiedervorlagen</li><li>Kreditoren + pain.001</li><li>Fremdwährungen</li><li>Lohn + Spesen</li><li>Jahresabschluss + Dossier</li><li>Lohnmeldungen</li><li>Handy-Ansicht + Scanner</li><li>Datensicherung</li><li>Zeiterfassung (Plugin)</li><li>Team-App</li><li>Telegram + Anruf</li><li>CLI + MCP</li><li>Server mit Login</li><li>Server-Vorlagen</li></ul>
       </article>
       <article class="path reveal">
         <span class="card-tag">Plugins</span>
@@ -581,8 +617,9 @@
       <details><summary>Für welche Rechtsformen eignet sich aeradex?</summary><p>Für GmbH und AG, Einzelfirmen und Vereine. Beim Anlegen eines Buchs wählt aeradex den passenden Kontenplan, den du danach anpassen kannst.</p></details>
       <details><summary>Können meine Mitarbeitenden ihre Stunden erfassen?</summary><p>Ja, mit der Team-App auf dem Handy: Zeit, Material, Ferien und Krankheit. Sie sehen ihre Überstunden, ihre Ferien und ihre Lohnabrechnungen, aber keine Preise und keine Löhne anderer. Im Büro wird jeder Eintrag geprüft, bevor er verrechnet wird.</p></details>
       <details><summary>Läuft aeradex auch, wenn mein PC aus ist?</summary><p>Ja, auf einem eigenen Server. Dort laufen Buchhaltung mit Login, Team-App und Telegram-Sekretärin rund um die Uhr; <a href="https://github.com/Benjamin-Thomet/aeradex/tree/main/deploy">die Server-Vorlagen</a> richten alles ein. Claude Code auf deinem PC arbeitet dann über einen eingeschränkten Zugang mit demselben Buch.</p></details>
+      <details><summary>Können mehrere Personen mit demselben Buch arbeiten?</summary><p>Ja, auf dem eigenen Server mit Login. Du lädst Personen über einen Link ein, ganz ohne E-Mail-Versand, und gibst ihnen eine Rolle: lesen (etwa für die Treuhand), buchhaltung oder admin. Im Journal und im Verlauf steht bei jeder Buchung, wer sie gemacht hat.</p></details>
       <details><summary>Kann ich mehrere Firmen führen?</summary><p>Ja, jede Firma ist ein eigenes Buch, also ein eigener Ordner. Mehrere Mandanten in einer Server-Instanz sind in Arbeit.</p></details>
-      <details><summary>Wie sichere ich meine Daten?</summary><p>Das Buch ist ein git-Repository. Ein zweites Remote auf einem anderen Server oder ein gewöhnliches Backup des Ordners genügt. Zusätzlich lässt sich das ganze Buch als eine Datei exportieren, auf Wunsch verschlüsselt.</p></details>
+      <details><summary>Wie sichere ich meine Daten?</summary><p>Das Buch ist ein git-Repository. Ein zweites Remote auf einem anderen Server oder ein gewöhnliches Backup des Ordners genügt. Zusätzlich lässt sich das ganze Buch als eine Datei exportieren, auf Wunsch verschlüsselt, und die Datensicherung legt alle Daten als CSV und PDF mit den Originalbelegen in ein ZIP, lesbar auch ohne aeradex.</p></details>
       <details><summary>Was passiert, wenn es aeradex nicht mehr gibt?</summary><p>Deine Bücher bleiben Markdown- und YAML-Dateien, lesbar in jedem Editor. Der Quellcode bleibt unter der AGPL verfügbar und kann von allen weitergeführt werden.</p></details>
       <details><summary>Was kann aeradex noch nicht?</summary><p>Lohnmeldungen über ELM (Swissdec) erfordern eine Zertifizierung und sind nicht möglich. Teste die Abläufe zuerst mit einem Testbuch.</p></details>
       </div>
