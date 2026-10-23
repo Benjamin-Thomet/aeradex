@@ -298,3 +298,26 @@ def test_relearning_keeps_the_old_format(book):
     res = api.bank_format_propose(b, _inbox(b, "neu.csv", renamed), "UBS Kontoauszug", **spec)
     assert res["format"] == "ubs-kontoauszug-2"
     assert bankformat.formats(Book(b.root))["ubs-kontoauszug"]["bestaetigt"]   # old exports still read
+
+
+def test_excel_with_a_wrong_dimension_is_read_completely():
+    """Wise exports declare the sheet as `<dimension ref="A1"/>`; read-only openpyxl would then see one cell."""
+    openpyxl = pytest.importorskip("openpyxl")
+    import io
+    import re
+    import zipfile
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["ID", "Datum", "Betrag", "Laufender Saldo"])
+    ws.append(["T-1", "2026-08-01", 100.0, 100.0])
+    buf = io.BytesIO()
+    wb.save(buf)
+    src, out = zipfile.ZipFile(io.BytesIO(buf.getvalue())), io.BytesIO()
+    with zipfile.ZipFile(out, "w") as z:
+        for item in src.infolist():
+            data = src.read(item)
+            if item.filename.startswith("xl/worksheets/"):
+                data = re.sub(rb'<dimension ref="[^"]*"/>', b'<dimension ref="A1"/>', data)
+            z.writestr(item, data)
+    rows = bankformat.rows_of("wise.xlsx", out.getvalue())
+    assert rows[0] == ["ID", "Datum", "Betrag", "Laufender Saldo"] and rows[1][0] == "T-1"

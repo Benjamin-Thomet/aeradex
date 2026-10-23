@@ -88,7 +88,8 @@ def rows_of(filename: str, data: bytes, trennzeichen: str = "") -> list[list[str
             raise BookError("Für Excel-Auszüge fehlt openpyxl: pip install 'aeradex[excel]' — "
                             "oder den Auszug als CSV exportieren") from None
         sheet = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True).worksheets[0]
-        raw = [[_cell(c) for c in row] for row in sheet.iter_rows(values_only=True)]
+        sheet.reset_dimensions()        # some exports (Wise) declare the sheet as just A1; read what is there
+        raw =[[_cell(c) for c in row] for row in sheet.iter_rows(values_only=True)]
     else:
         text = _decode(data)
         raw = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), delimiter=trennzeichen or _delimiter(text))]
