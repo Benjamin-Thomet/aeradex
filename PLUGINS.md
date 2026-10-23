@@ -1,7 +1,7 @@
 # Plugins
 
 Plugins erweitern aeradex, ohne aeradex zu verändern. Wie man eines baut: [docs/plugins.md](docs/plugins.md).
-Massgebend ist der Katalog `src/aeradex/data/plugin_katalog.json` (in aeradex: Einstellungen → Plugins → Katalog);
+Massgebend ist der Katalog `src/aeradex/data/plugin_katalog.json` (in aeradex: Einstellungen › Funktionen › Katalog);
 eigenes Plugin per Pull Request dort eintragen, ein Maintainer prüft es (siehe docs/plugins.md).
 
 | Plugin | Art | Was es tut | Stand |

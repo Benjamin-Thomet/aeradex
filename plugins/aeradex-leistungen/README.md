@@ -2,7 +2,7 @@
 
 Zeit und Material erfassen, Abwesenheiten, Offerten, Projekte und Abrechnung an Kunden für
 [aeradex](../../README.md) — gebaut für das Büro: Tastatur zuerst, eine Zeile statt eines Formulars. Abgerechnet wird
-über die normalen aeradex-Rechnungen (QR-Rechnung, Debitor 1100 an Ertrag, MWST). Oberfläche: **Plugins → Leistungen**
+über die normalen aeradex-Rechnungen (QR-Rechnung, Debitor 1100 an Ertrag, MWST). Oberfläche: eigener Bereich **Leistungen**
 (Erfassen, Woche, Abwesenheiten, Auswertung, Stammdaten) und **Offerten**.
 
 **Erfassen** (Startseite) — der einfache Weg: Datum, Kunde, *Was* (vorerfasste Leistungen in h und Produkte aus dem

@@ -1,4 +1,7 @@
 berichte/
 .aeradex/write.lock
+.aeradex/transaction/
+.aeradex/lokal/
+**/.aeradex-tmp-*
 .DS_Store
 __pycache__/

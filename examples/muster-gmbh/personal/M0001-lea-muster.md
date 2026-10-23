@@ -10,6 +10,7 @@ adresse:
   land: CH
 ahv_nr: 756.1234.5678.97
 geburtsdatum: '1990-04-01'
+geschlecht: ''
 eintritt: '2026-01-01'
 austritt: null
 lohnart: monat
@@ -23,8 +24,11 @@ ferien_inbegriffen: false
 bvg_betrag: 220.00
 ag_bvg_betrag: 0.00
 kinderzulagen: 0.00
+aufenthalt: ''
+qst_pflicht: auto
 qst: null
 qst_satz: 0.00
+iban: ''
 aktiv: true
 ---
 

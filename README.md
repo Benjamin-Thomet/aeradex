@@ -3,8 +3,9 @@
 <h1 align="center">aeradex</h1>
 
 <p align="center"><strong>Swiss bookkeeping your agent can run.</strong><br>
-Die erste agentenorientierte Open-Source-Buchhaltung für die Schweiz: Finanzbuchhaltung, Lohnbuchhaltung und
-QR-Rechnungen, gespeichert als lesbare Textdateien in git, bedient von dir oder von einem LLM-Agenten.</p>
+Die erste agentenorientierte Open-Source-Buchhaltung für die Schweiz: Finanzbuchhaltung, Lohnbuchhaltung,
+QR-Rechnungen und Kunden, gespeichert als lesbare Textdateien in git, bedient von dir oder von einem LLM-Agenten,
+im Browser, auf dem Handy oder per Chat.</p>
 
 <p align="center">
   <a href="https://aeradex.ch"><img alt="Website" src="https://img.shields.io/badge/website-aeradex.ch-c8102e"></a>
@@ -65,8 +66,11 @@ Demofirma aus `examples/muster-gmbh`; GitHub zeigt sie hell oder dunkel, passend
 <tr><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-uebersicht-dark.webp"><img src="docs/screenshots/ui-uebersicht-light.webp" alt="aeradex Übersicht"></picture><br><strong>Übersicht</strong><br><sub>Flüssige Mittel, Ergebnis, offene Debitoren und «Was ansteht»: jede Zeile führt dorthin, wo du es erledigst. Rechts das Agent-Panel.</sub></td><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-entwuerfe-dark.webp"><img src="docs/screenshots/ui-entwuerfe-light.webp" alt="aeradex Einkauf › Entwürfe"></picture><br><strong>Einkauf › Entwürfe</strong><br><sub>Hochgeladene Quittungen und Lieferantenrechnungen, vom Agenten kontiert und begründet, bereit zur Freigabe.</sub></td></tr>
 <tr><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-rechnung-dark.webp"><img src="docs/screenshots/ui-rechnung-light.webp" alt="aeradex Verkauf › Neue Rechnung"></picture><br><strong>Verkauf › Neue Rechnung</strong><br><sub>Positionen, MWST und Total live gerechnet; das PDF trägt den Swiss-QR-Zahlteil.</sub></td><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-bank-dark.webp"><img src="docs/screenshots/ui-bank-light.webp" alt="aeradex Bank › Abgleichen"></picture><br><strong>Bank › Abgleichen</strong><br><sub>Eine Karte pro offener Bewegung mit dem passenden Kreditor, Debitor oder der Bankregel: ein Klick auf OK.</sub></td></tr>
 <tr><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-lohn-dark.webp"><img src="docs/screenshots/ui-lohn-light.webp" alt="aeradex Lohn"></picture><br><strong>Lohn</strong><br><sub>Lohnabrechnung mit AHV/IV/EO, ALV, NBU, KTG, BVG und Quellensteuer; Lohnausweis Formular 11.</sub></td><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-mwst-dark.webp"><img src="docs/screenshots/ui-mwst-light.webp" alt="aeradex Buchhaltung › MWST"></picture><br><strong>Buchhaltung › MWST</strong><br><sub>Abrechnung pro Quartal nach ESTV-Ziffern, Herkunft jeder Zahl, PDF im Aufbau des Formulars und eMWST-Datei.</sub></td></tr>
+<tr><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-kunde-dark.webp"><img src="docs/screenshots/ui-kunde-light.webp" alt="aeradex Verkauf › Kunden: ein Kunde"></picture><br><strong>Verkauf › Kunden</strong><br><sub>Umsatz, offene Rechnungen, Verlauf aus Gesprächen, Rechnungen und Zahlungen, Wiedervorlagen zum Nachfassen.</sub></td><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-abschluss-dark.webp"><img src="docs/screenshots/ui-abschluss-light.webp" alt="aeradex Buchhaltung › Abschluss"></picture><br><strong>Buchhaltung › Abschluss</strong><br><sub>Checkliste für den Jahresabschluss, Abschlussbuchungen für Bestände, Jahresrechnung und Unterlagen für die Treuhand.</sub></td></tr>
 <tr><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-berichte-dark.webp"><img src="docs/screenshots/ui-berichte-light.webp" alt="aeradex Buchhaltung › Berichte"></picture><br><strong>Buchhaltung › Berichte</strong><br><sub>Erfolgsrechnung, Bilanz, Geldfluss und Kennzahlen für jede Periode, mit Vorjahr oder Budget.</sub></td><td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-verlauf-dark.webp"><img src="docs/screenshots/ui-verlauf-light.webp" alt="aeradex Verlauf"></picture><br><strong>Verlauf</strong><br><sub>Jede Änderung ein git-Commit, Mensch oder Agent jeweils markiert.</sub></td></tr>
 </table>
+
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-handy-heute-dark.webp"><img src="docs/screenshots/ui-handy-heute-light.webp" width="260" alt="aeradex auf dem Handy: Heute"></picture>&nbsp;&nbsp;<picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ui-handy-kunde-dark.webp"><img src="docs/screenshots/ui-handy-kunde-light.webp" width="260" alt="aeradex auf dem Handy: ein Kunde"></picture><br><sub><strong>Auf dem Handy</strong>: Geld, Nachfassen, überfällige Rechnungen und Belege auf einen Blick; Kunden anrufen, hinfahren, notieren; Belege scannen.</sub></p>
 
 ## Schnellstart
 
@@ -116,22 +120,23 @@ aeradex ui                        # öffnet aeradex im Browser (nur lokal, mit Z
 
 Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird geprüft und in git festgehalten.
 
-Sechs Bereiche, jeder mit einem klaren Ablauf. Belege lädst du an einer Stelle hoch (**Beleg hochladen** oben
+Sechs Bereiche, jeder mit einem klaren Ablauf (dazu eigene Bereiche von Plugins, z.B. *Leistungen*). Belege lädst du an einer Stelle hoch (**Beleg hochladen** oben
 rechts); aeradex erkennt die Art und legt einen Entwurf an. Gebucht wird erst, wenn du freigibst.
 
 | Bereich | Was du dort machst |
 |---|---|
 | **Übersicht** | Liquidität, Ergebnis, offene Debitoren; **Was ansteht** als eine Liste, jede Zeile führt dorthin, wo du es erledigst; Inbox-Dateien einlesen |
 | **Einkauf** | Lieferantenrechnungen und Quittungen: **Entwürfe → Offen → Bezahlt** (plus Alle). Entwurf prüfen, «Freigeben» oder «Freigeben & nächster»; Zahlungslauf als pain.001, Lieferanten, offene Posten |
-| **Verkauf** | Rechnungen mit Live-Total und QR-PDF: **Entwürfe → Offen → Bezahlt** (plus Alle); externe Rechnungen einlesen und freigeben, Gutschrift, Storno, Kunden, Mahnungen, offene Posten |
+| **Verkauf** | Rechnungen mit Live-Total, Rabatt und QR-PDF: **Entwürfe → Offen → Bezahlt** (plus Alle); Akontorechnungen, die die Schlussrechnung anrechnet; externe Rechnungen einlesen, Gutschrift, Storno; **Kunden** mit Umsatz, Zahlungsverhalten, Verlauf und Wiedervorlagen; Mahnungen, offene Posten |
 | **Bank** | **Abgleichen** wie bei Xero: eine Karte pro offener Bewegung, daneben der passende Kreditor, Debitor, die Quittung, Bankregel oder frühere Buchung; ein Klick auf OK. Sonst «Suchen» (Name, Nummer, Betrag), «Neu buchen» (optional «Immer so buchen» als Regel) oder «Ignorieren». Dazu Bewegungen, Regeln und Saldoabstimmung |
-| **Lohn** | Lohnlauf pro Monat, Eingaben (Stunden, QST, Korrekturen), Abschluss, Lohnkonto, Lohnausweis |
-| **Buchhaltung** | Journal (Raster wie in Excel: Enter, leeres Datum = wie oben, Zeilen aus Excel einfügen), Agenten-Vorschläge freigeben, Kontenplan, Saldenliste, MWST nach ESTV-Ziffern, Berichte, Budget, Abschluss (Bilanz, Erfolgsrechnung, Anhang, Periode sperren) |
+| **Lohn** | Lohnlauf pro Monat, Eingaben (Stunden, QST, Korrekturen), Abschluss; Mitarbeitende mit Notizen und Dokumenten (Vertrag, Bewilligung); Lohnkonto der Firma, Jahres-Lohnmeldungen (AHV, UVG, KTG, BVG, QST), Lohnausweis; mit Plugin die **Team-App** |
+| **Buchhaltung** | Journal (Raster wie in Excel: Enter, leeres Datum = wie oben, Zeilen aus Excel einfügen; Beleg pro Zeile anhängen; **Beleg auslesen** macht aus einer Quittung oder Kartenabrechnung fertige Zeilen; Spalte «Von» zeigt, wer gebucht hat), Agenten-Vorschläge freigeben, Kontenplan, Saldenliste, MWST nach ESTV-Ziffern, Berichte, Budget, **Abschluss** (Checkliste, Abschlussbuchungen, Jahresrechnung, Unterlagen, Periode sperren) |
 
-Oben rechts: **Verlauf** (jeder Commit mit Diff, Agenten markiert) und **Einstellungen** (Firma, IBAN-Prüfung,
-Systemkonten, Lohnsätze, Agentenmodus).
+Oben rechts: **Verlauf** (jeder Commit mit Diff, Agenten markiert; filtern nach Beleg, Person oder Text) und
+**Einstellungen** (Firma mit IBAN-Prüfung und Logo im Briefkopf, Buchhaltung, Geschäftsjahre, Lohn, Agent & KI,
+Funktionen zum Ein- und Ausschalten, Benutzer, Buch). Im Menü der Firma: **Datensicherung** und die Handy-Ansicht.
 
-Rechts sitzt der **Agent** (Claude): «Bereite die Quittungen in der Inbox vor», «Welche Rechnungen sind überfällig?». Er arbeitet mit denselben Werkzeugen wie der MCP-Server; seine Vorschläge erscheinen sofort unter *Buchhaltung › Vorschläge*, eingelesene Belege unter *Einkauf/Verkauf › Entwürfe*. Er läuft wahlweise über **Claude Code**, **Codex** oder **opencode** (jeweils dein eigener Login, kein zusätzlicher Schlüssel) oder über die Claude API (`ANTHROPIC_API_KEY`). Auswahl pro Buch unter *Einstellungen → Agent*, oder `AERADEX_CHAT_BACKEND=claude-code|codex|opencode|api`. Der Agent darf das Buch lesen, ändern kann er es nur über die aeradex-Werkzeuge (Codex läuft in der Read-only-Sandbox, opencode ohne Edit/Shell). Im Verlauf steht, welcher Agent was gemacht hat.
+Rechts sitzt der **Agent** (Claude): «Bereite die Quittungen in der Inbox vor», «Welche Rechnungen sind überfällig?». Dateien hängst du per Büroklammer oder Ziehen an die Nachricht (PDF, Bild, Word), etwa einen Arbeitsvertrag, den er bei der Person ablegt; diktieren geht per Mikrofon (mit Plugin aeradex-anruf). Er arbeitet mit denselben Werkzeugen wie der MCP-Server; seine Vorschläge erscheinen sofort unter *Buchhaltung › Vorschläge*, eingelesene Belege unter *Einkauf/Verkauf › Entwürfe*. Er läuft wahlweise über **Claude Code**, **Codex** oder **opencode** (jeweils dein eigener Login, kein zusätzlicher Schlüssel) oder über die Claude API (`ANTHROPIC_API_KEY`). Auswahl pro Buch unter *Einstellungen → Agent*, oder `AERADEX_CHAT_BACKEND=claude-code|codex|opencode|api`. Der Agent darf das Buch lesen, ändern kann er es nur über die aeradex-Werkzeuge (Codex läuft in der Read-only-Sandbox, opencode ohne Edit/Shell). Im Verlauf steht, welcher Agent was gemacht hat.
 
 **Eigene Agenten im Terminal** nutzen denselben MCP-Server:
 ```bash
@@ -156,6 +161,31 @@ Rollen `lesen`, `buchhaltung`, `admin`; jede Änderung trägt im git-Verlauf den
 Anleitung mit systemd, Caddy und Datensicherung: [docs/server.md](docs/server.md). Alles auf einmal (Buch mit
 Login, Team-App für Mitarbeitende, Telegram-Bot, Claude Code auf den PCs per SSH): [deploy/](deploy).
 
+**Benutzer** verwaltest du im Browser (Einstellungen › Benutzer): Einladungslinks bis zur eigenen Rolle, ohne
+E-Mail-Versand (der Link gilt 7 Tage, gespeichert wird nur seine Prüfsumme); Admins vergeben Rollen und
+Passwort-Links. Unter *Mein Konto* ändert jede Person Name und Passwort selbst.
+
+### Auf dem Handy
+
+`/m` ist eine schlanke Ansicht fürs Handy, als App auf den Startbildschirm installierbar (auf dem eigenen Server
+mit Login): **Heute** (Geld, Nachfassen, überfällige Rechnungen, Belege), **Kunden** (anrufen, E-Mail, navigieren,
+notieren), **Rechnungen** mit Filtern, **Scannen** (aeradex findet das Blatt im Foto, du kannst die Ecken
+verschieben, daraus wird ein PDF im Belegeingang), **Belege prüfen und buchen** und der **Agent** (Spracheingabe
+mit dem Plugin aeradex-anruf). Telefone landen automatisch dort; «Desktop-Ansicht» schaltet zurück.
+
+### Kunden
+
+Jeder Kunde hat eine eigene Seite: Umsatz dieses und letztes Jahr, offene und überfällige Beträge,
+Zahlungsverhalten, alle Rechnungen, und ein **Verlauf** aus Gesprächen, Rechnungen, Zahlungen und Mahnungen.
+Was besprochen wurde, notierst du mit Datum (Anruf, Besuch, E-Mail, Notiz), optional mit **Nachfassen am …**: die
+Wiedervorlage erscheint in «Was ansteht». Feste Infos (Zugang, Wünsche, Erreichbarkeit) und Herkunft stehen beim
+Kunden; mit dem Plugin Leistungen auch seine Objekte.
+```bash
+aeradex customer show K0001                     # Umsatz, Rechnungen, Zahlungsverhalten, Verlauf
+aeradex customer log K0001 "Offerte besprochen" --art anruf --nachfassen 2026-11-02
+aeradex customer followups                      # offene Wiedervorlagen
+```
+
 ### Debitoren und QR-Rechnungen
 ```bash
 aeradex customer add --name "Anna Beispiel" --firma "Beispiel AG" --strasse Marktgasse --nr 5 --plz 3011 --ort Bern
@@ -165,13 +195,17 @@ aeradex invoice match --betrag 1580 --text "<Zeile aus dem Bankauszug>"
 aeradex invoice pay R-2026-0001 --datum 2026-03-01
 aeradex receivables --pdf
 aeradex invoice create --kunde K0002 --pos "Beratung;10 h;150" --waehrung EUR   # QR-Rechnung in EUR, BAZG-Kurs
+aeradex invoice create --kunde K0001 --pos "Workshop;1;1200" --rabatt 10        # Rabatt in Prozent
+aeradex invoice create --kunde K0001 --pos "Anzahlung;1;5000" --akonto-rechnung # Akontorechnung (Erhaltene Anzahlungen)
+aeradex invoice create --kunde K0001 --pos "Malerarbeiten;1;12000" --akonto alle # Schlussrechnung rechnet sie an
 aeradex mahnung list                            # überfällige Rechnungen
 aeradex mahnung erstellen R-2026-0001           # Zahlungserinnerung → 2. → 3. Mahnung, je PDF mit QR-Zahlteil
 ```
 Rechnungen in EUR werden zum BAZG-Kurs des Rechnungsdatums gebucht; beim Zahlungseingang wird der Buchwert
 ausgeglichen und die Differenz als Kursgewinn/-verlust gebucht, Gutschriften laufen zum Rechnungskurs. Mahnungen
 tragen die Referenz der Rechnung, damit der Bankimport die Zahlung zuordnet; Gebühren und Verzugszins fügt aeradex
-nicht hinzu (in der Schweiz nur mit Grundlage in den AGB).
+nicht hinzu (in der Schweiz nur mit Grundlage in den AGB). Ein **Logo im Briefkopf** (Einstellungen › Firma, PNG oder
+JPEG) steht auf Rechnungen, Mahnungen, Offerten und Lohnabrechnungen; schon ausgestellte PDFs bleiben unverändert.
 
 ### MWST
 ```bash
@@ -334,7 +368,21 @@ auch ausserhalb dieses Zeitraums berücksichtigt und müssen abgeschlossen werde
 
 
 ### Abschluss
+
+In der Oberfläche führt **Buchhaltung › Abschluss** durch das Jahr: eine Checkliste (Belegeingang leer, Bank und
+Kasse abgestimmt, Löhne abgeschlossen, Bestände bewertet, MWST, Abgrenzungen …), aeradex hakt ab, was es selbst
+erkennt. **Abschlussbuchungen** für angefangene Arbeiten, Materialvorrat, Delkredere, Ferien- und
+Überstundenguthaben und Privatanteile: du gibst den Wert per 31.12. ein, gebucht wird die Differenz zum Saldo.
+Dann Jahresrechnung mit Gliederung, Unterlagen und Abschliessen.
+
+**Geschäftsjahre** (Einstellungen › Geschäftsjahre): gebucht wird nur in offenen Jahren; das nächste Jahr eröffnest
+du dort. Die **Eröffnungsbilanz** übernimmst du aus der bisherigen Buchhaltung, auch als Saldenliste (CSV, Excel
+oder eingefügt): aeradex erkennt die Vorzeichen und legt fehlende Konten an.
 ```bash
+aeradex abschluss 2026                          # Checkliste
+aeradex abschluss 2026 material --wert 4200     # Bestand per 31.12., gebucht wird die Differenz
+aeradex jahr-eroeffnen                          # nächstes Geschäftsjahr öffnen
+aeradex eroeffnung saldenliste-2025.xlsx        # Eröffnungsbilanz vorschlagen, dann --speichern
 aeradex report --jahr 2026 --pdf                # Bilanz, Erfolgsrechnung, Gewinnverwendung, Anhang
 aeradex allocation set 2026 --dividende 5000 --reserve 500
 aeradex allocation book 2026 --datum 2027-05-20 # nach dem GV-Beschluss
@@ -380,6 +428,14 @@ aeradex import-buch "Muster GmbH.aeradex"              # nur anzeigen, was drin 
 aeradex import-buch "Muster GmbH.aeradex" ~/buchhaltung/muster --passwort
 ```
 Beim Import prüft aeradex jede Datei gegen ihre Prüfsumme, übernimmt den git-Verlauf und führt `aeradex check` aus.
+
+**Datensicherung** (Firma-Menü › Datensicherung): jede Art Daten als CSV oder PDF und die Originaldateien, einzeln
+oder alles als ein ZIP mit Inhaltsverzeichnis und Prüfsummen, lesbar auch ohne aeradex.
+```bash
+aeradex sicherung --liste                       # welche Datenarten es gibt
+aeradex sicherung --originale                   # alles als ZIP, mit Belegen und Dokumenten
+aeradex sicherung --nur journal,kunden --format csv
+```
 
 ### Berichte und Budget
 Berichte für jede Periode — nicht nur zum Jahresende. Oberfläche: **Berichte** (oben), mit Diagramm, Export und
@@ -488,7 +544,10 @@ v0.8: Finanzbuchhaltung, MWST mit Bezugsteuer und eMWST-Export (eCH-0217), Banki
 Fremdwährungskonten) mit automatischem Abgleich und Bankregeln, Fremdwährungen mit BAZG-Tageskursen und
 Stichtagsbewertung, Belegeingang mit OCR und Agent (Quittungen, Lieferantenrechnungen, extern erstellte Rechnungen),
 Debitoren mit QR-Rechnung (CHF/EUR) und Mahnwesen, Kreditoren mit QR-Scan und pain.001 (auch Fremdwährung),
-Dividende mit Verrechnungssteuer, Lohn mit Spesen, Anlagenbuchhaltung (Plugin), Zeit- und Materialerfassung mit
+Kunden mit Verlauf und Wiedervorlagen, Rabatt und Akontorechnungen, Jahresabschluss mit Checkliste und
+Abschlussbuchungen, Geschäftsjahre und Eröffnungsbilanz aus der bisherigen Buchhaltung, Dividende mit
+Verrechnungssteuer, Lohn mit Spesen, Lohnkonto und Jahres-Lohnmeldungen, Datensicherung, Benutzer mit
+Einladungslinks, Handy-Ansicht mit Beleg-Scanner und Spracheingabe, Anlagenbuchhaltung (Plugin), Zeit- und Materialerfassung mit
 Abwesenheiten und Abrechnung an Kunden (Plugin), Team-App fürs Handy der Mitarbeitenden (Plugin), Sekretärin mit
 Stimme und Telegram (Plugin), Plugin-System mit eigenen Seiten, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit
 eingebautem Agenten, lokal oder als Server mit Login.
@@ -510,4 +569,4 @@ Mitgeliefert: HTMX (Zero-Clause BSD), Hanken Grotesk und IBM Plex Mono (SIL Open
 
 ### English summary
 
-aeradex is an open-source, agent-first accounting and payroll system for Swiss SMEs. Books are plain Markdown/YAML files in git; a deterministic Python engine does every calculation and validation, and the LLM never adds up numbers itself. It ships a CLI (`--json` everywhere) and an MCP server, enforces Swiss rules (OR 959a/b statements, KMU chart of accounts, Swiss QR-bill, AHV/ALV/BVG/UVG/KTG, withholding tax per KS 45, salary certificate form 11), and makes closed periods, issued invoices and closed payslips tamper-evident.
+aeradex is an open-source, agent-first accounting and payroll system for Swiss SMEs. Books are plain Markdown/YAML files in git; a deterministic Python engine does every calculation and validation, and the LLM never adds up numbers itself. Besides the ledger it covers customers (a small CRM with contact log and follow-ups), year-end closing, a phone view with a receipt scanner, and, as plugins, time tracking, fixed assets, a team app for employees and a voice/Telegram assistant. It ships a CLI (`--json` everywhere) and an MCP server, enforces Swiss rules (OR 959a/b statements, KMU chart of accounts, Swiss QR-bill, AHV/ALV/BVG/UVG/KTG, withholding tax per KS 45, salary certificate form 11), and makes closed periods, issued invoices and closed payslips tamper-evident.

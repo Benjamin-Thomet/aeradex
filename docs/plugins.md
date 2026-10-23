@@ -238,7 +238,7 @@ Neue, optionale Hooks erhöhen die Version nicht.
 
 Der **Katalog** (`src/aeradex/data/plugin_katalog.json`, später eine öffentliche https-Adresse über
 `AERADEX_PLUGIN_KATALOG`) listet die Plugins mit Beschreibung, Paket, Version und den Rechten in Klartext
-(«liest Kontoauszüge ein», «bucht eigene Dokumente ins Journal» …). Oberfläche: Einstellungen → Plugins → Katalog;
+(«liest Kontoauszüge ein», «bucht eigene Dokumente ins Journal» …). Oberfläche: Einstellungen › Funktionen › Katalog;
 Kommandozeile: `aeradex plugins katalog`.
 
 **Geprüft** heisst: ein Maintainer hat den Code gelesen, die Tests des Plugins laufen, und der Fingerabdruck
