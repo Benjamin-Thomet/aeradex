@@ -1750,6 +1750,16 @@ def bank_assign(book: Book, id: str, nummer: str) -> dict:
     return _done(book, f"Bankbewegung {id} mit {nummer} verbucht (Beleg {row.beleg})", touched, buchung=row)
 
 
+def bank_transfer(book: Book, id: str, konto: str, text: str = "") -> dict:
+    """Book an open movement as a transfer to/from another own bank account; the other account's movement
+    is reconciled with the same Beleg."""
+    _guard(book)
+    from . import bank
+    row, touched = bank.transfer(book, id, konto, text)
+    return _done(book, f"Übertrag {row.haben} → {row.soll} über {row.betrag:.2f} gebucht als Beleg {row.beleg}",
+                 touched, buchung=row)
+
+
 def bank_link(book: Book, id: str, beleg: str) -> dict:
     _guard(book)
     from . import bank
@@ -1941,7 +1951,7 @@ payslip_inputs = _locked(payslip_inputs)
 
 
 for _name in ("supplier_add", "supplier_update", "bill_add", "bill_pay", "bill_void", "payment_run", "payment_run_book",
-              "bank_import", "bank_book", "bank_assign", "bank_link", "bank_ignore", "bank_unlink", "bank_suggest", "bank_accept",
+              "bank_import", "bank_book", "bank_transfer", "bank_assign", "bank_link", "bank_ignore", "bank_unlink", "bank_suggest", "bank_accept",
               "bank_accept_all", "bank_format_propose", "bank_format_confirm", "card_statement_propose"):
     globals()[_name] = _locked(globals()[_name])
 

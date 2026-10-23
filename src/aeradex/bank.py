@@ -196,8 +196,11 @@ def _tx_id(stmt_id: str, e: dict) -> str:
 
 # ---------- matching ----------
 
-def _linked_belege(rows: list[dict]) -> set[str]:
-    return {r["Beleg"] for r in rows if r.get("Beleg") and r.get("Status") in ("gebucht", "abgeglichen")}
+def _linked_belege(rows: list[dict], konto: str | None = None) -> set[str]:
+    """Belege already reconciled with a movement — of `konto` only when given: a transfer between two own
+    bank accounts is one Beleg that both statements reconcile, once each."""
+    return {r["Beleg"] for r in rows if r.get("Beleg") and r.get("Status") in ("gebucht", "abgeglichen")
+            and (konto is None or r.get("Konto") == konto)}
 
 
 def _beleg_effects(book: Book, konto: str) -> dict[str, tuple[date, Decimal]]:
@@ -243,7 +246,9 @@ def import_file(book: Book, source: Path) -> tuple[dict, list[Path]]:
     suffix = Path(source).suffix.lower() or (fmt.suffixes[0] if fmt.suffixes else "")
     existing = transactions(book)
     known = {r["ID"] for r in existing}
-    taken = _linked_belege(existing)
+    taken_by: dict[str, set[str]] = defaultdict(set)
+    for r in existing:
+        taken_by[r.get("Konto", "")] |= _linked_belege([r])
     rows = list(existing)
     touched: list[Path] = []
     summary = {"auszuege": [], "neu": 0, "doppelt": 0, "gebucht": 0, "abgeglichen": 0, "offen": 0}
@@ -290,7 +295,7 @@ def import_file(book: Book, source: Path) -> tuple[dict, list[Path]]:
                 row["Status"], row["Beleg"] = "gebucht", beleg
                 summary["gebucht"] += 1
             else:
-                match = _match_existing(book, konto, e["betrag"], e["datum"], taken)
+                match = _match_existing(book, konto, e["betrag"], e["datum"], taken_by[konto])
                 rule = None if match else matching_rule(book, row)
                 if match:
                     row["Status"], row["Beleg"] = "abgeglichen", match
@@ -304,7 +309,7 @@ def import_file(book: Book, source: Path) -> tuple[dict, list[Path]]:
                 else:
                     summary["offen"] += 1
             if row["Beleg"]:
-                taken.add(row["Beleg"])
+                taken_by[konto].add(row["Beleg"])
             rows.append(row)
             book.reload()
     touched += _write(book, rows)
@@ -481,6 +486,78 @@ def book_transaction(book: Book, tid: str, gegenkonto: str, text: str = "", mwst
     return row, touched + _set(book, tid, Status="gebucht", Beleg=row.beleg)
 
 
+# ---------- transfers between own bank accounts ----------
+
+TRANSFER_DAYS = 5         # a transfer may show up on the other statement a few days later (weekend, value date)
+
+
+def bank_accounts(book: Book, rows: list[dict] | None = None) -> list[str]:
+    """The book's own bank accounts: the main bank, those with an IBAN in `bankkonten`, and every account
+    statements were imported for."""
+    found = {book.settings.konto("bank")} | {str(v) for v in (book.settings.get("bankkonten") or {}).values()}
+    found |= {r["Konto"] for r in (transactions(book) if rows is None else rows) if r.get("Konto")}
+    return sorted(k for k in found if k in book.accounts)
+
+
+def _transfer_belege(book: Book, banks: list[str]) -> dict[str, set[str]]:
+    """Belege that move money between own bank accounts only → the bank accounts they touch."""
+    out: dict[str, set[str]] = {}
+    other: set[str] = set()
+    for r in book.rows:
+        sides = {a for a in (r.soll, r.haben) if a}
+        if sides <= set(banks) and len(sides) == 2:
+            out.setdefault(r.beleg, set()).update(sides)
+        else:
+            other.add(r.beleg)
+    return {b: k for b, k in out.items() if b not in other}
+
+
+def transfer_partners(book: Book, tx: dict, rows: list[dict] | None = None,
+                      banks: list[str] | None = None) -> list[dict]:
+    """Open movements on another own bank account that are the other half of a transfer: opposite amount,
+    same currency, within ±TRANSFER_DAYS days; closest date first."""
+    rows = transactions(book) if rows is None else rows
+    banks = bank_accounts(book, rows) if banks is None else banks
+    amount = parse_amount(tx["Betrag"])
+    when = date.fromisoformat(tx["Datum"])
+    cur = account_currency(book, tx["Konto"]) or "CHF"
+    hits = [r for r in rows if r["Status"] == "offen" and r["Konto"] != tx["Konto"] and r["Konto"] in banks
+            and (account_currency(book, r["Konto"]) or "CHF") == cur and parse_amount(r["Betrag"]) == -amount
+            and abs((date.fromisoformat(r["Datum"]) - when).days) <= TRANSFER_DAYS]
+    return sorted(hits, key=lambda r: (abs((date.fromisoformat(r["Datum"]) - when).days), r["ID"]))
+
+
+def transfer(book: Book, tid: str, konto: str, text: str = "") -> tuple[Row, list[Path]]:
+    """Book an open movement as a transfer to/from another own bank account (one Beleg, Bank an Bank). The other
+    account's movement, if its statement is already imported, is reconciled with the same Beleg; otherwise its
+    import will find the booking."""
+    from .journal import book_entry
+    tx = find(book, tid)
+    if tx["Status"] != "offen":
+        raise BookError(f"Bankbewegung {tid} ist {tx['Status']}")
+    konto = str(konto or "").strip()
+    if konto == tx["Konto"]:
+        raise BookError("Übertrag: das andere Bankkonto wählen, nicht dasselbe")
+    rows = transactions(book)
+    banks = bank_accounts(book, rows)
+    if konto not in banks:
+        raise BookError(f"Konto {konto} ist kein eigenes Bankkonto ({', '.join(banks)}) — sonst unter «Neu buchen»")
+    cur = account_currency(book, tx["Konto"]) or "CHF"
+    if (account_currency(book, konto) or "CHF") != cur:
+        raise BookError("Übertrag zwischen Konten in verschiedenen Währungen: unter «Neu buchen» mit Kurs erfassen")
+    amount = parse_amount(tx["Betrag"])
+    partner = next((r for r in transfer_partners(book, tx, rows, banks) if r["Konto"] == konto), None)
+    soll, haben = (tx["Konto"], konto) if amount > 0 else (konto, tx["Konto"])
+    datum = min(tx["Datum"], partner["Datum"]) if partner else tx["Datum"]
+    names = {k: book.accounts[k].name for k in (soll, haben)}
+    text = text or f"Übertrag {haben} {names[haben]} → {soll} {names[soll]}"
+    row, touched = book_entry(book, datum, soll, haben, abs(amount), text[:120], waehrung=account_currency(book, konto))
+    touched += _set(book, tid, Status="gebucht", Beleg=row.beleg)
+    if partner is not None:
+        touched += _set(book, partner["ID"], Status="abgeglichen", Beleg=row.beleg)
+    return row, touched
+
+
 def assign(book: Book, tid: str, nummer: str) -> tuple[Row, list[Path]]:
     """Settle an invoice (R-…) or supplier bill (E-…) with an open bank transaction."""
     from . import invoices, kreditoren
@@ -509,8 +586,8 @@ def link(book: Book, tid: str, beleg: str) -> list[Path]:
     rows = [r for r in book.rows if r.beleg == beleg]
     if not rows:
         raise BookError(f"Beleg {beleg} nicht gefunden")
-    if beleg in _linked_belege(transactions(book)):
-        raise BookError(f"Beleg {beleg} ist schon mit einer anderen Bankbewegung verknüpft")
+    if beleg in _linked_belege(transactions(book), tx["Konto"]):
+        raise BookError(f"Beleg {beleg} ist schon mit einer anderen Bankbewegung von {tx['Konto']} verknüpft")
     return _set(book, tid, Status="abgeglichen", Beleg=beleg)
 
 
@@ -645,7 +722,8 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
     sups = kred.suppliers(book)
     receipts = [d for d in erfassung.drafts(book, "quittung").values()]
     proposals = [p for p in list_proposals(book) if p.get("Bank")]
-    taken = _linked_belege(transactions(book))
+    all_txs = transactions(book)
+    banks = bank_accounts(book, all_txs)
     history: dict[str, list] = {}
     effects: dict[str, dict] = {}
     out: dict[str, list[dict]] = {}
@@ -716,12 +794,33 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
                               "grund": "gleicher Betrag, Datum ±5 Tage" + ("" if ready else " — Konto fehlt noch")})
         if konto not in effects:
             effects[konto] = _beleg_effects(book, konto)
+        taken = _linked_belege(all_txs, konto)
+        transfers = _transfer_belege(book, banks)
         for beleg, (datum, net) in effects[konto].items():
-            if beleg not in taken and net == amount and 7 < abs((datum - when).days) <= 14:
+            if beleg in taken or net != amount:
+                continue
+            days = abs((datum - when).days)
+            if beleg in transfers and days <= TRANSFER_DAYS:
+                # a transfer booked from the other account's statement: this side only needs reconciling
+                other = transfers[beleg] - {konto}
+                found.append({"art": "beleg", "ziel": beleg, "sicher": True,
+                              "label": f"Übertrag {beleg} vom {datum:%d.%m.%Y} abgleichen"
+                                       + (f" (mit {', '.join(sorted(other))})" if other else ""),
+                              "grund": "Übertrag zwischen eigenen Bankkonten, schon gebucht"})
+            elif 7 < days <= 14:
                 found.append({"art": "beleg", "ziel": beleg, "sicher": False,
                               "label": f"Mit Beleg {beleg} vom {datum:%d.%m.%Y} abgleichen",
                               "grund": "schon gebucht, gleicher Betrag"})
-        matched = any(f["art"] in ("rechnung", "kreditor", "quittung", "vorschlag") for f in found)
+        if not any(f["art"] == "beleg" and f["sicher"] for f in found):
+            for other in transfer_partners(book, tx, all_txs, banks):
+                name = book.accounts[other["Konto"]].name if other["Konto"] in book.accounts else ""
+                found.append({"art": "uebertrag", "ziel": other["ID"], "sicher": True,
+                              "label": f"Übertrag {'von' if amount > 0 else 'auf'} {other['Konto']} {name} "
+                                       f"({other['Datum'][8:10]}.{other['Datum'][5:7]}.) buchen",
+                              "grund": "Gegenbewegung auf dem anderen Bankkonto: gleicher Betrag, "
+                                       f"Datum ±{TRANSFER_DAYS} Tage"})
+        matched = any(f["art"] in ("rechnung", "kreditor", "quittung", "vorschlag", "uebertrag") or
+                      (f["art"] == "beleg" and f["sicher"]) for f in found)
         rule = None if matched else matching_rule(book, tx)
         if rule is not None:                          # e.g. a rule added after the import
             name = book.accounts[str(rule["konto"])].name if str(rule["konto"]) in book.accounts else ""
@@ -753,7 +852,8 @@ def suggestions(book: Book, ids: list[str] | None = None) -> dict[str, list[dict
                     found.append({"art": "konto", "ziel": k, "mwst": str(sup.get("mwst") or ""), "sicher": False,
                                   "label": f"Buchen auf {k} {book.accounts[k].name if k in book.accounts else ''}",
                                   "grund": f"Standardkonto des Lieferanten {sup.get('name')}"})
-        order = {"vorschlag": 0, "regel": 1, "rechnung": 1, "kreditor": 1, "quittung": 2, "beleg": 3, "konto": 4}
+        order = {"vorschlag": 0, "regel": 1, "rechnung": 1, "kreditor": 1, "uebertrag": 1, "quittung": 2, "beleg": 3,
+                 "konto": 4}
         if sum(1 for f in found if f["sicher"]) > 1:
             for f in found:
                 f["sicher"] = False                    # competing matches need a person's choice
@@ -777,6 +877,9 @@ def accept(book: Book, tid: str, art: str, ziel: str) -> tuple[str, list[Path]]:
         return f"{ziel} beglichen (Beleg {row.beleg})", touched
     if art == "beleg":
         return f"mit Beleg {ziel} abgeglichen", link(book, tid, ziel)
+    if art == "uebertrag":
+        row, touched = transfer(book, tid, find(book, ziel)["Konto"])
+        return f"Übertrag gebucht (Beleg {row.beleg})", touched
     if art == "vorschlag":
         rows, touched = approve(book, [ziel])
         return f"Vorschlag {ziel} gebucht (Beleg {rows[0].beleg})", touched
@@ -859,7 +962,7 @@ def candidates(book: Book, tid: str, q: str = "") -> list[dict]:
                             "pruefen": f"/eingang/quittung?entwurf={d['id']}",
                             "label": f"Quittung {d['id']} · {erfassung.value(d, 'name') or d['datei']}",
                             "grund": f"vom {erfassung.value(d, 'datum') or '?'}"})
-    taken = _linked_belege(transactions(book))
+    taken = _linked_belege(transactions(book), konto)
     groups = _group(book)
     for beleg, (datum, net) in _beleg_effects(book, konto).items():
         if beleg in taken or (net > 0) != (amount > 0) or not net:

@@ -35,6 +35,8 @@
     <input type="radio" name="tab-{{ t.ID }}" id="v-{{ t.ID }}" {{ 'checked' if best }}><label for="v-{{ t.ID }}">Vorschlag{% if opts|length > 1 %} <span class="count">{{ opts|length }}</span>{% endif %}</label>
     <input type="radio" name="tab-{{ t.ID }}" id="s-{{ t.ID }}"><label for="s-{{ t.ID }}">Suchen</label>
     <input type="radio" name="tab-{{ t.ID }}" id="n-{{ t.ID }}" {{ 'checked' if not best }}><label for="n-{{ t.ID }}">Neu buchen</label>
+    {% set andere = eigene|rejectattr('nr', 'equalto', t.Konto)|list %}
+    {% if andere %}<input type="radio" name="tab-{{ t.ID }}" id="u-{{ t.ID }}"><label for="u-{{ t.ID }}">Übertrag</label>{% endif %}
     <input type="radio" name="tab-{{ t.ID }}" id="i-{{ t.ID }}"><label for="i-{{ t.ID }}">Ignorieren</label>
     <div class="pane">
       {% if best %}
@@ -67,6 +69,15 @@
         {{ errors() }}
       </form>
     </div>
+    {% if andere %}<div class="pane">
+      <form class="inline" hx-post="/bank/{{ t.ID }}/uebertrag" hx-target="find .errors">
+        <input type="hidden" name="karte" value="1">
+        <label class="small muted" for="ue-{{ t.ID }}">{{ 'Von' if credit else 'Auf' }} Konto</label>
+        <select class="input" id="ue-{{ t.ID }}" name="konto" required>{% for k in andere %}<option value="{{ k.nr }}">{{ k.nr }} {{ k.name }}</option>{% endfor %}</select>
+        <button class="btn primary" type="submit">Übertrag buchen</button>{{ errors() }}
+      </form>
+      <div class="small muted">Geld zwischen eigenen Konten: bucht Bank an Bank. Die Gegenbewegung im anderen Auszug wird gleich mit abgeglichen.</div>
+    </div>{% endif %}
     <div class="pane">
       <form class="inline" hx-post="/bank/{{ t.ID }}/ignorieren" hx-target="find .errors">
         <input type="hidden" name="karte" value="1">

@@ -1661,7 +1661,8 @@ async def bank_page(ui: UI, request: Request):
         return RedirectResponse(f"/bank?konto={first['nr']}", status_code=303)
     rows = [t for t in alle if t["Konto"] == konto] if konto else alle
     sugg = {k: v for k, v in bank.suggestions(book).items() if any(t["ID"] == k for t in rows)} if rows else {}
-    return ui.render(request, "bank_abgleich.html", book=book, rows=rows, sugg=sugg, jev=jev.config(book),
+    eigene = [{"nr": k, "name": book.accounts[k].name} for k in bank.bank_accounts(book)]
+    return ui.render(request, "bank_abgleich.html", book=book, rows=rows, sugg=sugg, jev=jev.config(book), eigene=eigene,
                      sicher=sum(1 for o in sugg.values() if o[0]["sicher"]), pending=_bank_pending(book),
                      rec=[r for r in rec if not konto or r["konto"] == konto], konto=konto, konten=konten,
                      alle_offen=len(alle), **_bank_common(book))
@@ -1856,6 +1857,8 @@ async def bank_aktion(ui: UI, request: Request):
     book = ui.book()
     if aktion == "buchen":
         call = (_book_and_rule, book, tid, acct(f.get("konto")), f.get("text", ""), f.get("mwst", ""), f.get("regel") == "1")
+    elif aktion == "uebertrag":
+        call = (api.bank_transfer, book, tid, acct(f.get("konto")), f.get("text", ""))
     elif aktion == "zuordnen":
         call = (api.bank_assign, book, tid, f.get("nummer", ""))
     elif aktion == "abgleichen":

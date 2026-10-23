@@ -997,6 +997,18 @@ def book_bank_transaction(id: str, konto: str, text: str = "", mwst: str = "") -
     return _direct(api.bank_book, id, konto, text, mwst)
 
 
+def transfer_bank_transaction(id: str, konto: str, text: str = "") -> dict:
+    """Offene Bankbewegung als Übertrag zwischen eigenen Bankkonten buchen (Bank an Bank, nur agent_modus:
+    direkt); die Gegenbewegung auf dem anderen Konto wird mit demselben Beleg abgeglichen.
+
+    Args:
+        id: ID der Bankbewegung.
+        konto: das andere eigene Bankkonto, z.B. "1022".
+        text: Buchungstext; leer = «Übertrag … → …».
+    """
+    return _direct(api.bank_transfer, id, konto, text)
+
+
 # ---------- lohn ----------
 
 def bank_file_preview(datei: str) -> dict:
@@ -1955,7 +1967,7 @@ SHARED = [status, check, accounts, balance, ledger, journal, report, history, li
           customers, customer_details, add_customer, update_customer, log_customer, follow_ups, invoices, create_invoice, open_akonto, match_payment, pay_invoice, credit_invoice,
           void_invoice, receivables, suppliers, add_supplier, scan_qr_bill, add_supplier_bill, supplier_bills,
           create_payment_run, bank_transactions, bank_suggestions, assign_bank_transaction, propose_bank_booking, suggest_bank_accounts,
-          book_bank_transaction, employees, payroll_run, payroll_payment_export, qst_sync, payslip, close_payroll, close_payslip, lohnausweis,
+          book_bank_transaction, transfer_bank_transaction, employees, payroll_run, payroll_payment_export, qst_sync, payslip, close_payroll, close_payslip, lohnausweis,
           payroll_account, wage_declarations,
           bank_file_preview, propose_bank_format, card_statement_text, propose_card_statement,
           closing_documents, mwst_details,

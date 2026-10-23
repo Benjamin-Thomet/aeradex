@@ -81,6 +81,8 @@ This file is for developing aeradex itself. Agents *operating a book* read the
 - `marktplatz.py`: plugin catalog (bundled JSON or `AERADEX_PLUGIN_KATALOG` https URL), maintainer review with a
   SHA-256 over the plugin's source files, install via pip (local UI only, then `web.app.restart_later`).
 - `bank.py` (camt.053 import, matching, reconciliation), `kreditoren.py` (QR scan, pain.001), `mwst.py` (incl. eCH-0217).
+  Transfers between own bank accounts (`bank.transfer`, card tab «Übertrag», suggestion `uebertrag`) are one Beleg
+  Bank an Bank that each account's statement reconciles once: a Beleg is «taken» per bank account, not per book.
 - `bankformat.py`: statements in other formats. CSV/Excel: the agent describes the *format* once (`bank/formate/`,
   confirmed by a person), aeradex reads the numbers. Credit card PDFs: the agent transcribes the transactions
   (`bank/karten/<sha>.yaml`); imported only if the balance adds up and every amount is in the PDF text. Both are

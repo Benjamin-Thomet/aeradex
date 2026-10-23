@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from aeradex import api, bank
-from aeradex.book import Book
+from aeradex.book import Book, BookError
 from aeradex.testing import assert_clean, make_book
 from camt_sample import entry, statement
 
@@ -127,4 +127,63 @@ def test_one_bank_account_at_a_time(book):
     before = api.invoice_list(Book(root))[0]["status"]
     api.bank_accept_all(Book(root), "1021")                     # nothing sure on 1021: the invoice stays open
     assert api.invoice_list(Book(root))[0]["status"] == before
+    assert_clean(Book(root))
+
+
+def _two_banks(book):
+    root = book.root
+    other = "CH5604835012345678009"
+    api.add_account(Book(root), "1021", "Bank Zwei", "aktiv")
+    api.settings_update(Book(root), bankkonten={IBAN: "1020", other: "1021"})
+    return root, other
+
+
+def _import(root, iban, opening, items, stmt_id, name):
+    (root / "inbox" / name).write_bytes(statement(iban, opening, items, "2026-03-01", "2026-04-01", stmt_id=stmt_id))
+    return api.bank_import(Book(root), f"inbox/{name}")["import_"]
+
+
+def test_transfer_between_own_accounts_is_suggested_and_books_both_sides(book):
+    root, other = _two_banks(book)
+    _import(root, IBAN, "30000.00", [(entry("500.00", "DBIT", "2026-03-10", ustrd="An Wise"), "-500.00")], "A", "a.xml")
+    _import(root, other, "0.00", [(entry("500.00", "CRDT", "2026-03-11", ustrd="Einzahlung"), "500.00")], "B", "b.xml")
+    out, inn = (next(t for t in api.bank_list(Book(root), "offen") if t["Konto"] == k) for k in ("1020", "1021"))
+    sugg = bank.suggestions(Book(root))
+    assert sugg[out["ID"]][0]["art"] == "uebertrag" and sugg[out["ID"]][0]["sicher"]
+    assert sugg[inn["ID"]][0]["ziel"] == out["ID"]
+    res = api.bank_accept_all(Book(root))                     # both sure; the second is done by the first
+    b = Book(root)
+    assert not api.bank_list(b, "offen")
+    rows = [r for r in b.rows if r.text.startswith("Übertrag")]
+    assert len(rows) == 1 and (rows[0].soll, rows[0].haben, rows[0].betrag) == ("1021", "1020", Decimal("500.00"))
+    assert {t["Beleg"] for t in api.bank_list(b)} == {rows[0].beleg}
+    assert all(r["differenz"] == "0.00" for r in api.bank_reconciliation(b))
+    assert_clean(b)
+
+
+def test_transfer_booked_from_one_side_reconciles_the_other_and_a_later_import(book):
+    root, other = _two_banks(book)
+    _import(root, IBAN, "30000.00", [(entry("400.00", "DBIT", "2026-03-12", ustrd="An Wise"), "-400.00"),
+                                     (entry("500.00", "DBIT", "2026-03-20", ustrd="An Wise"), "-500.00")], "A", "a.xml")
+    t400, t500 = sorted(api.bank_list(Book(root), "offen"), key=lambda t: t["Datum"])
+    with pytest.raises(BookError, match="kein eigenes Bankkonto"):
+        api.bank_transfer(Book(root), t400["ID"], "6500")
+    api.bank_book(Book(root), t400["ID"], "1021", "Übertrag auf Bank Zwei")       # booked like an ordinary account
+    api.bank_transfer(Book(root), t500["ID"], "1021")                              # partner not imported yet
+    res = _import(root, other, "0.00", [(entry("400.00", "CRDT", "2026-03-12", ustrd="Einzahlung"), "400.00"),
+                                        (entry("500.00", "CRDT", "2026-03-21", ustrd="Einzahlung"), "500.00")], "B", "b.xml")
+    assert res["abgeglichen"] == 2 and res["offen"] == 0           # the same Beleg serves both statements
+    assert_clean(Book(root))
+
+
+def test_transfer_booked_after_both_imports_is_offered_on_the_other_side(book):
+    root, other = _two_banks(book)
+    _import(root, IBAN, "30000.00", [(entry("500.00", "DBIT", "2026-03-10", ustrd="An Wise"), "-500.00")], "A", "a.xml")
+    _import(root, other, "0.00", [(entry("500.00", "CRDT", "2026-03-10", ustrd="Einzahlung"), "500.00")], "B", "b.xml")
+    out, inn = (next(t for t in api.bank_list(Book(root), "offen") if t["Konto"] == k) for k in ("1020", "1021"))
+    beleg = api.bank_book(Book(root), out["ID"], "1021", "an Wise")["buchung"]["beleg"]
+    s = bank.suggestions(Book(root))[inn["ID"]][0]
+    assert (s["art"], s["ziel"], s["sicher"]) == ("beleg", beleg, True)
+    api.bank_accept(Book(root), inn["ID"], "beleg", beleg)
+    assert not api.bank_list(Book(root), "offen")
     assert_clean(Book(root))
