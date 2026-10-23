@@ -16,6 +16,7 @@ iban: CH93 0076 2011 6238 5295 7   # QR-IBAN → QRR-Referenz, sonst SCOR (RF…
 qr_referenz_praefix: ''
 waehrung: CHF
 zahlungsfrist_tage: 30
+rechnungsnummer: {vorlage: 'INV-{n:04d}', start: 250}  # optional; Standard R-{jahr}-{n:04d} ab 1
 erstes_jahr: 2026             # Eröffnungssalden im Kontenplan gelten für dieses Jahr
 geschaeftsjahr_offen_bis: 2027  # optional: Folgejahr vor seiner ersten Buchung eröffnet
 sperre_bis: null              # nur über `aeradex lock` / `aeradex unlock` ändern
@@ -31,6 +32,11 @@ konten:                       # Systemkonten
   reserve: '2950'
 plugins: [revolut]          # optional: Plugins, die dieses Buch braucht (siehe docs/plugins.md)
 ```
+
+`rechnungsnummer` setzt die Nummern der Ausgangsrechnungen fort, etwa aus einem früheren Programm: `{n}` ist die
+laufende Nummer (`{n:04d}` vierstellig), `{jahr}` optional das Rechnungsjahr (ohne `{jahr}` läuft die Reihe über die
+Jahre weiter). Die nächste Nummer ist die höchste vorhandene plus 1, frühestens `start`. Bereits ausgestellte
+Rechnungen der Standardreihe `R-…` bleiben gültig. Ändern über `api.settings_update(rechnungsnummer=…)`.
 
 Steht ein Plugin unter `plugins:`, das nicht installiert ist, meldet `aeradex check` einen Fehler — Buchungen, die
 dem Plugin gehören, könnten sonst nicht geprüft werden. Plugin-Einstellungen stehen unter dem Plugin-Namen

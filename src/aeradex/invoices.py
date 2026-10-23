@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import string
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -92,9 +93,51 @@ def fingerprint(meta: dict) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+DEFAULT_NUMBER = "R-{jahr}-{n:04d}"
+
+
+def number_format(book: Book) -> tuple[str, int]:
+    """The invoice number template and the first number, from `rechnungsnummer: {vorlage, start}` in
+    aeradex.yaml (e.g. `INV-{n:04d}` from 250 to continue a series started elsewhere). {jahr} is optional;
+    without it the series runs on across years."""
+    cfg = book.settings.get("rechnungsnummer") or {}
+    return str(cfg.get("vorlage") or DEFAULT_NUMBER), int(cfg.get("start") or 1)
+
+
+def _number_regex(template: str, year: int | None = None) -> re.Pattern:
+    """A regex matching numbers made from `template`; {jahr} matches `year`, or any year when None."""
+    out = []
+    for literal, field, spec, _ in string.Formatter().parse(template):
+        out.append(re.escape(literal))
+        if field == "jahr":
+            out.append(str(year) if year else r"\d{4}")
+        elif field == "n":
+            out.append(r"(?P<n>\d+)")
+        elif field is not None:
+            raise BookError(f"Rechnungsnummer: unbekanntes Feld {{{field}}} in «{template}» (erlaubt: jahr, n)")
+    return re.compile("".join(out))
+
+
+def number_patterns(book: Book) -> list[re.Pattern]:
+    """Patterns of every invoice number this book has issued: the default series and the configured one."""
+    template, _ = number_format(book)
+    return [_number_regex(DEFAULT_NUMBER)] + ([_number_regex(template)] if template != DEFAULT_NUMBER else [])
+
+
 def invoice_paths(book: Book) -> list[Path]:
     folder = book.root / "rechnungen"
-    return sorted(folder.glob("*/R-*.md")) if folder.exists() else []
+    if not folder.exists():
+        return []
+    patterns = number_patterns(book)
+    return sorted(p for p in folder.glob("*/*.md") if any(rx.fullmatch(p.stem) for rx in patterns))
+
+
+def invoice_nr_in(text: str, metas: dict) -> str | None:
+    """The invoice number a journal Quelle such as `zahlung:INV-0250` refers to, if it names a known invoice."""
+    for part in re.split(r"[:\s,;]+", text or ""):
+        if part in metas:
+            return part
+    return None
 
 
 def invoices(book: Book) -> dict[str, dict]:
@@ -115,9 +158,10 @@ def invoice(book: Book, nr: str) -> dict:
 
 
 def next_invoice_number(book: Book, year: int) -> str:
-    prefix = f"R-{year}-"
-    nums = [int(k[len(prefix):]) for k in invoices(book) if k.startswith(prefix) and k[len(prefix):].isdigit()]
-    return f"{prefix}{max(nums, default=0) + 1:04d}"
+    template, start = number_format(book)
+    pattern = _number_regex(template, year)
+    nums = [int(m.group("n")) for k in invoices(book) if (m := pattern.fullmatch(k))]
+    return template.format(jahr=year, n=max(nums, default=start - 1) + 1)
 
 
 def _snapshot_address(cust: dict) -> dict:

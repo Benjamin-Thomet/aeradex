@@ -19,15 +19,14 @@ from .files import parse_date, read_frontmatter, write_frontmatter
 ZERO = Decimal("0")
 LOG_ARTEN = {"anruf": "Anruf", "besuch": "Besuch", "email": "E-Mail", "notiz": "Notiz"}
 KATEGORIEN = ("Privat", "Verwaltung", "Architekt", "Firma", "Öffentlich")
-_INVOICE_NR = re.compile(r"R-\d{4}-\d{4}")
 
 
 # ---------- revenue ----------
 
 def customer_of_row(row, metas: dict) -> str | None:
     """The customer a journal row belongs to, via the invoice number in its Quelle."""
-    m = _INVOICE_NR.search(row.quelle or "")
-    return metas.get(m.group(0), {}).get("kunde") if m else None
+    nr = invoices.invoice_nr_in(row.quelle, metas)
+    return metas[nr].get("kunde") if nr else None
 
 
 def revenue_by_year(book: Book, metas: dict | None = None) -> dict[str, dict[int, Decimal]]:
@@ -36,7 +35,7 @@ def revenue_by_year(book: Book, metas: dict | None = None) -> dict[str, dict[int
     metas = invoices.invoices(book) if metas is None else metas
     out: dict[str, dict[int, Decimal]] = defaultdict(lambda: defaultdict(lambda: ZERO))
     for r in book.rows:
-        if not _INVOICE_NR.search(r.quelle or ""):
+        if not invoices.invoice_nr_in(r.quelle, metas):
             continue
         for nr, sign in ((r.soll, -1), (r.haben, 1)):
             acct = book.accounts.get(nr) if nr else None

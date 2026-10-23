@@ -1185,9 +1185,29 @@ SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_r
                  "zahlungsfrist_tage", "agent_modus", "sprache", "co", "zahlungs_iban", "agent_backend")
 
 
+def _invoice_number_setting(book: Book, value: dict) -> dict:
+    """Validate `rechnungsnummer: {vorlage, start}`; once invoices exist, the series may only continue."""
+    vorlage = str(value.get("vorlage") or invoices.DEFAULT_NUMBER).strip()
+    start = int(value.get("start") if value.get("start") not in (None, "") else 1)
+    if "{n" not in vorlage:
+        raise BookError("Rechnungsnummer: die Vorlage braucht die laufende Nummer {n}, z.B. INV-{n:04d}")
+    if start < 1:
+        raise BookError("Rechnungsnummer: Startnummer ab 1")
+    try:
+        invoices._number_regex(vorlage)
+        sample = vorlage.format(jahr=2026, n=start)
+    except (KeyError, ValueError, IndexError) as exc:
+        raise BookError(f"Rechnungsnummer: Vorlage «{vorlage}» ungültig ({exc})") from None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", sample):
+        raise BookError(f"Rechnungsnummer «{sample}»: nur Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich")
+    if sample.startswith("E-"):
+        raise BookError("Rechnungsnummer: «E-» ist für Kreditoren reserviert")
+    return {"vorlage": vorlage, "start": start}
+
+
 def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None,
                     mwst: dict | None = None, bankkonten: dict | None = None, jev: dict | None = None,
-                    kreditoren: dict | None = None,
+                    kreditoren: dict | None = None, rechnungsnummer: dict | None = None,
                     **fields) -> dict:
     _guard(book)
     unknown = set(fields) - set(SETTINGS_KEYS)
@@ -1208,6 +1228,8 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
             if nr:
                 book.account(str(nr))
         data.setdefault("konten", {}).update({k: str(v) for k, v in konten.items() if v})
+    if rechnungsnummer is not None:
+        data["rechnungsnummer"] = _invoice_number_setting(book, rechnungsnummer)
     if kreditoren is not None:
         current = dict(data.get("kreditoren") or {})
         if "agent_automatisch" in kreditoren:

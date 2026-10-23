@@ -488,7 +488,7 @@ def assign(book: Book, tid: str, nummer: str) -> tuple[Row, list[Path]]:
     if tx["Status"] != "offen":
         raise BookError(f"Bankbewegung {tid} ist {tx['Status']}")
     amount = parse_amount(tx["Betrag"])
-    if nummer.startswith("R-"):
+    if nummer in invoices.invoices(book):
         if amount <= 0:
             raise BookError("Eine Belastung kann keine Kundenrechnung bezahlen")
         row, touched = invoices.pay_invoice(book, nummer, amount, tx["Datum"], tx["Konto"])
@@ -497,7 +497,7 @@ def assign(book: Book, tid: str, nummer: str) -> tuple[Row, list[Path]]:
             raise BookError("Eine Gutschrift kann keine Lieferantenrechnung bezahlen")
         row, touched = kreditoren.pay(book, nummer, tx["Datum"], -amount, tx["Konto"])
     else:
-        raise BookError("Nummer einer Rechnung (R-…) oder eines Kreditors (E-…) angeben")
+        raise BookError(f"{nummer}: weder eine Rechnung noch ein Kreditor (E-…)")
     return row, touched + _set(book, tid, Status="gebucht", Beleg=row.beleg)
 
 

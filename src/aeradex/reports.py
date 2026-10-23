@@ -588,9 +588,6 @@ def _d(value) -> date:
 
 # ---------- Umsatz ----------
 
-_INVOICE_NR = re.compile(r"R-\d{4}-\d{4}")
-
-
 def umsatz(book: Book, start: date, end: date, nach: str = "kunde") -> dict:
     """Revenue (Ertrag accounts, net of credit notes) by customer, account or month."""
     from . import invoices as inv
