@@ -3,13 +3,18 @@
 {% block title %}Bank abgleichen{% endblock %}
 {% block main %}
 <div class="topbar">
-  <div><h1>Abgleichen</h1><div class="sub">{% if rows %}{{ rows|length }} offene Bewegung{{ 'en' if rows|length != 1 }}, älteste zuerst. Links die Bank, rechts was es sein dürfte: ein Klick auf <strong>OK</strong> bucht.{% else %}Alles abgeglichen.{% endif %}</div></div>
+  <div><h1>Abgleichen</h1><div class="sub">{% if rows %}{{ rows|length }} offene Bewegung{{ 'en' if rows|length != 1 }}{% if konto %} auf {{ konto }}{% endif %}, älteste zuerst. Links die Bank, rechts was es sein dürfte: ein Klick auf <strong>OK</strong> bucht.{% else %}{% if konto %}Konto {{ konto }}: alles abgeglichen.{% else %}Alles abgeglichen.{% endif %}{% endif %}</div></div>
   <span class="actions">
-    {% if sicher %}<form hx-post="/bank/alle-abgleichen" hx-target="find .errors" hx-confirm="{{ sicher }} sichere Vorschläge übernehmen?"><button class="btn primary" type="submit" title="Übernimmt bei jeder Bewegung den sicheren Vorschlag — Betrag und Name stimmen">Alle sicheren abgleichen <span class="count">{{ sicher }}</span></button>{{ errors() }}</form>{% endif %}
+    {% if sicher %}<form hx-post="/bank/alle-abgleichen" hx-target="find .errors" hx-confirm="{{ sicher }} sichere Vorschläge übernehmen{% if konto %} (Konto {{ konto }}){% endif %}?"><input type="hidden" name="konto" value="{{ konto }}"><button class="btn primary" type="submit" title="Übernimmt bei jeder Bewegung den sicheren Vorschlag — Betrag und Name stimmen">Alle sicheren abgleichen <span class="count">{{ sicher }}</span></button>{{ errors() }}</form>{% endif %}
     {% if jev.bereit and rows %}<form hx-post="/bank/jev" hx-target="find .errors"><button class="btn" type="submit" title="Schnelle Kontierung mit TypeSafe Jev; sichere Fälle werden Vorschläge">Konten vorschlagen (Jev)</button>{{ errors() }}</form>{% endif %}
     {% include "_bank_kopf.html" %}
   </span>
 </div>
+
+{% if konten|length > 1 %}<div class="banktabs"><span class="tabs small">
+  <a class="{{ 'on' if not konto }}" href="/bank">Alle Konten <span class="count">{{ alle_offen }}</span></a>
+  {% for k in konten %}<a class="{{ 'on' if k.nr == konto }}" href="/bank?konto={{ k.nr }}"><span class="acc">{{ k.nr }}</span> {{ k.name }} <span class="count">{{ k.anzahl }}</span></a>{% endfor %}
+</span></div>{% endif %}
 
 {% if rec %}<div class="recline">{% for r in rec %}
   <a href="/bank/abstimmung" class="{{ 'bad' if r.differenz|float }}"><span class="acc">{{ r.konto }}</span> per {{ r.datum|datum }} · Bank <span class="num">{{ r.bank|chf }}</span> · Buch <span class="num">{{ r.buch|chf }}</span>{% if r.offen|float %} · noch offen <span class="num">{{ r.offen|chf }}</span>{% endif %}

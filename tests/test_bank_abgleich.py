@@ -89,3 +89,38 @@ def test_receipt_without_account_points_to_review(book, tmp_path):
     opts = bank.suggestions(Book(book.root))[tx_by_amount(book, "-64.80")["ID"]]
     q = next(o for o in opts if o["art"] == "quittung")
     assert not q["sicher"] and q["pruefen"] == f"/eingang/quittung?entwurf={d['id']}"
+
+
+def test_one_bank_account_at_a_time(book):
+    """With two bank accounts the reconcile page and the movement list can show one account; taking all sure
+    suggestions there leaves the other account alone."""
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+    from aeradex.web.app import create_app
+    root = book.root
+    other = "CH5604835012345678009"
+    api.add_account(Book(root), "1021", "Bank Zwei", "aktiv")
+    api.settings_update(Book(root), bankkonten={IBAN: "1020", other: "1021"})
+    ref = api.invoice_list(Book(root))[0]["referenz"]
+    one = statement(IBAN, "30000.00", [(entry("450.00", "CRDT", "2026-03-02", ref=ref, party="Peter Privat"), "450.00"),
+                                       (entry("12.00", "DBIT", "2026-03-31", ustrd="Kontofuehrung Xq"), "-12.00")],
+                    "2026-03-01", "2026-04-01", stmt_id="A")
+    two = statement(other, "0.00", [(entry("80.00", "CRDT", "2026-03-05", party="Jemand", ustrd="Einzahlung"), "80.00")],
+                    "2026-03-01", "2026-04-01", stmt_id="B")
+    (root / "inbox" / "eins.xml").write_bytes(one)
+    (root / "inbox" / "zwei.xml").write_bytes(two)
+    api.bank_import(Book(root), "inbox/eins.xml")
+    api.bank_import(Book(root), "inbox/zwei.xml")
+    offen = {t["Konto"] for t in api.bank_list(Book(root), "offen")}
+    assert offen == {"1020", "1021"}
+    app = create_app(root, token="tok")
+    with TestClient(app) as c:
+        c.get("/?t=tok", follow_redirects=False)
+        page = c.get("/bank?konto=1021").text
+        assert "Bank Zwei" in page and "Jemand" in page and "Kontofuehrung Xq" not in page
+        assert "Kontofuehrung Xq" in c.get("/bank").text
+        assert "Jemand" not in c.get("/bank/bewegungen?konto=1020").text
+    before = api.invoice_list(Book(root))[0]["status"]
+    api.bank_accept_all(Book(root), "1021")                     # nothing sure on 1021: the invoice stays open
+    assert api.invoice_list(Book(root))[0]["status"] == before
+    assert_clean(Book(root))

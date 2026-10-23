@@ -1632,29 +1632,51 @@ def _rec_latest(rec: list[dict]) -> list[dict]:
     return list(latest.values())
 
 
+def _bank_accounts(book, rows: list[dict]) -> list[dict]:
+    """The bank accounts the movements belong to, with how many there are: the tabs to look at one account."""
+    counts = defaultdict(int)
+    for t in rows:
+        counts[t["Konto"]] += 1
+    return [{"nr": nr, "name": book.accounts[nr].name if nr in book.accounts else "", "anzahl": n}
+            for nr, n in sorted(counts.items())]
+
+
 async def bank_page(ui: UI, request: Request):
-    """Bank › Abgleichen: one card per open movement, the best match next to it, one click to take it."""
+    """Bank › Abgleichen: one card per open movement, the best match next to it, one click to take it;
+    `?konto=1020` shows one bank account (reconcile one statement at a time)."""
     from .. import bank, jev
     book = ui.book()
-    rows = sorted((t for t in bank.transactions(book) if t["Status"] == "offen"), key=lambda t: (t["Datum"], t["ID"]))
-    sugg = bank.suggestions(book) if rows else {}
-    rec = bank.reconciliation(book)
+    konto = acct(request.query_params.get("konto", ""))
+    alle = sorted((t for t in bank.transactions(book) if t["Status"] == "offen"), key=lambda t: (t["Datum"], t["ID"]))
+    rows = [t for t in alle if t["Konto"] == konto] if konto else alle
+    sugg = {k: v for k, v in bank.suggestions(book).items() if any(t["ID"] == k for t in rows)} if rows else {}
+    rec = _rec_latest(bank.reconciliation(book))
+    konten = _bank_accounts(book, alle)
+    for r in rec:
+        if r["konto"] not in {k["nr"] for k in konten}:
+            konten.append({"nr": r["konto"], "name": book.accounts[r["konto"]].name if r["konto"] in book.accounts
+                           else "", "anzahl": 0})
+    konten.sort(key=lambda k: k["nr"])
     return ui.render(request, "bank_abgleich.html", book=book, rows=rows, sugg=sugg, jev=jev.config(book),
                      sicher=sum(1 for o in sugg.values() if o[0]["sicher"]), pending=_bank_pending(book),
-                     rec=_rec_latest(rec), **_bank_common(book))
+                     rec=[r for r in rec if not konto or r["konto"] == konto], konto=konto, konten=konten,
+                     alle_offen=len(alle), **_bank_common(book))
 
 
 async def bank_bewegungen(ui: UI, request: Request):
     from .. import bank
     book = ui.book()
     status = request.query_params.get("status", "")
-    rows = [t for t in bank.transactions(book) if not status or t["Status"] == status]
+    konto = acct(request.query_params.get("konto", ""))
+    alle = bank.transactions(book)
+    mine = [t for t in alle if not konto or t["Konto"] == konto]
+    rows = [t for t in mine if not status or t["Status"] == status]
     rows.sort(key=lambda t: (t["Datum"], t["ID"]), reverse=True)
     counts = defaultdict(int)
-    for t in bank.transactions(book):
+    for t in mine:
         counts[t["Status"]] += 1
-    return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts,
-                     pending=_bank_pending(book), **_bank_common(book))
+    return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts, konto=konto,
+                     konten=_bank_accounts(book, alle), pending=_bank_pending(book), **_bank_common(book))
 
 
 async def bank_regeln(ui: UI, request: Request):
@@ -1854,7 +1876,9 @@ async def bank_aktion(ui: UI, request: Request):
 
 
 async def bank_alle(ui: UI, request: Request):
-    return await act(request, api.bank_accept_all, request.headers.get("hx-current-url", "/bank"), ui.book())
+    f = await request.form()
+    return await act(request, api.bank_accept_all, request.headers.get("hx-current-url", "/bank"), ui.book(),
+                     acct(f.get("konto", "")))
 
 
 async def bank_regel(ui: UI, request: Request):

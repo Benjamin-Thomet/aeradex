@@ -1815,13 +1815,15 @@ def bank_accept(book: Book, id: str, art: str = "", ziel: str = "") -> dict:
     return _done(book, f"Bankbewegung {id}: {msg}", touched)
 
 
-def bank_accept_all(book: Book) -> dict:
-    """Take every sure suggestion (one per movement, best first) in one commit."""
+def bank_accept_all(book: Book, konto: str = "") -> dict:
+    """Take every sure suggestion (one per movement, best first) in one commit; with `konto` only the movements
+    of that bank account."""
     _guard(book)
     from . import bank
     done_, touched = [], []
+    only = {t["ID"] for t in bank.transactions(book) if t["Konto"] == konto} if konto else None
     for tid, options in bank.suggestions(book).items():
-        if not options[0]["sicher"]:
+        if not options[0]["sicher"] or (only is not None and tid not in only):
             continue
         try:
             # recomputed per movement: an invoice taken by one movement is no longer open for the next

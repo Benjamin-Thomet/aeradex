@@ -7,9 +7,13 @@
   <span class="actions">{% include "_bank_kopf.html" %}</span>
 </div>
 {% include "_bank_neu.html" %}
+{% if konten|length > 1 %}<div class="banktabs"><span class="tabs small">
+  <a class="{{ 'on' if not konto }}" href="/bank/bewegungen?status={{ status }}">Alle Konten</a>
+  {% for k in konten %}<a class="{{ 'on' if k.nr == konto }}" href="/bank/bewegungen?konto={{ k.nr }}&status={{ status }}"><span class="acc">{{ k.nr }}</span> {{ k.name }} <span class="count">{{ k.anzahl }}</span></a>{% endfor %}
+</span></div>{% endif %}
 <div class="panel">
-  <header><h2>Alle Bewegungen</h2>
-    <span class="actions">{% for k, l in [("", "Alle"), ("offen", "Offen"), ("gebucht", "Gebucht"), ("abgeglichen", "Abgeglichen"), ("ignoriert", "Ignoriert")] %}<a class="btn small {{ '' if k == status else 'ghost' }}" href="/bank/bewegungen?status={{ k }}">{{ l }}{% if k and counts[k] %} <span class="count">{{ counts[k] }}</span>{% endif %}</a>{% endfor %}</span></header>
+  <header><h2>{% if konto %}Bewegungen {{ konto }}{% else %}Alle Bewegungen{% endif %}</h2>
+    <span class="actions">{% for k, l in [("", "Alle"), ("offen", "Offen"), ("gebucht", "Gebucht"), ("abgeglichen", "Abgeglichen"), ("ignoriert", "Ignoriert")] %}<a class="btn small {{ '' if k == status else 'ghost' }}" href="/bank/bewegungen?status={{ k }}{% if konto %}&konto={{ konto }}{% endif %}">{{ l }}{% if k and counts[k] %} <span class="count">{{ counts[k] }}</span>{% endif %}</a>{% endfor %}</span></header>
   {% if rows %}
   <div class="tablewrap"><table class="ledger">
     <thead><tr><th>Datum</th><th>Gegenpartei / Text</th><th class="right">Betrag</th><th>Status</th><th></th></tr></thead>
