@@ -12,7 +12,6 @@
 </div>
 
 {% if konten|length > 1 %}<div class="banktabs"><span class="tabs small">
-  <a class="{{ 'on' if not konto }}" href="/bank">Alle Konten <span class="count">{{ alle_offen }}</span></a>
   {% for k in konten %}<a class="{{ 'on' if k.nr == konto }}" href="/bank?konto={{ k.nr }}"><span class="acc">{{ k.nr }}</span> {{ k.name }} <span class="count">{{ k.anzahl }}</span></a>{% endfor %}
 </span></div>{% endif %}
 

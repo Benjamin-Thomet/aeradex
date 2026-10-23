@@ -1648,8 +1648,6 @@ async def bank_page(ui: UI, request: Request):
     book = ui.book()
     konto = acct(request.query_params.get("konto", ""))
     alle = sorted((t for t in bank.transactions(book) if t["Status"] == "offen"), key=lambda t: (t["Datum"], t["ID"]))
-    rows = [t for t in alle if t["Konto"] == konto] if konto else alle
-    sugg = {k: v for k, v in bank.suggestions(book).items() if any(t["ID"] == k for t in rows)} if rows else {}
     rec = _rec_latest(bank.reconciliation(book))
     konten = _bank_accounts(book, alle)
     for r in rec:
@@ -1657,6 +1655,12 @@ async def bank_page(ui: UI, request: Request):
             konten.append({"nr": r["konto"], "name": book.accounts[r["konto"]].name if r["konto"] in book.accounts
                            else "", "anzahl": 0})
     konten.sort(key=lambda k: k["nr"])
+    if len(konten) > 1 and konto not in {k["nr"] for k in konten}:
+        # several bank accounts are never mixed: one statement at a time, the first with open movements first
+        first = next((k for k in konten if k["anzahl"]), konten[0])
+        return RedirectResponse(f"/bank?konto={first['nr']}", status_code=303)
+    rows = [t for t in alle if t["Konto"] == konto] if konto else alle
+    sugg = {k: v for k, v in bank.suggestions(book).items() if any(t["ID"] == k for t in rows)} if rows else {}
     return ui.render(request, "bank_abgleich.html", book=book, rows=rows, sugg=sugg, jev=jev.config(book),
                      sicher=sum(1 for o in sugg.values() if o[0]["sicher"]), pending=_bank_pending(book),
                      rec=[r for r in rec if not konto or r["konto"] == konto], konto=konto, konten=konten,
@@ -1669,6 +1673,9 @@ async def bank_bewegungen(ui: UI, request: Request):
     status = request.query_params.get("status", "")
     konto = acct(request.query_params.get("konto", ""))
     alle = bank.transactions(book)
+    konten = _bank_accounts(book, alle)
+    if len(konten) > 1 and konto not in {k["nr"] for k in konten}:
+        return RedirectResponse(f"/bank/bewegungen?konto={konten[0]['nr']}&status={status}", status_code=303)
     mine = [t for t in alle if not konto or t["Konto"] == konto]
     rows = [t for t in mine if not status or t["Status"] == status]
     rows.sort(key=lambda t: (t["Datum"], t["ID"]), reverse=True)
@@ -1676,7 +1683,7 @@ async def bank_bewegungen(ui: UI, request: Request):
     for t in mine:
         counts[t["Status"]] += 1
     return ui.render(request, "bank.html", book=book, rows=rows, status=status, counts=counts, konto=konto,
-                     konten=_bank_accounts(book, alle), pending=_bank_pending(book), **_bank_common(book))
+                     konten=konten, pending=_bank_pending(book), **_bank_common(book))
 
 
 async def bank_regeln(ui: UI, request: Request):

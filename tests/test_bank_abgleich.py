@@ -118,7 +118,11 @@ def test_one_bank_account_at_a_time(book):
         c.get("/?t=tok", follow_redirects=False)
         page = c.get("/bank?konto=1021").text
         assert "Bank Zwei" in page and "Jemand" in page and "Kontofuehrung Xq" not in page
-        assert "Kontofuehrung Xq" in c.get("/bank").text
+        r = c.get("/bank", follow_redirects=False)                # never both banks on one page
+        assert r.status_code == 303 and r.headers["location"] == "/bank?konto=1020"
+        first = c.get("/bank").text
+        assert "Kontofuehrung Xq" in first and "Jemand" not in first
+        assert c.get("/bank/bewegungen", follow_redirects=False).headers["location"].startswith("/bank/bewegungen?konto=1020")
         assert "Jemand" not in c.get("/bank/bewegungen?konto=1020").text
     before = api.invoice_list(Book(root))[0]["status"]
     api.bank_accept_all(Book(root), "1021")                     # nothing sure on 1021: the invoice stays open
