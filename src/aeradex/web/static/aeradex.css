@@ -387,8 +387,8 @@ form.suggest > div { min-width: 0; }
 /* ---- Bank › Abgleichen: one card per open movement ---- */
 .bankimport input[type=file] { width: 240px; }
 .recline { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
-.banktabs { margin-bottom: 12px; overflow-x: auto; }
-.banktabs .tabs { flex-wrap: wrap; }
+.banktabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 14px; }
+.banktabs .count { margin-left: 4px; }
 .recline a { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 12px; border: 1px solid var(--rule);
   border-radius: 999px; background: var(--sheet); text-decoration: none; font-size: 13px; }
 .recline a.bad { border-color: var(--red); }
