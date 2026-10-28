@@ -97,6 +97,10 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   hook `aeradex_datensicherung`. Each Datensatz names the book files it covers (`pfade`); `ungesichert()` lists the
   rest. **Rule: a feature that stores new data in the book adds a Datensatz** (core here, plugin via the hook) —
   `tests/test_datensicherung.py` fails on any uncovered file of a book with every feature in use.
+- `firmen.py` + `web/firmen_views.py`: the company list of the local UI (`<config>/firmen.yaml`, outside every book;
+  `api.companies`/`company_create`/`company_add`/`company_import`/`company_remove`). `aeradex ui` outside a book starts
+  with `/firmen` (`UI.root` None, the middleware sends every page there); `UI.switch` opens another book in place
+  (new agent conversation, file watcher and plugin services). Not in server mode: `aeradex serve` keeps one book.
 - `web/mobil_views.py`: the phone view `/m` (Heute, Kunden, Rechnungen, Scannen, Belege prüfen, Agent), templates
   in `web/templates/m/`, styles `static/mobil.css`, JS `static/mobil.js`. Same data and api writes as the desktop pages
   (shared helpers in `views.py`: `customer_states`, `kunde_teile_html`, `kunde_speichern(base=…)`); `/` sends phones

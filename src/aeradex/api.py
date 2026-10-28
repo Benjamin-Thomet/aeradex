@@ -848,6 +848,57 @@ def book_inspect(datei: str, passwort: str | None = None) -> dict:
     return jsonable(austausch.inspect(Path(datei), passwort or None))
 
 
+# ---------- companies on this computer (firmen.yaml, outside the books) ----------
+
+def companies() -> dict:
+    from . import firmen
+    return jsonable({"firmen": firmen.liste(), "datei": firmen._path()})
+
+
+def company_create(firma: str, rechtsform: str = "GmbH", jahr: int | None = None, ordner: str = "",
+                   **settings) -> dict:
+    """A new book for a new company, added to the list. Without `ordner` it goes to ~/aeradex/<name>."""
+    from . import firmen
+    if not (firma or "").strip():
+        raise BookError("Name der Firma fehlt")
+    target = Path(ordner).expanduser() if (ordner or "").strip() else firmen.default_folder(firma)
+    if target.exists() and (not target.is_dir() or any(target.iterdir())):
+        raise BookError(f"Ordner {target} ist nicht leer — einen neuen Ordner angeben")
+    result = init_book(target, firma.strip(), jahr, None, rechtsform, **settings)
+    firmen.merken(target)
+    return result
+
+
+def company_add(ordner: str) -> dict:
+    """An existing book folder, added to the list."""
+    from . import firmen
+    root = Path(ordner).expanduser().resolve()
+    if not (root / "aeradex.yaml").exists():
+        raise BookError(f"In {root} liegt kein aeradex-Buch (aeradex.yaml fehlt)")
+    firmen.merken(root)
+    return jsonable({"ok": True, "meldung": f"{Book(root).settings.firma} in die Firmenliste aufgenommen",
+                     "buch": root})
+
+
+def company_import(datei: str, ordner: str = "", passwort: str | None = None) -> dict:
+    """A .aeradex file unpacked into a new folder (default ~/aeradex/<name>) and added to the list."""
+    from . import firmen
+    if (ordner or "").strip():
+        target = Path(ordner).expanduser()
+    else:
+        target = firmen.default_folder(book_inspect(datei, passwort).get("firma") or Path(datei).stem)
+    result = book_import(datei, str(target), passwort)
+    firmen.merken(target)
+    return result
+
+
+def company_remove(ordner: str) -> dict:
+    """Take a company off the list. Its folder and book stay untouched."""
+    from . import firmen
+    firmen.entfernen(Path(ordner).expanduser())
+    return {"ok": True, "meldung": f"Aus der Liste entfernt; der Ordner {ordner} bleibt bestehen"}
+
+
 def allocation_set(book: Book, jahr: int, dividende=0, reserve=0) -> dict:
     _guard(book)
     alloc, touched = statements.set_allocation(book, jahr, dividende, reserve)

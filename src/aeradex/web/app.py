@@ -132,7 +132,7 @@ class UI:
 
     def __init__(self, root: Path, token: str | None = None, auth_dir: Path | None = None,
                  https: bool = False):
-        self.root = Path(root).resolve()
+        self.root = Path(root).resolve() if root else None    # None: local mode without a book, /firmen picks one
         self.token = token or secrets.token_urlsafe(24)
         self.csrf = hmac.new(self.token.encode(), b"csrf", hashlib.sha256).hexdigest()[:32]
         self.env = make_env()
@@ -140,6 +140,8 @@ class UI:
         self.chat = None          # set lazily by chat.py
         self.auth_dir = auth_dir  # set = server mode (login, no plugin installs from the browser)
         self.neustart_noetig = False
+        self.watch_task = None    # set by the app's lifespan
+        self.services = False     # run() started the plugins' background services
         # Server mode: users and signed sessions instead of the one-time token.
         self.users = self.sessions = self.throttle = self.invites = self.userlog = None
         self.https = https
@@ -150,6 +152,22 @@ class UI:
 
     def book(self) -> Book:
         return Book(self.root)
+
+    def switch(self, root: Path) -> None:
+        """Local mode: work on another book from now on (Firma wechseln). The agent's conversation, the file
+        watcher and the plugins' background services belong to the book and start anew."""
+        root = Path(root).resolve()
+        Book(root)
+        if root == self.root:
+            return
+        self.root, self.chat = root, None
+        if self.watch_task is not None:
+            self.watch_task.cancel()
+            self.watch_task = asyncio.get_running_loop().create_task(watch(self))
+        if self.services:
+            stop_services()
+            start_services(root)
+        self.version += 1          # open tabs offer a reload
 
     # -- rendering --
     def render(self, request: Request, template: str, http_status: int = 200, **ctx) -> HTMLResponse:
@@ -419,6 +437,10 @@ class SessionMiddleware(BaseHTTPMiddleware):
             sent = request.headers.get("x-csrf", "")
             if not token_matches(sent, self.ui.csrf):
                 return PlainTextResponse("CSRF-Token fehlt oder ist falsch.", status_code=403)
+        if self.ui.root is None and not (path == "/firmen" or path.startswith("/firmen/") or path == "/events"):
+            if request.headers.get("hx-request"):
+                return Response(status_code=204, headers={"HX-Redirect": "/firmen"})
+            return RedirectResponse("/firmen", status_code=303)
         return await call_next(request)
 
 
@@ -527,14 +549,18 @@ async def watch(ui: UI) -> None:
     except ImportError:
         return
 
+    root = ui.root           # a switch to another book cancels this task and starts a new one
+    if root is None:
+        return
+
     def relevant(_change, path: str) -> bool:
         from ..storage import internal
         try:
-            return not internal(Path(path).relative_to(ui.root).as_posix())
+            return not internal(Path(path).relative_to(root).as_posix())
         except ValueError:
             return True
 
-    async for _changes in awatch(ui.root, watch_filter=relevant, debounce=400):
+    async for _changes in awatch(root, watch_filter=relevant, debounce=400):
         ui.version += 1
 
 
@@ -595,12 +621,16 @@ def login_routes(ui: UI) -> list[Route]:
             Route("/healthz", healthz)]
 
 
-def create_app(root: Path, token: str | None = None, auth_dir: Path | None = None, https: bool = False) -> Starlette:
+def create_app(root: Path | None, token: str | None = None, auth_dir: Path | None = None,
+               https: bool = False) -> Starlette:
+    """root None (local mode only): no book yet, every page leads to the company list /firmen."""
     from . import berichte_views, views, chat
 
+    if root is None and auth_dir is not None:
+        raise ValueError("aeradex serve braucht ein Buch")
     ui = UI(root, token, auth_dir, https)
-    from . import benutzer_views, mobil_views
-    routes = views.routes(ui) + mobil_views.routes(ui) + berichte_views.routes(ui) + chat.routes(ui) + benutzer_views.routes(ui) + (login_routes(ui) if auth_dir is not None else []) + [
+    from . import benutzer_views, firmen_views, mobil_views
+    routes = views.routes(ui) + mobil_views.routes(ui) + berichte_views.routes(ui) + chat.routes(ui) + benutzer_views.routes(ui) + (login_routes(ui) if auth_dir is not None else firmen_views.routes(ui)) + [
         Route("/datei/{path:path}", serve_file(ui)),
         Route("/events", events(ui)),
         Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
@@ -608,11 +638,11 @@ def create_app(root: Path, token: str | None = None, auth_dir: Path | None = Non
 
     @contextlib.asynccontextmanager
     async def lifespan(_app):
-        task = asyncio.create_task(watch(ui))
+        ui.watch_task = asyncio.create_task(watch(ui))
         try:
             yield
         finally:
-            task.cancel()
+            ui.watch_task.cancel()
             # here, not after uvicorn.run(): on SIGTERM uvicorn re-raises the signal once shut down
             await asyncio.to_thread(stop_services)
 
@@ -670,13 +700,22 @@ def restart_later(ui: "UI", delay: float = 0.8) -> None:
         os.environ["AERADEX_UI_TOKEN"] = ui.token
         os.environ["AERADEX_UI_RESTART"] = "1"
         stop_services()                       # the new process starts them again (with new plugins)
+        # The book open now, which may not be the one it started with (Firma wechseln).
+        args, rest = [], iter(sys.argv[1:])
+        for arg in rest:
+            if arg == "--buch":
+                next(rest, None)
+            elif not arg.startswith("--buch="):
+                args.append(arg)
+        root = getattr(ui, "root", None)
+        args = ["--buch", str(root), *args] if root is not None else args
         # Re-run as a module: sys.argv[0] may be the `aeradex` script or, with `python -m aeradex`,
         # the path of __main__.py, which cannot be executed on its own (relative imports).
-        os.execv(sys.executable, [sys.executable, "-m", "aeradex", *sys.argv[1:]])
+        os.execv(sys.executable, [sys.executable, "-m", "aeradex", *args])
     threading.Timer(delay, go).start()
 
 
-def run(root: Path, port: int = 5151, open_browser: bool = True) -> None:
+def run(root: Path | None, port: int = 5151, open_browser: bool = True) -> None:
     import threading
     import webbrowser
 
@@ -687,10 +726,17 @@ def run(root: Path, port: int = 5151, open_browser: bool = True) -> None:
     app = create_app(root, os.environ.pop("AERADEX_UI_TOKEN", None) or None)
     ui: UI = app.state.ui
     url = f"http://127.0.0.1:{port}/?t={ui.token}"
-    print(f"aeradex läuft für {ui.book().settings.firma}: {url}\n(Beenden mit Ctrl+C)")
+    if root is None:
+        print(f"aeradex läuft (Firmenliste): {url}\n(Beenden mit Ctrl+C)")
+    else:
+        from .. import firmen
+        firmen.merken(root)
+        print(f"aeradex läuft für {ui.book().settings.firma}: {url}\n(Beenden mit Ctrl+C)")
     if open_browser and not restarted:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    start_services(root)
+    ui.services = True
+    if root is not None:
+        start_services(root)
     try:
         # an open tab keeps its live-refresh stream (SSE) open forever: without a limit Ctrl+C would wait for it
         uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=2)

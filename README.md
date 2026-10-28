@@ -120,6 +120,14 @@ aeradex ui                        # öffnet aeradex im Browser (nur lokal, mit Z
 
 Eine lokale Web-App über denselben Kern wie CLI und Agenten. Jeder Klick wird geprüft und in git festgehalten.
 
+**Mehrere Firmen:** Startest du `aeradex ui` ausserhalb eines Buchs, beginnt es mit der Liste deiner Firmen. Dort
+öffnest du eine Firma, legst eine neue an (Name, Rechtsform, erstes Jahr; das Buch kommt nach `~/aeradex/<name>`
+oder in einen Ordner deiner Wahl), nimmst einen bestehenden Buchordner auf oder importierst eine `.aeradex`-Datei.
+Gewechselt wird über das Menü der Firma oben rechts (*Firma wechseln*). Jede Firma bleibt ein eigenes Buch mit
+eigenem git-Verlauf; die Liste liegt auf dem Computer (`~/.config/aeradex/firmen.yaml`), nicht im Buch, und
+«Aus Liste entfernen» löscht nichts. Im Terminal: `aeradex firmen`, `aeradex firmen add ORDNER`,
+`aeradex firmen remove ORDNER`. Der Server-Betrieb (`aeradex serve`) bleibt bei einem Buch pro Instanz.
+
 Sechs Bereiche, jeder mit einem klaren Ablauf (dazu eigene Bereiche von Plugins, z.B. *Leistungen*). Belege lädst du an einer Stelle hoch (**Beleg hochladen** oben
 rechts); aeradex erkennt die Art und legt einen Entwurf an. Gebucht wird erst, wenn du freigibst.
 
@@ -547,7 +555,7 @@ Debitoren mit QR-Rechnung (CHF/EUR) und Mahnwesen, Kreditoren mit QR-Scan und pa
 Kunden mit Verlauf und Wiedervorlagen, Rabatt und Akontorechnungen, Jahresabschluss mit Checkliste und
 Abschlussbuchungen, Geschäftsjahre und Eröffnungsbilanz aus der bisherigen Buchhaltung, Dividende mit
 Verrechnungssteuer, Lohn mit Spesen, Lohnkonto und Jahres-Lohnmeldungen, Datensicherung, Benutzer mit
-Einladungslinks, Handy-Ansicht mit Beleg-Scanner und Spracheingabe, Anlagenbuchhaltung (Plugin), Zeit- und Materialerfassung mit
+Einladungslinks, mehrere Firmen in der lokalen Oberfläche, Handy-Ansicht mit Beleg-Scanner und Spracheingabe, Anlagenbuchhaltung (Plugin), Zeit- und Materialerfassung mit
 Abwesenheiten und Abrechnung an Kunden (Plugin), Team-App fürs Handy der Mitarbeitenden (Plugin), Sekretärin mit
 Stimme und Telegram (Plugin), Plugin-System mit eigenen Seiten, Agenten-Schnittstelle (CLI + MCP), Web-Oberfläche mit
 eingebautem Agenten, lokal oder als Server mit Login.
@@ -555,7 +563,7 @@ eingebautem Agenten, lokal oder als Server mit Login.
 Als Nächstes:
 - Swissdec-Zertifizierung für Lohnmeldungen über ELM (Voraussetzung: Zertifizierung durch Swissdec)
 - Weitere Quellensteuer-Kantone, ALV-Höchstgrenze
-- Mehrere Mandanten in einer Instanz
+- Mehrere Mandanten in einer Server-Instanz (lokal geht es schon: Firmenliste in `aeradex ui`)
 - camt.054 (Sammelgutschriften im Detail)
 
 Vor dem ersten Einsatz mit echten Rechnungen: ein erzeugtes PDF im offiziellen SIX-Validator prüfen (https://validation.iso-payments.ch/). Sozialversicherungssätze in `lohn/einstellungen.yaml` an deine Ausgleichskasse, UVG- und KTG-Police anpassen.

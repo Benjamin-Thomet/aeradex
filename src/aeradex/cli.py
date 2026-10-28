@@ -552,7 +552,14 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--rolle", choices=["lesen", "buchhaltung", "admin"], default="buchhaltung")
     c.add_argument("--notiz", default="", help="für wen, z.B. 'Lea Muster'")
     c.add_argument("--url", required=True, help="öffentliche Adresse, z.B. https://buch.example.ch")
-    s = sub.add_parser("ui", help="Oberfläche im Browser starten (lokal)")
+    s = sub.add_parser("firmen", help="Firmen auf diesem Computer (Liste für aeradex ui)")
+    fs = s.add_subparsers(dest="sub")
+    fs.add_parser("list", help="bekannte Firmen (Standard)")
+    c = fs.add_parser("add", help="bestehendes Buch in die Liste aufnehmen")
+    c.add_argument("ordner")
+    c = fs.add_parser("remove", help="aus der Liste entfernen (der Ordner bleibt)")
+    c.add_argument("ordner")
+    s = sub.add_parser("ui", help="Oberfläche im Browser starten (lokal; ausserhalb eines Buchs mit der Firmenliste)")
     s.add_argument("--port", type=int, default=5151)
     s.add_argument("--kein-browser", action="store_true", help="Browser nicht automatisch öffnen")
 
@@ -688,6 +695,12 @@ def dispatch(a, book_path: Path | None):
         if name not in plugins.enabled_names(b):
             raise BookError(f"Plugin '{name}' ist für dieses Buch nicht eingeschaltet (aeradex plugins ein {name})")
         return cmd.run(b, a)
+    if c == "firmen":
+        if a.sub == "add":
+            return api.company_add(a.ordner)
+        if a.sub == "remove":
+            return api.company_remove(a.ordner)
+        return api.companies()
     if c in ("export-buch", "import-buch"):
         password = None
         if a.passwort_stdin:
@@ -1098,6 +1111,11 @@ def render(cmd: str, sub: str | None, result) -> str:
             return "✓ Buch ist in Ordnung."
         return "\n".join(f"[{p['stufe']}] {p['ort']}: {p['meldung']}" for p in result["probleme"]) + \
             ("\n✓ keine Fehler" if result["ok"] else "\n✗ Buch hat Fehler")
+    if cmd == "firmen" and isinstance(result, dict) and "firmen" in result:
+        if not result["firmen"]:
+            return f"Noch keine Firmen in {result['datei']} — aeradex ui öffnen oder aeradex firmen add ORDNER"
+        return "\n".join(f"{f['firma'][:32]:<32} {(f['ort'] or '')[:16]:<16} {f['ordner']}"
+                         + ("  (Ordner fehlt)" if f["fehlt"] else "") for f in result["firmen"])
     if cmd == "status":
         r = result
         out = [f"{r['firma']}  ({r['buch']})",
@@ -1352,8 +1370,10 @@ def main(argv: list[str] | None = None) -> int:
         try:
             root = find_root(Path(a.buch) if a.buch else None)
         except BookError as exc:
-            print(f"✗ {exc}", file=sys.stderr)
-            return 2
+            if a.buch:
+                print(f"✗ {exc}", file=sys.stderr)
+                return 2
+            root = None          # not inside a book: start with the company list
         run(root, a.port, open_browser=not a.kein_browser)
         return 0
     try:

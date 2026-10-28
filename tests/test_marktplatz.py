@@ -125,7 +125,7 @@ def test_restart_runs_aeradex_as_module(argv0, monkeypatch):
     monkeypatch.setattr(os, "execv", lambda exe, args: calls.append((exe, args)))
     monkeypatch.setattr(threading, "Timer", lambda delay, fn: type("T", (), {"start": staticmethod(fn)}))
     monkeypatch.delenv("AERADEX_UI_TOKEN", raising=False)
-    app.restart_later(type("UI", (), {"token": "tok"})())
-    assert calls == [(sys.executable, [sys.executable, "-m", "aeradex", "--buch", "muster", "ui", "--port", "8790"])]
+    app.restart_later(type("UI", (), {"token": "tok", "root": Path("/b/zweite")})())    # switched to another book
+    assert calls == [(sys.executable, [sys.executable, "-m", "aeradex", "--buch", "/b/zweite", "ui", "--port", "8790"])]
     assert os.environ.pop("AERADEX_UI_TOKEN") == "tok"
     os.environ.pop("AERADEX_UI_RESTART", None)

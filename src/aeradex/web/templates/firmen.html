@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="de-CH" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Firmen · aeradex</title>
+<link rel="icon" href="/static/logo.svg?v={{ asset }}" type="image/svg+xml">
+<link rel="stylesheet" href="/static/aeradex.css?v={{ asset }}">
+<script>try{var t=localStorage.getItem("aeradex-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<style>
+  .firmenwrap { max-width: 1040px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 64px; display: flex; flex-direction: column; gap: 22px; }
+  .firmenkopf { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .firmen { list-style: none; margin: 0; padding: 0; }
+  .firmen li { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+  .firmen li:last-child { border-bottom: 0; }
+  .firmen .wer { flex: 1 1 260px; min-width: 0; }
+  .firmen .wer strong { font-size: 15px; }
+  .firmen .ordner { overflow-wrap: anywhere; }
+  .firmen .tun { display: flex; gap: 8px; align-items: center; }
+  .firmen form { display: inline; }
+  @media (max-width: 720px) { .firmenwrap .form { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body hx-headers='{"X-CSRF": "{{ csrf }}"}'>
+<div class="firmenwrap">
+  <div class="firmenkopf">
+    <span class="brand"><span class="coin" aria-hidden="true"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><mask id="ae-firmen"><rect width="32" height="32" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M15.85 11.4V20.6"/><circle cx="11.25" cy="16" r="4.6"/><path d="M15.85 16H25.35A4.75 4.75 0 0 0 15.85 16"/><path d="M15.85 16A4.75 4.75 0 0 0 24.24 19.05"/></g></mask><circle cx="16" cy="16" r="15" fill="currentColor" mask="url(#ae-firmen)"/></svg></span><b>aeradex</b></span>
+    {% if aktuell %}<a class="btn" href="/">Zurück zu {{ aktuell }}</a>{% endif %}
+  </div>
+
+  <div class="topbar"><div><h1>Firmen</h1><div class="sub">Jede Firma hat ihr eigenes Buch in einem eigenen Ordner. Wähle, mit welcher du arbeiten willst.</div></div></div>
+
+  <div class="panel">
+    <header><h2>Auf diesem Computer</h2>{% if firmen|length > 1 %}<span class="hint">zuletzt geöffnete zuerst</span>{% endif %}</header>
+    {% if firmen %}
+    <ul class="firmen">{% for f in firmen %}{% set offen = f.ordner == root %}
+      <li>
+        <div class="wer"><strong>{{ f.firma }}</strong>{% if offen %} <span class="pill ok">geöffnet</span>{% endif %}{% if f.fehlt %} <span class="pill red">Ordner fehlt</span>{% endif %}
+          <div class="small muted">{{ [f.rechtsform, f.ort]|select|join(" · ") }}</div>
+          <div class="small muted ordner" title="{{ f.ordner }}">{{ f.anzeige }}</div></div>
+        <div class="tun">
+          {% if not offen %}<form hx-post="/firmen/entfernen" hx-target="#liste-fehler" hx-confirm="{{ f.firma }} aus der Liste entfernen? Der Ordner und das Buch bleiben, wie sie sind."><input type="hidden" name="ordner" value="{{ f.ordner }}"><button class="btn small ghost" type="submit">Aus Liste entfernen</button></form>{% endif %}
+          {% if offen %}<a class="btn small primary" href="/">Weiterarbeiten</a>
+          {% elif not f.fehlt %}<form hx-post="/firmen/oeffnen" hx-target="#liste-fehler"><input type="hidden" name="ordner" value="{{ f.ordner }}"><button class="btn small primary" type="submit">Öffnen</button></form>{% endif %}
+        </div>
+      </li>{% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">Noch keine Firma. Lege unten eine neue an oder nimm ein bestehendes Buch auf.</div>
+    {% endif %}
+    <div id="liste-fehler" class="errors" style="margin:0 16px 14px"></div>
+  </div>
+
+  <div class="grid2 even">
+    <form class="panel" hx-post="/firmen/neu" hx-target="find .errors" hx-indicator="find .busy">
+      <header><h2>Neue Firma</h2><span class="hint">ein leeres Buch mit Kontenplan</span></header>
+      <div class="body">
+        <div class="form">
+          <div class="field wide"><label for="fn-f">Name der Firma</label><input class="input" id="fn-f" name="firma" required maxlength="120" placeholder="z.B. Muster GmbH"{% if not firmen %} autofocus{% endif %}></div>
+          <div class="field"><label for="fn-r">Rechtsform</label><select class="input" id="fn-r" name="rechtsform" style="width:100%">{% for r in rechtsformen %}<option>{{ r }}</option>{% endfor %}</select></div>
+          <div class="field"><label for="fn-j">Erstes Geschäftsjahr</label><input class="input num" id="fn-j" name="jahr" inputmode="numeric" value="{{ jahr }}"></div>
+          <div class="field"><label for="fn-p">PLZ</label><input class="input" id="fn-p" name="plz" inputmode="numeric" maxlength="6"></div>
+          <div class="field"><label for="fn-o">Ort</label><input class="input" id="fn-o" name="ort" maxlength="60"></div>
+          <div class="field wide"><label for="fn-d">Ordner (optional)</label><input class="input" id="fn-d" name="ordner" placeholder="{{ standard }}/<name der firma>"></div>
+        </div>
+        <p class="small muted">Die Rechtsform bestimmt den Kontenplan (AG/GmbH, Einzelfirma oder Verein). Adresse, Bank, Logo und MWST ergänzt du danach unter Einstellungen. Hast du schon eine Buchhaltung, übernimmst du die Schlussbilanz unter Einstellungen › Geschäftsjahre.</p>
+        <div class="errors"></div>
+        <div class="formfoot"><span class="busy small muted htmx-indicator">Lege Buch an …</span><button class="btn primary" type="submit">Firma anlegen</button></div>
+      </div>
+    </form>
+
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <form class="panel" hx-post="/firmen/hinzufuegen" hx-target="find .errors">
+        <header><h2>Bestehendes Buch aufnehmen</h2><span class="hint">ein Ordner mit aeradex.yaml</span></header>
+        <div class="body">
+          <div class="field"><label for="fh-o">Ordner</label><input class="input" id="fh-o" name="ordner" required placeholder="/home/…/buchhaltung"></div>
+          <div class="errors"></div>
+          <div class="formfoot"><span></span><button class="btn" type="submit">Aufnehmen</button></div>
+        </div>
+      </form>
+      <form class="panel" hx-post="/firmen/importieren" hx-encoding="multipart/form-data" hx-target="find .errors" hx-indicator="find .busy">
+        <header><h2>Aus einer .aeradex-Datei</h2><span class="hint">z.B. von der Treuhand oder einem anderen Computer</span></header>
+        <div class="body">
+          <div class="form">
+            <div class="field wide"><label for="fi-d">Datei</label><input class="input" id="fi-d" type="file" name="datei" accept=".aeradex" required></div>
+            <div class="field"><label for="fi-p">Passwort (falls verschlüsselt)</label><input class="input" id="fi-p" type="password" name="passwort" autocomplete="off"></div>
+            <div class="field"><label for="fi-o">Ordner (optional)</label><input class="input" id="fi-o" name="ordner" placeholder="{{ standard }}/…"></div>
+          </div>
+          <div class="errors"></div>
+          <div class="formfoot"><span class="busy small muted htmx-indicator">Importiere …</span><button class="btn" type="submit">Importieren</button></div>
+        </div>
+      </form>
+    </div>
+  </div>
+  <p class="small muted">Die Liste liegt auf diesem Computer, nicht im Buch. «Aus Liste entfernen» löscht nichts: Ordner und Buch bleiben.</p>
+</div>
+{% if flash %}<div class="toast {{ 'error' if flash.kind == 'error' }}" id="toast" role="status">✓ {{ flash.msg }}</div>{% endif %}
+<script src="/static/htmx.min.js?v={{ asset }}"></script>
+<script>setTimeout(function(){var t=document.getElementById("toast");if(t)t.remove()},4000)</script>
+</body>
+</html>

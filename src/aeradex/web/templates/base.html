@@ -41,6 +41,7 @@
           <strong>{{ settings.firma }}</strong>
           <span class="small muted">{{ settings.adresse.ort or "" }}{% if settings.sperre_bis %} · gesperrt bis {{ settings.sperre_bis|datum }}{% else %} · nichts gesperrt{% endif %}</span>
           <span class="small muted" title="{{ book.root }}">Ordner: {{ book.root.name }}</span>
+          {% if not user %}<a class="btn small" href="/firmen">Firma wechseln oder neu anlegen</a>{% endif %}
           {% if user %}<span class="small">{{ user.anzeige }} · {{ {"lesen": "Leserecht", "buchhaltung": "Buchhaltung", "admin": "Admin"}[user.rolle] }}</span>
           <span class="small"><a class="link" href="/konto">Mein Konto</a> · <a class="link" href="/benutzer">Benutzer</a></span>{% endif %}
           <span class="small"><a class="link" href="/datensicherung">Datensicherung</a> · <a class="link" href="/m/ansicht?zu=handy" title="Die schlanke Ansicht fürs Handy: Kunden, Rechnungen, Belege scannen, Agent">Handy-Ansicht</a></span>{% if user %}

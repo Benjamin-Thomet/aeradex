@@ -9,7 +9,8 @@ Claude Code per SSH) und ein Einrichtungsskript: [deploy/](../deploy). Diese Sei
 ## Grundsätze
 
 - **Ein Buch pro Instanz.** Für mehrere Mandanten mehrere Instanzen auf verschiedenen Ports bzw. Subdomains
-  (z.B. `muster.buchhaltung.example.ch`), je mit eigenem Buch und eigener Benutzerliste.
+  (z.B. `muster.buchhaltung.example.ch`), je mit eigenem Buch und eigener Benutzerliste. Die Firmenliste zum
+  Wechseln gibt es nur lokal in `aeradex ui`.
 - **HTTPS macht der Reverse Proxy** (Caddy oder nginx); aeradex selbst hört nur auf `127.0.0.1`.
 - **Benutzer liegen nicht im Buch.** `users.yaml` und `secret` stehen im Konfigurationsverzeichnis
   (Standard `~/.config/aeradex`, sonst `--config DIR` bzw. `$AERADEX_CONFIG`), Dateirechte 600.
