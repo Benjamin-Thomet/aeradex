@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Offerten, Zeiterfassung, Produkte, Projekte und Abrechnung an Kunden — Plugin für aeradex"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.11"
-dependencies = ["aeradex>=0.8"]
+dependencies = ["aeradex[scan,excel]>=0.8"]   # scan: page images and QR of scanned reports; excel: the SMGV template
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
