@@ -28,7 +28,7 @@
     </div>
     {{ errors() }}
     <div class="formfoot"><span class="small muted">Linear ab {{ k.datum|datum }} · mehrere Geräte auf einer Rechnung: Teilbetrag erfassen, der Rest bleibt stehen</span>
-      <span class="actions"><button class="btn ghost small" type="submit" hx-post="/p/anlagen/anlagen/keine_anlage" hx-confirm="Beleg {{ k.beleg }} auf {{ k.konto }} ist keine Anlage (z.B. Umbuchung)?" formnovalidate>keine Anlage</button><button class="btn primary" type="submit">Als Anlage erfassen</button></span></div>
+      <span class="actions"><button class="btn ghost small" type="submit" hx-post="/p/anlagen/anlagen/keine_anlage" hx-target="previous .errors" hx-confirm="Beleg {{ k.beleg }} auf {{ k.konto }} ist keine Anlage (z.B. Umbuchung)?" formnovalidate>keine Anlage</button><button class="btn primary" type="submit">Als Anlage erfassen</button></span></div>
   </form>
   {% endfor %}
 </div>

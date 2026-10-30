@@ -702,21 +702,24 @@ def test_journal_edit_in_place(client, root):
 
 
 def test_journal_filter_select_preview_and_recode(client, root):
+    # a simple Beleg Büromaterial an Bank in the demo book (its number changes when the demo is rebuilt)
+    beleg = next(x.beleg for x in Book(root).rows if x.soll == "6500" and x.haben == "1020")
     page = client.get("/journal?monat=alle&konto=6500").text
-    assert 'value="26-001" form="umbuchen" data-sel' in page
+    assert f'value="{beleg}" form="umbuchen" data-sel' in page
+    payroll_beleg = next(x.beleg for x in Book(root).rows if str(x.quelle or "").startswith("lohn"))
     lohn = client.get("/journal?monat=alle&quelle=lohn").text
-    assert "L-2026-01-M0001" in lohn and 'value="L-2026-01-M0001" form="umbuchen"' not in lohn
+    assert payroll_beleg in lohn and f'value="{payroll_beleg}" form="umbuchen"' not in lohn
 
-    r = post(client, "/journal/umbuchen/vorschau", {"beleg": ["26-001", "L-2026-01-M0001"], "konto_alt": "6500  Büromaterial",
+    r = post(client, "/journal/umbuchen/vorschau", {"beleg": [beleg, payroll_beleg], "konto_alt": "6500  Büromaterial",
                                                      "konto_neu": "6570"})
     assert r.status_code == 200 and "wird umgebucht" in r.text and "übersprungen" in r.text
-    assert any(x.soll == "6500" for x in Book(root).rows if x.beleg == "26-001")      # preview wrote nothing
+    assert any(x.soll == "6500" for x in Book(root).rows if x.beleg == beleg)      # preview wrote nothing
 
-    ok(post(client, "/journal/umbuchen", {"beleg": ["26-001"], "konto_alt": "6500", "konto_neu": "6570"}))
-    assert [(x.soll, x.haben) for x in Book(root).rows if x.beleg == "26-001"] == [("6570", "1020")]
+    ok(post(client, "/journal/umbuchen", {"beleg": [beleg], "konto_alt": "6500", "konto_neu": "6570"}))
+    assert [(x.soll, x.haben) for x in Book(root).rows if x.beleg == beleg] == [("6570", "1020")]
     assert "Umgebucht" in last_commit(root) and errors(root) == []
 
-    r = post(client, "/journal/umbuchen/vorschau", {"beleg": ["26-001"], "konto_alt": "", "konto_neu": "6570"})
+    r = post(client, "/journal/umbuchen/vorschau", {"beleg": [beleg], "konto_alt": "", "konto_neu": "6570"})
     assert "Konto von" in r.text
 
 

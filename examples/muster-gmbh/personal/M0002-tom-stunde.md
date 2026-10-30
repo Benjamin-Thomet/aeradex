@@ -29,6 +29,7 @@ qst_pflicht: auto
 qst:
   code: A0N
   kanton: BS
+  jahr: 2026
 qst_satz: 0.00
 iban: ''
 aktiv: true
