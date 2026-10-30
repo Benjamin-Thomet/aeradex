@@ -156,7 +156,7 @@ LOGO_MAX_H = 10 * mm         # with three lines below it the block still ends ab
 LOGO_MAX_W = 70 * mm
 
 
-def _logo(book: Book, width: float):
+def _logo(book: Book, width: float, max_h: float = LOGO_MAX_H, max_w: float = LOGO_MAX_W):
     """The logo from aeradex.yaml (`logo`, set in Einstellungen), scaled into the letterhead; None without one."""
     rel = str(book.settings.get("logo") or "").strip()
     path = (book.root / rel).resolve() if rel else None
@@ -168,7 +168,7 @@ def _logo(book: Book, width: float):
         iw, ih = ImageReader(str(path)).getSize()
     except Exception:
         return None
-    scale = min(LOGO_MAX_H / ih, min(LOGO_MAX_W, width) / iw)
+    scale = min(max_h / ih, min(max_w, width) / iw)
     img = Image(str(path), width=iw * scale, height=ih * scale, mask="auto")   # keep PNG transparency
     img.hAlign = "LEFT"
     return img
@@ -246,6 +246,219 @@ def _doc(buf, title: str, author: str, pagesize=A4, label: str = "", head: bool 
     return doc
 
 
+# ---------- Letter layout «brief» ----------
+# A book may set `rechnung: {layout: brief, …}` for invoices and offers in the shape of a classic Swiss business
+# letter: large logo, place and date, salutation, numbered positions with unit, payment terms and bank, greeting with
+# the signer, and the company in a footer line. Without it the documents keep the compact layout above.
+
+BRIEF_HEAD = colors.HexColor("#e8e8e8")
+
+
+def brief(book: Book) -> dict | None:
+    """The settings of the letter layout, or None when the book uses the compact one."""
+    cfg = book.settings.get("rechnung") or {}
+    return cfg if isinstance(cfg, dict) and cfg.get("layout") == "brief" else None
+
+
+def brief_recipient(an: dict, layout: dict | None) -> list[str]:
+    """The address window of an invoice or offer; in the letter layout «Herr»/«Frau» goes before the person."""
+    a = an or {}
+    title = (a.get("anrede") or "").strip() if layout else ""
+    person = lambda name: f"{title} {name}".strip() if title in ("Herr", "Frau") and name else name
+    if a.get("zusatz"):
+        lines = [a.get("name"), person(a["zusatz"])]
+    else:
+        lines = [person(a.get("name")) if title != "Familie" else f"Familie {a.get('name')}"]
+    lines += [" ".join(x for x in (a.get("strasse"), a.get("nr")) if x),
+              " ".join(x for x in (a.get("plz"), a.get("ort")) if x)]
+    if a.get("land") and a.get("land") != "CH":
+        lines.append(a["land"])
+    return [l for l in lines if l]
+
+
+def salutation(an: dict) -> str:
+    """«Sehr geehrte Frau Muster» from the customer's Anrede and name; the general form without one."""
+    a = an or {}
+    title = (a.get("anrede") or "").strip()
+    name = (a.get("zusatz") or a.get("name") or "").strip()
+    last = name.split()[-1] if name else ""
+    if title == "Herr" and last:
+        return f"Sehr geehrter Herr {last}"
+    if title == "Frau" and last:
+        return f"Sehr geehrte Frau {last}"
+    if title == "Familie" and last:
+        return f"Sehr geehrte Familie {last}"
+    return "Sehr geehrte Damen und Herren"
+
+
+def brief_head(book: Book, width: float, recipient: list[str], datum) -> list:
+    """Logo (or the company name) top left, the address in the right envelope window, «Ort, Datum» below it."""
+    s = book.settings
+    cfg = brief(book) or {}
+    try:
+        logo_h = float(cfg.get("logo_hoehe_mm") or 22) * mm
+    except (TypeError, ValueError):
+        logo_h = 22 * mm
+    head_h = ADDRESS_TOP - TOP - 5 * mm
+    logo = _logo(book, width * 0.55, max_h=min(logo_h, head_h), max_w=90 * mm) or P(s.firma, "lh_firm")
+    place = (cfg.get("ort") or s.get("adresse", {}).get("ort") or "").strip()
+    window = [[P(l)] for l in recipient] + [[Spacer(1, 9 * mm)],
+                                                    [P(", ".join(x for x in (place, d(datum)) if x))]]
+    t = Table([[logo, ""], ["", Table(window, colWidths=[width * 0.42], style=FLUSH)]],
+              colWidths=[width * 0.58, width * 0.42], rowHeights=[head_h, None])
+    t.setStyle(TableStyle(FLUSH))
+    return [t, Spacer(1, 8 * mm)]
+
+
+def brief_info(rows: list[tuple[str, str]]) -> Table:
+    return Table([[P(k, "bold"), P(v)] for k, v in rows if v], colWidths=[45 * mm, 100 * mm], hAlign="LEFT",
+                 style=[("LEFTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0)])
+
+
+def brief_positions(meta: dict, width: float, totals: list[tuple[str, str, bool]]) -> Table:
+    """Pos. · Beschreibung · Menge · Einheit · Ansatz · Betrag; `totals` are (label, amount, bold) lines below."""
+    cur = meta.get("waehrung") or "CHF"
+    head = ["Pos.", "Beschreibung", "Menge", "Einheit", P(f"<b>Ansatz<br/>{cur}</b>", "boldright"),
+            P(f"<b>Betrag {cur}</b>", "boldright")]
+    data = [head]
+    n = 0
+    for p in meta["positionen"]:
+        if p.get("rabatt") or p.get("akonto"):
+            continue
+        n += 1
+        menge = f"{Decimal(str(p['menge'])).normalize():f}"
+        data.append([str(n), P(_lines(p["text"])), menge, p.get("einheit") or "", price(p["preis"]), chf(p["betrag"])])
+    first_total = len(data)
+    for label, amount, bold in totals:
+        data.append(["", P(f"<b>{escape(label)}</b>" if bold else label), "", "", "",
+                     P(f"<b>{amount}</b>", "boldright") if bold else amount])
+    t = Table(data, colWidths=[width * 0.08, width * 0.44, width * 0.09, width * 0.11, width * 0.13, width * 0.15],
+              repeatRows=1)
+    style = [("FONT", (0, 0), (-1, -1), "Helvetica", 9.5), ("TEXTCOLOR", (0, 0), (-1, -1), INK),
+             ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 3),
+             ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 4),
+             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+             ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 9.5), ("BACKGROUND", (0, 0), (-1, 0), BRIEF_HEAD),
+             ("ALIGN", (2, 0), (2, -1), "RIGHT"), ("ALIGN", (3, 0), (3, -1), "CENTER"),
+             ("ALIGN", (4, 0), (5, -1), "RIGHT")]
+    for r in range(1, first_total):
+        style.append(("LINEBELOW", (0, r), (-1, r), 0.4, RULE))
+    if len(data) > first_total:
+        style.append(("LINEABOVE", (0, first_total), (-1, first_total), 0.8, INK))
+        style += [("LINEBELOW", (0, len(data) - 1), (-1, len(data) - 1), 0.8, INK),
+                  ("LINEBELOW", (0, len(data) - 1), (-1, len(data) - 1), 0.4, INK, None, None, 2, 2)]
+        last = len(data) - 1
+        style.append(("LINEABOVE", (0, last), (-1, last), 0.8, INK))
+    t.setStyle(TableStyle(style))
+    return t
+
+
+def brief_closing(book: Book, dank: str) -> list:
+    cfg = brief(book) or {}
+    out = [Spacer(1, 5 * mm), P(dank), Spacer(1, 5 * mm), P("Freundliche Grüsse")]
+    if cfg.get("unterzeichner"):
+        out += [Spacer(1, 10 * mm), P(cfg["unterzeichner"])]
+        if cfg.get("funktion"):
+            out.append(P(cfg["funktion"]))
+    return [KeepTogether(out)]
+
+
+def brief_footer(canvas, doc, book: Book, y: float = 10 * mm) -> None:
+    """The company on one centred line at the foot of every page, the UID/MWST-Nr. below it."""
+    _watermark(canvas, doc)
+    s = book.settings
+    line = " · ".join(x for x in [s.firma, *s.address_lines,
+                                  f"Tel. {s.get('telefon')}" if s.get("telefon") else "",
+                                  s.get("email") or "", s.get("web") or ""] if x)
+    uid = (s.get("uid") or "").strip()
+    w = doc.pagesize[0]
+    canvas.saveState()
+    canvas.setStrokeColor(RULE)
+    canvas.setLineWidth(0.5)
+    canvas.line(SIDE, y + 7 * mm, w - SIDE, y + 7 * mm)
+    canvas.setFont("Helvetica", 7.5)
+    canvas.setFillColor(MUTED)
+    canvas.drawCentredString(w / 2, y + 3.5 * mm, line)
+    if uid:
+        canvas.drawCentredString(w / 2, y, f"{'MWST-Nr.' if uid.upper().endswith('MWST') else 'UID'} {uid}")
+    if doc.page > 1:
+        canvas.drawRightString(w - SIDE, y, f"Seite {doc.page}")
+    canvas.restoreState()
+
+
+def brief_doc(buf, book: Book, title: str) -> BaseDocTemplate:
+    """A letter without payment slip (offer) in the letter layout: the footer line on every page."""
+    doc = BaseDocTemplate(buf, pagesize=A4, leftMargin=SIDE, rightMargin=SIDE, topMargin=TOP,
+                          bottomMargin=BOTTOM + 6 * mm, title=title, author=book.settings.firma)
+    frame = Frame(SIDE, BOTTOM + 6 * mm, A4[0] - 2 * SIDE, A4[1] - TOP - BOTTOM - 6 * mm, 0, 0, 0, 0)
+    doc.addPageTemplates([PageTemplate("main", [frame], onPage=lambda c, dd: brief_footer(c, dd, book))])
+    return doc
+
+
+def _brief_totals(book: Book, meta: dict) -> list[tuple[str, str, bool]]:
+    """Zwischentotal, Rabatt and Akonto lines, MWST and the total, as in a painter's or joiner's invoice."""
+    cur = meta.get("waehrung") or "CHF"
+    out = []
+    deductions = invoice_deductions(book, meta)
+    if deductions:
+        out += [(label, chf(amount), is_sum) for label, amount, is_sum in deductions]
+    elif meta.get("mwst"):
+        base = sum((Decimal(str(p["betrag"])) for p in meta["positionen"]), Decimal(0))
+        out.append(("Zwischentotal", chf(base), True))
+    if meta.get("mwst"):
+        bands = meta["mwst"]
+        for b in bands:
+            rate = Decimal(str(b.get("satz") or 0))
+            if rate:
+                label = f"MWST {rate:g} %" + (f" auf {chf(b['netto'])}" if len(bands) > 1 else "")
+                out.append((label, chf(b["steuer"]), False))
+            else:
+                out.append(({"U0": "Steuerbefreite Leistung", "UA": "Von der MWST ausgenommen"}.get(b["code"], b["code"]),
+                            "", False))
+    out.append((f"Total{' inkl. MWST' if meta.get('mwst') else ''}", f"{cur} {chf(meta['total'])}", True))
+    return out
+
+
+def _brief_invoice_story(book: Book, meta: dict, width: float, kind: str) -> list:
+    s = book.settings
+    cfg = brief(book) or {}
+    story = brief_head(book, width, brief_recipient(meta.get("an"), cfg), meta["datum"])
+    story.append(P(kind, "title"))
+    ausfuehrung = ""
+    if meta.get("leistung_von"):
+        ausfuehrung = (f"{d(meta['leistung_von'])} bis {d(meta['leistung_bis'])}"
+                       if meta.get("leistung_bis") and meta["leistung_bis"] != meta["leistung_von"]
+                       else d(meta["leistung_von"]))
+    off = meta.get("offerte") or {}
+    offerte = (d(off["datum"]) if off.get("datum") else off.get("nummer") or "") if isinstance(off, dict) else str(off)
+    story.append(brief_info([("Rechnungs-Nr.", meta["nummer"]), ("Objekt / Baustelle", meta.get("objekt") or ""),
+                             ("Ausführung", ausfuehrung), ("Ihre Offerte vom", offerte)]))
+    story += [Spacer(1, 6 * mm), P(salutation(meta.get("an"))), Spacer(1, 3 * mm)]
+    text = (meta.get("_text") or "").strip()
+    intro = cfg.get("einleitung") or "Für unsere Leistungen erlauben wir uns, Ihnen wie folgt Rechnung zu stellen:"
+    for para in [intro] + [p for p in text.split("\n\n") if p.strip()]:
+        story.append(P(para))
+    story.append(Spacer(1, 4 * mm))
+    story.append(brief_positions(meta, width, _brief_totals(book, meta)))
+    uid = (s.get("uid") or "").upper()
+    if s.get("ohne_mwst_hinweis", True) and not uid.endswith("MWST") and not meta.get("mwst"):
+        story += [Spacer(1, 2 * mm), P("Nicht MWST-pflichtig, es wird keine Mehrwertsteuer erhoben.", "small")]
+    if meta.get("art") == "akonto":
+        story += [Spacer(1, 2 * mm), P("Akontozahlung — sie wird mit der Schlussrechnung verrechnet.", "small")]
+    days = (parse_date(meta["faellig"]) - parse_date(meta["datum"])).days
+    terms = f"<b>Zahlbar innert {days} Tagen netto.</b>" if days > 0 else f"<b>Zahlbar bis {d(meta['faellig'])}.</b>"
+    story += [Spacer(1, 6 * mm), P(terms + " Bitte verwenden Sie den beiliegenden QR-Einzahlungsschein.")]
+    iban = qr.normalize_iban(s.get("zahlungs_iban") or s.get("iban") or "")
+    bank = [("Bank", cfg.get("bank") or ""), ("IBAN", " ".join(iban[i:i + 4] for i in range(0, len(iban), 4))),
+            ("Zugunsten", ", ".join(x for x in (s.firma, " ".join(x for x in (s.get("adresse", {}).get("plz"),
+                                                                              s.get("adresse", {}).get("ort")) if x)) if x))]
+    if iban:
+        story += [Spacer(1, 3 * mm), brief_info(bank)]
+    dank = cfg.get("dank") or s.get("rechnung_gruss") or "Wir danken Ihnen für Ihren Auftrag."
+    return story + brief_closing(book, dank)
+
+
 # ---------- Invoice ----------
 
 def invoice_kind(meta: dict) -> str:
@@ -291,7 +504,11 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
 
     kind = invoice_kind(meta)
 
+    layout = brief(book)
+
     def letter():
+        if layout:
+            return _brief_invoice_story(book, meta, width, kind)
         story = letter_head(book, width, lines)
         story.append(P(f"{kind} {meta['nummer']}", "title"))
         info = [["Rechnungsdatum", d(meta["datum"])]]
@@ -351,13 +568,22 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
             return Frame(SIDE, bottom, width, A4[1] - TOP - bottom, 0, 0, 0, 0)
 
         def slip(c, dd):
-            _footer(c, dd, "", y=SLIP_HEIGHT + 3 * mm, rule=False, first_number=False)
+            if layout:
+                brief_footer(c, dd, book, y=SLIP_HEIGHT + 2 * mm)
+            else:
+                _footer(c, dd, "", y=SLIP_HEIGHT + 3 * mm, rule=False, first_number=False)
             qr.draw_payment_slip(c, meta, customer, s, s.get("sprache") or "de")
 
+        def plain(c, dd):
+            if layout:
+                brief_footer(c, dd, book)
+            else:
+                _footer(c, dd, f"{kind} {meta['nummer']}" if dd.page > 1 else "")
+
+        bottom = BOTTOM + 6 * mm if layout else BOTTOM
         templates = {
-            "slip": PageTemplate("slip", [frame(SLIP_RESERVE)], onPage=slip),
-            "plain": PageTemplate("plain", [frame(BOTTOM)],
-                                  onPage=lambda c, dd: _footer(c, dd, f"{kind} {meta['nummer']}" if dd.page > 1 else "")),
+            "slip": PageTemplate("slip", [frame(SLIP_RESERVE + (5 * mm if layout else 0))], onPage=slip),
+            "plain": PageTemplate("plain", [frame(bottom)], onPage=plain),
         }
         doc.addPageTemplates([templates.pop(first)] + list(templates.values()))
         return doc

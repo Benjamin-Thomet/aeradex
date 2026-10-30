@@ -16,7 +16,7 @@ from aeradex.book import Book, BookError
 from aeradex.testing import assert_clean, make_book
 from aeradex_leistungen import abwesenheit, kontrolle
 from aeradex_leistungen import daten as leistungen
-from aeradex_team import abgleich, daten, krypto, uebernahme, verbindung
+from aeradex_team import abbild, abgleich, daten, krypto, uebernahme, verbindung
 from aeradex_team_portal import auth
 from aeradex_team_portal.app import Config, create_app
 
@@ -705,7 +705,15 @@ def test_trade_texts_reach_the_app_and_the_correction(book, portal, send, monkey
     korrektur.real_ask(Book(book.root), {"a": "tür"})
     assert "(Branche: Schreinerei)" in prompts[0] and "«Türe eingepasst»" in prompts[0]
     assert daten.texts(make_book(tmp_path / "andere", firma="X")) == {
-        "branche": "Handwerksbetrieb", "text_beispiel": "", "arztzeugnis_ab_tag": 0}
+        "branche": "Handwerksbetrieb", "text_beispiel": "", "arztzeugnis_ab_tag": 0, "stunden_in_app": True}
+
+
+def test_hours_can_stay_on_paper(tmp_path):
+    from datetime import date
+    book = make_book(tmp_path, plugins=["leistungen", "team"])
+    (book.root / "team").mkdir(exist_ok=True)
+    (book.root / "team" / "einstellungen.yaml").write_text("stunden_in_app: false\n", encoding="utf-8")
+    assert abbild.shared(Book(book.root), date(2026, 10, 30))["stunden"] is False
 
 
 def test_app_entries_are_authored_under_the_portals_host(book, portal, send, monkeypatch):

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Rapporte{% endblock %}
+{% set A = "/p/leistungen/rapporte/" %}
+{% macro state_pill(s) %}{% set m = {"ausgelesen": "warn", "uebernommen": "ok", "verworfen": "muted", "fehlt": "warn"} %}<span class="pill {{ m.get(s, 'muted') }}">{{ {"uebernommen": "übernommen"}.get(s, s) }}</span>{% endmacro %}
+{% macro ziel_select(name, kunde, projekt, extra=()) %}
+<select class="input" name="{{ name }}" style="width:100%">
+  <option value="">– wählen –</option>
+  {% for nr, p in objekte.items() %}<option value="P:{{ nr }}" {{ 'selected' if projekt == nr }}>{{ cfg.projekt_wort }} {{ p.name }} · {{ kunden.get(p.kunde, p.kunde) }}</option>{% endfor %}
+  {% for nr, name in kunden.items() %}<option value="K:{{ nr }}" {{ 'selected' if kunde == nr and not projekt }}>{{ name }} ({{ nr }})</option>{% endfor %}
+  {% for value, label, selected in extra %}<option value="{{ value }}" {{ 'selected' if selected }}>{{ label }}</option>{% endfor %}
+</select>{% endmacro %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Rapporte</h1><div class="sub">Regie-, Material- und Wochenrapporte von Hand ausgefüllt, gescannt und hier geprüft</div></div>
+  <div class="actions"><a class="btn" href="/m/scannen">Mit dem Handy scannen</a><a class="btn" href="#drucken">Formulare drucken</a></div>
+</div>
+
+{% if sel %}
+{% set s = sel %}
+{% for p in probleme %}<div class="alert warn">{{ p }}</div>{% endfor %}
+{% if s.fehler %}<div class="alert error">Nicht ausgelesen: {{ s.fehler }} — bitte die Tabelle von Hand ausfüllen.</div>{% endif %}
+{% if s.hinweise %}<div class="alert info">Beim Lesen aufgefallen: {{ s.hinweise }}</div>{% endif %}
+<div class="review">
+  <div class="panel">
+    <header><h2>{{ arten[s.art] }} {{ s.nummer }}</h2>{{ state_pill(s.status) }}</header>
+    <div class="stage">{% if ist_pdf %}<iframe src="/datei/{{ s.scan|urlq }}" title="Scan"></iframe>{% else %}<img src="/datei/{{ s.scan|urlq }}" alt="Scan">{% endif %}</div>
+  </div>
+  <form class="panel" hx-post="{{ A }}speichern" hx-target="find .errors">
+    <input type="hidden" name="nummer" value="{{ s.nummer }}">
+    <header><h2>So gelesen</h2>{% if s.status == 'uebernommen' %}{% if s.entwurf %}<a class="btn small" href="/p/leistungen/entwuerfe?nr={{ s.entwurf }}">Entwurf {{ s.entwurf }}</a>{% endif %}{% endif %}</header>
+    <div class="body">
+    {% if s.art in ('regie', 'material') %}
+      {% if s.kopf %}<p class="small muted">Auf dem Blatt: {{ s.kopf.auftraggeber }}{% if s.kopf.adresse %} · {{ s.kopf.adresse }}{% endif %}{% if s.kopf.baustelle %} · Baustelle {{ s.kopf.baustelle }}{% endif %}</p>{% endif %}
+      <div class="form four">
+        <div class="field wide"><label>Kunde bzw. {{ cfg.projekt_wort }}</label>{{ ziel_select("ziel", s.kunde, s.projekt) }}</div>
+        <div class="field wide"><label class="check"><input type="checkbox" name="unterschrieben_kunde" value="1" {{ 'checked' if s.unterschrieben_kunde }}> vom Auftraggeber unterschrieben</label></div>
+      </div>
+    {% endif %}
+    {% if s.art == 'regie' %}
+      <div class="field wide"><label>Ausgeführte Arbeiten (eine pro Zeile, erscheinen auf der Rechnung)</label><textarea class="input" name="arbeiten" style="min-height:90px">{{ (s.arbeiten or [])|join('\n') }}</textarea></div>
+      <div class="tablewrap"><table class="ledger"><thead><tr><th>Person</th><th>Datum</th><th class="right">Stunden</th><th class="right">Ansatz</th></tr></thead>
+      <tbody>{% for r in (s.stunden or []) + [{}, {}] %}<tr class="row{{ ' warnrow' if r.unsicher or (r.gelesen and not r.person) }}">
+        <td><select class="input" name="s_person"><option value="">{{ ('? ' ~ r.gelesen) if r.gelesen and not r.person else '–' }}</option>{% for nr, p in personen.items() %}<option value="{{ nr }}" {{ 'selected' if r.person == nr }}>{{ p.name }}</option>{% endfor %}</select></td>
+        <td><input class="input" type="date" name="s_datum" value="{{ r.datum or '' }}"></td>
+        <td class="right"><input class="input num" name="s_stunden" value="{{ r.stunden or '' }}" inputmode="decimal" style="width:60px"></td>
+        <td class="right"><input class="input num" name="s_ansatz" value="{{ r.ansatz or '' }}" inputmode="decimal" placeholder="Stamm" style="width:70px">{% if r.unsicher %} <span class="pill warn" title="Handschrift unsicher: bitte mit dem Scan vergleichen">?</span>{% endif %}</td>
+      </tr>{% endfor %}</tbody></table></div>
+      {% if s.summe_blatt %}<p class="small muted">Total CHF auf dem Blatt: {{ s.summe_blatt }}</p>{% endif %}
+    {% elif s.art == 'material' %}
+      <div class="tablewrap"><table class="ledger"><thead><tr><th>Datum</th><th>Material (Sortiment oder neu)</th><th>Einheit</th><th class="right">Menge</th><th class="right">Preis</th></tr></thead>
+      <tbody>{% for r in (s.zeilen or []) + [{}, {}] %}<tr class="row{{ ' warnrow' if r.unsicher or (r.text and not r.produkt) }}">
+        <td><input class="input" type="date" name="z_datum" value="{{ r.datum or '' }}"></td>
+        <td><select class="input" name="z_produkt"><option value="">{{ 'neu: ' ~ r.text if r.text and not r.produkt else '– neu –' }}</option>{% for nr, p in material.items() %}<option value="{{ nr }}" {{ 'selected' if r.produkt == nr }}>{{ p.text }} ({{ p.einheit }})</option>{% endfor %}</select>
+            <input class="input" name="z_text" value="{{ r.text or '' }}" placeholder="Text, wenn neu"></td>
+        <td><input class="input" name="z_einheit" value="{{ r.einheit or '' }}" style="width:70px"></td>
+        <td class="right"><input class="input num" name="z_menge" value="{{ r.menge or '' }}" inputmode="decimal" style="width:70px"></td>
+        <td class="right"><input class="input num" name="z_preis" value="{{ r.preis or '' }}" inputmode="decimal" placeholder="Stamm" style="width:70px">{% if r.unsicher %} <span class="pill warn" title="Handschrift unsicher">?</span>{% endif %}</td>
+      </tr>{% endfor %}</tbody></table></div>
+      <p class="small muted">Neues Material kommt mit seiner Einheit ins Sortiment; ohne Preis fragt der Rechnungsentwurf danach.</p>
+    {% elif s.art == 'woche' %}
+      <div class="form four">
+        <div class="field" style="grid-column: span 2"><label>Person</label><select class="input" name="person" style="width:100%"><option value="">{{ '? ' ~ s.gelesen if s.gelesen and not s.person else '–' }}</option>{% for nr, p in personen.items() %}<option value="{{ nr }}" {{ 'selected' if s.person == nr }}>{{ p.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Woche</label><div class="num">KW {{ s.kw }}/{{ s.jahr }}</div></div>
+      </div>
+      {% set ziel_extra = [] %}
+      <div class="tablewrap"><table class="ledger"><thead><tr><th>Tag</th><th>Kunde / Objekt (gelesen)</th><th>zuordnen</th><th class="right">Std.</th><th>Bemerkung</th></tr></thead>
+      <tbody>{% for t in s.tage or [] %}
+        <tr class="row"><td><strong>{{ t.datum|datum }}</strong><input type="hidden" name="t_datum" value="{{ t.datum }}"></td><td colspan="2" class="muted">Reisezeit</td>
+          <td class="right"><input class="input num" name="t_reise" value="{{ t.reisezeit or '' }}" inputmode="decimal" style="width:60px"></td><td></td></tr>
+        {% for l in t.zeilen or [] %}<tr class="row{{ ' warnrow' if l.unsicher or not l._art }}">
+          <td><input type="hidden" name="l_datum" value="{{ t.datum }}"></td>
+          <td><input class="input" name="l_text" value="{{ l.text }}"></td>
+          <td>{% set extra = [] %}{% for c in cfg.kategorien if c not in ('Ferien', 'Krank', 'Feiertag', 'Reisezeit') %}{% set _ = extra.append(('C:' ~ c, 'intern: ' ~ c, l._art == 'intern' and l._kategorie == c)) %}{% endfor %}{% for a in abwesenheit_arten %}{% set _ = extra.append(('A:' ~ a, 'Abwesenheit: ' ~ a, l._art == 'absenz' and l._absenz == a)) %}{% endfor %}
+            {{ ziel_select("l_ziel", l.kunde if l._art == 'kunde' else '', l.projekt if l._art == 'kunde' else '', extra) }}</td>
+          <td class="right"><input class="input num" name="l_stunden" value="{{ l.stunden or '' }}" inputmode="decimal" style="width:60px">{% if l.unsicher %} <span class="pill warn" title="Handschrift unsicher">?</span>{% endif %}</td>
+          <td><input class="input" name="l_bemerkung" value="{{ l.bemerkung or '' }}"></td>
+        </tr>{% endfor %}
+        <tr class="row"><td><input type="hidden" name="l_datum" value="{{ t.datum }}"></td><td><input class="input" name="l_text" placeholder="weitere Zeile"></td><td>{{ ziel_select("l_ziel", '', '') }}</td><td class="right"><input class="input num" name="l_stunden" style="width:60px"></td><td><input class="input" name="l_bemerkung"></td></tr>
+      {% endfor %}</tbody></table></div>
+      {% if s.summe_blatt %}<p class="small muted">Total auf dem Blatt: {{ s.summe_blatt }} h</p>{% endif %}
+      {% if s.abgleich %}<div class="alert warn">Abweichung zum Regie-Rapport: {% for a in s.abgleich if a.differenz|float %}{{ a.datum|datum }} {{ kunden.get(a.kunde, a.kunde) }}: Woche {{ a.woche }} h, Regie {{ a.regie }} h{{ '; ' if not loop.last }}{% endfor %}</div>{% endif %}
+      {% if s.ohne_regie %}<div class="alert warn">Stunden ohne Regie-Rapport (abrechenbar erfasst): {% for a in s.ohne_regie %}{{ a.datum|datum }} {{ kunden.get(a.kunde, a.kunde) }} {{ a.stunden }} h{{ '; ' if not loop.last }}{% endfor %}</div>{% endif %}
+    {% endif %}
+    </div>
+    {% if s.status == 'ausgelesen' %}
+    {{ errors() }}<div class="formfoot">
+      <button class="btn ghost" type="submit" hx-post="{{ A }}verwerfen" hx-target="previous .errors" hx-confirm="Rapport verwerfen? Nichts wird erfasst.">Verwerfen</button>
+      <button class="btn" type="submit">Speichern</button>
+      <button class="btn primary" type="submit" hx-post="{{ A }}uebernehmen" hx-target="previous .errors" hx-confirm="{{ 'Stunden und Material erfassen und in den Rechnungsentwurf legen?' if s.art != 'woche' else 'Arbeitszeit der Woche erfassen?' }}">Übernehmen</button>
+    </div>{% endif %}
+  </form>
+</div>
+{% endif %}
+
+<div class="panel">
+  <header><h2>Gescannte Rapporte</h2>
+    <form class="actions" method="get"><select class="input" name="status" onchange="this.form.submit()" aria-label="Status"><option value="">alle</option>{% for st in ("ausgelesen", "uebernommen", "verworfen") %}<option value="{{ st }}" {{ 'selected' if st == status }}>{{ {"uebernommen": "übernommen"}.get(st, st) }} ({{ anzahl[st] }})</option>{% endfor %}</select></form></header>
+  {% if liste %}<div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Nr.</th><th>Art</th><th>eingelesen</th><th>Kunde / Person</th><th></th></tr></thead>
+    <tbody>{% for r in liste %}<tr class="row"><td><a class="beleg" href="?nr={{ r.nummer }}">{{ r.nummer }}</a></td><td>{{ arten[r.art] }}</td><td>{{ r.eingelesen|datum }}</td>
+      <td>{% if r.art == 'woche' %}{{ personen.get(r.person, {}).get('name', r.gelesen) }} · KW {{ r.kw }}{% else %}{{ kunden.get(r.kunde, (r.kopf or {}).get('auftraggeber', '')) }}{% endif %}</td><td>{{ state_pill(r.status) }}</td></tr>{% endfor %}</tbody>
+  </table></div>{% else %}<div class="body empty">Keine.</div>{% endif %}
+  <form class="body" hx-post="{{ A }}hochladen" hx-encoding="multipart/form-data" hx-target="find .errors">
+    <div class="actions"><select class="input" name="art">{% for k, l in arten.items() %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</select>
+      <input class="input" type="file" name="datei" accept="application/pdf,image/*"><button class="btn" type="submit">Scan einlesen</button></div>
+    {{ errors() }}
+  </form>
+</div>
+
+<div class="panel" id="woche">
+  <header><h2>Wochenrapporte KW {{ kw.kw }}/{{ kw.jahr }}</h2><div class="actions"><a class="btn small ghost" href="?kw={{ kw.vorher }}#woche">‹</a><a class="btn small ghost" href="?kw={{ kw.nachher }}#woche">›</a></div></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Person</th><th>Wochenrapport</th><th class="right">Stunden</th><th class="right">Reisezeit</th><th class="right">davon Regie</th><th>Abgleich</th></tr></thead>
+    <tbody>{% for z in kw.zeilen %}<tr class="row">
+      <td>{{ z.name }}</td><td>{% if z.rapport %}<a class="beleg" href="?nr={{ z.rapport }}">{{ z.rapport }}</a> {% endif %}{{ state_pill(z.status) }}</td>
+      <td class="right num">{{ z.stunden|qty }}</td><td class="right num">{{ z.reisezeit|qty }}</td><td class="right num">{{ z.regie|qty }}</td>
+      <td class="small">{% for a in z.abgleich %}<span class="pill warn">{{ a.datum|datum }}: {{ a.differenz }} h</span> {% endfor %}{% for a in z.ohne_regie %}<span class="pill warn">{{ a.datum|datum }} ohne Regie-Rapport</span> {% endfor %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="panel" id="drucken">
+  <header><h2>Formulare drucken</h2><span class="hint">mit Nummer und QR-Code: der Scan ordnet sich selbst zu</span></header>
+  <form class="body" hx-post="{{ A }}formulare" hx-target="find .errors">
+    <div class="form four">
+      <div class="field"><label>Formular</label><select class="input" name="art" style="width:100%"><option value="regie">Regie-Rapport</option><option value="material">Material-Rapport</option></select></div>
+      <div class="field" style="grid-column: span 2"><label>Kunde bzw. {{ cfg.projekt_wort }}</label>{{ ziel_select("ziel", '', '') }}</div>
+      <div class="field"><label>Anzahl</label><input class="input num" name="anzahl" value="1" inputmode="numeric"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Leer gelassen: Formular ohne Kunde, nur mit Nummer.</span><button class="btn primary" type="submit">PDF erstellen</button></div>
+  </form>
+  <form class="body" hx-post="{{ A }}formulare" hx-target="find .errors">
+    <input type="hidden" name="art" value="woche">
+    <div class="form four">
+      <div class="field"><label>Woche</label><input class="input" type="week" name="kw" value="{{ '%04d-W%02d'|format(kw.jahr, kw.kw) }}"></div>
+      <div class="field wide"><label>Für</label><div class="checks">{% for nr, p in personen.items() if p.aktiv %}<label class="check small"><input type="checkbox" name="personen" value="{{ nr }}" checked> {{ p.name }}</label>{% endfor %}</div></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Eine Seite je Person, mit Name, Woche und Daten.</span><button class="btn primary" type="submit">Wochenrapporte erstellen</button></div>
+  </form>
+</div>
+{% endblock %}

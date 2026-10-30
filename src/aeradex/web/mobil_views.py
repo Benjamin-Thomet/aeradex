@@ -16,7 +16,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from .. import api, invoices
+from .. import api, invoices, plugins
 from ..book import Book, BookError
 from ..files import FormatError
 from ..ledger import BalanceEngine
@@ -205,9 +205,11 @@ async def inbox_einlesen(ui: UI, request: Request):
     from .views import _agent_in_background
     f = await request.form()
     try:
-        res = await asyncio.to_thread(api.bill_draft_create, ui.book(), f"inbox/{Path(f.get('datei') or '').name}", "")
+        res = await asyncio.to_thread(api.inbox_take, ui.book(), f"inbox/{Path(f.get('datei') or '').name}", "")
     except (BookError, FormatError, ValueError) as exc:
         return fail(str(exc))
+    if "entwurf" not in res:                      # a plugin took it (a scanned report …)
+        return done(res.get("meldung") or "Übernommen", res.get("url") or "/m/belege")
     draft = res["entwurf"]
     if erfassung.agent_auto(ui.book()) and erfassung.needs_agent(draft):
         _agent_in_background(ui.root, [draft["id"]])
@@ -291,7 +293,8 @@ async def scannen(ui: UI, request: Request):
     from .. import erfassung
     book = ui.book()
     return render(ui, request, "scannen.html", book=book, tab="scannen", ocr=bool(erfassung.ocr_languages()),
-                  art=request.query_params.get("art", ""))
+                  art=request.query_params.get("art", ""),
+                  plugin_arten=[(k.name, k.titel) for k in plugins.eingang_arten(book).values()])
 
 
 async def scannen_hochladen(ui: UI, request: Request):
@@ -301,7 +304,7 @@ async def scannen_hochladen(ui: UI, request: Request):
     from .views import _agent_in_background
     form = await request.form()
     art = (form.get("art") or "").strip()
-    if art and art not in DRAFT_KINDS:
+    if art and art not in DRAFT_KINDS and art not in plugins.eingang_arten(ui.book()):
         return JSONResponse({"ok": False, "fehler": "Unbekannte Belegart"}, status_code=400)
     stamp = date.today().strftime("%Y-%m-%d")
     pages = [p for p in form.getlist("seite") if hasattr(p, "read")]
@@ -316,9 +319,11 @@ async def scannen_hochladen(ui: UI, request: Request):
         else:
             return JSONResponse({"ok": False, "fehler": "Nichts gescannt"}, status_code=400)
         stored = await asyncio.to_thread(api.inbox_add, ui.book(), name, pdf)
-        res = await asyncio.to_thread(api.bill_draft_create, ui.book(), stored["datei"], art)
+        res = await asyncio.to_thread(api.inbox_take, ui.book(), stored["datei"], art)
     except (BookError, FormatError, ValueError) as exc:
         return JSONResponse({"ok": False, "fehler": str(exc)}, status_code=400)
+    if "entwurf" not in res:                      # a plugin took it (a scanned report …)
+        return JSONResponse({"ok": True, "url": res.get("url") or "/m/belege", "meldung": res.get("meldung") or ""})
     draft = res["entwurf"]
     if erfassung.agent_auto(ui.book()) and erfassung.needs_agent(draft):
         _agent_in_background(ui.root, [draft["id"]])

@@ -64,7 +64,8 @@ def shared(book: Book, today: date) -> dict:
             "rechnung_tage": cfg["rechnung_tage"],
             "kategorien": [k for k in cfg["kategorien"] if k not in absences_as_categories],
             "abwesenheiten": list(abwesenheit.ARTEN), "feiertage": holidays,
-            "text_beispiel": texts["text_beispiel"], "arztzeugnis_ab_tag": texts["arztzeugnis_ab_tag"]}
+            "text_beispiel": texts["text_beispiel"], "arztzeugnis_ab_tag": texts["arztzeugnis_ab_tag"],
+            "stunden": texts["stunden_in_app"]}
 
 
 def _month_row(r: dict) -> dict:

@@ -1,7 +1,7 @@
 // App shell offline: the page, script, styles and fonts come from the cache when there is no reception.
 // Data never comes from here: the app keeps its own copy in IndexedDB and queues entries until it is online.
 // The portal fills in the Kennung and the file list (incl. the installation's branding).
-const SHELL = "__KENNUNG__-shell-v10";
+const SHELL = "__KENNUNG__-shell-v11";
 const FILES = __FILES__;
 
 self.addEventListener("install", (e) => {

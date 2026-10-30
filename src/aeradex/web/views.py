@@ -1053,6 +1053,8 @@ async def kunde_speichern(ui: UI, request: Request, base: str = "/debitoren/kund
     f = await request.form()
     fields = {k: (f.get(k) or "").strip() for k in ("name", "firma", "strasse", "nr", "plz", "ort", "land", "email",
                                                     "telefon", "mobil", "kategorie", "herkunft")}
+    if "anrede" in f:
+        fields["anrede"] = (f.get("anrede") or "").strip()
     fields["rechnung_an"] = f.get("rechnung_an") or "firma"
     nr = request.path_params.get("nr")
     if not fields["name"]:
@@ -2126,20 +2128,28 @@ async def eingang_einlesen(ui: UI, request: Request):
             targets.append(res["datei"])
         else:
             stored += 1
+    taken = []                                   # files a plugin took over (scanned reports …)
     for target in targets:
         try:
-            res = await asyncio.to_thread(api.bill_draft_create, ui.book(), target, art)
-            created.append(res["entwurf"])
+            res = await asyncio.to_thread(api.inbox_take, ui.book(), target, art)
         except BookError as exc:
             errors_.append(f"{Path(target).name}: {exc}")
+            continue
+        if "entwurf" in res:
+            created.append(res["entwurf"])
+        else:
+            taken.append(res)
     if erfassung.agent_auto(ui.book()):
         _agent_in_background(ui.root, [d["id"] for d in created if erfassung.needs_agent(d)])
-    if errors_ and not created and not stored and not statements:
+    if errors_ and not created and not stored and not statements and not taken:
         return fail(" · ".join(errors_))
+    if taken and not created and not stored and not statements:
+        return done(" · ".join([t.get("meldung") or "Übernommen" for t in taken] + errors_),
+                    taken[0].get("url") or "/#inbox", "warn" if errors_ else "ok")
     kinds = defaultdict(int)
     for d in created:
         kinds[erfassung.ARTEN[d["art"]]] += 1
-    parts = [f"{n}× {k}" for k, n in kinds.items()] + statements
+    parts = [f"{n}× {k}" for k, n in kinds.items()] + statements + [t.get("meldung") or "" for t in taken]
     if stored:
         parts.append(f"{stored} Datei(en) in der Inbox (Kontoauszug als CSV/Excel: unter Bank importieren)")
     msg = ", ".join(parts)
@@ -2706,7 +2716,7 @@ async def einstellungen_speichern(ui: UI, request: Request):
     f = await request.form()
     fields = {k: (f.get(k) or "").strip() for k in ("firma", "rechtsform", "uid", "telefon", "email", "iban",
                                                      "qr_referenz_praefix", "zahlungsfrist_tage", "agent_modus", "co",
-                                                     "zahlungs_iban") if k in f}
+                                                     "zahlungs_iban", "web") if k in f}
     vat = {"methode": f.get("mwst_methode") or "keine", "periode": f.get("mwst_periode") or "",
            "saldosteuersatz": (f.get("mwst_saldosteuersatz") or "").strip(),
            "taetigkeit": (f.get("mwst_taetigkeit") or "").strip(), "abrechnungsart": f.get("mwst_abrechnungsart") or ""}
@@ -2723,6 +2733,25 @@ async def einstellungen_speichern(ui: UI, request: Request):
     return await act(request, api.settings_update, "/einstellungen" + (f"#{tab}" if tab else ""), ui.book(),
                      adresse=adresse or None, konten=konten or None,
                      mwst=vat if f.get("mwst_methode") is not None else None, **fields)
+
+
+async def rechnung_einstellung(ui: UI, request: Request):
+    """The letter layout of invoices and offers (Einstellungen › Firma)."""
+    f = await request.form()
+    values = {k: (f.get(k) or "").strip() for k in api.LETTER_KEYS if k in f}
+    return await act(request, api.settings_update, "/einstellungen#firma", ui.book(), rechnung=values)
+
+
+async def rechnung_muster(ui: UI, request: Request):
+    """A sample invoice in the book's current layout, nothing written: to see the settings before the next invoice."""
+    book = ui.book()
+    from .. import pdf as pdfmod
+    try:
+        meta = invoices.sample_invoice(book)
+    except BookError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return Response(pdfmod.invoice_pdf(book, meta, None), media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="muster-rechnung.pdf"'})
 
 
 async def logo_einstellung(ui: UI, request: Request):
@@ -3069,6 +3098,8 @@ def routes(ui: UI) -> list[Route]:
         Route("/datensicherung/datei", h(datensicherung_datei)),
         Route("/datensicherung/zip", h(datensicherung_zip)),
         Route("/einstellungen/logo", h(logo_einstellung), methods=["POST"]),
+        Route("/einstellungen/rechnung", h(rechnung_einstellung), methods=["POST"]),
+        Route("/einstellungen/rechnung.pdf", h(rechnung_muster)),
         Route("/einstellungen/logo.bild", h(logo_bild)),
         Route("/einstellungen/agent", h(agent_einstellung), methods=["POST"]),
         Route("/einstellungen/jev", h(jev_einstellung), methods=["POST"]),

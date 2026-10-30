@@ -17,7 +17,9 @@
     <label class="small muted">Rechnungsdatum <input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></label>
     <span class="small muted">{{ auswahl|length }} Einträge · mit Leistungsrapport</span>
     <a class="btn small ghost" href="?tab=abrechnen&kunde={{ kunde }}&projekt={{ projekt }}{{ '&bis=' ~ bis if bis }}">Einzeln auswählen</a>
-    <button class="btn primary" type="submit" style="margin-left:auto">Rechnung ausstellen</button>
+    <button class="btn" type="submit" style="margin-left:auto" hx-post="/p/leistungen/entwuerfe/neu" hx-target="next .errors" hx-confirm="" title="Sammeln, Preise ergänzen und später ausstellen">Als Entwurf</button>
+    <input type="hidden" name="kunde" value="{{ kunde }}"><input type="hidden" name="projekt" value="{{ projekt }}">
+    <button class="btn primary" type="submit">Rechnung ausstellen</button>
     <div class="errors" style="flex-basis:100%"></div>
   </form>
 {% else %}<div class="body empty">Nichts offen.</div>{% endif %}

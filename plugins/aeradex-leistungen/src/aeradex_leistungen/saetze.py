@@ -15,6 +15,11 @@ from aeradex.book import Book, BookError
 from . import daten
 
 
+def _priced(art: dict | None) -> bool:
+    """A Leistungsart with a price of its own; 0 means none is set (the person's rate applies)."""
+    return bool(art) and art.get("preis") not in (None, "") and daten.money(art["preis"]) != 0
+
+
 def hourly_rate(book: Book, wer: str, kunde: str = "", projekt: str = "", leistung: str = "") -> Decimal:
     if projekt:
         p = daten.project(book, projekt)
@@ -27,7 +32,7 @@ def hourly_rate(book: Book, wer: str, kunde: str = "", projekt: str = "", leistu
         c = invoices.customer(book, kunde)
         if c.get("stundensatz") not in (None, ""):
             return daten.money(c["stundensatz"])
-    if art and art.get("preis") not in (None, ""):
+    if _priced(art):
         return daten.money(art["preis"])
     rate = daten.person(book, wer)["satz"]
     if rate is None:
@@ -45,7 +50,7 @@ def rate_source(book: Book, wer: str, kunde: str = "", projekt: str = "", leistu
         return "Kundenpreis"
     if kunde and invoices.customer(book, kunde).get("stundensatz") not in (None, ""):
         return "Kunde"
-    if art and art.get("preis") not in (None, ""):
+    if _priced(art):
         return "Leistungsart"
     return "Person" if daten.person(book, wer)["satz"] is not None else ""
 

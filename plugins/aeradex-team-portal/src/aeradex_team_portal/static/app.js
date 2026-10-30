@@ -233,8 +233,13 @@ async function decryptDoc(person, doc) {
 // ---------- rendering ----------
 
 function msg(text, kind = "err") { return text ? `<div class="msg ${kind}" role="${kind === "err" ? "alert" : "status"}">${h(text)}</div>` : ""; }
+function hoursInApp() { return shared().stunden !== false; }
 function setTab(name) {
   $("#tabs").classList.toggle("hidden", !name);
+  for (const t of ["erfassen", "woche"]) {         // hours on paper: the app keeps requests, account and documents
+    const a = document.querySelector(`#tabs a[data-tab="${t}"]`);
+    if (a) a.classList.toggle("hidden", !hoursInApp());
+  }
   document.body.classList.toggle("entry", !name);
   for (const a of document.querySelectorAll("#tabs a")) {
     if (a.dataset.tab === name) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
@@ -954,7 +959,9 @@ async function route() {
     try { await load(); } catch (e) { /* 401 → login */ }
     if (!ich) { if (location.hash !== "#/login") location.hash = "#/login"; else renderLogin(); return; }
   }
-  (ROUTES[name] || ROUTES.erfassen)();
+  const start = hoursInApp() ? "erfassen" : "abwesend";
+  const allowed = hoursInApp() || !["erfassen", "woche"].includes(name);
+  (allowed && ROUTES[name] || ROUTES[start])();
   window.scrollTo(0, 0);
 }
 

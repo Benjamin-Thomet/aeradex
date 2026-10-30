@@ -53,7 +53,7 @@ def _save_settings(book: Book, **changes) -> Path:
     return p
 
 
-TEXTE = ("branche", "text_beispiel", "arztzeugnis_ab_tag")
+TEXTE = ("branche", "text_beispiel", "arztzeugnis_ab_tag", "stunden_in_app")
 
 
 def texts(book: Book) -> dict:
@@ -64,7 +64,9 @@ def texts(book: Book) -> dict:
     except (TypeError, ValueError):
         sick_note = 0
     return {"branche": str(raw.get("branche") or "Handwerksbetrieb"),
-            "text_beispiel": str(raw.get("text_beispiel") or ""), "arztzeugnis_ab_tag": sick_note}
+            "text_beispiel": str(raw.get("text_beispiel") or ""), "arztzeugnis_ab_tag": sick_note,
+            # false: hours come from paper (scanned Wochenrapporte); the app keeps requests, account and documents
+            "stunden_in_app": str(raw.get("stunden_in_app", True)).strip().lower() not in ("false", "nein", "0", "no")}
 
 
 def set_texts(book: Book, values: dict) -> tuple[dict, list[Path]]:

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Arbeitszeitkontrolle{% endblock %}
+{% set A = "/p/leistungen/arbeitszeit/" %}
+{% set MONATE = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"] %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Arbeitszeitkontrolle {{ jahr }}</h1><div class="sub">Die Excel-Datei des SMGV (GAV Art. 8.9) je Person, ausgefüllt aus den erfassten Stunden, der Reisezeit und den Abwesenheiten</div></div>
+  <div class="actions"><a class="btn small ghost" href="?jahr={{ jahr - 1 }}">‹ {{ jahr - 1 }}</a><a class="btn small ghost" href="?jahr={{ jahr + 1 }}">{{ jahr + 1 }} ›</a></div>
+</div>
+{% if not vorlagen %}<div class="alert warn">Noch keine Vorlage: unten die Arbeitszeitkontrolle des SMGV (Excel, smgv.ch › GAV) hochladen.</div>
+{% elif abgeleitet %}<div class="alert info">Für {{ jahr }} gibt es keine eigene Vorlage: aeradex nimmt die von {{ vorlagen|list|max }} und stellt das Jahr um (Kalender und Feiertage rechnen sich neu). Sobald der SMGV die Datei {{ jahr }} veröffentlicht, hier hochladen.</div>{% endif %}
+
+<div class="panel">
+  <header><h2>Je Person</h2><span class="hint">Stunden, die in die Datei kommen</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Person</th><th class="right">Arbeit h</th><th class="right">Reisezeit h</th><th class="right">Absenzen h</th><th></th></tr></thead>
+    <tbody>{% for z in zeilen %}<tr class="row">
+      <td><a class="link" href="?jahr={{ jahr }}&wer={{ z.nummer }}">{{ z.name }}</a></td>
+      <td class="right num">{{ z.arbeit|qty }}</td><td class="right num">{{ z.reise|qty }}</td><td class="right num">{{ z.absenzen|qty }}</td>
+      <td class="right"><form hx-post="{{ A }}excel" hx-target="find .errors"><input type="hidden" name="wer" value="{{ z.nummer }}"><input type="hidden" name="jahr" value="{{ jahr }}"><button class="btn small" type="submit" {{ 'disabled' if not vorlagen }}>Excel {{ jahr }}</button><span class="errors"></span></form></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+{% if sel %}
+<div class="panel">
+  <header><h2>{{ sel.name }} · {{ jahr }} je Monat</h2></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Monat</th><th class="right">Arbeitstage</th><th class="right">Arbeit h</th><th class="right">Reisezeit h</th><th class="right">Absenzen h</th></tr></thead>
+    <tbody>{% for m in sel.monate %}<tr class="row"><td>{{ MONATE[m.monat - 1] }}</td><td class="right num">{{ m.tage }}</td><td class="right num">{{ m.arbeit|qty }}</td><td class="right num">{{ m.reise|qty }}</td><td class="right num">{{ m.absenzen|qty }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="panel">
+  <header><h2>Vorlage</h2>{% for y, p in vorlagen.items() %}<span class="pill ok">{{ y }}</span>{% endfor %}</header>
+  <form class="body" hx-post="{{ A }}vorlage" hx-encoding="multipart/form-data" hx-target="find .errors">
+    <p class="small muted">Die Datei «Arbeitszeitkontrolle ohne Abzug Reisezeit» (oder «mit Abzug») von smgv.ch. Mit einem Jahr: die Datei wird auf dieses Jahr umgestellt (z.B. 2026 → 2027).</p>
+    <div class="actions"><input class="input" type="file" name="datei" accept=".xlsx"><label class="small muted">als Jahr <input class="input num" name="jahr" placeholder="wie in der Datei" style="width:110px"></label><button class="btn primary" type="submit">Hochladen</button></div>
+    {{ errors() }}
+  </form>
+  <div class="body small muted">Eingetragen werden: Firma, Name, Adresse, AHV-Nr., Geburtsdatum, Ein- und Austritt, Feiertage des Kantons, Pensum; je Tag die Arbeitsstunden (06–20 h), die Reisezeit und die Abwesenheiten (Ferien f, Krank k, Unfall u, Militär m, Schule bs, Kurse ku …). Excel rechnet beim Öffnen alles neu; in LibreOffice «Daten › Berechnen › Neu berechnen».</div>
+</div>
+{% endblock %}

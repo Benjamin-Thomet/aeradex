@@ -52,6 +52,21 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   header and key salts), `aeradex-zugriff` (ssh keys for Claude Code, locked to the forced command `aeradex-ssh`),
   `aeradex-anruf` + `aeradex-telegram` (voice/Telegram assistant over `web/chat.py`). Server templates: `deploy/`.
   Nothing customer-specific in them: names, domains, logos and trade rules are settings or branding.
+- `aeradex-leistungen` beyond time and material: `entwuerfe.py` invoice drafts (open entries of a customer/object
+  collected until a person sets the missing prices and issues them through `abrechnung.bill`; positions always computed
+  from the entries), `rapporte.py` scanned paper reports (Regie-/Material-/Wochenrapport; QR of the printed form or the
+  kind chosen when scanning → `plugins.EingangsArt` takes the file from the Belegeingang; Claude reads page images
+  against a fixed JSON schema (`READER`, replaced in tests); checked on `/p/leistungen/rapporte` before anything is
+  recorded), `woche_rapport.py` (a week's working time, Reisezeit, absences; compared with the Regie hours, never
+  recorded twice), `formulare.py` (forms printed with number and QR, on the book's own PDFs via `felder.yaml` or plain),
+  `azk.py` (the SMGV Arbeitszeitkontrolle: the association's xlsx filled cell by cell in its XML, never re-saved by a
+  library; a missing year is made from the last one). A Leistungsart or person rate of 0 counts as «no price».
+- `api.inbox_take`: a file from the inbox goes to a plugin that claims it (`aeradex_eingang_arten`: a kind chosen
+  when scanning or recognised, e.g. by a QR code) and otherwise to `bill_draft_create`.
+- `pdf.py` letter layout (`rechnung: {layout: brief, ort, einleitung, dank, unterzeichner, funktion, bank,
+  logo_hoehe_mm}`): invoices and offers as a classic business letter (place/date, salutation from the customer's
+  `anrede`, numbered positions with unit, «Ihre Offerte vom» from the invoice's `offerte`, bank block, signer, footer
+  line); without it the compact layout. Sample under Einstellungen › Firma (`/einstellungen/rechnung.pdf`).
 - `erfassung.py`: Belegeingang → drafts (`eingang/`) of three kinds (kreditor, quittung, debitor; legacy drafts in
   `kreditoren/entwuerfe/` are still read). Receipts are matched with open bank movements / existing bookings so
   nothing is booked twice; own invoices from outside aeradex become `invoices.record_external`. Reader chain (QR, PDF text, Tesseract OCR,

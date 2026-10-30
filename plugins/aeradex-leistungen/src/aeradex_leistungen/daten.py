@@ -28,7 +28,7 @@ CENT = Decimal("0.01")
 COLUMNS = ["ID", "Datum", "Art", "Wer", "Kunde", "Projekt", "Produkt", "Menge", "Preis", "Text",
            "Abrechenbar", "Kategorie", "Rechnung"]
 ARTEN = ("Zeit", "Produkt")
-KATEGORIEN = ["Intern", "Administration", "Weiterbildung", "Garantie", "Ferien", "Krank", "Feiertag"]
+KATEGORIEN = ["Intern", "Administration", "Weiterbildung", "Garantie", "Ferien", "Krank", "Feiertag", "Reisezeit"]
 ABRECHNUNG = ("aufwand", "pauschal")
 
 

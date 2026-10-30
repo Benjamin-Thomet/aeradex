@@ -92,7 +92,10 @@ def groups(book: Book, bis=None, je: str = "kunde") -> list[dict]:
 
 def bill_all(book: Book, bis=None, je: str = "kunde", datum=None, rapport: bool = True) -> tuple[dict, list[Path]]:
     """Month end: issue every open invoice at once (see `groups`), each with its Leistungsrapport. One write."""
-    todo = groups(book, bis, je)
+    from .entwuerfe import in_drafts
+    held = in_drafts(book)                  # work in a draft waits for the person completing it
+    todo = [{**g, "ids": [i for i in g["ids"] if i not in held]} for g in groups(book, bis, je)]
+    todo = [g for g in todo if g["ids"]]
     if not todo:
         raise BookError("Nichts offen zum Abrechnen")
     issued, touched = [], []
@@ -258,19 +261,37 @@ def object_line(book: Book, items: list[dict]) -> str:
     return ", ".join(x for x in (name, adr) if x and not (x == name and adr and name in adr)) if adr else name
 
 
+def offer_of(book: Book, items: list[dict]) -> dict | None:
+    """The offer behind the entries' one project (its `offerte`), as the invoice's «Ihre Offerte vom»."""
+    nrs = {e["projekt"] for e in items}
+    if len(nrs) != 1 or not next(iter(nrs)):
+        return None
+    nr = str((daten.projects(book).get(next(iter(nrs))) or {}).get("offerte") or "").strip()
+    if not nr:
+        return None
+    from . import offerten
+    q = offerten.quotes(book).get(nr)
+    return {"nummer": nr, **({"datum": str(q["datum"])} if q and q.get("datum") else {})}
+
+
 def bill(book: Book, ids: list[str], detail: bool = False, datum=None, text: str = "",
          zahlungsfrist: int | None = None, rapport: bool = True, rabatt=None,
-         akonto=None) -> tuple[dict, list[Path]]:
+         akonto=None, objekt: str | None = None, offerte=None) -> tuple[dict, list[Path]]:
     """Issue the invoice for the entries (QR-bill PDF, booked as a Debitor) and mark them billed.
     With `rapport` a Leistungsrapport (every entry) is written next to the invoice PDF. `rabatt` in percent;
-    `akonto` the Akontorechnungen it credits (core `invoices.issue_invoice`)."""
+    `akonto` the Akontorechnungen it credits (core `invoices.issue_invoice`). `objekt`/`offerte` default to the
+    entries' project and its offer. The period of the entries is the invoice's Leistungszeitraum."""
     items = _billable(book, ids)
     kunde = items[0]["kunde"]
     raw = positions(book, items, detail)
-    if not text:
+    days = sorted(str(e["datum"]) for e in items)
+    if not text and not core_pdf.brief(book):        # the letter layout shows the period as «Ausführung»
         text = f"Unsere Leistungen vom {_period(items)}."
     meta, touched = invoices.issue_invoice(book, kunde, raw, datum, text, zahlungsfrist, rabatt=rabatt,
-                                           akonto=list(akonto or []), objekt=object_line(book, items))
+                                           akonto=list(akonto or []),
+                                           objekt=object_line(book, items) if objekt is None else objekt,
+                                           leistung_von=days[0], leistung_bis=days[-1] if days[-1] != days[0] else None,
+                                           offerte=offer_of(book, items) if offerte is None else offerte)
     meta["_text"] = text
     cust = invoices.customer(book, kunde)
     pdf_path = api.meta_pdf_path(book, meta)

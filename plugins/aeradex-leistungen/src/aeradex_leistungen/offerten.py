@@ -287,7 +287,12 @@ def invoice(book: Book, nr: str, anteil=None, betrag=None, schluss: bool = False
                 "schluss": f"Schlussrechnung gemäss unserer Offerte {meta['nummer']}.",
                 "voll": f"Gemäss unserer Offerte {meta['nummer']} vom "
                         f"{parse_date(meta['datum']).strftime('%d.%m.%Y')}."}[art]
-    inv, touched = invoices.issue_invoice(book, meta["kunde"], raw, datum, text, zahlungsfrist)
+    objekt = ""
+    if meta.get("projekt"):
+        from .abrechnung import object_line
+        objekt = object_line(book, [{"projekt": meta["projekt"]}])
+    inv, touched = invoices.issue_invoice(book, meta["kunde"], raw, datum, text, zahlungsfrist, objekt=objekt,
+                                          offerte={"nummer": meta["nummer"], "datum": str(meta["datum"])})
     inv["_text"] = text
     pdf_path = api.meta_pdf_path(book, inv)
     pdf_path.write_bytes(core_pdf.invoice_pdf(book, inv, invoices.customer(book, meta["kunde"])))

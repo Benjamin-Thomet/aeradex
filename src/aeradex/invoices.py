@@ -56,7 +56,10 @@ def customer(book: Book, nr: str) -> dict:
 def add_customer(book: Book, name: str, firma: str = "", strasse: str = "", nr: str = "",
                  plz: str = "", ort: str = "", land: str = "CH", email: str = "",
                  rechnung_an: str = "firma", stundensatz=None, notizen: str = "",
-                 telefon: str = "", mobil: str = "", kategorie: str = "", herkunft: str = "") -> tuple[dict, Path]:
+                 telefon: str = "", mobil: str = "", kategorie: str = "", herkunft: str = "",
+                 anrede: str = "") -> tuple[dict, Path]:
+    if anrede and anrede not in ANREDEN:
+        raise BookError(f"Anrede: {', '.join(ANREDEN)} oder leer")
     existing = customers(book)
     nums = [int(k[1:]) for k in existing if re.fullmatch(r"K\d+", k)]
     number = f"K{max(nums, default=0) + 1:04d}"
@@ -64,7 +67,8 @@ def add_customer(book: Book, name: str, firma: str = "", strasse: str = "", nr: 
             "rechnung_an": rechnung_an,
             "adresse": {"strasse": strasse, "nr": str(nr), "plz": str(plz), "ort": ort, "land": land},
             "email": email}
-    for key, value in (("telefon", telefon), ("mobil", mobil), ("kategorie", kategorie), ("herkunft", herkunft)):
+    for key, value in (("telefon", telefon), ("mobil", mobil), ("kategorie", kategorie), ("herkunft", herkunft),
+                       ("anrede", anrede)):
         # only when given: older files stay as they are
         if str(value or "").strip():
             meta[key] = str(value).strip()
@@ -82,7 +86,7 @@ FROZEN = ("nummer", "kunde", "an", "datum", "faellig", "waehrung", "positionen",
 # Added with MWST support; part of the fingerprint only when present, so
 # invoices issued before keep their fingerprint.
 FROZEN_OPTIONAL = ("mwst", "mwst_methode", "mwst_konto", "netto", "extern", "kurs", "leistung_von", "leistung_bis",
-                   "art", "rabatt", "objekt")
+                   "art", "rabatt", "objekt", "offerte")
 QR_CURRENCIES = ("CHF", "EUR")          # what a Swiss QR-bill can carry
 
 
@@ -166,9 +170,27 @@ def next_invoice_number(book: Book, year: int) -> str:
 
 def _snapshot_address(cust: dict) -> dict:
     a = cust.get("adresse") or {}
-    return {"name": qr.invoice_name(cust), "zusatz": cust.get("name") if cust.get("firma") and cust.get("rechnung_an") != "person" else "",
-            "strasse": a.get("strasse") or "", "nr": str(a.get("nr") or ""),
-            "plz": str(a.get("plz") or ""), "ort": a.get("ort") or "", "land": a.get("land") or "CH"}
+    out = {"name": qr.invoice_name(cust), "zusatz": cust.get("name") if cust.get("firma") and cust.get("rechnung_an") != "person" else "",
+           "strasse": a.get("strasse") or "", "nr": str(a.get("nr") or ""),
+           "plz": str(a.get("plz") or ""), "ort": a.get("ort") or "", "land": a.get("land") or "CH"}
+    if cust.get("anrede"):                       # Herr/Frau/Familie, for the salutation of the letter layout
+        out["anrede"] = cust["anrede"]
+    return out
+
+
+ANREDEN = ("Herr", "Frau", "Familie")
+
+
+def offer_reference(offerte) -> dict | None:
+    """The offer an invoice follows, `{nummer, datum}` (either may be missing); None when none is given."""
+    if not offerte:
+        return None
+    if isinstance(offerte, str):
+        offerte = {"nummer": offerte}
+    out = {k: str(offerte.get(k)).strip() for k in ("nummer", "datum") if str(offerte.get(k) or "").strip()}
+    if out.get("datum"):
+        out["datum"] = parse_date(out["datum"]).isoformat()
+    return out or None
 
 
 PRICE_Q = Decimal("0.0001")
@@ -462,10 +484,46 @@ def preview_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, 
     return out
 
 
+def sample_invoice(book: Book) -> dict:
+    """An invoice that is never issued, for the sample PDF in Einstellungen: the book's own settings and layout,
+    a made-up customer and positions, MWST 8.1 % when the book is MWST-pflichtig, 5 % discount."""
+    from . import mwst as vat
+    today = date.today()
+    frist = int(book.settings.get("zahlungsfrist_tage") or 30)
+    pos = [{"text": "Abdecken und Schutzmassnahmen", "menge": 1, "einheit": "pauschal", "preis": Decimal("180.00")},
+           {"text": "Wände streichen, 2 Anstriche", "menge": 42, "einheit": "m²", "preis": Decimal("18.50")},
+           {"text": "Arbeitsstunden", "menge": Decimal("6.5"), "einheit": "h", "preis": Decimal("95.00")}]
+    for p in pos:
+        p["betrag"] = money(Decimal(str(p["menge"])) * p["preis"])
+    base = sum((p["betrag"] for p in pos), ZERO)
+    discount = money(base * Decimal("0.05"))
+    pos.append({"text": "Rabatt 5 %", "menge": 1, "preis": -discount, "betrag": -discount, "rabatt": True})
+    netto = base - discount
+    meta = {"nummer": next_invoice_number(book, today.year), "kunde": "K0000",
+            "an": {"name": "Muster AG", "zusatz": "Anna Beispiel", "anrede": "Frau", "strasse": "Seeweg", "nr": "2",
+                   "plz": "3600", "ort": "Thun", "land": "CH"},
+            "datum": today.isoformat(), "faellig": (today + timedelta(days=frist)).isoformat(), "waehrung": "CHF",
+            "positionen": pos, "total": netto,
+            "objekt": "MFH Seeweg 2, 3600 Thun", "leistung_von": (today - timedelta(days=9)).isoformat(),
+            "leistung_bis": (today - timedelta(days=2)).isoformat(),
+            "offerte": {"nummer": "O-0001", "datum": (today - timedelta(days=40)).isoformat()}, "rabatt": "5"}
+    if vat.config(book)["methode"] != "keine":
+        tax = money(netto * Decimal("0.081"))
+        meta.update({"netto": netto, "mwst": [{"code": "U81", "satz": Decimal("8.1"), "netto": netto, "steuer": tax}],
+                     "total": netto + tax})
+    problem = qr.iban_problem(book.settings.get("iban"))
+    if problem:
+        raise BookError(f"Muster nicht möglich: {problem}")
+    meta["referenz_typ"] = qr.reference_type_for(qr.normalize_iban(book.settings.get("iban")))
+    meta["referenz"] = qr.make_reference(meta["referenz_typ"], meta["nummer"],
+                                         book.settings.get("qr_referenz_praefix") or "")
+    return meta
+
+
 def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
                   zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
                   leistung_von=None, leistung_bis=None, rabatt=None, art: str = "rechnung",
-                  akonto=None, objekt: str = "") -> tuple[dict, list[Path]]:
+                  akonto=None, objekt: str = "", offerte=None) -> tuple[dict, list[Path]]:
     """Issue and book an invoice: DR Debitoren / CR Ertrag (per position account),
     with MWST per rate when the book is MWST-pflichtig. A discount goes to the Rabatt account,
     an Akontorechnung to Anzahlungen, credited Akontos come off Anzahlungen (Soll)."""
@@ -499,6 +557,8 @@ def issue_invoice(book: Book, kunde: str, positionen: list[dict], datum=None, te
         meta["kurs"] = str(rate)
     if str(objekt or "").strip():                    # the building/site the work was done at, printed on the PDF
         meta["objekt"] = " ".join(str(objekt).split())
+    if ref := offer_reference(offerte):
+        meta["offerte"] = ref
     _leistung(meta, leistung_von, leistung_bis)
     meta["fingerprint"] = fingerprint(_canonical(meta))
     path = book.root / "rechnungen" / str(d.year) / f"{nummer}.md"
@@ -600,6 +660,8 @@ def _canonical(meta: dict) -> dict:
     for key in ("leistung_von", "leistung_bis", "art", "rabatt", "objekt"):
         if key in meta:
             out[key] = str(meta.get(key))
+    if "offerte" in meta:
+        out["offerte"] = {k: str(v) for k, v in sorted((meta.get("offerte") or {}).items())}
     return out
 
 

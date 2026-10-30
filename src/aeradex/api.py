@@ -510,14 +510,15 @@ def customer_add(book: Book, **fields) -> dict:
 def invoice_create(book: Book, kunde: str, positionen: list[dict], datum=None, text: str = "",
                    zahlungsfrist: int | None = None, waehrung: str = "", kurs=None,
                    leistung_von=None, leistung_bis=None, rabatt=None, art: str = "rechnung",
-                   akonto=None, objekt: str = "") -> dict:
+                   akonto=None, objekt: str = "", offerte=None) -> dict:
     """Issue an invoice. `rabatt` in percent; `art="akonto"` for an Akontorechnung; `akonto` the
-    Akontorechnungen this one credits (a list, or "alle" for every open one of the customer)."""
+    Akontorechnungen this one credits (a list, or "alle" for every open one of the customer); `offerte` the offer
+    it follows ({nummer, datum}, printed as «Ihre Offerte vom» in the letter layout)."""
     _guard(book)
     akonto = _akonto_list(book, kunde, akonto)
     meta, touched = invoices.issue_invoice(book, kunde, positionen, datum, text, zahlungsfrist, waehrung, kurs,
                                            leistung_von, leistung_bis, rabatt=rabatt, art=art, akonto=akonto,
-                                           objekt=objekt)
+                                           objekt=objekt, offerte=offerte)
     meta["_text"] = text
     pdf_path = meta_pdf_path(book, meta)
     pdf_path.write_bytes(pdf.invoice_pdf(book, meta, invoices.customer(book, kunde)))
@@ -993,12 +994,14 @@ def customer_update(book: Book, nummer: str, notizen: str | None = None, **field
     nr = nummer
     cust = invoices.customer(book, nr)
     allowed = {"name", "firma", "rechnung_an", "email", "telefon", "mobil", "stundensatz", "kategorie", "herkunft",
-               *_ADDRESS_KEYS}
+               "anrede", *_ADDRESS_KEYS}
     unknown = set(fields) - allowed
     if unknown:
         raise BookError(f"Unbekannte Felder: {', '.join(sorted(unknown))}")
     if fields.get("rechnung_an") not in (None, "firma", "person"):
         raise BookError("rechnung_an muss 'firma' oder 'person' sein")
+    if fields.get("anrede") not in (None, "", *invoices.ANREDEN):
+        raise BookError(f"Anrede: {', '.join(invoices.ANREDEN)} oder leer")
     meta = _update_record(cust["_pfad"], fields, numeric=("stundensatz",), notes=notizen)
     return _done(book, f"Kunde {nr} geändert", [cust["_pfad"]], kunde=meta)
 
@@ -1233,7 +1236,10 @@ def account_update(book: Book, nr: str, name: str | None = None, gruppe: str | N
 
 
 SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_referenz_praefix",
-                 "zahlungsfrist_tage", "agent_modus", "sprache", "co", "zahlungs_iban", "agent_backend")
+                 "zahlungsfrist_tage", "agent_modus", "sprache", "co", "zahlungs_iban", "agent_backend", "web")
+# The letter layout of invoices and offers (`rechnung:` in aeradex.yaml, see pdf.brief).
+LETTER_KEYS = ("layout", "ort", "einleitung", "dank", "unterzeichner", "funktion", "bank", "logo_hoehe_mm",
+               "offerte_einleitung")
 
 
 def _invoice_number_setting(book: Book, value: dict) -> dict:
@@ -1259,7 +1265,7 @@ def _invoice_number_setting(book: Book, value: dict) -> dict:
 def settings_update(book: Book, adresse: dict | None = None, konten: dict | None = None,
                     mwst: dict | None = None, bankkonten: dict | None = None, jev: dict | None = None,
                     kreditoren: dict | None = None, rechnungsnummer: dict | None = None,
-                    **fields) -> dict:
+                    rechnung: dict | None = None, **fields) -> dict:
     _guard(book)
     unknown = set(fields) - set(SETTINGS_KEYS)
     if unknown:
@@ -1281,6 +1287,31 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
         data.setdefault("konten", {}).update({k: str(v) for k, v in konten.items() if v})
     if rechnungsnummer is not None:
         data["rechnungsnummer"] = _invoice_number_setting(book, rechnungsnummer)
+    if rechnung is not None:
+        unknown = set(rechnung) - set(LETTER_KEYS)
+        if unknown:
+            raise BookError(f"Rechnungslayout: unbekannte Felder {', '.join(sorted(unknown))}")
+        if rechnung.get("layout") not in (None, "", "kompakt", "brief"):
+            raise BookError("Rechnungslayout: «kompakt» oder «brief»")
+        current = dict(data.get("rechnung") or {})
+        for key, value in rechnung.items():
+            value = str(value if value is not None else "").strip()
+            if key == "logo_hoehe_mm" and value:
+                try:
+                    number = float(value.replace(",", "."))
+                    if not 8 <= number <= 40:
+                        raise ValueError
+                except ValueError:
+                    raise BookError("Logo-Höhe zwischen 8 und 40 mm") from None
+                value = int(number) if number == int(number) else round(number, 1)
+            if value in ("", "kompakt") and key == "layout" or value == "":
+                current.pop(key, None)
+            else:
+                current[key] = value
+        if current:
+            data["rechnung"] = current
+        else:
+            data.pop("rechnung", None)
     if kreditoren is not None:
         current = dict(data.get("kreditoren") or {})
         if "agent_automatisch" in kreditoren:
@@ -2084,6 +2115,33 @@ def bill_draft_create(book: Book, datei: str, art: str = "") -> dict:
         raise BookError(f"Datei {datei} nicht gefunden")
     fields, text, notes = erfassung.analyse(book, path)      # slow (OCR): outside the write lock
     return _bill_draft_store(book, datei, fields, text, notes, art)
+
+
+def inbox_take(book: Book, datei: str, art: str = "") -> dict:
+    """A file from the inbox: a plugin takes it when its kind was chosen (`art`) or it recognises the file
+    (`plugins.EingangsArt`, e.g. a scanned work report by its QR code) → `{ok, art, url, meldung}`; anything else
+    becomes a draft as in `bill_draft_create` → `{…, entwurf}`."""
+    from . import erfassung, plugins
+    path = Path(datei) if Path(datei).is_absolute() else book.root / datei
+    if not path.is_file():
+        raise BookError(f"Datei {datei} nicht gefunden")
+    # plugins take files from the inbox only (they move them): never another file of the book
+    in_inbox = path.resolve().parent == (book.root / "inbox").resolve()
+    kinds = plugins.eingang_arten(book) if in_inbox else {}
+    kind = kinds.get(art) if art else None
+    if art and kind is None and art not in erfassung.ARTEN:
+        raise BookError(f"Unbekannte Belegart «{art}»" if in_inbox else f"{datei} liegt nicht in der Inbox")
+    if not art:
+        for k in kinds.values():
+            try:
+                if k.erkennen and k.erkennen(book, path):
+                    kind = k
+                    break
+            except Exception:                       # a reader that fails leaves the file to the Belegeingang
+                continue
+    if kind is not None:
+        return jsonable({"ok": True, "art": kind.name, **kind.verarbeiten(book, path)})
+    return bill_draft_create(book, datei, art)
 
 
 def _bill_draft_store(book: Book, datei: str, fields: dict, text: str, notes: list[str], art: str = "") -> dict:

@@ -9,7 +9,7 @@ from aeradex.book import BookError
 from aeradex.files import FormatError
 from aeradex.plugins import Command, Finding, hookimpl
 
-from . import abrechnung, abwesenheit, daten, kontrolle, offerten, schnell, stoppuhr, woche
+from . import abrechnung, abwesenheit, daten, entwuerfe, kontrolle, offerten, schnell, stoppuhr, woche
 
 AERADEX_PLUGIN_API = 1
 __version__ = "0.1.0"
@@ -196,6 +196,48 @@ def billing_preview(kunde: str, projekt: str = "", bis: str = "", detail: bool =
         ids = [e["id"] for e in abrechnung.select(b, kunde, projekt, bis=bis or None)]
         return api.jsonable(abrechnung.preview(b, ids, detail))
     return call(run)
+
+
+def invoice_drafts() -> list | dict:
+    """Offene Rechnungsentwürfe (aus Rapporten oder offenen Leistungen gesammelt): Kunde, Objekt, Betrag, ohne Preis."""
+    from aeradex.tools import call
+    return call(lambda b: api.jsonable(entwuerfe.overview(b)))
+
+
+def invoice_draft(nummer: str) -> dict:
+    """Ein Rechnungsentwurf mit seinen Einträgen, der Rechnungsvorschau und dem, was fehlt (Preise, Beschreibungen).
+
+    Args:
+        nummer: z.B. "RE-0003".
+    """
+    from aeradex.tools import call
+
+    def run(b):
+        v = entwuerfe.view(b, nummer)
+        v["eintraege_offen"] = [{k: x for k, x in e.items() if not k.startswith("_")} for e in v["eintraege_offen"]]
+        v["nicht_mehr_offen"] = [e["id"] for e in v["nicht_mehr_offen"]]
+        return api.jsonable(v)
+    return call(run)
+
+
+def update_invoice_draft(nummer: str = "", kunde: str = "", eintraege: list[str] | None = None, text: str = "",
+                         rabatt_prozent: str = "", entfernen: list[str] | None = None) -> dict:
+    """Offene Leistungen in einen Rechnungsentwurf legen (ohne nummer: in den offenen Entwurf des Kunden bzw. einen
+    neuen) oder einen Entwurf ändern. Preise fehlender Einträge mit update_service_entry setzen. Ausstellen tut ein
+    Mensch unter Leistungen › Rechnungsentwürfe.
+
+    Args:
+        nummer: Entwurf, z.B. "RE-0003"; leer = Entwurf des Kunden.
+        kunde: Kundennummer (nötig ohne nummer).
+        eintraege: IDs offener Leistungen (open_services), die dazukommen.
+        text: zusätzlicher Text auf der Rechnung.
+        rabatt_prozent: Rabatt in Prozent.
+        entfernen: IDs, die aus dem Entwurf genommen werden (bleiben offen).
+    """
+    if not nummer:
+        return _w(f"Rechnungsentwurf für {kunde}", entwuerfe.add, kunde, list(eintraege or []), "", None, text)
+    return _w(f"{nummer} geändert", entwuerfe.update, nummer, text or None, rabatt_prozent or None,
+              list(entfernen or []) or None, list(eintraege or []) or None)
 
 
 def draft_quote(kunde: str, positionen: list[dict], titel: str = "", text: str = "", abrechnung_art: str = "pauschal") -> dict:
@@ -426,7 +468,7 @@ def delete_service_entry(id: str) -> dict:
 @hookimpl
 def aeradex_tools():
     return [record_time, record_material, quick_entry, record_absence, holiday_balance, services_master_data,
-            open_services, billing_preview, draft_quote, update_quote, hours_control, project_status,
+            open_services, billing_preview, invoice_drafts, invoice_draft, update_invoice_draft, draft_quote, update_quote, hours_control, project_status,
             customer_objects, add_object, update_object, set_person_rates, change_pensum, add_product,
             update_product, add_project, update_project, update_service_entry, delete_service_entry]
 
@@ -435,8 +477,9 @@ def aeradex_tools():
 def aeradex_instructions():
     return ("- Leistungen (Plugin leistungen): am schnellsten mit quick_entry («3.5h Fassade spachteln»), sonst "
             "Arbeitszeit mit record_time, Material mit record_material (Nummern aus services_master_data). Abwesenheiten "
-            "mit record_absence, Ferienkonto mit holiday_balance. Offene Leistungen: open_services, Rechnungsvorschau: billing_preview — "
-            "Rechnungen stellt ein Mensch aus. Offerten nur als Entwurf (draft_quote), ändern mit update_quote. Stundenkontrolle: hours_control, "
+            "mit record_absence, Ferienkonto mit holiday_balance. Offene Leistungen: open_services, Rechnungsvorschau: billing_preview, "
+            "Rechnungsentwürfe: invoice_drafts/invoice_draft, sammeln mit update_invoice_draft — Rechnungen stellt ein "
+            "Mensch aus. Offerten nur als Entwurf (draft_quote), ändern mit update_quote. Stundenkontrolle: hours_control, "
             "Projekte: project_status. Objekte/Liegenschaften eines Kunden (mit Adresse und Zugang): customer_objects, "
             "neu add_object, ändern update_object. Neue Mitarbeiter:in: nach add_employee Stundenansatz und "
             "Ferientage mit set_person_rates; Pensum-Wechsel mit change_pensum.")
@@ -782,6 +825,40 @@ def aeradex_kunde_teile(book, kunde):
                       zeitachse=zeit, kennzahlen=figures,
                       aktionen=[("Offerte", f"/p/leistungen/offerten?kunde={kunde}"),
                                 ("Leistung erfassen", f"/p/leistungen/leistungen?tab=erfassen&neu_kunde={kunde}")])]
+
+
+@hookimpl
+def aeradex_eingang_arten(book):
+    """Scanned Regie-, Material- and Wochenrapporte: chosen when scanning, or recognised by the QR code of a form
+    printed by aeradex; read and kept for checking under Leistungen › Rapporte."""
+    from aeradex.plugins import EingangsArt
+    from . import rapporte
+
+    def kind(art):
+        def recognise(b, path):
+            q = rapporte.qr_of(path) if path.suffix.lower() in (".pdf", ".png", ".jpg", ".jpeg", ".webp") else None
+            return bool(q and q["art"] == art)
+        return EingangsArt(art, rapporte.ARTEN[art], lambda b, path: rapporte.take_in(b, path, art), recognise)
+    return [kind(a) for a in rapporte.ARTEN]
+
+
+@hookimpl
+def aeradex_todos(book):
+    """On the Übersicht: invoice drafts waiting for prices or to be issued, scanned reports to check."""
+    from aeradex.plugins import Todo
+    from . import rapporte
+    out = []
+    drafts = entwuerfe.overview(book)
+    if drafts:
+        missing = sum(1 for d in drafts if d["ohne_preis"])
+        out.append(Todo(f"{len(drafts)} Rechnungsentw{'ürfe' if len(drafts) > 1 else 'urf'} offen",
+                        "/p/leistungen/entwuerfe", f"{missing} mit fehlenden Preisen" if missing else "bereit zum Ausstellen",
+                        "Verkauf", "warn" if missing else "info"))
+    todo = rapporte.to_check(book)
+    if todo:
+        out.append(Todo(f"{len(todo)} gescannte{'r' if len(todo) == 1 else ''} Rapport{'e' if len(todo) > 1 else ''} prüfen",
+                        "/p/leistungen/rapporte", ", ".join(r["nummer"] for r in todo[:4]), "Leistungen", "warn"))
+    return out
 
 
 @hookimpl

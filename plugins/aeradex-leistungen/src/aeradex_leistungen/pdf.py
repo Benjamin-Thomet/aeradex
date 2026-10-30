@@ -10,6 +10,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Spacer, Table
 
 from aeradex.book import Book
+from aeradex import pdf as core
 from aeradex.pdf import SIDE, P, _doc, _grid, chf, d, letter_head, price as core_price
 
 from . import daten
@@ -35,9 +36,48 @@ def _head(book: Book, meta: dict, title: str, width: float) -> list:
     return [*letter_head(book, width, _address(meta)), P(title, "title")]
 
 
+def _brief_quote(book: Book, meta: dict, width: float) -> list:
+    """The offer in the letter layout of the book's invoices (pdf.brief)."""
+    s = book.settings
+    cfg = core.brief(book) or {}
+    story = core.brief_head(book, width, core.brief_recipient(meta.get("an"), cfg), meta["datum"])
+    story.append(P("Offerte", "title"))
+    objekt = ""
+    if meta.get("projekt"):
+        from .abrechnung import object_line
+        objekt = object_line(book, [{"projekt": meta["projekt"]}])
+    story.append(core.brief_info([("Offerte-Nr.", meta["nummer"]), ("Betreff", meta.get("titel") or ""),
+                                  ("Objekt / Baustelle", objekt), ("Gültig bis", d(meta["gueltig_bis"]))]))
+    story += [Spacer(1, 6 * mm), P(core.salutation(meta.get("an"))), Spacer(1, 3 * mm)]
+    intro = cfg.get("offerte_einleitung") or "Gerne unterbreiten wir Ihnen folgende Offerte:"
+    for para in [intro] + [p for p in (meta.get("_text") or "").split("\n\n") if p.strip()]:
+        story.append(P(para))
+    story.append(Spacer(1, 4 * mm))
+    cur = meta.get("waehrung") or "CHF"
+    totals = []
+    if meta.get("mwst"):
+        totals.append(("Zwischentotal", chf(meta.get("netto")), True))
+        bands = meta["mwst"]
+        for b in bands:
+            rate = Decimal(str(b.get("satz") or 0))
+            if rate:
+                totals.append((f"MWST {rate:g} %" + (f" auf {chf(b['netto'])}" if len(bands) > 1 else ""),
+                               chf(b["steuer"]), False))
+    totals.append((f"Total{' inkl. MWST' if meta.get('mwst') else ''}", f"{cur} {chf(meta['total'])}", True))
+    story.append(core.brief_positions(meta, width, totals))
+    if meta.get("abrechnung") == "aufwand":
+        story += [Spacer(1, 3 * mm), P("Abrechnung nach effektivem Aufwand; die Offerte ist eine Schätzung.", "small")]
+    dank = s.get("offerte_gruss") or "Wir freuen uns auf Ihren Auftrag und stehen für Fragen gerne zur Verfügung."
+    return story + core.brief_closing(book, dank)
+
+
 def quote_pdf(book: Book, meta: dict) -> bytes:
     s = book.settings
     width = A4[0] - 2 * SIDE
+    if core.brief(book):
+        buf = io.BytesIO()
+        core.brief_doc(buf, book, f"Offerte {meta['nummer']}").build(_brief_quote(book, meta, width))
+        return buf.getvalue()
     title = f"Offerte {meta['nummer']}" + (f" · {meta['titel']}" if meta.get("titel") else "")
     story = _head(book, meta, title, width)
     story.append(_info([("Datum", d(meta["datum"])), ("Gültig bis", d(meta["gueltig_bis"])),

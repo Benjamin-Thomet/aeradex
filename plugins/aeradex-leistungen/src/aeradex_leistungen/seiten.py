@@ -9,7 +9,8 @@ from aeradex import api, invoices
 from aeradex.book import BookError
 from aeradex.plugins import Page
 
-from . import abrechnung, abwesenheit, daten, kontrolle, offerten, schnell, stoppuhr, woche
+from . import (abrechnung, abwesenheit, azk, daten, entwuerfe, kontrolle, offerten, rapporte, schnell, stoppuhr,
+               woche, woche_rapport)
 
 TABS = [("erfassen", "Erfassen"), ("woche", "Woche"), ("abwesenheiten", "Abwesenheiten"),
         ("auswertung", "Auswertung"), ("stammdaten", "Stammdaten")]
@@ -555,6 +556,264 @@ def _offerte_rechnung(book, f):
     return {**res, "weiter": f"/debitoren/rechnung/{res['ergebnis']['rechnung']}"}
 
 
+# ---------- invoice drafts ----------
+
+def _entwuerfe_context(book, query):
+    ctx = _common(book)
+    ctx["entwuerfe"] = entwuerfe.overview(book)
+    nr = (query.get("nr") or "").upper()
+    if nr:
+        ctx["sel"] = entwuerfe.view(book, nr)
+        ctx["materialien"] = daten.materials(book)
+        ctx["dazu"] = [e for e in abrechnung.select(book, ctx["sel"]["kunde"])
+                       if e["id"] not in set(ctx["sel"]["eintraege"]) and e["id"] not in entwuerfe.in_drafts(book)]
+    return ctx
+
+
+def _back(nr: str, meldung: str, res: dict | None = None) -> dict:
+    return {**(res or {}), "meldung": meldung, "weiter": f"/p/leistungen/entwuerfe?nr={nr}"}
+
+
+def _entwurf_neu(book, f):
+    res = api.write(book, f"Rechnungsentwurf für {f.get('kunde')}", entwuerfe.add, f.get("kunde") or "",
+                    _list(f, "ids"), f.get("projekt") or "")
+    return _back(res["ergebnis"]["nummer"], "Entwurf angelegt", res)
+
+
+def _entwurf_preis(book, f):
+    """Price of one entry; with `sortiment` also the product's (or Leistungsart's) price for later entries."""
+    nr, eid = f.get("nummer") or "", f.get("id") or ""
+    preis = (f.get("preis") or "").strip()
+    if not preis:
+        raise BookError("Preis eingeben")
+
+    def run(b):
+        e = daten.entry(b, eid)
+        touched = []
+        out, paths = daten.update_entry(b, eid, preis=preis)
+        touched += paths
+        if f.get("sortiment") != "1":
+            return out, touched
+        # remember it: the person's rate (hours) or the product's price (material), and fill in the draft's other
+        # entries of the same person or product that are still without a price
+        if e["art"] == "Zeit":
+            _, paths = daten.set_person(b, e["wer"], preis)
+        else:
+            _, paths = daten.update_product(b, e["produkt"], preis=preis)
+        touched += paths
+        for other in entwuerfe.view(b, nr)["eintraege_offen"]:
+            if other["id"] == eid or not other["preis_fehlt"]:
+                continue
+            if e["art"] == "Zeit" and other["art"] == "Zeit" and other["wer"] == e["wer"]:
+                _, paths = daten.update_entry(b, other["id"], neu_bewerten=True)
+            elif e["art"] == "Produkt" and other["art"] == "Produkt" and other["produkt"] == e["produkt"]:
+                _, paths = daten.update_entry(b, other["id"], preis=preis)
+            else:
+                continue
+            touched += paths
+        return out, touched
+    api.write(book, f"{nr}: Preis {eid}", run)
+    return _back(nr, "Preis gesetzt")
+
+
+def _entwurf_aendern(book, f):
+    nr = f.get("nummer") or ""
+    api.write(book, f"{nr} geändert", entwuerfe.update, nr, f.get("text") if "text" in f else None,
+              f.get("rabatt") if "rabatt" in f else None, _list(f, "entfernen") or None, _list(f, "hinzufuegen") or None)
+    return _back(nr, "Gespeichert")
+
+
+def _entwurf_ausstellen(book, f):
+    nr = f.get("nummer") or ""
+    res = api.write(book, f"{nr}: Rechnung ausgestellt", entwuerfe.issue, nr, f.get("datum") or None)
+    return {**res, "weiter": f"/debitoren/rechnung/{res['ergebnis']['rechnung']}"}
+
+
+def _entwurf_verwerfen(book, f):
+    nr = f.get("nummer") or ""
+    api.write(book, f"{nr} verworfen", entwuerfe.discard, nr)
+    return {"meldung": "Entwurf verworfen, die Einträge bleiben offen", "weiter": "/p/leistungen/entwuerfe"}
+
+
+# ---------- scanned reports ----------
+
+def _rapporte_context(book, query):
+    ctx = _common(book)
+    alle = sorted(rapporte.reports(book).values(), key=lambda r: (r.get("eingelesen") or "", r["nummer"]), reverse=True)
+    status = query.get("status") or "ausgelesen"
+    ctx["status"] = status
+    ctx["liste"] = [r for r in alle if not status or r.get("status") == status]
+    ctx["anzahl"] = {s: sum(1 for r in alle if r.get("status") == s) for s in rapporte.STATUS}
+    ctx["arten"] = rapporte.ARTEN
+    ctx["objekte"] = {k: p for k, p in ctx["projekte"].items() if p.get("status", "offen") == "offen"}
+    today = date.today()
+    jahr, kw = (int(x) for x in (query.get("kw") or f"{today.isocalendar()[0]}-{today.isocalendar()[1]}").split("-"))
+    ctx["kw"] = {"jahr": jahr, "kw": kw, "zeilen": woche_rapport.overview(book, jahr, kw),
+                 "vorher": "{}-{}".format(*(date.fromisocalendar(jahr, kw, 1) - timedelta(days=7)).isocalendar()[:2]),
+                 "nachher": "{}-{}".format(*(date.fromisocalendar(jahr, kw, 1) + timedelta(days=7)).isocalendar()[:2])}
+    nr = query.get("nr") or ""
+    if nr:
+        r = rapporte.report(book, nr)
+        r.pop("_pfad", None)
+        ctx["sel"] = r
+        ctx["probleme"] = rapporte.problems(book, r) if r.get("status") == "ausgelesen" else []
+        ctx["ist_pdf"] = str(r.get("scan") or "").lower().endswith(".pdf")
+        if r["art"] == "woche":
+            for t in r.get("tage") or []:
+                for line in t.get("zeilen") or []:
+                    line["_art"] = woche_rapport.kind_of(book, line)
+                    line["_kategorie"] = line.get("kategorie") or (woche_rapport.category_of(book, line)
+                                                                   if line["_art"] == "intern" else "")
+                    line["_absenz"] = line.get("absenz") or woche_rapport.absence_of(line)
+    return ctx
+
+
+def _rows(f: dict, prefix: str, keys: tuple[str, ...]) -> list[dict]:
+    cols = {k: _list(f, f"{prefix}_{k}") for k in keys}
+    n = max((len(v) for v in cols.values()), default=0)
+    return [{k: (cols[k][i] if i < len(cols[k]) else "").strip() for k in keys} for i in range(n)]
+
+
+def _ziel(book, value: str) -> dict:
+    """The target chosen for a week line: «P:P0003» object (with its customer), «K:K0002» customer,
+    «C:Werkstatt» category, «A:Ferien» absence."""
+    kind, _, val = (value or "").partition(":")
+    kunde = val if kind == "K" else (daten.project(book, val)["kunde"] if kind == "P" else "")
+    return {"kunde": kunde, "projekt": val if kind == "P" else "",
+            "kategorie": val if kind == "C" else "", "absenz": val if kind == "A" else ""}
+
+
+def _rapport_fields(book, f) -> dict:
+    meta = rapporte.report(book, f.get("nummer") or "")
+    art = meta["art"]
+    out: dict = {}
+    if art in ("regie", "material"):
+        ziel = f.get("ziel") or ""
+        if ziel.startswith("P:"):
+            out["projekt"] = ziel[2:]
+            out["kunde"] = daten.project(book, ziel[2:])["kunde"]
+        else:
+            out["kunde"], out["projekt"] = ziel[2:] if ziel.startswith("K:") else "", ""
+        out["unterschrieben_kunde"] = f.get("unterschrieben_kunde") == "1"
+    if art == "regie":
+        out["arbeiten"] = [l.strip() for l in (f.get("arbeiten") or "").splitlines() if l.strip()]
+        out["stunden"] = [r for r in _rows(f, "s", ("person", "datum", "stunden", "ansatz"))
+                          if r["stunden"] or r["person"]]
+    elif art == "material":
+        out["zeilen"] = [r for r in _rows(f, "z", ("datum", "produkt", "text", "einheit", "menge", "preis"))
+                         if r["text"] or r["produkt"]]
+        prods = daten.products(book)
+        for r in out["zeilen"]:
+            if r["produkt"] and not r["text"]:
+                r["text"] = prods.get(r["produkt"], {}).get("text", "")
+    elif art == "woche":
+        out["person"] = f.get("person") or ""
+        days = {r["datum"]: {"datum": r["datum"], "reisezeit": r["reise"], "zeilen": []}
+                for r in _rows(f, "t", ("datum", "reise")) if r["datum"]}
+        for r in _rows(f, "l", ("datum", "text", "ziel", "stunden", "bemerkung")):
+            if r["datum"] not in days or not (r["text"] or r["stunden"] or r["ziel"]):
+                continue
+            days[r["datum"]]["zeilen"].append({"text": r["text"], "stunden": r["stunden"],
+                                              "bemerkung": r["bemerkung"], **_ziel(book, r["ziel"])})
+        out["tage"] = sorted(days.values(), key=lambda t: t["datum"])
+    return out
+
+
+def _rapport_speichern(book, f):
+    nr = f.get("nummer") or ""
+    api.write(book, f"Rapport {nr} korrigiert", rapporte.save, nr, _rapport_fields(book, f))
+    return {"meldung": "Gespeichert", "weiter": f"/p/leistungen/rapporte?nr={nr}"}
+
+
+def _rapport_uebernehmen(book, f):
+    nr = f.get("nummer") or ""
+    fields = _rapport_fields(book, f)
+
+    def run(b):
+        _, touched = rapporte.save(b, nr, fields)
+        res, more = rapporte.take_over(b, nr)
+        return res, touched + more
+    res = api.write(book, f"Rapport {nr} übernommen", run)["ergebnis"]
+    if res.get("entwurf"):
+        return {"meldung": f"Übernommen in Rechnungsentwurf {res['entwurf']}",
+                "weiter": f"/p/leistungen/entwuerfe?nr={res['entwurf']}"}
+    return {"meldung": f"{len(res.get('eintraege') or [])} Einträge übernommen",
+            "weiter": f"/p/leistungen/rapporte?nr={nr}"}
+
+
+def _rapport_verwerfen(book, f):
+    nr = f.get("nummer") or ""
+    api.write(book, f"Rapport {nr} verworfen", rapporte.discard, nr)
+    return {"meldung": "Verworfen", "weiter": "/p/leistungen/rapporte"}
+
+
+def _rapport_hochladen(book, f):
+    upload = f.get("datei")
+    if upload is None or not getattr(upload, "filename", ""):
+        raise BookError("Scan wählen")
+    stored = api.inbox_add(book, upload.filename, upload.file.read())
+    res = rapporte.take_in(book, book.root / stored["datei"], f.get("art") or "")
+    return {"meldung": res["meldung"], "weiter": res["url"]}
+
+
+def _formulare(book, f):
+    """Printed forms with number and QR (formulare.py), as one PDF to print."""
+    from . import formulare
+    art = f.get("art") or "regie"
+    if art == "woche":
+        res = api.write(book, "Wochenrapporte gedruckt", formulare.weeks, f.get("kw") or "", _list(f, "personen"))
+    else:
+        res = api.write(book, f"{rapporte.ARTEN[art]} gedruckt", formulare.reports, art, f.get("ziel") or "",
+                        int(f.get("anzahl") or 1))
+    from urllib.parse import quote
+    return {"meldung": res["ergebnis"]["meldung"], "weiter": "/datei/" + quote(res["ergebnis"]["datei"])}
+
+
+# ---------- SMGV Arbeitszeitkontrolle ----------
+
+def _azk_context(book, query):
+    ctx = _common(book)
+    jahr = int(query.get("jahr") or date.today().year)
+    ctx["jahr"] = jahr
+    ctx["vorlagen"] = {y: book.rel(p) for y, p in sorted(azk.templates(book).items())}
+    ctx["abgeleitet"] = jahr not in ctx["vorlagen"] and any(y < jahr for y in ctx["vorlagen"])
+    wer = (query.get("wer") or "").upper()
+    rows = []
+    for nr, p in ctx["personen"].items():
+        if not p.get("aktiv", True):
+            continue
+        months = azk.summary(book, nr, jahr)
+        rows.append({"nummer": nr, "name": p["name"], "monate": months,
+                     "arbeit": sum((m["arbeit"] for m in months), Decimal(0)),
+                     "reise": sum((m["reise"] for m in months), Decimal(0)),
+                     "absenzen": sum((m["absenzen"] for m in months), Decimal(0))})
+    ctx["zeilen"] = rows
+    ctx["sel"] = next((r for r in rows if r["nummer"] == wer), None)
+    return ctx
+
+
+def _azk_vorlage(book, f):
+    upload = f.get("datei")
+    if upload is None or not getattr(upload, "filename", ""):
+        raise BookError("Excel-Datei des SMGV wählen")
+    res = api.write(book, "Arbeitszeitkontrolle: Vorlage", azk.store_template, upload.file.read(),
+                    int(f["jahr"]) if f.get("jahr") else None)["ergebnis"]
+    return {"meldung": f"Vorlage {res['jahr']} ({res['variante']}) gespeichert"
+            + (" — aus der Vorlage des Vorjahrs erstellt" if res.get("abgeleitet") else ""),
+            "weiter": f"/p/leistungen/arbeitszeit?jahr={res['jahr']}"}
+
+
+def _azk_excel(book, f):
+    jahr = int(f.get("jahr") or date.today().year)
+    p = daten.person(book, f.get("wer") or "")
+    data = azk.fill(book, p["nummer"], jahr)
+    target = book.root / "berichte" / "Arbeitszeitkontrolle" / f"Arbeitszeitkontrolle {jahr} {p['name']}.xlsx"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    from urllib.parse import quote
+    return {"meldung": "Arbeitszeitkontrolle erstellt", "weiter": "/datei/" + quote(book.rel(target))}
+
+
 PAGES = [
     Page("leistungen", "Leistungen", "leistungen.html", _context,
          {"neu": _neu, "zeit": _zeit, "material": _material, "loeschen": _loeschen, "rechnung": _rechnung,
@@ -571,4 +830,12 @@ PAGES = [
                     "rechnung_vorschau": ("leistungen/_rechnung_vorschau.html", _abrechnen_ctx)}),
     Page("offerten", "Offerten", "offerten.html", _offerten_context,
          {"neu": _offerte_neu, "status": _offerte_status, "rechnung": _offerte_rechnung}, bereich="leistungen"),
+    Page("entwuerfe", "Rechnungsentwürfe", "entwuerfe.html", _entwuerfe_context,
+         {"neu": _entwurf_neu, "preis": _entwurf_preis, "aendern": _entwurf_aendern, "ausstellen": _entwurf_ausstellen,
+          "verwerfen": _entwurf_verwerfen}, bereich="leistungen"),
+    Page("rapporte", "Rapporte", "rapporte.html", _rapporte_context,
+         {"speichern": _rapport_speichern, "uebernehmen": _rapport_uebernehmen, "verwerfen": _rapport_verwerfen,
+          "hochladen": _rapport_hochladen, "formulare": _formulare}, bereich="leistungen"),
+    Page("arbeitszeit", "Arbeitszeitkontrolle", "arbeitszeit.html", _azk_context,
+         {"vorlage": _azk_vorlage, "excel": _azk_excel}, bereich="leistungen"),
 ]

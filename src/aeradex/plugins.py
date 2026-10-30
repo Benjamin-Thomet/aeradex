@@ -177,6 +177,19 @@ class Datensatz:
 
 
 @dataclass
+class EingangsArt:
+    """A kind of document a plugin takes from the Belegeingang instead of the supplier-bill draft (a scanned
+    work report, a delivery note …). ``titel`` is offered as a choice when scanning; ``erkennen(book, path)`` says
+    whether an upload without a chosen kind is one (e.g. by its QR code; cheap, no AI); ``verarbeiten(book, path)``
+    takes the file over — it runs outside the write lock and writes through ``api.write`` — and returns
+    ``{url, meldung}``: where the person continues."""
+    name: str
+    titel: str
+    verarbeiten: Callable[[Book, Path], dict]
+    erkennen: Callable[[Book, Path], bool] | None = None
+
+
+@dataclass
 class Todo:
     """A line in the to-do list of the Übersicht: work waiting for a person, leading to where it is done.
     ``level`` info | warn | red."""
@@ -313,6 +326,10 @@ class Spec:
     def aeradex_nach_beleg(self, book: Book, beleg: str) -> str | None:
         """Where the UI continues after a document from the inbox was booked as `beleg` (a supplier bill, a
         receipt): a URL for a follow-up the plugin offers (e.g. turn an asset purchase into an asset), or None."""
+
+    @hookspec
+    def aeradex_eingang_arten(self, book: Book) -> list[EingangsArt]:
+        """Kinds of documents the plugin takes from the Belegeingang (see `EingangsArt`)."""
 
     @hookspec
     def aeradex_dienste(self, book: Book) -> list[Dienst]:
@@ -562,6 +579,17 @@ def sprache_zu_text(book: Book) -> Callable[[bytes, str], str] | None:
         if callable(fn):
             return fn
     return None
+
+
+def eingang_arten(book: Book) -> dict[str, EingangsArt]:
+    """The document kinds the enabled plugins take from the Belegeingang, by name; a broken plugin is skipped."""
+    out: dict[str, EingangsArt] = {}
+    for impl in manager(book).hook.aeradex_eingang_arten.get_hookimpls():
+        try:
+            out.update({a.name: a for a in impl.function(book=book) or [] if isinstance(a, EingangsArt)})
+        except Exception:
+            continue
+    return out
 
 
 def todos(book: Book) -> list[Todo]:

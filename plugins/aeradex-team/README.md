@@ -65,6 +65,7 @@ Einstellungen in `team/einstellungen.yaml` (im Buch, in git), neben Konten und A
 | `branche` | für die Korrektur, z.B. «Schreinerei» (Standard «Handwerksbetrieb») |
 | `text_beispiel` | Beispiel eines guten Rapporttexts: Platzhalter in der App und Stilvorlage der Korrektur |
 | `arztzeugnis_ab_tag` | Hinweis in der App bei Krankheit, z.B. `3`; `0` = kein Hinweis |
+| `stunden_in_app` | `false`: Stunden und Material kommen auf Papier (gescannte Wochen-, Regie- und Material-Rapporte, Plugin leistungen); die App zeigt nur noch Abwesenheiten, Konto, Kunden und Lohn |
 
 ## Tests
 

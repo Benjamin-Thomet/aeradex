@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}Rechnungsentwürfe{% endblock %}
+{% set A = "/p/leistungen/entwuerfe/" %}
+{% block main %}
+<div class="topbar">
+  <div><h1>Rechnungsentwürfe</h1><div class="sub">Rapporte und offene Leistungen je Kunde und {{ cfg.projekt_wort }} sammeln, Preise ergänzen, dann ausstellen</div></div>
+  <div class="actions"><a class="btn" href="/p/leistungen/leistungen?tab=abrechnen">Abrechnen</a></div>
+</div>
+
+{% if sel %}
+<div class="panel">
+  <header><h2>{{ sel.nummer }} · {{ kunden.get(sel.kunde, sel.kunde) }}{% if sel.objekt %} · {{ sel.objekt }}{% endif %}</h2>
+    {% if sel.status == 'offen' %}<span class="pill {{ 'ok' if sel.ausstellbar else 'warn' }}">{{ 'bereit' if sel.ausstellbar else 'unvollständig' }}</span>
+    {% else %}<span class="pill muted">{{ sel.status }}</span>{% endif %}</header>
+  {% if sel.status != 'offen' %}
+  <div class="body">{% if sel.rechnung %}Ausgestellt als <a class="beleg" href="/debitoren/rechnung/{{ sel.rechnung }}">{{ sel.rechnung }}</a>.{% else %}Verworfen; die Einträge blieben offen.{% endif %}</div>
+  {% else %}
+  <div class="body">
+    {% for f in sel.fehler %}<div class="alert error">{{ f }}</div>{% endfor %}
+    {% for w in sel.warnungen %}<div class="alert warn">{{ w }}</div>{% endfor %}
+    {% if sel.rapporte %}<p class="small muted">Aus Rapport {% for r in sel.rapporte %}<a class="link" href="/p/leistungen/rapporte?nr={{ r }}">{{ r }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+  </div>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Datum</th><th>Wer</th><th>Text</th><th class="right">Menge</th><th class="right">Preis</th><th class="right">Betrag</th><th></th></tr></thead>
+    <tbody>{% for e in sel.eintraege_offen %}
+      <tr class="row{{ ' warnrow' if e.preis_fehlt }}">
+        <td>{{ e.datum|datum }}</td><td>{{ e.wer_name or '' }}</td><td>{{ e.text }}</td>
+        <td class="right num">{{ e.menge|qty }} {{ e.einheit }}</td>
+        <td class="right">{% if e.preis_fehlt %}
+          <form class="actions" hx-post="{{ A }}preis" hx-target="find .errors" style="justify-content:flex-end">
+            <input type="hidden" name="nummer" value="{{ sel.nummer }}"><input type="hidden" name="id" value="{{ e.id }}">
+            <input class="input num" name="preis" placeholder="Preis" inputmode="decimal" style="width:80px" required>
+            {% if e.art == 'Zeit' and e.wer %}<label class="check small" title="Als Ansatz von {{ e.wer_name }} merken und für ihre/seine übrigen Stunden hier übernehmen"><input type="checkbox" name="sortiment" value="1" checked> Ansatz merken</label>
+            {% elif e.produkt %}<label class="check small" title="Als Preis im Sortiment merken und für dasselbe Material hier übernehmen"><input type="checkbox" name="sortiment" value="1" checked> ins Sortiment</label>{% endif %}
+            <button class="btn small" type="submit">OK</button><span class="errors"></span></form>
+          {% else %}<span class="num">{{ e.preis|preis }}</span>{% endif %}</td>
+        <td class="right num">{{ e.betrag|chf }}</td>
+        <td><form hx-post="{{ A }}aendern" hx-target="find .errors"><input type="hidden" name="nummer" value="{{ sel.nummer }}"><input type="hidden" name="entfernen" value="{{ e.id }}"><button class="btn small ghost" type="submit" title="Aus dem Entwurf nehmen (bleibt offen)">✕</button><span class="errors"></span></form></td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% if sel.vorschau %}
+  <div class="body"><h3>So wird die Rechnung</h3></div>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Position</th><th class="right">Menge</th><th class="right">Ansatz</th><th class="right">Betrag</th></tr></thead>
+    <tbody>{% for p in sel.vorschau.positionen %}<tr class="row"><td style="white-space:pre-line">{{ p.text }}</td><td class="right num">{{ p.menge|qty }} {{ p.einheit }}</td><td class="right num">{{ p.preis|preis }}</td><td class="right num">{{ p.betrag|chf }}</td></tr>{% endfor %}</tbody>
+    <tfoot>{% for b in sel.vorschau.mwst %}<tr><td colspan="3">MWST {{ b.code }} auf {{ b.netto|chf }}</td><td class="right num">{{ b.steuer|chf }}</td></tr>{% endfor %}
+      <tr><td colspan="3"><strong>Total CHF</strong></td><td class="right num total"><strong>{{ sel.vorschau.total|chf }}</strong></td></tr></tfoot>
+  </table></div>
+  {% endif %}
+  <form class="body" hx-post="{{ A }}aendern" hx-target="find .errors">
+    <input type="hidden" name="nummer" value="{{ sel.nummer }}">
+    <div class="form four">
+      <div class="field wide"><label>Zusätzlicher Text auf der Rechnung</label><input class="input" name="text" value="{{ sel.text or '' }}"></div>
+      <div class="field"><label>Rabatt %</label><input class="input num" name="rabatt" value="{{ sel.rabatt or '' }}" inputmode="decimal"></div>
+      {% if dazu %}<div class="field wide"><label>Weitere offene Leistungen dieses Kunden dazunehmen</label>
+        <div class="checks">{% for e in dazu %}<label class="check small"><input type="checkbox" name="hinzufuegen" value="{{ e.id }}"> {{ e.datum|datum }} · {{ e.text }} · {{ e.menge|qty }}</label>{% endfor %}</div></div>{% endif %}
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Preise und Texte ändern die Einträge selbst; die Rechnung rechnet immer aus ihnen.</span><button class="btn" type="submit">Speichern</button></div>
+  </form>
+  <div class="body actions">
+    <form hx-post="{{ A }}verwerfen" hx-target="find .errors" hx-confirm="Entwurf verwerfen? Die Einträge bleiben offen."><input type="hidden" name="nummer" value="{{ sel.nummer }}"><button class="btn ghost" type="submit">Verwerfen</button><span class="errors"></span></form>
+    <form class="actions" style="margin-left:auto" hx-post="{{ A }}ausstellen" hx-target="find .errors" hx-confirm="Rechnung ausstellen und verbuchen?">
+      <input type="hidden" name="nummer" value="{{ sel.nummer }}">
+      <label class="small muted">Rechnungsdatum <input class="input" type="date" name="datum" value="{{ today().isoformat() }}"></label>
+      <button class="btn primary" type="submit" {{ 'disabled' if not sel.ausstellbar }}>Rechnung ausstellen</button><span class="errors"></span></form>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <header><h2>Offene Entwürfe</h2></header>
+  {% if entwuerfe %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Entwurf</th><th>Kunde</th><th>{{ cfg.projekt_wort }}</th><th class="right">Einträge</th><th class="right">bisher</th><th></th></tr></thead>
+    <tbody>{% for m in entwuerfe %}<tr class="row"><td><a class="beleg" href="?nr={{ m.nummer }}">{{ m.nummer }}</a></td><td>{{ m.kunde_name }}</td><td>{{ m.projekt_name }}</td>
+      <td class="right num">{{ m.anzahl }}</td><td class="right num">{{ m.betrag|chf }}</td>
+      <td>{% if m.ohne_preis %}<span class="pill warn">{{ m.ohne_preis }} ohne Preis</span>{% else %}<span class="pill ok">bereit</span>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="body empty">Keine offenen Entwürfe. Sie entstehen aus gescannten Rapporten oder unter Abrechnen.</div>{% endif %}
+</div>
+{% endblock %}

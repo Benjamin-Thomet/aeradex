@@ -186,7 +186,7 @@ def test_kennung_names_cookie_header_and_page(tmp_path):
     page = phone.get("/app/").text
     assert 'data-kennung="muster"' in page and "<title>Team · Muster AG</title>" in page and "__" not in page
     sw = phone.get("/app/sw.js").text
-    assert '"muster-shell-v10"' in sw and '"/app/static/app.js"' in sw and "__" not in sw
+    assert '"muster-shell-v11"' in sw and '"/app/static/app.js"' in sw and "__" not in sw
     manifest = phone.get("/app/manifest.webmanifest").json()
     assert manifest["name"] == "Team · Muster AG" and manifest["short_name"] == "Team"
     assert pc.get("/app/api/sync/docs").json()["kennung"] == "muster"

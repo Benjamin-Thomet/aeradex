@@ -3,7 +3,8 @@
 <form class="body" hx-post="{{ action }}" hx-target="find .errors">
   <div class="form four">
     <div class="field f-firma" style="grid-column: span 2"><label>Firma</label><input class="input" name="firma" value="{{ c.firma or '' }}" placeholder="leer bei Privatpersonen"></div>
-    <div class="field f-name" style="grid-column: span 2"><label>Name (Kontakt oder Privatperson)</label><input class="input" name="name" value="{{ c.name or '' }}" required></div>
+    <div class="field f-anrede"><label>Anrede</label><select class="input" name="anrede" style="width:100%"><option value="">–</option>{% for x in ("Herr", "Frau", "Familie") %}<option {{ 'selected' if c.anrede == x }}>{{ x }}</option>{% endfor %}</select></div>
+    <div class="field f-name" style="grid-column: span 3"><label>Name (Kontakt oder Privatperson)</label><input class="input" name="name" value="{{ c.name or '' }}" required></div>
     <div class="field f-strasse" style="grid-column: span 2"><label>Strasse</label><input class="input" name="strasse" value="{{ (c.adresse or {}).strasse or '' }}"></div>
     <div class="field f-nr"><label>Nr.</label><input class="input" name="nr" value="{{ (c.adresse or {}).nr or '' }}"></div>
     <div class="field f-land"><label>Land</label><input class="input" name="land" value="{{ (c.adresse or {}).land or 'CH' }}" maxlength="2"></div>

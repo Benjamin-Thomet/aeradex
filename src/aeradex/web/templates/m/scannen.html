@@ -12,6 +12,9 @@
       <label><input type="radio" name="sc-art" value="quittung" {{ 'checked' if art == 'quittung' }}><span>Quittung</span></label>
       <label><input type="radio" name="sc-art" value="debitor" {{ 'checked' if art == 'debitor' }}><span>Eigene Rg.</span></label>
     </div>
+    {% if plugin_arten %}<div class="m-seg sc-art" role="radiogroup" aria-label="Rapporte">
+      {% for name, titel in plugin_arten %}<label><input type="radio" name="sc-art" value="{{ name }}" {{ 'checked' if art == name }}><span>{{ titel }}</span></label>{% endfor %}
+    </div>{% endif %}
     <label class="btn primary m-big sc-camera">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
       Foto aufnehmen

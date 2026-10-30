@@ -31,6 +31,7 @@
       <div class="field"><label>Ort</label><input class="input" name="a_ort" value="{{ a.ort or '' }}"></div>
       <div class="field"><label>Telefon</label><input class="input" name="telefon" value="{{ settings.get('telefon') or '' }}"></div>
       <div class="field"><label>E-Mail</label><input class="input" name="email" value="{{ settings.get('email') or '' }}"></div>
+      <div class="field" style="grid-column: span 2"><label>Website</label><input class="input" name="web" value="{{ settings.get('web') or '' }}" placeholder="www.beispiel.ch"></div>
       <div class="field" style="grid-column: span 2"><label>IBAN oder QR-IBAN</label><input class="input num" name="iban" value="{{ settings.get('iban') or '' }}" style="text-align:left"></div>
       <div class="field" style="grid-column: span 2"><label>IBAN für Zahlungen (falls oben eine QR-IBAN steht)</label><input class="input num" name="zahlungs_iban" value="{{ settings.get('zahlungs_iban') or '' }}" style="text-align:left" placeholder="leer = obige IBAN"></div>
       <div class="field"><label>c/o-Zeile</label><input class="input" name="co" value="{{ settings.get('co') or '' }}"></div>
@@ -48,6 +49,25 @@
     <div class="actions"><input class="input" type="file" name="logo" accept="image/png,image/jpeg"><button class="btn primary" type="submit">Hochladen</button>
       {% if settings.get('logo') %}<button class="btn" type="submit" name="entfernen" value="1" hx-confirm="Logo entfernen?">Entfernen</button>{% endif %}</div>
     {{ errors() }}
+  </div>
+</form>
+{% set rl = settings.get('rechnung') or {} %}
+<form class="panel" hx-post="/einstellungen/rechnung" hx-target="find .errors">
+  <header><h2>Rechnung und Offerte</h2><span class="pill {{ 'ok' if rl.layout == 'brief' else 'muted' }}">{{ 'Brief' if rl.layout == 'brief' else 'Kompakt' }}</span></header>
+  <div class="body">
+    <p class="small muted">«Kompakt»: Firma oben, Rechnungsdaten in einer Tabelle. «Brief»: grosses Logo, Ort und Datum, Anrede, nummerierte Positionen mit Einheit, Zahlungsbedingung mit Bank, Grussformel mit Unterschrift und die Firma in der Fusszeile.</p>
+    <div class="form four">
+      <div class="field"><label>Darstellung</label><select class="input" name="layout" style="width:100%"><option value="kompakt">Kompakt</option><option value="brief" {{ 'selected' if rl.layout == 'brief' }}>Brief</option></select></div>
+      <div class="field"><label>Ort vor dem Datum</label><input class="input" name="ort" value="{{ rl.ort or '' }}" placeholder="{{ a.ort or 'Ort der Firma' }}"></div>
+      <div class="field"><label>Logo-Höhe (mm)</label><input class="input num" name="logo_hoehe_mm" value="{{ rl.logo_hoehe_mm or '' }}" placeholder="22"></div>
+      <div class="field"><label>Bank (Name)</label><input class="input" name="bank" value="{{ rl.bank or '' }}" placeholder="z.B. Muster Bank"></div>
+      <div class="field wide"><label>Einleitung der Rechnung</label><input class="input" name="einleitung" value="{{ rl.einleitung or '' }}" placeholder="Für unsere Leistungen erlauben wir uns, Ihnen wie folgt Rechnung zu stellen:"></div>
+      <div class="field wide"><label>Einleitung der Offerte</label><input class="input" name="offerte_einleitung" value="{{ rl.offerte_einleitung or '' }}" placeholder="Gerne unterbreiten wir Ihnen folgende Offerte:"></div>
+      <div class="field wide"><label>Dank am Schluss</label><input class="input" name="dank" value="{{ rl.dank or '' }}" placeholder="Wir danken Ihnen für Ihren Auftrag."></div>
+      <div class="field" style="grid-column: span 2"><label>Unterzeichnet von</label><input class="input" name="unterzeichner" value="{{ rl.unterzeichner or '' }}" placeholder="Vorname Name"></div>
+      <div class="field" style="grid-column: span 2"><label>Funktion</label><input class="input" name="funktion" value="{{ rl.funktion or '' }}" placeholder="z.B. Geschäftsführerin"></div>
+    </div>
+    {{ errors() }}<div class="formfoot"><span class="small muted">Gilt für neue Rechnungen und Offerten; ausgestellte Rechnungen bleiben, wie sie sind. <a href="/einstellungen/rechnung.pdf" target="_blank">Muster ansehen</a></span><button class="btn primary" type="submit">Speichern</button></div>
   </div>
 </form>
 {{ plugin_seiten('firma') }}

@@ -393,3 +393,72 @@ def test_agent_sets_up_a_new_employee(tmp_path, monkeypatch):
     k = api.customer_add(Book(b.root), name="Hans Huber")["kunde"]["nummer"]
     assert plugin.add_project(k, "Treppenhaus")["ok"]
     assert_clean(Book(b.root))
+
+
+def test_letter_layout_for_offer_and_invoice_from_it(book):
+    import io
+    from pypdf import PdfReader
+    api.settings_update(Book(book.root), rechnung={"layout": "brief", "unterzeichner": "Eva Muster"})
+    q = W(book, offerten.create, "K0001", [{"produkt": "P001", "menge": "4"}], "2026-09-01", "Küche streichen")
+    text = PdfReader(io.BytesIO((book.root / "offerten/2026/O-2026-0001.pdf").read_bytes())).pages[0].extract_text()
+    assert "Offerte-Nr." in text and "Küche streichen" in text and "Eva Muster" in text and "Pos." in text
+    W(book, offerten.set_status, q["nummer"], "versendet")
+    W(book, offerten.set_status, q["nummer"], "angenommen")
+    res = W(book, offerten.invoice, q["nummer"], datum="2026-09-20")
+    inv = invoices.invoice(Book(book.root), res["rechnung"])
+    assert inv["offerte"] == {"nummer": "O-2026-0001", "datum": "2026-09-01"}
+    assert inv["objekt"] == "Küche streichen"                       # the project the accepted offer became
+    assert_clean(Book(book.root))
+
+
+def test_invoice_draft_collects_work_waits_for_prices_and_issues_like_billing(book):
+    from aeradex_leistungen import entwuerfe
+    regie = W(book, daten.add_product, "Regiearbeiten", "0", "h")["nummer"]      # 0: the person's rate applies
+    vlies = W(book, daten.add_product, "Abdeckvlies", "0", "Rolle")["nummer"]   # price not set yet
+    W(book, daten.set_person, "M0001", 120, 70)
+    a = W(book, daten.add_time, "2026-10-13", "M0001", "4", "Abdecken", "K0001", leistung=regie)
+    b = W(book, daten.add_time, "2026-10-13", "M0002", "4", "Abdecken", "K0001", leistung=regie)
+    c = W(book, daten.add_material, "2026-10-13", "K0001", vlies, "2")
+    d = W(book, entwuerfe.add, "K0001", [a["id"], b["id"]], rapporte=["R-2026-001"])
+    assert d["nummer"] == "RE-0001"
+    d = W(book, entwuerfe.add, "K0001", [c["id"]])                  # same customer → same draft
+    assert d["nummer"] == "RE-0001" and len(d["eintraege"]) == 3
+    v = entwuerfe.view(Book(book.root), "RE-0001")
+    assert not v["ausstellbar"] and "1 Eintrag ohne Preis" in v["fehler"][0]
+    assert [str(e["preis"]) for e in v["eintraege_offen"] if e["art"] == "Zeit"] == ["120.00", "80.00"]
+    with pytest.raises(BookError, match="ohne Preis"):
+        W(book, entwuerfe.issue, "RE-0001")
+    # month-end billing leaves the draft's work alone
+    with pytest.raises(BookError, match="Nichts offen"):
+        W(book, abrechnung.bill_all)
+    W(book, daten.update_product, regie, preis="95")
+    for e in (a, b):
+        W(book, daten.update_entry, e["id"], preis="95")
+    W(book, daten.update_entry, c["id"], preis="12.50")
+    W(book, entwuerfe.update, "RE-0001", rabatt="5")
+    v = entwuerfe.view(Book(book.root), "RE-0001")
+    assert v["ausstellbar"] and v["vorschau"]["positionen"][0]["menge"] == Decimal("8")
+    expected = v["vorschau"]["total"]
+    res = W(book, entwuerfe.issue, "RE-0001", "2026-10-31")
+    assert res["total"] == expected and res["entwurf"] == "RE-0001"
+    assert entwuerfe.draft(Book(book.root), "RE-0001")["status"] == "ausgestellt"
+    assert entwuerfe.overview(Book(book.root)) == []
+    assert_clean(Book(book.root))
+
+
+def test_draft_page(book):
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+    from aeradex.web.app import create_app
+    a = W(book, daten.add_time, "2026-10-13", "M0001", "4", "Abdecken", "K0001")
+    app = create_app(book.root, token="tok")
+    with TestClient(app) as cl:
+        cl.get("/?t=tok", follow_redirects=False)
+        h = {"X-CSRF": app.state.ui.csrf, "HX-Request": "true"}
+        r = cl.post("/p/leistungen/entwuerfe/neu", data={"kunde": "K0001", "ids": a["id"]}, headers=h)
+        assert r.status_code in (200, 204), r.text
+        page = cl.get("/p/leistungen/entwuerfe?nr=RE-0001").text
+        assert "RE-0001" in page and "Rechnung ausstellen" in page and "Abdecken" in page
+        r = cl.post("/p/leistungen/entwuerfe/ausstellen", data={"nummer": "RE-0001", "datum": "2026-10-31"}, headers=h)
+        assert r.status_code in (200, 204), r.text
+        assert "/debitoren/rechnung/" in r.headers.get("HX-Redirect", "")

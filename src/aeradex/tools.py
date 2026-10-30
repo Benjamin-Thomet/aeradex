@@ -519,7 +519,8 @@ def _same_customer(book: Book, name: str, firma: str) -> list[str]:
 
 def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", plz: str = "", ort: str = "",
                  land: str = "CH", email: str = "", telefon: str = "", mobil: str = "", rechnung_an: str = "firma",
-                 notizen: str = "", kategorie: str = "", herkunft: str = "", trotzdem_neu: bool = False) -> dict:
+                 notizen: str = "", kategorie: str = "", herkunft: str = "", anrede: str = "",
+                 trotzdem_neu: bool = False) -> dict:
     """Kunde anlegen. Gibt es den Kunden schon (gleiche Firma bzw. gleicher Name), wird nichts angelegt:
     dann update_customer verwenden, um Angaben zu ergänzen oder zu korrigieren.
 
@@ -539,6 +540,7 @@ def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", pl
             in ganzen Sätzen; nichts Genanntes weglassen.
         kategorie: Privat, Verwaltung, Architekt, Firma oder Öffentlich (leer, wenn unklar).
         herkunft: wie der Kontakt zustande kam, z.B. "Empfehlung Hans Muster", "Website".
+        anrede: "Herr", "Frau" oder "Familie" für die Kontakt- bzw. Privatperson (Briefanrede); leer, wenn unklar.
         trotzdem_neu: nur wenn der Mensch ausdrücklich einen zweiten Kunden gleichen Namens will (z.B. andere Filiale).
     """
     try:
@@ -550,13 +552,14 @@ def add_customer(name: str, firma: str = "", strasse: str = "", nr: str = "", pl
                                        "ergänzen oder korrigieren statt neu anlegen.", "vorhanden": same}
     return _call(api.customer_add, name=name, firma=firma, strasse=strasse, nr=nr, plz=plz, ort=ort,
                  land=land, email=email, telefon=telefon, mobil=mobil, rechnung_an=rechnung_an,
-                 notizen=notizen.strip(), kategorie=kategorie.strip(), herkunft=herkunft.strip())
+                 notizen=notizen.strip(), kategorie=kategorie.strip(), herkunft=herkunft.strip(),
+                 anrede=anrede.strip())
 
 
 def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str = "", nr: str = "", plz: str = "",
                     ort: str = "", land: str = "", email: str = "", telefon: str = "", mobil: str = "",
                     rechnung_an: str = "", kategorie: str = "", herkunft: str = "", notiz: str = "",
-                    leeren: list[str] | None = None) -> dict:
+                    anrede: str = "", leeren: list[str] | None = None) -> dict:
     """Angaben eines bestehenden Kunden ergänzen, korrigieren oder entfernen (nur die mitgegebenen Felder; leer =
     unverändert; was weg soll, in «leeren» nennen). Bereits ausgestellte Rechnungen behalten die Adresse, die beim
     Ausstellen galt; Offerten-Entwürfe mit update_quote(adresse_neu=True) nachführen.
@@ -576,14 +579,16 @@ def update_customer(nummer: str, name: str = "", firma: str = "", strasse: str =
         rechnung_an: "firma" oder "person".
         kategorie: Privat, Verwaltung, Architekt, Firma oder Öffentlich.
         herkunft: wie der Kontakt zustande kam, z.B. "Empfehlung Hans Muster".
+        anrede: "Herr", "Frau" oder "Familie" (Briefanrede der Kontakt- bzw. Privatperson).
         notiz: wird an die Notizen des Kunden angehängt (bestehende bleiben stehen): weitere Angaben ohne eigenes Feld.
         leeren: Felder, die entfernt werden sollen, z.B. ["name"] für eine Kontaktperson oder ["email"].
     """
     fields = {k: v for k, v in {"name": name, "firma": firma, "strasse": strasse, "nr": nr, "plz": plz, "ort": ort,
                                 "land": land, "email": email, "telefon": telefon, "mobil": mobil,
                                 "rechnung_an": rechnung_an, "kategorie": kategorie,
-                                "herkunft": herkunft}.items() if str(v).strip()}
-    clearable = {"name", "firma", "strasse", "nr", "plz", "ort", "email", "telefon", "mobil", "kategorie", "herkunft"}
+                                "herkunft": herkunft, "anrede": anrede}.items() if str(v).strip()}
+    clearable = {"name", "firma", "strasse", "nr", "plz", "ort", "email", "telefon", "mobil", "kategorie", "herkunft",
+                 "anrede"}
     for key in leeren or []:
         if key not in clearable:
             return {"ok": False, "fehler": f"«{key}» kann nicht geleert werden (möglich: {', '.join(sorted(clearable))})"}
@@ -614,7 +619,8 @@ def invoices(status: str = "") -> list | dict:
 
 def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: str = "",
                    leistung_von: str = "", leistung_bis: str = "", rabatt_prozent: str = "",
-                   art: str = "rechnung", akonto: str = "alle", objekt: str = "",
+                   art: str = "rechnung", akonto: str = "alle", objekt: str = "", offerte_nummer: str = "",
+                   offerte_datum: str = "",
                    expected_revision: str | None = None, idempotency_key: str | None = None) -> dict:
     """QR-Rechnung ausstellen und verbuchen; erzeugt die PDF mit QR-Einzahlungsschein.
     Auch Akontorechnungen (art="akonto") und Schlussrechnungen, die offene Akontos abziehen.
@@ -634,13 +640,16 @@ def create_invoice(kunde: str, positionen: list[dict], datum: str = "", text: st
             Nummern "R-2026-0012,R-2026-0015". Siehe open_akonto.
         objekt: Objekt/Baustelle, an dem gearbeitet wurde, z.B. "MFH Bernstrasse 12, 3600 Thun" (steht auf der
             Rechnung); leer, wenn keins genannt.
+        offerte_nummer: Nummer der Offerte, auf die sich die Rechnung stützt (leer, wenn keine).
+        offerte_datum: Datum dieser Offerte JJJJ-MM-TT («Ihre Offerte vom» auf der Rechnung).
         expected_revision: Stand aus status(); veraltete Änderungen werden zurückgewiesen.
         idempotency_key: Eindeutiger Schlüssel; bei Wiederholung desselben Aufrufs beibehalten.
     """
+    offerte = {"nummer": offerte_nummer, "datum": offerte_datum} if offerte_nummer or offerte_datum else None
     return _call(api.invoice_create, kunde, positionen, datum or None, text, None, "", None,
                  leistung_von or None, leistung_bis or None, rabatt=rabatt_prozent or None,
                  art=art or "rechnung", akonto=None if art == "akonto" else (akonto or "alle"), objekt=objekt,
-                 expected_revision=expected_revision, idempotency_key=idempotency_key)
+                 offerte=offerte, expected_revision=expected_revision, idempotency_key=idempotency_key)
 
 
 def open_akonto(kunde: str = "") -> list | dict:
@@ -794,9 +803,10 @@ def create_bill_draft(datei: str, art: str = "") -> dict:
 
     Args:
         datei: z.B. "inbox/rechnung.pdf".
-        art: leer = erkennen; sonst kreditor, quittung oder debitor.
+        art: leer = erkennen; sonst kreditor, quittung oder debitor (oder eine Art eines Plugins, z.B. regie).
+    Plugins übernehmen ihre Dokumente selbst (z.B. gescannte Rapporte): dann steht «url» statt «entwurf» im Ergebnis.
     """
-    return _call(api.bill_draft_create, datei, art)
+    return _call(api.inbox_take, datei, art)
 
 
 def complete_bill_draft(id: str, konto: str, begruendung: str, mwst: str = "", betrag: str = "", datum: str = "",
@@ -1413,7 +1423,8 @@ def update_account(nr: str, name: str = "", gruppe: str = "", aktiv: bool | None
 
 def update_settings(firma: str = "", uid: str = "", telefon: str = "", email: str = "", iban: str = "",
                     zahlungs_iban: str = "", zahlungsfrist_tage: int | None = None, co: str = "",
-                    adresse: dict | None = None, konten: dict | None = None, mwst: dict | None = None) -> dict:
+                    adresse: dict | None = None, konten: dict | None = None, mwst: dict | None = None,
+                    web: str = "", rechnung: dict | None = None) -> dict:
     """Einstellungen der Firma ändern. Den Modus des Agenten (vorschlag/direkt) stellt nur ein Mensch um.
 
     Args:
@@ -1428,12 +1439,16 @@ def update_settings(firma: str = "", uid: str = "", telefon: str = "", email: st
         adresse: {"strasse", "nr", "plz", "ort", "land"}.
         konten: Konten je Rolle, z.B. {"bank": "1020", "debitoren": "1100"}.
         mwst: {"methode": keine|effektiv|saldo, "periode": quartal|semester, "saldosteuersatz": "6.2"}.
+        web: Website (steht im Briefkopf bzw. in der Fusszeile).
+        rechnung: Brief-Layout von Rechnung und Offerte: {"layout": "brief"|"kompakt", "ort", "einleitung",
+            "offerte_einleitung", "dank", "unterzeichner", "funktion", "bank" (Name der Bank), "logo_hoehe_mm"};
+            nur genannte Felder ändern sich, "" entfernt eines.
     """
     loc = locals()
-    fields = {k: loc[k] for k in ("firma", "uid", "telefon", "email", "iban", "zahlungs_iban", "co") if loc[k]}
+    fields = {k: loc[k] for k in ("firma", "uid", "telefon", "email", "iban", "zahlungs_iban", "co", "web") if loc[k]}
     if zahlungsfrist_tage is not None:
         fields["zahlungsfrist_tage"] = zahlungsfrist_tage
-    return _call(api.settings_update, adresse, konten, mwst, **fields)
+    return _call(api.settings_update, adresse, konten, mwst, rechnung=rechnung, **fields)
 
 
 def plugins_overview() -> list | dict:
