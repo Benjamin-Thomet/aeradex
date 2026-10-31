@@ -84,9 +84,7 @@ def _target(book: Book, ziel: str) -> dict:
     kind, _, nr = ziel.partition(":")
     if kind == "P":
         p = daten.project(book, nr)
-        out.update(projekt=p["nummer"], kunde=p["kunde"], baustelle=", ".join(
-            x for x in (p.get("name"), daten.address_text(p)) if x and not (x == p.get("name") and daten.address_text(p)
-                                                                         and x in daten.address_text(p))))
+        out.update(projekt=p["nummer"], kunde=p["kunde"], baustelle=daten.object_text(p))
     elif kind == "K":
         out["kunde"] = invoices.customer(book, nr)["nummer"]
     else:
@@ -251,7 +249,7 @@ def reports(book: Book, art: str, ziel: str = "", anzahl: int = 1) -> tuple[dict
     if not 1 <= int(anzahl) <= 50:
         raise BookError("Anzahl 1 bis 50")
     head = _target(book, ziel)
-    numbers, touched = rapporte.reserve(book, art, date.today().year, anzahl)
+    numbers, touched = rapporte.reserve(book, art, rapporte.book_year(book), anzahl)
     own = layout(book, art)
     pages = []
     size = _page_size(own[0]) if own else A4

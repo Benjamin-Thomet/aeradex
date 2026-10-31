@@ -123,7 +123,16 @@ def _descriptions(group: list[dict], skip: set[str]) -> list[str]:
         days[e["datum"]]            # keep the day in order even when it has no text
         if text and text not in skip and text not in days[e["datum"]]:
             days[e["datum"]].append(text)
-    return [f"{d.strftime('%d.%m.')} {'; '.join(texts)}" for d, texts in sorted(days.items()) if texts]
+    runs: list[tuple[date, date, list[str]]] = []          # days in a row with the same text: one line
+    for d, texts in sorted(days.items()):
+        if not texts:
+            continue
+        if runs and runs[-1][2] == texts:
+            runs[-1] = (runs[-1][0], d, texts)
+        else:
+            runs.append((d, d, texts))
+    return [f"{a.strftime('%d.%m.')}{'–' + b.strftime('%d.%m.') if b != a else ''} {'; '.join(texts)}"
+            for a, b, texts in runs]
 
 
 def undescribed_days(book: Book, items: list[dict]) -> list[dict]:
@@ -180,14 +189,25 @@ def positions(book: Book, items: list[dict], detail: bool = False) -> list[dict]
     for e in times:
         art = e.get("produkt") or ""
         groups[(e["projekt"], art, "" if art or by_day else e["wer"], e["preis"])].append(e)
-    for (proj, art, wer, preis), group in sorted(groups.items(), key=lambda kv: tuple(str(x) for x in kv[0])):
+    # `rechnung_tage`: the days' descriptions once per object and Leistungsart — several rates (people) of the same
+    # work are further positions named after their people, without repeating the descriptions
+    work: dict[tuple, list[tuple]] = defaultdict(list)
+    for key, group in groups.items():
+        work[key[:2]].append((min(e["datum"] for e in group), str(key[3]), key, group))
+    ordered = [(key, group, i, len(rows)) for rows in work.values()
+               for i, (_, _, key, group) in enumerate(sorted(rows, key=lambda r: (r[0], r[1])))]
+    ordered.sort(key=lambda r: (str(r[0][0]), str(r[0][1]), r[2]))
+    for (proj, art, wer, preis), group, index, count in ordered:
         art_text = prods.get(art, {}).get("text") or art if art else ""
         label = art_text or (f"Arbeit {names.get(wer, wer)}" if wer else "Arbeiten")
+        if by_day and count > 1:
+            label += " " + ", ".join(sorted({names.get(e["wer"], e["wer"]) for e in group}))
         if proj:
             label += f", {projs.get(proj, {}).get('name', proj)}"
         text = f"{label} ({_period(group)})"
-        if by_day:
-            text = "\n".join([text] + _descriptions(group, {art_text} - {""}))
+        if by_day and index == 0:
+            everyone = [e for g in work[(proj, art)] for e in g[3]]
+            text = "\n".join([text] + _descriptions(everyone, {art_text} - {""}))
         out.append({"text": text, "menge": sum((e["menge"] for e in group), ZERO),
                     "einheit": "h", "preis": preis, **service(group[0])})
     goods_groups: dict[tuple, list[dict]] = defaultdict(list)
@@ -256,9 +276,7 @@ def object_line(book: Book, items: list[dict]) -> str:
     p = daten.projects(book).get(next(iter(nrs)))
     if not p:
         return ""
-    adr = daten.address_text(p)
-    name = str(p.get("name") or "").strip()
-    return ", ".join(x for x in (name, adr) if x and not (x == name and adr and name in adr)) if adr else name
+    return daten.object_text(p)
 
 
 def offer_of(book: Book, items: list[dict]) -> dict | None:

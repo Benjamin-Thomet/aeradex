@@ -601,16 +601,12 @@ def _entwurf_preis(book, f):
         else:
             _, paths = daten.update_product(b, e["produkt"], preis=preis)
         touched += paths
-        for other in entwuerfe.view(b, nr)["eintraege_offen"]:
-            if other["id"] == eid or not other["preis_fehlt"]:
-                continue
-            if e["art"] == "Zeit" and other["art"] == "Zeit" and other["wer"] == e["wer"]:
-                _, paths = daten.update_entry(b, other["id"], neu_bewerten=True)
-            elif e["art"] == "Produkt" and other["art"] == "Produkt" and other["produkt"] == e["produkt"]:
-                _, paths = daten.update_entry(b, other["id"], preis=preis)
-            else:
-                continue
-            touched += paths
+        open_ids = [i for d in entwuerfe.drafts(b).values() if d.get("status", "offen") == "offen"
+                    for i in d["eintraege"] if i != eid]           # every open draft, not only this one
+        if e["art"] == "Zeit":
+            touched += entwuerfe.fill_prices(b, open_ids, wer=e["wer"])
+        else:
+            touched += entwuerfe.fill_prices(b, open_ids, produkt=e["produkt"])
         return out, touched
     api.write(book, f"{nr}: Preis {eid}", run)
     return _back(nr, "Preis gesetzt")

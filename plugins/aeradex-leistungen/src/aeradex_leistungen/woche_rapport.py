@@ -158,6 +158,10 @@ def take_over(book: Book, meta: dict) -> tuple[dict, list[Path]]:
                 billed = sum((e["menge"] for e in regie), ZERO)
                 abgleich.append({"datum": d.isoformat(), "kunde": kunde, "projekt": projekt, "woche": str(hours),
                                  "regie": str(billed), "differenz": str(hours - billed)})
+                if hours > billed:                  # worked longer than billed: it is still working time
+                    e, paths = _extra_time(book, person, d, hours - billed)
+                    ids.append(e["id"])
+                    touched += paths
                 continue
             text = "; ".join(w["texte"]) or ("" if by_day else "Arbeit")
             e, paths = daten.add_time(book, d, person, hours, text, kunde, projekt, True, "",
@@ -205,6 +209,16 @@ def overview(book: Book, jahr: int, kw: int) -> list[dict]:
     return out
 
 
+DIFFERENCE_TEXT = "Mehr Stunden laut Wochenrapport als im Regie-Rapport"
+
+
+def _extra_time(book: Book, person: str, d: date, hours: Decimal) -> tuple[dict, list[Path]]:
+    """Hours a person worked on a Regie job beyond what the customer signed: working time, not billed."""
+    cats = daten.settings(book)["kategorien"]
+    cat = "Intern" if "Intern" in cats else cats[0]
+    return daten.add_time(book, d, person, hours, DIFFERENCE_TEXT, "", "", False, cat)
+
+
 def replace_week_entries(book: Book, person: str, d: date, kunde: str, projekt: str, regie_hours: Decimal
                          ) -> list[Path]:
     """A Regie-Rapport taken over after the Wochenrapport: the week's billable placeholder for that day and customer
@@ -227,6 +241,10 @@ def replace_week_entries(book: Book, person: str, d: date, kunde: str, projekt: 
                     {"datum": o["datum"], "kunde": kunde, "projekt": projekt, "woche": o["stunden"],
                      "regie": str(regie_hours), "differenz": str(Decimal(o["stunden"]) - regie_hours)})
                 r["eintraege"] = [i for i in r.get("eintraege") or [] if i != o["eintrag"]]
+                if Decimal(o["stunden"]) > regie_hours:
+                    e, paths = _extra_time(book, person, d, Decimal(o["stunden"]) - regie_hours)
+                    r["eintraege"].append(e["id"])
+                    touched += paths
                 changed = True
             else:
                 keep.append(o)

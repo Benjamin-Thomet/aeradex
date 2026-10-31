@@ -462,3 +462,18 @@ def test_draft_page(book):
         r = cl.post("/p/leistungen/entwuerfe/ausstellen", data={"nummer": "RE-0001", "datum": "2026-10-31"}, headers=h)
         assert r.status_code in (200, 204), r.text
         assert "/debitoren/rechnung/" in r.headers.get("HX-Redirect", "")
+
+
+def test_regie_hours_of_several_people_describe_the_work_once(book):
+    regie = W(book, daten.add_product, "Regiearbeiten", "0", "h")["nummer"]
+    W(book, daten.set_options, rechnung_tage="1")
+    W(book, daten.add_project, "K0001", "MFH Marktgasse 5", strasse="Marktgasse", hausnr="5", plz="3011", ort="Bern")
+    text = "Abgedeckt; Wände gestrichen"
+    for d in ("2026-10-13", "2026-10-14"):
+        W(book, daten.add_time, d, "M0001", "8", text, "", "P0001", leistung=regie)
+        W(book, daten.add_time, d, "M0002", "6", text, "", "P0001", leistung=regie)
+    b = Book(book.root)
+    pos = abrechnung.positions(b, abrechnung.select(b, "K0001"))
+    assert pos[0]["text"].count(text) == 1 and "13.10.–14.10. " + text in pos[0]["text"]
+    assert text not in pos[1]["text"] and ("Lea Muster" in pos[0]["text"] + pos[1]["text"])
+    assert abrechnung.object_line(b, abrechnung.select(b, "K0001")) == "MFH Marktgasse 5, 3011 Bern"

@@ -293,7 +293,7 @@ def hints(book: Book, art: str, qr: dict | None = None) -> dict:
     people = [p["name"] for p in daten.people(book).values() if p.get("aktiv", True)]
     custs = invoices.customers(book)
     projs = [p for p in daten.projects(book).values() if p.get("status", "offen") == "offen"]
-    out = {"jahr": date.today().year, "personen": people,
+    out = {"jahr": book_year(book), "personen": people,
            "kunden": [invoices.qr.invoice_name(c) for c in custs.values()],
            "objekte": [f"{p['name']} ({invoices.qr.invoice_name(custs.get(p.get('kunde'), {}))})" for p in projs],
            "material": [p["text"] for p in daten.materials(book).values()]}
@@ -372,10 +372,19 @@ def amount(value) -> str:
         return ""
 
 
-def _day(value, year: int) -> str:
-    """A date as written on the sheet; a day more than a month ahead is last year's (December scanned in January)."""
+def book_year(book: Book) -> int:
+    """The year a date without one belongs to: this year, or the book's last year when this one is not in the book
+    yet (a book that starts next year)."""
+    years = book.years()
+    return date.today().year if not years or date.today().year in years else max(years)
+
+
+def _day(value, year: int, years: tuple = ()) -> str:
+    """A date as written on the sheet; a day more than a month ahead is last year's (December scanned in January) —
+    unless the book itself is already in that year."""
     out = _parse_day(value, year)
-    if out and date.fromisoformat(out) > date.today() + timedelta(days=31):
+    if out and date.fromisoformat(out) > date.today() + timedelta(days=31) \
+            and date.fromisoformat(out).year not in years:
         d = date.fromisoformat(out)
         try:
             return d.replace(year=d.year - 1).isoformat()
@@ -403,7 +412,8 @@ def _parse_day(value, year: int) -> str:
 
 def normalise(book: Book, art: str, raw: dict, qr: dict | None = None) -> dict:
     """The reading in the book's terms: persons, customer/object and products matched; numbers as text."""
-    year = int((qr or {}).get("jahr") or date.today().year)
+    year = int((qr or {}).get("jahr") or book_year(book))
+    years = tuple(book.years())
     if art in ("regie", "material"):
         kopf = raw.get("kopf") or {}
         kunde, projekt = (qr or {}).get("kunde") or "", (qr or {}).get("projekt") or ""
@@ -418,12 +428,12 @@ def normalise(book: Book, art: str, raw: dict, qr: dict | None = None) -> dict:
         if art == "regie":
             out["arbeiten"] = [a.strip() for a in raw.get("arbeiten") or [] if str(a).strip()]
             out["stunden"] = [{"person": match_person(book, s.get("person")), "gelesen": s.get("person") or "",
-                               "datum": _day(s.get("datum"), year), "stunden": amount(s.get("stunden")),
+                               "datum": _day(s.get("datum"), year, years), "stunden": amount(s.get("stunden")),
                                "ansatz": amount(s.get("ansatz")), "unsicher": bool(s.get("unsicher"))}
                               for s in raw.get("stunden") or [] if amount(s.get("stunden"))]
         else:
             out["zeilen"] = [{"produkt": match_product(book, z.get("material")), "text": (z.get("material") or "").strip(),
-                              "einheit": (z.get("einheit") or "").strip(), "datum": _day(z.get("datum"), year),
+                              "einheit": (z.get("einheit") or "").strip(), "datum": _day(z.get("datum"), year, years),
                               "menge": amount(z.get("menge")), "preis": amount(z.get("preis")),
                               "unsicher": bool(z.get("unsicher"))}
                              for z in raw.get("zeilen") or [] if (z.get("material") or "").strip()]
@@ -438,7 +448,7 @@ def normalise(book: Book, art: str, raw: dict, qr: dict | None = None) -> dict:
     names = ["montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag"]
     tage = []
     for t in raw.get("tage") or []:
-        d = _day(t.get("datum"), year)
+        d = _day(t.get("datum"), year, years)
         wd = _norm(t.get("wochentag"))
         if not d and monday and wd in names:
             d = (monday + timedelta(days=names.index(wd))).isoformat()
@@ -501,7 +511,7 @@ def store(book: Book, datei: str, art: str, data: dict, qr: dict, sha: str, fehl
     else:
         nr = qr.get("nummer") or ""
         if not nr:
-            numbers, touched = reserve(book, art, date.today().year)
+            numbers, touched = reserve(book, art, book_year(book))
             nr = numbers[0]
         if (folder(book) / f"{nr}.yaml").exists():
             raise BookError(f"Rapport {nr} gibt es schon ({report(book, nr).get('status')}) — "

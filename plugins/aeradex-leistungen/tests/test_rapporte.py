@@ -158,7 +158,7 @@ def test_week_report_is_working_time_and_meets_the_regie_hours(book, monkeypatch
     entries = {e["id"]: e for e in daten.entries(b)}
     made = [entries[i] for i in out["eintraege"]]
     assert sorted((e["kategorie"] or e["kunde"], str(e["menge"])) for e in made) == [
-        ("Intern", "2"), ("K0002", "6"), ("Reisezeit", "0.5")]
+        ("Intern", "0.5"), ("Intern", "2"), ("K0002", "6"), ("Reisezeit", "0.5")]      # 0.5: beyond the Regie hours
     assert regie["id"] not in out["eintraege"]                                     # not recorded twice
     assert [a["art"] for a in abwesenheit.items(b)] == ["Ferien"]
     row = next(z for z in __import__("aeradex_leistungen.woche_rapport", fromlist=["overview"]).overview(b, 2026, 42)
@@ -277,6 +277,8 @@ def test_regie_after_the_week_is_not_billed_twice(book, monkeypatch):
     b = Book(book.root)
     lea = [e for e in daten.entries(b) if e["wer"] == "M0001" and e["kunde"] == "K0001"]
     assert [str(e["menge"]) for e in lea] == ["7.5"]                         # the week's 8 h placeholder is gone
+    extra = [e for e in daten.entries(b) if e["wer"] == "M0001" and not e["abrechenbar"]]
+    assert [(str(e["menge"]), e["kategorie"]) for e in extra] == [("0.5", "Intern")]   # still working time
     w = rapporte.report(b, week)
     assert w["ohne_regie"] == [] and w["abgleich"][0]["differenz"] == "0.5"
     assert_clean(b)
@@ -296,3 +298,15 @@ def test_where_the_pages_live(book):
         kunde = c.get("/debitoren/kunden/K0001").text
         assert "Regie-Rapport" in kunde and "/p/leistungen/rapporte/formulare" in kunde
         assert 'value="K:K0002" selected' in c.get("/p/leistungen/rapporte?ziel=K:K0002").text
+
+
+def test_a_rate_remembered_later_reaches_the_other_drafts(book):
+    a = W(book, daten.add_time, "2026-10-13", "M0002", "4", "Malen", "K0001", "P0001", True, "", "0")
+    b_ = W(book, daten.add_time, "2026-10-13", "M0002", "2", "Malen", "K0002", "", True, "", "0")
+    d1 = W(book, entwuerfe.add, "K0001", [a["id"]], "P0001")
+    W(book, daten.set_person, "M0002", 77)
+    d2 = W(book, entwuerfe.add, "K0002", [b_["id"]])                 # a new draft looks the rate up
+    assert str(daten.entry(Book(book.root), b_["id"])["preis"]) == "77.00"
+    assert entwuerfe.view(Book(book.root), d1["nummer"])["fehler"]  # the earlier draft still asks …
+    W(book, lambda bk: (None, entwuerfe.fill_prices(bk, [a["id"]], wer="M0002")))
+    assert str(daten.entry(Book(book.root), a["id"])["preis"]) == "77.00"   # … until the rate is filled in

@@ -96,7 +96,26 @@ def add(book: Book, kunde: str, ids: list[str], projekt: str = "", rapporte: lis
     meta["rapporte"] = list(dict.fromkeys(list(meta.get("rapporte") or []) + list(rapporte or [])))
     if text:
         meta["text"] = text
-    return _public(meta), [_save(meta)]
+    return _public(meta), [_save(meta)] + fill_prices(book, ids)
+
+
+def fill_prices(book: Book, ids: list[str], wer: str = "", produkt: str = "") -> list[Path]:
+    """Entries without a price get the one that is known by now (a person's rate or a product price set later), as
+    when they were recorded; optionally only one person's hours or one product. Prices already set stay."""
+    from .saetze import hourly_rate, product_price
+    touched: list[Path] = []
+    for e in abrechnung.select(book, status="offen", ids=ids) if ids else []:
+        if not missing_price(e) or (wer and e["wer"] != wer) or (produkt and e.get("produkt") != produkt):
+            continue
+        try:
+            price = (hourly_rate(book, e["wer"], e["kunde"], e["projekt"], e.get("produkt") or "") if e["art"] == "Zeit"
+                     else product_price(daten.product(book, e["produkt"]), e["kunde"]) if e.get("produkt") else None)
+        except BookError:
+            continue
+        if price:
+            _, paths = daten.update_entry(book, e["id"], preis=str(price))
+            touched += paths
+    return touched
 
 
 def update(book: Book, nr: str, text: str | None = None, rabatt=None, entfernen: list[str] | None = None,

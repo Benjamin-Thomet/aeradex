@@ -422,6 +422,21 @@ def address_text(p: dict) -> str:
     return ", ".join(x for x in (street, place) if x)
 
 
+def object_text(p: dict) -> str:
+    """Name and address of an object without saying a part twice: «MFH Bahnhofstrasse 12, 3600 Thun» for the object
+    «MFH Bahnhofstrasse 12» at Bahnhofstrasse 12, «MFH Bernstrasse, Bernstrasse 12, 3600 Thun» otherwise."""
+    name = str(p.get("name") or "").strip()
+    adr = address_text(p)
+    if not adr or not name:
+        return name or adr
+    if name in adr:
+        return adr
+    street, _, place = adr.partition(", ")
+    if street and street in name:
+        return ", ".join(x for x in (name, place) if x)
+    return f"{name}, {adr}"
+
+
 def _set_address(meta: dict, strasse=None, hausnr=None, plz=None, ort=None, zugang=None) -> None:
     """Address and access of an object; None = unchanged, "" = cleared."""
     a = dict(meta.get("adresse") or {})
