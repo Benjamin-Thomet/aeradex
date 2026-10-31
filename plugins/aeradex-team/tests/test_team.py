@@ -737,3 +737,17 @@ def test_agent_invites_a_person(book, send, monkeypatch):
     assert out["ok"] and out["zugestellt"] and re.fullmatch(r"[A-Z0-9]{4}-[A-Z0-9]{4}", out["code"])
     assert aeradex_team.team_account("M0001", aktiv=False)["ok"]
     assert daten.accounts(Book(book.root))["M0001"]["aktiv"] is False
+
+
+def test_paper_hours_switch_on_the_team_page(tmp_path):
+    from datetime import date
+    book = make_book(tmp_path, plugins=["leistungen", "team"])
+    from aeradex.web.app import create_app as ui_app
+    web = ui_app(book.root, token="tok")
+    with TestClient(web) as c:
+        c.get("/?t=tok", follow_redirects=False)
+        assert "Auf Papier umstellen" in c.get("/p/team/team").text
+        r = c.post("/p/team/team/stunden", data={"an": "0"}, headers={"X-CSRF": web.state.ui.csrf, "HX-Request": "true"})
+        assert r.status_code in (200, 204), r.text
+        assert "Wieder in der App" in c.get("/p/team/team").text
+    assert abbild.shared(Book(book.root), date(2026, 10, 30))["stunden"] is False

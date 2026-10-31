@@ -125,7 +125,7 @@
   <form class="body" hx-post="{{ A }}formulare" hx-target="find .errors">
     <div class="form four">
       <div class="field"><label>Formular</label><select class="input" name="art" style="width:100%"><option value="regie">Regie-Rapport</option><option value="material">Material-Rapport</option></select></div>
-      <div class="field" style="grid-column: span 2"><label>Kunde bzw. {{ cfg.projekt_wort }}</label>{{ ziel_select("ziel", '', '') }}</div>
+      <div class="field" style="grid-column: span 2"><label>Kunde bzw. {{ cfg.projekt_wort }}</label>{{ ziel_select("ziel", druck_kunde, druck_projekt) }}</div>
       <div class="field"><label>Anzahl</label><input class="input num" name="anzahl" value="1" inputmode="numeric"></div>
     </div>
     {{ errors() }}<div class="formfoot"><span class="small muted">Leer gelassen: Formular ohne Kunde, nur mit Nummer.</span><button class="btn primary" type="submit">PDF erstellen</button></div>

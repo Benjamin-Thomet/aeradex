@@ -14,6 +14,7 @@
       {% if o.zugang %}<span class="small">🔑 {{ o.zugang }}</span>{% endif %}
       <span class="small muted">Wert {{ o.wert|chf }} · verrechnet {{ o.abgerechnet|chf }}{% if o.offen %} · <strong>offen {{ o.offen|chf }}</strong>{% endif %}{% if o.offerte %} · <a class="link" href="/p/leistungen/offerten?nr={{ o.offerte }}">{{ o.offerte }}</a>{% endif %}</span>
       {% if o.notizen %}<span class="small" style="white-space:pre-line">{{ o.notizen }}</span>{% endif %}
+      {% if o.status == 'offen' %}<span class="actions">{% for art, label in (("regie", "Regie-Rapport"), ("material", "Material-Rapport")) %}<form hx-post="/p/leistungen/rapporte/formulare" hx-target="find .errors"><input type="hidden" name="art" value="{{ art }}"><input type="hidden" name="ziel" value="P:{{ o.nummer }}"><input type="hidden" name="anzahl" value="1"><button class="btn small ghost" type="submit" title="Formular mit Nummer, QR-Code, Kunde und Baustelle zum Ausfüllen">🖨 {{ label }}</button><span class="errors"></span></form>{% endfor %}</span>{% endif %}
       <details class="inline"><summary>Bearbeiten</summary>
         <form class="body" hx-post="{{ A }}projekt_aendern" hx-target="find .errors">
           <input type="hidden" name="nummer" value="{{ o.nummer }}">

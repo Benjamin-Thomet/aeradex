@@ -33,6 +33,7 @@ def _context(book: Book, query: dict) -> dict:
             "team": uebersicht.team(book), "pruefen": uebersicht.check_list(book),
             "abgeschlossen_bis": daten.closed_until(book), "heute": date.today(),
             "textkorrektur": daten.text_correction(book), "agent": korrektur.backend(book),
+            "stunden_in_app": daten.texts(book)["stunden_in_app"],
             "leistungsart": daten.fixed_service(book),
             "leistungsarten": {nr: str(p.get("text") or nr) for nr, p in sorted(leistungen.services(book).items())}}
 
@@ -123,6 +124,14 @@ def _textkorrektur(book: Book, f: dict) -> dict:
     return {**res, "meldung": "Textkorrektur eingeschaltet" if on else "Textkorrektur ausgeschaltet"}
 
 
+def _stunden(book: Book, f: dict) -> dict:
+    on = f.get("an") == "1"
+    res = api.write(book, f"Team: Stunden {'in der App' if on else 'auf Papier'}", daten.set_hours_in_app, on)
+    return {**res, "meldung": ("Stunden werden wieder in der App erfasst" if on else
+                               "Stunden kommen auf Papier: die App zeigt nur noch Abwesenheiten, Konto, Kunden und Lohn")
+            + _sync_quietly(book)}
+
+
 def _leistungsart(book: Book, f: dict) -> dict:
     nr = str(f.get("leistungsart") or "").strip()
     res = api.write(book, f"Team: Leistungsart {nr or 'wählbar'}", daten.set_fixed_service, nr)
@@ -142,6 +151,6 @@ def _pensum(book: Book, f: dict) -> dict:
 PAGES = [Page("team", "Team-App", "team.html", _context,
               {"konto": _konto, "einladen": _einladen, "entscheiden": _entscheiden, "sync": _sync,
                "geprueft": _geprueft, "eintrag_loeschen": _eintrag_loeschen, "abschliessen": _abschliessen,
-               "pensum": _pensum, "textkorrektur": _textkorrektur,
+               "pensum": _pensum, "textkorrektur": _textkorrektur, "stunden": _stunden,
                "leistungsart": _leistungsart},
               bereich="lohn", fragments={"code": ("team/_code.html", _code_ctx)})]

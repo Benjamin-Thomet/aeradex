@@ -646,6 +646,8 @@ def _rapporte_context(book, query):
     ctx["anzahl"] = {s: sum(1 for r in alle if r.get("status") == s) for s in rapporte.STATUS}
     ctx["arten"] = rapporte.ARTEN
     ctx["objekte"] = {k: p for k, p in ctx["projekte"].items() if p.get("status", "offen") == "offen"}
+    ziel = query.get("ziel") or ""                  # from the customer's page: print for this customer
+    ctx["druck_kunde"], ctx["druck_projekt"] = (ziel[2:], "") if ziel.startswith("K:") else ("", "")
     today = date.today()
     jahr, kw = (int(x) for x in (query.get("kw") or f"{today.isocalendar()[0]}-{today.isocalendar()[1]}").split("-"))
     ctx["kw"] = {"jahr": jahr, "kw": kw, "zeilen": woche_rapport.overview(book, jahr, kw),
@@ -773,7 +775,9 @@ def _formulare(book, f):
 
 def _azk_context(book, query):
     ctx = _common(book)
-    jahr = int(query.get("jahr") or date.today().year)
+    years = book.years()
+    default = date.today().year if not years or date.today().year in years else max(years)
+    jahr = int(query.get("jahr") or default)
     ctx["jahr"] = jahr
     ctx["vorlagen"] = {y: book.rel(p) for y, p in sorted(azk.templates(book).items())}
     ctx["abgeleitet"] = jahr not in ctx["vorlagen"] and any(y < jahr for y in ctx["vorlagen"])
@@ -832,10 +836,10 @@ PAGES = [
          {"neu": _offerte_neu, "status": _offerte_status, "rechnung": _offerte_rechnung}, bereich="leistungen"),
     Page("entwuerfe", "Rechnungsentwürfe", "entwuerfe.html", _entwuerfe_context,
          {"neu": _entwurf_neu, "preis": _entwurf_preis, "aendern": _entwurf_aendern, "ausstellen": _entwurf_ausstellen,
-          "verwerfen": _entwurf_verwerfen}, bereich="leistungen"),
+          "verwerfen": _entwurf_verwerfen}, bereich="verkauf", nach="entwurf"),
     Page("rapporte", "Rapporte", "rapporte.html", _rapporte_context,
          {"speichern": _rapport_speichern, "uebernehmen": _rapport_uebernehmen, "verwerfen": _rapport_verwerfen,
           "hochladen": _rapport_hochladen, "formulare": _formulare}, bereich="leistungen"),
     Page("arbeitszeit", "Arbeitszeitkontrolle", "arbeitszeit.html", _azk_context,
-         {"vorlage": _azk_vorlage, "excel": _azk_excel}, bereich="leistungen"),
+         {"vorlage": _azk_vorlage, "excel": _azk_excel}, bereich="lohn"),
 ]

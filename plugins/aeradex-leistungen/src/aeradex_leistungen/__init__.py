@@ -815,6 +815,10 @@ def aeradex_kunde_teile(book, kunde):
     if offen:
         figures.append({"label": "Offene Leistungen", "wert": offen, "meta": f"{stunden.normalize():f} h nicht verrechnet",
                         "link": f"/p/leistungen/leistungen?tab=abrechnen&kunde={kunde}"})
+    for draft in (d for d in entwuerfe.overview(book) if d["kunde"] == kunde):
+        figures.append({"label": "Rechnungsentwurf", "wert": draft["betrag"],
+                        "meta": f"{draft['nummer']} offen" + (f" · {draft['ohne_preis']} ohne Preis" if draft["ohne_preis"] else ""),
+                        "link": f"/p/leistungen/entwuerfe?nr={draft['nummer']}"})
     pending = [q for q in quote_rows if q["status"] in ("entwurf", "versendet")]
     if pending:
         figures.append({"label": "Offerten offen", "wert": sum((q["total"] for q in pending), Decimal(0)),
@@ -824,6 +828,7 @@ def aeradex_kunde_teile(book, kunde):
     return [KundeTeil(titel=f"{word}e, Offerten, Leistungen", template="leistungen/_kunde.html", context=ctx,
                       zeitachse=zeit, kennzahlen=figures,
                       aktionen=[("Offerte", f"/p/leistungen/offerten?kunde={kunde}"),
+                                ("Rapport drucken", f"/p/leistungen/rapporte?ziel=K:{kunde}#drucken"),
                                 ("Leistung erfassen", f"/p/leistungen/leistungen?tab=erfassen&neu_kunde={kunde}")])]
 
 

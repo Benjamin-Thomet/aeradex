@@ -79,6 +79,11 @@ def text_correction(book: Book) -> bool:
     return _read(book, "einstellungen.yaml").get("textkorrektur", True) is not False
 
 
+def set_hours_in_app(book: Book, on: bool) -> tuple[dict, list[Path]]:
+    """False: hours and material come on paper (scanned reports); the app keeps requests, account and documents."""
+    return {"stunden_in_app": bool(on)}, [_save_settings(book, stunden_in_app=bool(on))]
+
+
 def set_text_correction(book: Book, on: bool) -> tuple[dict, list[Path]]:
     return {"textkorrektur": bool(on)}, [_save_settings(book, textkorrektur=bool(on))]
 

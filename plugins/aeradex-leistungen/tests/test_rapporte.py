@@ -280,3 +280,19 @@ def test_regie_after_the_week_is_not_billed_twice(book, monkeypatch):
     w = rapporte.report(b, week)
     assert w["ohne_regie"] == [] and w["abgleich"][0]["differenz"] == "0.5"
     assert_clean(b)
+
+
+def test_where_the_pages_live(book):
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+    from aeradex.web.app import create_app
+    app = create_app(book.root, token="tok")
+    with TestClient(app) as c:
+        c.get("/?t=tok", follow_redirects=False)
+        verkauf = c.get("/debitoren").text
+        tabs = verkauf[verkauf.index('class="subnav"') if 'class="subnav"' in verkauf else 0:]
+        assert tabs.index(">Entwürfe<") < tabs.index("Rechnungsentwürfe") < tabs.index(">Offen<")
+        assert "/p/leistungen/arbeitszeit" in c.get("/lohn").text
+        kunde = c.get("/debitoren/kunden/K0001").text
+        assert "Regie-Rapport" in kunde and "/p/leistungen/rapporte/formulare" in kunde
+        assert 'value="K:K0002" selected' in c.get("/p/leistungen/rapporte?ziel=K:K0002").text

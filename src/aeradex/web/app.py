@@ -283,7 +283,9 @@ def _with_plugin_pages(plugin_pages: list[dict]) -> list:
             continue
         tab = (pg["url"], pg["label"], pg["url"], ())
         if bereich in core:
-            out[core[bereich]][5].append(tab)
+            tabs = out[core[bereich]][5]
+            after = next((i for i, t in enumerate(tabs) if t[0] == pg.get("nach")), None)
+            tabs.insert(len(tabs) if after is None else after + 1, tab)
         elif bereich in own:
             own[bereich][5].append(tab)
         else:

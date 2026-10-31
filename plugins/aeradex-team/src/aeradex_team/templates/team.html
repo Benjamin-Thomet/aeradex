@@ -112,6 +112,12 @@
       </div>
       {{ errors() }}<div class="formfoot"><span></span><button class="btn" type="submit">Speichern</button></div>
     </form>
+    <form hx-post="/p/team/team/stunden" hx-target="find .errors">
+      <div class="formfoot"><span class="small">
+        <strong>Stunden und Material</strong> {% if stunden_in_app %}erfassen die Mitarbeitenden in der App.{% else %}kommen auf Papier (Wochen-, Regie- und Material-Rapporte, unter Leistungen › Rapporte gescannt); die App zeigt nur noch Abwesenheiten, Konto, Kunden und Lohn.{% endif %}</span>
+        <input type="hidden" name="an" value="{{ '0' if stunden_in_app else '1' }}"><button class="btn" type="submit">{{ 'Auf Papier umstellen' if stunden_in_app else 'Wieder in der App' }}</button></div>
+      {{ errors() }}
+    </form>
     <form hx-post="/p/team/team/textkorrektur" hx-target="find .errors">
       <div class="formfoot"><span class="small">
         <strong>Rechtschreibung und Stil</strong> der Texte aus der App {{ 'werden' if textkorrektur else 'werden nicht' }} vor dem Buchen korrigiert

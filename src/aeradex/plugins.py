@@ -107,7 +107,8 @@ class Command:
 class Page:
     """A page in the web UI: ``/p/<plugin>/<slug>``. ``bereich`` says where it lives:
 
-    - a core section (``einkauf``, ``verkauf``, ``bank``, ``lohn``, ``buchhaltung``): a tab at its end;
+    - a core section (``einkauf``, ``verkauf``, ``bank``, ``lohn``, ``buchhaltung``): a tab at its end, or right
+      after the tab ``nach`` names (e.g. ``entwurf``);
     - ``einstellungen:<tab>`` (``firma``, ``buchhaltung``, ``lohn``, ``agent``, ``buch``): a card in that tab of
       the settings, no menu entry;
     - any other name: a section of its own, the pages with the same name are its tabs. ``bereich_titel`` is its
