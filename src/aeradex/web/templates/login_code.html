@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de-CH" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bestätigen · {{ firma }}</title>
+<link rel="icon" href="/static/logo.svg?v={{ asset }}" type="image/svg+xml">
+<link rel="stylesheet" href="/static/aeradex.css?v={{ asset }}">
+<style>
+  .loginwrap { min-height: 100%; display: grid; place-items: center; padding-inline: 16px; padding-block: 40px; }
+  .loginbox { width: min(400px, 100%); display: flex; flex-direction: column; gap: 18px; }
+  .loginbox .panel { padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+  .qr { background: #fff; border-radius: 10px; padding: 10px; width: 200px; align-self: center; }
+  .qr svg { display: block; width: 100%; height: auto; }
+  .geheimnis { font-family: var(--f-num); font-size: 13px; word-break: break-all; }
+  .codes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-family: var(--f-num); }
+</style>
+</head>
+<body>
+<div class="loginwrap">
+  <div class="loginbox">
+    <div class="brand"><b>{{ firma }}</b></div>
+    {% if ersatzcodes %}
+    <div class="panel">
+      <h1 style="font-size:20px;margin:0">Zwei-Faktor eingerichtet</h1>
+      <p class="small">Das sind deine <strong>Ersatzcodes</strong>, falls das Handy fehlt. Jeder funktioniert einmal.
+        Bewahre sie im Passwort-Manager auf; sie werden nicht nochmals angezeigt.</p>
+      <div class="codes">{% for c in ersatzcodes %}<code>{{ c }}</code>{% endfor %}</div>
+      <a class="btn primary" href="{{ weiter }}" style="justify-content:center">Weiter</a>
+    </div>
+    {% else %}
+    <form class="panel" method="post" action="/login/code?weiter={{ weiter|urlq }}">
+      {% if neu %}
+      <div><h1 style="font-size:20px;margin:0">Zwei-Faktor einrichten</h1>
+        <p class="small muted">Einmalig: Scanne den Code mit einer Authenticator-App (z. B. Bitwarden, 1Password, Google
+          Authenticator) und gib dann die sechs Ziffern ein, die sie anzeigt.</p></div>
+      <div class="qr" aria-hidden="true">{{ qr|safe }}</div>
+      <p class="small muted">Ohne Kamera: Schlüssel von Hand eingeben<br><span class="geheimnis" data-geheimnis="{{ geheimnis }}">{{ geheimnis }}</span></p>
+      {% else %}
+      <div><h1 style="font-size:20px;margin:0">Code eingeben</h1>
+        <p class="small muted">Sechs Ziffern aus deiner Authenticator-App, oder einer deiner Ersatzcodes.</p></div>
+      {% endif %}
+      {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+      <div class="field"><label for="c">Code</label><input class="input" id="c" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus></div>
+      <button class="btn primary" type="submit" style="justify-content:center">Bestätigen</button>
+      <a class="small link" href="/login">Abbrechen</a>
+    </form>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

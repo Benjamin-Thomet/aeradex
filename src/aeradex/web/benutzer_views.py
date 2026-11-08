@@ -30,7 +30,9 @@ def public_base(ui: UI, request: Request) -> str:
 
 
 def _set_session(ui: UI, request: Request, response: Response, name: str) -> Response:
-    response.set_cookie(SESSION_COOKIE, ui.sessions.issue(name, ui.users.version(name)), max_age=SESSION_DAYS * 86400,
+    # keeps the second factor of the current session (a password change must not sign an admin out of it)
+    zf = bool(getattr(request.state, "zf", False)) and getattr(getattr(request.state, "user", None), "name", "") == name
+    response.set_cookie(SESSION_COOKIE, ui.sessions.issue(name, ui.users.version(name), zf=zf), max_age=SESSION_DAYS * 86400,
                         httponly=True, samesite="lax",
                         secure=ui.https or request.headers.get("x-forwarded-proto") == "https")
     return response
@@ -59,7 +61,14 @@ def routes(ui: UI) -> list[Route]:
         return None
 
     async def konto(request: Request):
-        return server_only(request) or ui.render(request, "konto.html", ich=ui.users.get(_me(request).name))
+        if server_only(request):
+            return server_only(request)
+        me = _me(request)
+        from .app import needs_second_factor
+        info = ui.users.totp_info(me.name)
+        return ui.render(request, "konto.html", ich=ui.users.get(me.name),
+                         zwei_faktor={"pflicht": needs_second_factor(ui, me), "aktiv": bool(info),
+                                      "ersatzcodes": len((info or {}).get("ersatzcodes") or [])})
 
     async def konto_post(request: Request):
         me, f = _me(request), await request.form()

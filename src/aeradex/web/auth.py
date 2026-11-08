@@ -17,6 +17,12 @@ Roles:
     lesen        sees everything, changes nothing
     buchhaltung  books, invoices, payroll, bank, MWST — everything except the two below
     admin        additionally settings, locking/unlocking periods, roles, removing users, password links
+    verkauf      outside the books: only the plugin pages made for it (`plugins.Page.rollen`, e.g. phone
+                 acquisition) and the own account. Everything else is refused (default-deny in `web/app.py`).
+                 Only admins hand it out; it invites nobody.
+
+Second factor (`aeradex serve --2fa admin|alle`): a TOTP secret (`web/totp.py`), the last used time step and
+the SHA-256 of the recovery codes are kept with the user in users.yaml.
 """
 from __future__ import annotations
 
@@ -27,14 +33,16 @@ import json
 import os
 import secrets
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
-ROLES = ("lesen", "buchhaltung", "admin")
-RANK = {r: i for i, r in enumerate(ROLES)}
-ROLE_LABEL = {"lesen": "Leserecht", "buchhaltung": "Buchhaltung", "admin": "Admin"}
+BOOK_ROLES = ("lesen", "buchhaltung", "admin")      # ranked: each may invite up to its own
+ROLES = BOOK_ROLES + ("verkauf",)
+RANK = {r: i for i, r in enumerate(BOOK_ROLES)}
+ROLE_LABEL = {"lesen": "Leserecht", "buchhaltung": "Buchhaltung", "admin": "Admin", "verkauf": "Verkauf"}
 INVITE_DAYS = 7
 SESSION_COOKIE = "aeradex_login"
 SESSION_DAYS = 14
@@ -46,7 +54,18 @@ SELF_SERVICE = ("/konto", "/benutzer/einladen", "/benutzer/zurueckziehen")
 
 
 def may_grant(rolle_von: str, rolle: str) -> bool:
+    if rolle == "verkauf":
+        return rolle_von == "admin"
     return rolle in RANK and RANK[rolle] <= RANK.get(rolle_von, -1)
+
+
+# The signed-in user of the current request (server mode), for plugin code: `benutzer()`; None in the local UI.
+CURRENT: ContextVar["User | None"] = ContextVar("aeradex_benutzer", default=None)
+
+
+def benutzer() -> "User | None":
+    """Who is signed in (server mode) while a page, action or endpoint runs; None in the local UI."""
+    return CURRENT.get()
 
 
 def check_password(password: str, name: str = "") -> None:
@@ -121,6 +140,11 @@ class User:
     @property
     def is_admin(self) -> bool:
         return self.rolle == "admin"
+
+    @property
+    def nur_verkauf(self) -> bool:
+        """The sales role: sees no books, only the plugin pages made for it."""
+        return self.rolle == "verkauf"
 
     @property
     def git_author(self) -> str:
@@ -232,6 +256,44 @@ class UserStore:
     def has_admin(self) -> bool:
         return any(u.rolle == "admin" for u in self.list())
 
+    # -- second factor --
+    def totp_info(self, name: str) -> dict | None:
+        """{geheimnis, schritt, ersatzcodes: [sha256]} once the person set up an authenticator app, else None."""
+        u = self._load().get(name) or {}
+        return u["totp"] if u.get("totp", {}).get("geheimnis") else None
+
+    def set_totp(self, name: str, geheimnis: str, ersatzcodes: list[str], schritt: int = -1) -> None:
+        users = self._load()
+        if name not in users:
+            raise ValueError(f"Benutzer {name} unbekannt")
+        users[name]["totp"] = {"geheimnis": geheimnis, "schritt": int(schritt), "ersatzcodes": list(ersatzcodes)}
+        self._save(users)
+
+    def use_totp_step(self, name: str, schritt: int) -> None:
+        users = self._load()
+        if users.get(name, {}).get("totp"):
+            users[name]["totp"]["schritt"] = int(schritt)
+            self._save(users)
+
+    def use_recovery(self, name: str, code_hash: str) -> bool:
+        """Consume a recovery code; True if it was one of the person's."""
+        users = self._load()
+        codes = users.get(name, {}).get("totp", {}).get("ersatzcodes") or []
+        if not any(hmac.compare_digest(code_hash, c) for c in codes):
+            return False
+        users[name]["totp"]["ersatzcodes"] = [c for c in codes if c != code_hash]
+        self._save(users)
+        return True
+
+    def clear_totp(self, name: str) -> None:
+        """Remove the second factor (the person sets it up again at the next login); ends their sessions."""
+        users = self._load()
+        if name not in users:
+            raise ValueError(f"Benutzer {name} unbekannt")
+        users[name].pop("totp", None)
+        users[name]["version"] = int(users[name].get("version", 0)) + 1
+        self._save(users)
+
 
 # ---------- invitations and password links ----------
 
@@ -336,12 +398,23 @@ class Sessions:
     def _sign(self, payload: bytes) -> str:
         return base64.urlsafe_b64encode(hmac.new(self.key, payload, hashlib.sha256).digest()).decode().rstrip("=")
 
-    def issue(self, user: str, version: int) -> str:
-        payload = json.dumps({"u": user, "exp": int(time.time()) + SESSION_DAYS * 86400,
-                              "sid": secrets.token_urlsafe(12), "v": version}).encode()
+    def issue(self, user: str, version: int, zf: bool = False, typ: str = "", seconds: int = SESSION_DAYS * 86400,
+              **extra) -> str:
+        """A session (typ ""), or a short step of the login (typ "2fa": password checked, code still missing).
+        `zf`: the second factor was given for this session."""
+        data = {"u": user, "exp": int(time.time()) + seconds, "sid": secrets.token_urlsafe(12), "v": version}
+        if zf:
+            data["zf"] = 1
+        if typ:
+            data["typ"] = typ
+        payload = json.dumps({**data, **extra}).encode()
         return base64.urlsafe_b64encode(payload).decode().rstrip("=") + "." + self._sign(payload)
 
-    def read(self, cookie: str) -> dict | None:
+    def read(self, cookie: str, typ: str = "") -> dict | None:
+        data = self._read(cookie)
+        return data if data is not None and data.get("typ", "") == typ else None
+
+    def _read(self, cookie: str) -> dict | None:
         try:
             body, sig = cookie.split(".", 1)
             payload = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))

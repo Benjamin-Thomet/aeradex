@@ -80,6 +80,7 @@ Die Hooks sind [pluggy](https://pluggy.readthedocs.io/)-Hooks (dasselbe System w
 | `aeradex_nach_beleg(book, beleg)` | URL oder `None` | wohin die Oberfläche weitergeht, nachdem ein Beleg aus dem Belegeingang (Lieferantenrechnung, Quittung) gebucht wurde — z.B. eine Anschaffung als Anlage erfassen; die erste URL gilt | eingeschaltet |
 | `aeradex_abschluss_schritte(book, jahr)` | `[AbschlussSchritt]` | Schritte für die Checkliste des Jahresabschlusses: `AbschlussSchritt(key, titel, status, link, text, phase)`, `status` ok, offen, hinweis (ein Mensch hakt ab) oder entfaellt, `phase` laufend, bewerten, buchen, kontrolle, abschliessen | eingeschaltet |
 | `aeradex_abschluss_vorschlaege(book, jahr, art)` | `[dict]` | Werte für eine Abschlussbuchung (`arbeiten`, `material`, `delkredere`, `ferien`, `privatanteile`): `{text, betrag, detail}`, bei Privatanteilen auch `art`, `konto`, `grundlage`; `betrag` None mit `info: True` ist nur ein Hinweis | eingeschaltet |
+| `aeradex_endpunkte()` | `[Endpunkt]` | einfache GET-Adressen `/x/<plugin>/<slug>` ohne HTML-Seite (Kalender-Feed, CSV): `Endpunkt(slug, handler, oeffentlich, rollen)`, `handler(book, query)` → `Antwort(body, media_type, status, headers)`. `oeffentlich=True`: ohne Login (z.B. ein Kalender-Abo); der Handler prüft dann selbst einen geheimen Schlüssel und antwortet sonst 403 | eingeschaltet |
 | `aeradex_dienste(book)` | `[Dienst]` | Hintergrunddienste, die `aeradex ui` mitstartet und beim Beenden stoppt (z.B. ein Gateway oder Bot): `Dienst(name, args)`, `args` nach `aeradex --buch <buch>`; Ausgabe in `.aeradex/lokal/dienste/<name>.log`. Nicht im Servermodus | eingeschaltet |
 
 ### Kontenplan-Vorlagen (Daten)
@@ -216,6 +217,12 @@ Die Seite liegt unter `/p/<plugin>/<slug>`, die Vorlage im Ordner `templates/` d
 Formulare posten an `/p/<plugin>/<slug>/<aktion>`; die Aktion bekommt die Formularfelder als dict und schreibt über
 `api.write`. Im Serverbetrieb dürfen nur Benutzer mit Schreibrecht posten. Beispiel:
 [`plugins/aeradex-anlagen`](../plugins/aeradex-anlagen).
+
+**Wer die Seite sieht** (nur Serverbetrieb; lokal sieht man alles): `rollen` leer heisst alle Rollen der
+Buchhaltung (`lesen`, `buchhaltung`, `admin`). `rollen=("admin",)` macht eine Seite nur für Admins;
+`rollen=("verkauf",)` eine Seite für die Rolle Verkauf (Admins sehen sie auch). Die Rolle Verkauf kommt nur an
+solche Seiten heran, darf deren Aktionen posten und landet nach dem Anmelden auf der ersten davon. Wer gerade
+angemeldet ist, sagt `aeradex.web.auth.benutzer()` (lokal `None`), z.B. um festzuhalten, wer einen Anruf erfasst hat.
 
 ## Testen
 

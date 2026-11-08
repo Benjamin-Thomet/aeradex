@@ -23,6 +23,14 @@ Claude Code per SSH) und ein Einrichtungsskript: [deploy/](../deploy). Diese Sei
 | `lesen` | alles ansehen, Berichte und PDFs öffnen |
 | `buchhaltung` | buchen, Rechnungen, Kreditoren, Bank, Lohn, MWST, Agent |
 | `admin` | zusätzlich Einstellungen ändern und Perioden sperren/entsperren |
+| `verkauf` | nichts von der Buchhaltung: nur die Plugin-Seiten, die für diese Rolle gemacht sind (z.B. Telefonakquise), und das eigene Konto. Jede andere Adresse wird abgelehnt, auch später neu dazukommende. Nur Admins vergeben sie; wer sie hat, lädt niemanden ein |
+
+### Zweiter Faktor
+
+`aeradex serve --2fa admin` verlangt von Admins nach dem Passwort einen Code aus einer Authenticator-App
+(`--2fa alle`: von allen). Beim ersten Anmelden richtet die Person die App über einen QR-Code ein und erhält zehn
+Ersatzcodes (je einmal gültig). Anmeldungen von vorher gelten dann nicht mehr. Handy verloren:
+`aeradex user 2fa-zuruecksetzen NAME`, beim nächsten Anmelden neu einrichten. Ohne den Schalter ändert sich nichts.
 
 ## Einrichten
 
@@ -36,7 +44,7 @@ git clone <repo-des-buchs> ~/buecher/muster       # oder: aeradex init ~/buecher
 ```
 
 Weitere Befehle: `aeradex user list`, `aeradex user passwort NAME` (beendet bestehende Anmeldungen),
-`aeradex user rolle NAME ROLLE`, `aeradex user remove NAME`,
+`aeradex user rolle NAME ROLLE`, `aeradex user remove NAME`, `aeradex user 2fa-zuruecksetzen NAME`,
 `aeradex user einladen --rolle lesen --notiz "Lea Muster" --url https://buch.example.ch` (druckt einen Einladungslink).
 Nach 5 Fehlversuchen ist ein Benutzer bzw. eine Adresse 5 Minuten gesperrt.
 

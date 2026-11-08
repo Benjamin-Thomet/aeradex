@@ -39,6 +39,11 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   link an admin makes; `UserLog` (`benutzer-log.jsonl`) is the users' own trail. Pages in `web/benutzer_views.py`:
   `/konto` (own name and password), `/benutzer` (list, invite; roles/removal/password links admin only, `ADMIN_ONLY`),
   `/einladung/<token>` (public like `/login`); `/konto` and `/benutzer/einladen` are open to every role (`SELF_SERVICE`).
+  Role `verkauf` (outside the ranked book roles): default-deny in the middleware (`_sales_refusal`): only `/konto`,
+  `/logout` and plugin pages/endpoints whose `rollen` name it; no nav counts, chat or upload. `plugins.erlaubt` is the
+  one rule for page roles; `auth.benutzer()` gives plugins the signed-in user. Endpoints `/x/<plugin>/<slug>`
+  (`plugins.Endpunkt`, public ones check their own key). Second factor `serve --2fa admin|alle` (`web/totp.py`,
+  RFC 6238, recovery codes as SHA-256 in users.yaml, login step `/login/code` with a 10-minute pending cookie).
 - `gitlog.beleg_index`: who booked what, read from the audit trail itself (journal rows added/changed/removed per
   commit, cached per HEAD in `.aeradex/lokal/belegindex.json`, extended incrementally). Journal column «Von»,
   `/verlauf?beleg=|von=|q=`, `api.booking_history`.

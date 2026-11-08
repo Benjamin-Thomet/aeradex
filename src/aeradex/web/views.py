@@ -1928,11 +1928,19 @@ def _plugin_page(book: Book, plugin: str, slug: str):
     return None
 
 
+def _refused(request: Request, page) -> bool:
+    """Server mode: the page's roles (`plugins.Page.rollen`) do not include the signed-in person."""
+    from .. import plugins
+    return not plugins.erlaubt(page, getattr(request.state, "user", None))
+
+
 async def plugin_seite(ui: UI, request: Request):
     book = ui.book()
     page = _plugin_page(book, request.path_params["plugin"], request.path_params["slug"])
     if page is None:
         return PlainTextResponse("Seite nicht gefunden (Plugin nicht eingeschaltet?)", status_code=404)
+    if _refused(request, page):
+        return PlainTextResponse("Kein Zugriff auf diese Seite.", status_code=403)
     try:
         ctx = await asyncio.to_thread(page.context, book, dict(request.query_params))
     except BookError as exc:
@@ -1962,6 +1970,8 @@ async def plugin_teil(ui: UI, request: Request):
     name = request.path_params["teil"]
     if page is None or name not in page.fragments:
         return PlainTextResponse("Nicht gefunden", status_code=404)
+    if _refused(request, page):
+        return PlainTextResponse("Kein Zugriff auf diese Seite.", status_code=403)
     return await _render_fragment(ui, request, book, page, name, dict(request.query_params))
 
 
@@ -1971,6 +1981,8 @@ async def plugin_aktion(ui: UI, request: Request):
     fn = page.actions.get(request.path_params["aktion"]) if page else None
     if fn is None:
         return fail("Unbekannte Aktion")
+    if _refused(request, page):
+        return fail("Kein Zugriff auf diese Seite.")
     form = await request.form()
     data = {k: (form.getlist(k) if len(form.getlist(k)) > 1 else form.get(k)) for k in form.keys()}
     back = request.headers.get("hx-current-url") or f"/p/{request.path_params['plugin']}/{page.slug}"

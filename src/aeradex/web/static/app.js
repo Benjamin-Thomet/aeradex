@@ -404,7 +404,8 @@
   document.addEventListener("focusout", retry);
   document.addEventListener("htmx:afterSettle", retry);
   function bindLive() {
-    if (!window.EventSource) return;
+    // no live refresh where the page says so (the sales role: the book's changes are not theirs to see)
+    if (!window.EventSource || document.body.dataset.live === "aus") return;
     const es = new EventSource("/events");
     es.addEventListener("changed", refresh);
     $("#reloadBtn").onclick = () => location.reload();

@@ -137,6 +137,43 @@ class Page:
     bereich_titel: str = ""
     nach: str = ""
     kuerzel: str = ""
+    # Server mode: who besides admins may open the page and post its actions. Empty: every role of the books
+    # (lesen, buchhaltung, admin), not «verkauf». A page for the sales role names it: ``rollen=("verkauf",)``;
+    # a page only for admins: ``rollen=("admin",)``. The local UI (no login) shows every page.
+    rollen: tuple[str, ...] = ()
+
+
+@dataclass
+class Antwort:
+    """What an `Endpunkt` answers: a body that is not an HTML page (a calendar feed, a CSV, a JSON status)."""
+    body: str | bytes
+    media_type: str = "text/plain; charset=utf-8"
+    status: int = 200
+    headers: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class Endpunkt:
+    """A plain GET address of a plugin: ``/x/<plugin>/<slug>``; ``handler(book, query) -> Antwort``.
+
+    ``oeffentlich`` endpoints are served without a login (a calendar app subscribing to a feed): the handler
+    must check its own secret (e.g. a token in the query) and answer 403 otherwise. Others need a login and
+    follow ``rollen`` like a `Page`."""
+    slug: str
+    handler: Callable[[Book, dict], Antwort]
+    oeffentlich: bool = False
+    rollen: tuple[str, ...] = ()
+
+
+def erlaubt(item: Page | Endpunkt, user) -> bool:
+    """May this user (server mode; None = local UI) use the page or endpoint?"""
+    if user is None or getattr(item, "oeffentlich", False):
+        return True
+    if user.rolle == "admin":
+        return True
+    if item.rollen:
+        return user.rolle in item.rollen
+    return user.rolle != "verkauf"
 
 
 @dataclass
@@ -335,6 +372,10 @@ class Spec:
     @hookspec
     def aeradex_dienste(self, book: Book) -> list[Dienst]:
         """Background services the local UI starts for this book (`aeradex ui`, not the server mode)."""
+
+    @hookspec
+    def aeradex_endpunkte(self) -> list[Endpunkt]:
+        """Plain GET addresses ``/x/<plugin>/<slug>`` (see `Endpunkt`), e.g. a calendar feed."""
 
 
 # ---------- discovery ----------
@@ -545,6 +586,18 @@ def pages(book: Book | None) -> list[tuple[str, Page]]:
         except Exception:
             continue
     return out
+
+
+def endpunkt(book: Book | None, plugin: str, slug: str) -> Endpunkt | None:
+    """The endpoint `slug` of `plugin`, if this book enables the plugin."""
+    for impl in manager(book).hook.aeradex_endpunkte.get_hookimpls():
+        if impl.plugin_name != plugin:
+            continue
+        try:
+            return next((e for e in impl.function() or [] if isinstance(e, Endpunkt) and e.slug == slug), None)
+        except Exception:
+            return None
+    return None
 
 
 def dienste(book: Book) -> list[Dienst]:

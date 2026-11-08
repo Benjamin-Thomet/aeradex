@@ -131,7 +131,7 @@ class UI:
     """Holds the book location, the session token and the template env."""
 
     def __init__(self, root: Path, token: str | None = None, auth_dir: Path | None = None,
-                 https: bool = False):
+                 https: bool = False, zwei_faktor: str = ""):
         self.root = Path(root).resolve() if root else None    # None: local mode without a book, /firmen picks one
         self.token = token or secrets.token_urlsafe(24)
         self.csrf = hmac.new(self.token.encode(), b"csrf", hashlib.sha256).hexdigest()[:32]
@@ -145,6 +145,7 @@ class UI:
         # Server mode: users and signed sessions instead of the one-time token.
         self.users = self.sessions = self.throttle = self.invites = self.userlog = None
         self.https = https
+        self.zwei_faktor = zwei_faktor     # server mode: "admin" or "alle" ask for a code after the password
         if auth_dir is not None:
             from .auth import Invites, Sessions, Throttle, UserLog, UserStore
             self.users, self.sessions, self.throttle = UserStore(auth_dir), Sessions(auth_dir), Throttle()
@@ -179,7 +180,10 @@ class UI:
                 flash = json.loads(raw)
             except ValueError:
                 flash = None
-        ctx.setdefault("nav", nav_counts(book))
+        user = getattr(request.state, "user", None)
+        nur_verkauf = bool(user and user.nur_verkauf)
+        # The sales role sees nothing of the books, not even the badge numbers of the navigation.
+        ctx.setdefault("nav", {} if nur_verkauf else nav_counts(book))
         from .. import mwst
         ctx.setdefault("vat", mwst.config(book))
         ctx.setdefault("vat_codes", mwst.CODES)
@@ -188,17 +192,17 @@ class UI:
             ctx.setdefault("plugin_pages", [{"url": f"/p/{name}/{pg.slug}", "label": pg.label, "plugin": name,
                                              "bereich": pg.bereich, "bereich_titel": pg.bereich_titel,
                                              "nach": pg.nach, "kuerzel": pg.kuerzel}
-                                            for name, pg in plugins.pages(book)])
+                                            for name, pg in plugins.pages(book) if plugins.erlaubt(pg, user)])
         except Exception:
             ctx.setdefault("plugin_pages", [])
         ctx.setdefault("einstellungen_seiten", settings_pages(ctx["plugin_pages"]))
         if "sprache" not in ctx:
             from .. import sprache
-            user = getattr(request.state, "user", None)
             ctx["sprache"] = (user is None or user.can_write) and sprache.available(book)
         ctx.setdefault("navigation", navigation(request.url.path, ctx["nav"], ctx["plugin_pages"],
                                                 ctx["vat"].get("methode", "") if isinstance(ctx["vat"], dict) else "",
-                                                str(ctx.get("status") or request.query_params.get("status") or "")))
+                                                str(ctx.get("status") or request.query_params.get("status") or ""),
+                                                nur_plugins=nur_verkauf))
         html = self.env.get_template(template).render(
             request=request, book=book, settings=book.settings, csrf=getattr(request.state, "csrf", self.csrf),
             flash=flash, path=request.url.path, user=getattr(request.state, "user", None), **ctx)
@@ -271,11 +275,13 @@ def _under(path: str, prefix: str) -> bool:
     return path == prefix or (prefix != "/" and path.startswith(prefix.rstrip("/") + "/"))
 
 
-def _with_plugin_pages(plugin_pages: list[dict]) -> list:
+def _with_plugin_pages(plugin_pages: list[dict], nur_plugins: bool = False) -> list:
     """SECTIONS with the plugin pages where they live (`plugins.Page.bereich`): a tab of a core section,
-    or a section of their own after `nach`. Settings pages and pages without a place get no menu entry."""
-    core = {item[0]: i for i, item in enumerate(SECTIONS)}
-    out = [(key, label, url, badge, keyc, list(tabs)) for key, label, url, badge, keyc, tabs in SECTIONS]
+    or a section of their own after `nach`. Settings pages and pages without a place get no menu entry.
+    `nur_plugins` (the sales role): no core section at all, every plugin page in a section of its own."""
+    sections = [] if nur_plugins else SECTIONS
+    core = {item[0]: i for i, item in enumerate(sections)}
+    out = [(key, label, url, badge, keyc, list(tabs)) for key, label, url, badge, keyc, tabs in sections]
     own: dict[str, tuple] = {}
     for pg in plugin_pages:
         bereich = pg.get("bereich") or ""
@@ -307,13 +313,14 @@ def settings_pages(plugin_pages: list[dict]) -> dict[str, list[dict]]:
     return out
 
 
-def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: str = "", status: str = "") -> dict:
+def navigation(path: str, counts: dict, plugin_pages: list[dict], vat_method: str = "", status: str = "",
+               nur_plugins: bool = False) -> dict:
     """The two navigation rows: sections (with badge and active flag), and the tabs of the active
     section. `status` is the status the page shows (for status tabs). Plugin pages sit where their
     `bereich` says; `einstellungen` is on for a plugin page that lives in the settings."""
     sections, active = [], None
     in_settings = any(_under(path, pg["url"]) for tab in settings_pages(plugin_pages).values() for pg in tab)
-    for item in _with_plugin_pages(plugin_pages):
+    for item in _with_plugin_pages(plugin_pages, nur_plugins):
         if item is None:
             sections.append(None)
             continue
@@ -417,7 +424,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path.startswith("/static/") or path in PUBLIC_PATHS:
+        if path.startswith("/static/") or path in PUBLIC_PATHS or self._public_endpoint(path):
             return await call_next(request)
         if self.ui.users is not None:
             return await self.server_mode(request, call_next)
@@ -448,14 +455,16 @@ class SessionMiddleware(BaseHTTPMiddleware):
 
     async def server_mode(self, request: Request, call_next):
         from .. import gitlog
-        from .auth import ADMIN_ONLY, SELF_SERVICE, SESSION_COOKIE
+        from .auth import ADMIN_ONLY, CURRENT, SELF_SERVICE, SESSION_COOKIE
         ui, path = self.ui, request.url.path
-        if path in ("/login", "/healthz") or path.startswith("/einladung/"):
+        if path in ("/login", "/login/code", "/healthz") or path.startswith("/einladung/"):
             if request.method == "POST" and not self._same_origin(request):
                 return PlainTextResponse("Fremde Herkunft abgelehnt.", status_code=403)
             return await call_next(request)
         session = ui.sessions.read(request.cookies.get(SESSION_COOKIE, ""))
         user = ui.users.get(session["u"]) if session else None
+        if user is not None and needs_second_factor(ui, user) and not session.get("zf"):
+            user = None          # a session from before the second factor was switched on
         if user is None or ui.users.version(user.name) != session.get("v", 0):
             target = "/login" + (f"?weiter={quote(path)}" if path not in ("/", "/logout") else "")
             if request.headers.get("hx-request"):
@@ -463,6 +472,11 @@ class SessionMiddleware(BaseHTTPMiddleware):
             return RedirectResponse(target, status_code=303)
         request.state.user = user
         request.state.csrf = ui.sessions.csrf(session)
+        request.state.zf = bool(session.get("zf"))
+        if user.nur_verkauf:
+            refusal = await asyncio.to_thread(self._sales_refusal, path)
+            if refusal is not None:
+                return refusal
         if request.method == "POST":
             if not self._same_origin(request):
                 return PlainTextResponse("Fremde Herkunft abgelehnt.", status_code=403)
@@ -470,18 +484,51 @@ class SessionMiddleware(BaseHTTPMiddleware):
                 return PlainTextResponse("CSRF-Token fehlt oder ist falsch.", status_code=403)
             if path != "/logout" and not any(path == p or path.startswith(p + "/") for p in SELF_SERVICE):
                 refusal = None
-                if not user.can_write:
+                if not user.can_write and not user.nur_verkauf:     # sales: only what _sales_refusal let through
                     refusal = "Nur Leserecht — Änderungen sind deiner Rolle nicht erlaubt."
                 elif any(path == p or path.startswith(p + "/") for p in ADMIN_ONLY) and not user.is_admin:
                     refusal = "Nur Admins dürfen Einstellungen ändern, Perioden sperren und Benutzer verwalten."
                 if refusal:
                     # HTMX forms show it in their error box; anything else gets a plain 403.
                     return fail(refusal) if request.headers.get("hx-request") else PlainTextResponse(refusal, status_code=403)
-        token = gitlog.AUTHOR.set(user.git_author)
+        token, current = gitlog.AUTHOR.set(user.git_author), CURRENT.set(user)
         try:
             return await call_next(request)
         finally:
             gitlog.AUTHOR.reset(token)
+            CURRENT.reset(current)
+
+    def _sales_refusal(self, path: str) -> Response | None:
+        """Default-deny for the sales role: only their own account, logging out and the plugin pages and
+        endpoints made for them (`Page.rollen`). Every other address, also one added to the core later, is refused."""
+        if path in ("/konto", "/logout"):
+            return None
+        book = self.ui.book()
+        if path == "/":
+            ziel = sales_start(book)
+            if ziel:
+                return RedirectResponse(ziel, status_code=303)
+            return PlainTextResponse("Für deine Rolle gibt es hier keine Seite.", status_code=403)
+        from .. import plugins
+        parts = path.split("/")
+        if len(parts) >= 4 and parts[1] in ("p", "x"):
+            item = (next((pg for name, pg in plugins.pages(book) if name == parts[2] and pg.slug == parts[3]), None)
+                    if parts[1] == "p" else plugins.endpunkt(book, parts[2], parts[3]))
+            if item is not None and plugins.erlaubt(item, _SalesProbe()):
+                return None
+        return PlainTextResponse("Kein Zugriff für die Rolle Verkauf.", status_code=403)
+
+    def _public_endpoint(self, path: str) -> bool:
+        """/x/<plugin>/<slug> of an endpoint marked öffentlich: no login, the handler checks its own key."""
+        parts = path.split("/")
+        if len(parts) != 4 or parts[1] != "x" or self.ui.root is None:
+            return False
+        from .. import plugins
+        try:
+            item = plugins.endpunkt(self.ui.book(), parts[2], parts[3])
+        except Exception:
+            return False
+        return bool(item and item.oeffentlich)
 
     @staticmethod
     def _same_origin(request: Request) -> bool:
@@ -492,6 +539,44 @@ class SessionMiddleware(BaseHTTPMiddleware):
 
 # Served without a session: the app manifest (fetched by the browser without cookies) and the empty service worker.
 PUBLIC_PATHS = ("/manifest.webmanifest", "/sw.js")
+
+
+class _SalesProbe:
+    """The sales role, for `plugins.erlaubt` (the middleware checks the path before the user is in the context)."""
+    rolle = "verkauf"
+
+
+def sales_start(book: Book) -> str | None:
+    """Where the sales role lands: the first plugin page made for it."""
+    from .. import plugins
+    for name, pg in plugins.pages(book):
+        if "verkauf" in pg.rollen:
+            return f"/p/{name}/{pg.slug}"
+    return None
+
+
+def needs_second_factor(ui: "UI", user) -> bool:
+    return ui.zwei_faktor == "alle" or (ui.zwei_faktor == "admin" and user.is_admin)
+
+
+def endpunkt_route(ui: "UI"):
+    """GET /x/<plugin>/<slug>: a plugin endpoint (`plugins.Endpunkt`), e.g. a calendar feed."""
+    async def handler(request: Request):
+        from .. import plugins
+        from .auth import benutzer
+        book = ui.book()
+        item = plugins.endpunkt(book, request.path_params["plugin"], request.path_params["slug"])
+        if item is None:
+            return PlainTextResponse("Nicht gefunden", status_code=404)
+        if not plugins.erlaubt(item, benutzer()):
+            return PlainTextResponse("Kein Zugriff", status_code=403)
+        try:
+            answer = await asyncio.to_thread(item.handler, book, dict(request.query_params))
+        except BookError as exc:
+            return PlainTextResponse(str(exc), status_code=400)
+        headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-cache", **(answer.headers or {})}
+        return Response(answer.body, status_code=answer.status, media_type=answer.media_type, headers=headers)
+    return handler
 
 LOCKED_PAGE = """<!doctype html><meta charset="utf-8"><title>aeradex</title>
 <body style="font-family:system-ui;padding:3rem;max-width:36rem;margin:auto;line-height:1.5">
@@ -576,13 +661,29 @@ def client_address(request: Request) -> str:
     return peer
 
 
+PENDING_COOKIE = "aeradex_2fa"     # password checked, code still missing (10 minutes)
+
+
+def _weiter(request: Request) -> str:
+    weiter = request.query_params.get("weiter", "/")
+    return weiter if weiter.startswith("/") and not weiter.startswith("//") else "/"
+
+
 def login_routes(ui: UI) -> list[Route]:
+    from . import totp
     from .auth import SESSION_COOKIE, SESSION_DAYS
 
+    def secure(request: Request) -> bool:
+        return ui.https or request.headers.get("x-forwarded-proto") == "https"
+
+    def signed_in(request: Request, response: Response, name: str, zf: bool = False) -> Response:
+        response.set_cookie(SESSION_COOKIE, ui.sessions.issue(name, ui.users.version(name), zf=zf),
+                            max_age=SESSION_DAYS * 86400, httponly=True, samesite="lax", secure=secure(request))
+        response.delete_cookie(PENDING_COOKIE)
+        return response
+
     async def login(request: Request):
-        weiter = request.query_params.get("weiter", "/")
-        if not weiter.startswith("/") or weiter.startswith("//"):
-            weiter = "/"
+        weiter = _weiter(request)
         error = None
         if request.method == "POST":
             form = await request.form()
@@ -595,17 +696,69 @@ def login_routes(ui: UI) -> list[Route]:
                 user = await asyncio.to_thread(ui.users.check, name, form.get("passwort") or "")
                 if user:
                     ui.throttle.clear(f"u:{name}", f"a:{address}")
+                    if needs_second_factor(ui, user):
+                        extra = {} if ui.users.totp_info(user.name) else {"neu": totp.new_secret()}
+                        response = RedirectResponse(f"/login/code?weiter={quote(weiter)}", status_code=303)
+                        response.set_cookie(PENDING_COOKIE, ui.sessions.issue(user.name, ui.users.version(user.name),
+                                                                              typ="2fa", seconds=600, **extra),
+                                            max_age=600, httponly=True, samesite="lax", secure=secure(request))
+                        return response
                     await asyncio.to_thread(ui.users.touch_login, user.name)
-                    response = RedirectResponse(weiter, status_code=303)
-                    response.set_cookie(SESSION_COOKIE, ui.sessions.issue(user.name, ui.users.version(user.name)),
-                                        max_age=SESSION_DAYS * 86400, httponly=True, samesite="lax",
-                                        secure=ui.https or request.headers.get("x-forwarded-proto") == "https")
-                    return response
+                    return signed_in(request, RedirectResponse(weiter, status_code=303), user.name)
                 ui.throttle.fail(f"u:{name}", f"a:{address}")
                 log.warning("login failed user=%s ip=%s", name or "-", address)   # for fail2ban on a server
                 error = "Benutzername oder Passwort falsch."
         book = ui.book()
         html = ui.env.get_template("login.html").render(firma=book.settings.firma, error=error, weiter=weiter)
+        return HTMLResponse(html, status_code=401 if error else 200)
+
+    async def code(request: Request):
+        """Second step of the login: the code of the authenticator app, a recovery code, or (first time) setting
+        up the app from a QR code."""
+        weiter = _weiter(request)
+        pending = ui.sessions.read(request.cookies.get(PENDING_COOKIE, ""), typ="2fa")
+        if not pending or ui.users.get(pending["u"]) is None or ui.users.version(pending["u"]) != pending.get("v"):
+            return RedirectResponse("/login", status_code=303)
+        name = pending["u"]
+        info = ui.users.totp_info(name)
+        neu = None if info else pending.get("neu")
+        if not info and not neu:
+            return RedirectResponse("/login", status_code=303)
+        error = None
+        if request.method == "POST":
+            form = await request.form()
+            sent = str(form.get("code") or "")
+            address = client_address(request)
+            if ui.throttle.blocked(f"z:{name}", f"a:{address}"):
+                error = "Zu viele Fehlversuche. Bitte in 5 Minuten erneut versuchen."
+            elif info:
+                step = totp.verify(info["geheimnis"], sent, last_used=int(info.get("schritt", -1)))
+                if step is not None:
+                    await asyncio.to_thread(ui.users.use_totp_step, name, step)
+                if step is not None or await asyncio.to_thread(ui.users.use_recovery, name, totp.recovery_hash(sent)):
+                    ui.throttle.clear(f"z:{name}")
+                    await asyncio.to_thread(ui.users.touch_login, name)
+                    if step is None:
+                        ui.userlog.add(name, "ersatzcode verwendet", benutzer=name)
+                    return signed_in(request, RedirectResponse(weiter, status_code=303), name, zf=True)
+            else:
+                step = totp.verify(neu, sent)
+                if step is not None:
+                    codes = totp.recovery_codes()
+                    await asyncio.to_thread(ui.users.set_totp, name, neu, [totp.recovery_hash(c) for c in codes], step)
+                    ui.userlog.add(name, "zwei-faktor eingerichtet", benutzer=name)
+                    await asyncio.to_thread(ui.users.touch_login, name)
+                    html = ui.env.get_template("login_code.html").render(
+                        firma=ui.book().settings.firma, ersatzcodes=codes, weiter=weiter)
+                    return signed_in(request, HTMLResponse(html), name, zf=True)
+            if error is None:
+                ui.throttle.fail(f"z:{name}", f"a:{address}")
+                log.warning("second factor failed user=%s ip=%s", name, address)    # for fail2ban on a server
+                error = "Der Code stimmt nicht."
+        ctx = {"firma": ui.book().settings.firma, "error": error, "weiter": weiter, "neu": bool(neu)}
+        if neu:
+            ctx.update(geheimnis=neu, qr=totp.qr_svg(totp.uri(neu, name, ui.book().settings.firma or "aeradex")))
+        html = ui.env.get_template("login_code.html").render(**ctx)
         return HTMLResponse(html, status_code=401 if error else 200)
 
     async def logout(request: Request):
@@ -619,21 +772,22 @@ def login_routes(ui: UI) -> list[Route]:
     async def healthz(request: Request):
         return PlainTextResponse("ok")
 
-    return [Route("/login", login, methods=["GET", "POST"]), Route("/logout", logout, methods=["POST"]),
-            Route("/healthz", healthz)]
+    return [Route("/login", login, methods=["GET", "POST"]), Route("/login/code", code, methods=["GET", "POST"]),
+            Route("/logout", logout, methods=["POST"]), Route("/healthz", healthz)]
 
 
 def create_app(root: Path | None, token: str | None = None, auth_dir: Path | None = None,
-               https: bool = False) -> Starlette:
+               https: bool = False, zwei_faktor: str = "") -> Starlette:
     """root None (local mode only): no book yet, every page leads to the company list /firmen."""
     from . import berichte_views, views, chat
 
     if root is None and auth_dir is not None:
         raise ValueError("aeradex serve braucht ein Buch")
-    ui = UI(root, token, auth_dir, https)
+    ui = UI(root, token, auth_dir, https, zwei_faktor)
     from . import benutzer_views, firmen_views, mobil_views
     routes = views.routes(ui) + mobil_views.routes(ui) + berichte_views.routes(ui) + chat.routes(ui) + benutzer_views.routes(ui) + (login_routes(ui) if auth_dir is not None else firmen_views.routes(ui)) + [
         Route("/datei/{path:path}", serve_file(ui)),
+        Route("/x/{plugin:str}/{slug:str}", endpunkt_route(ui)),
         Route("/events", events(ui)),
         Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
     ]
@@ -747,7 +901,7 @@ def run(root: Path | None, port: int = 5151, open_browser: bool = True) -> None:
 
 
 def run_server(root: Path, host: str = "127.0.0.1", port: int = 8080, config: Path | None = None,
-               https: bool = False) -> None:
+               https: bool = False, zwei_faktor: str = "") -> None:
     """Multi-user mode with login (behind a TLS reverse proxy such as Caddy or nginx)."""
     import uvicorn
 
@@ -755,8 +909,9 @@ def run_server(root: Path, host: str = "127.0.0.1", port: int = 8080, config: Pa
     directory = config_dir(config)
     if not UserStore(directory).has_admin():
         raise SystemExit(f"Noch kein Admin in {directory}/users.yaml — zuerst: aeradex user add NAME --rolle admin")
-    app = create_app(root, auth_dir=directory, https=https)
-    print(f"aeradex läuft für {app.state.ui.book().settings.firma} auf http://{host}:{port} (Login, Benutzer in {directory})")
+    app = create_app(root, auth_dir=directory, https=https, zwei_faktor=zwei_faktor)
+    zf = f", zweiter Faktor für {'alle' if zwei_faktor == 'alle' else 'Admins'}" if zwei_faktor else ""
+    print(f"aeradex läuft für {app.state.ui.book().settings.firma} auf http://{host}:{port} (Login, Benutzer in {directory}{zf})")
     # Trust X-Forwarded-* only from the reverse proxy on this machine: with "*" anyone could name any address
     # (dodging the login throttle) or pretend https. uvicorn then puts the real client into request.client.
     uvicorn.run(app, host=host, port=port, log_level="warning", proxy_headers=True,

@@ -531,6 +531,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--port", type=int, default=8080)
     s.add_argument("--config", help="Verzeichnis mit users.yaml und secret (Standard ~/.config/aeradex)")
     s.add_argument("--https", action="store_true", help="Cookies nur über HTTPS senden (empfohlen)")
+    s.add_argument("--2fa", dest="zwei_faktor", choices=["admin", "alle"], default="",
+                   help="zweiter Faktor (Code aus einer Authenticator-App) für Admins oder alle")
     s = sub.add_parser("user", help="Benutzer für aeradex serve")
     us = s.add_subparsers(dest="sub", required=True)
     for name in ("add", "list", "passwort", "remove"):
@@ -539,17 +541,20 @@ def build_parser() -> argparse.ArgumentParser:
         if name != "list":
             c.add_argument("name")
         if name == "add":
-            c.add_argument("--rolle", choices=["lesen", "buchhaltung", "admin"], default="buchhaltung")
+            c.add_argument("--rolle", choices=["lesen", "buchhaltung", "admin", "verkauf"], default="buchhaltung")
             c.add_argument("--anzeige", default="", help="Name im Änderungsverlauf, z.B. 'Anna Muster'")
         if name in ("add", "passwort"):
             c.add_argument("--passwort-stdin", action="store_true", help="Passwort von stdin lesen (für Skripte)")
     c = us.add_parser("rolle", help="Rolle ändern (beendet die Anmeldungen der Person)")
     c.add_argument("--config")
     c.add_argument("name")
-    c.add_argument("rolle", choices=["lesen", "buchhaltung", "admin"])
+    c.add_argument("rolle", choices=["lesen", "buchhaltung", "admin", "verkauf"])
+    c = us.add_parser("2fa-zuruecksetzen", help="zweiten Faktor entfernen (Handy verloren); beim nächsten Login neu einrichten")
+    c.add_argument("--config")
+    c.add_argument("name")
     c = us.add_parser("einladen", help="Einladungslink erstellen (7 Tage, einmal verwendbar)")
     c.add_argument("--config")
-    c.add_argument("--rolle", choices=["lesen", "buchhaltung", "admin"], default="buchhaltung")
+    c.add_argument("--rolle", choices=["lesen", "buchhaltung", "admin", "verkauf"], default="buchhaltung")
     c.add_argument("--notiz", default="", help="für wen, z.B. 'Lea Muster'")
     c.add_argument("--url", required=True, help="öffentliche Adresse, z.B. https://buch.example.ch")
     s = sub.add_parser("firmen", help="Firmen auf diesem Computer (Liste für aeradex ui)")
@@ -1325,6 +1330,11 @@ def main(argv: list[str] | None = None) -> int:
                 UserLog(store.dir).add("cli", "rolle", benutzer=a.name, rolle=a.rolle)
                 print(f"✓ {a.name}: {a.rolle}")
                 return 0
+            if a.sub == "2fa-zuruecksetzen":
+                store.clear_totp(a.name)
+                UserLog(store.dir).add("cli", "zwei-faktor zurueckgesetzt", benutzer=a.name)
+                print(f"✓ {a.name}: zweiter Faktor entfernt, Anmeldungen beendet")
+                return 0
             if a.sub == "einladen":
                 token, entry = Invites(store.dir).create("cli", a.rolle, a.notiz)
                 UserLog(store.dir).add("cli", "eingeladen", rolle=a.rolle, notiz=entry["notiz"])
@@ -1359,7 +1369,7 @@ def main(argv: list[str] | None = None) -> int:
         except BookError as exc:
             print(f"✗ {exc}", file=sys.stderr)
             return 2
-        run_server(root, a.host, a.port, Path(a.config) if a.config else None, a.https)
+        run_server(root, a.host, a.port, Path(a.config) if a.config else None, a.https, a.zwei_faktor)
         return 0
     if a.cmd == "ui":
         try:

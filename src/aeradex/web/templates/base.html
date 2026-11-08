@@ -10,13 +10,14 @@
 <link rel="stylesheet" href="/static/aeradex.css?v={{ asset }}">
 <script>try{var t=localStorage.getItem("aeradex-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
-<body hx-headers='{"X-CSRF": "{{ csrf }}"}'>
-<div class="app chat-open" id="app">
+<body hx-headers='{"X-CSRF": "{{ csrf }}"}'{% if user and user.nur_verkauf %} data-live="aus"{% endif %}>
+{% set nur_verkauf = user and user.nur_verkauf %}
+<div class="app{{ '' if nur_verkauf else ' chat-open' }}" id="app">
 <div id="page">
 {% set nv = navigation %}
 <header class="top">
   <div class="toprow">
-    <a class="brand" href="/" aria-label="aeradex — Übersicht"><span class="coin" aria-hidden="true"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><mask id="ae-top"><rect width="32" height="32" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M15.85 11.4V20.6"/><circle cx="11.25" cy="16" r="4.6"/><path d="M15.85 16H25.35A4.75 4.75 0 0 0 15.85 16"/><path d="M15.85 16A4.75 4.75 0 0 0 24.24 19.05"/></g></mask><circle cx="16" cy="16" r="15" fill="currentColor" mask="url(#ae-top)"/></svg></span><b>aeradex</b></a>
+    <a class="brand" href="/" aria-label="{{ 'Start' if nur_verkauf else 'aeradex — Übersicht' }}"><span class="coin" aria-hidden="true"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><mask id="ae-top"><rect width="32" height="32" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M15.85 11.4V20.6"/><circle cx="11.25" cy="16" r="4.6"/><path d="M15.85 16H25.35A4.75 4.75 0 0 0 15.85 16"/><path d="M15.85 16A4.75 4.75 0 0 0 24.24 19.05"/></g></mask><circle cx="16" cy="16" r="15" fill="currentColor" mask="url(#ae-top)"/></svg></span><b>aeradex</b></a>
     <nav class="sections" aria-label="Hauptnavigation">
       {% for s in nv.bereiche %}{% if s is none %}<span class="sep" aria-hidden="true"></span>{% else %}
       <a href="{{ s.url }}" class="{{ 'on' if s.on }}" {{ 'aria-current=page' if s.on }} title="{{ s.label }}{% if s.kuerzel %} (g {{ s.kuerzel }}){% endif %}" {% if s.kuerzel %}data-key="{{ s.kuerzel }}"{% endif %}>{{ s.label }}{% if s.badge %}<span class="badge">{{ s.badge }}</span>{% endif %}</a>{% endif %}{% endfor %}
@@ -33,6 +34,17 @@
           </form>
         </div>
       </details>{% endif %}
+      {% if nur_verkauf %}
+      <details class="menu mandant">
+        <summary title="{{ user.anzeige }}"><span class="firma">{{ user.anzeige }}</span></summary>
+        <div class="menubox right">
+          <strong>{{ settings.firma }}</strong>
+          <span class="small">{{ user.anzeige }} · {{ user.rolle_text }}</span>
+          <span class="small"><a class="link" href="/konto">Mein Konto</a></span>
+          <form hx-post="/logout"><button class="btn small ghost" type="submit">Abmelden</button></form>
+        </div>
+      </details>
+      {% else %}
       {% if nav.fehler %}<a href="/einstellungen#pruefung" class="status bad" title="{{ nav.fehler }} Fehler im Buch — anzeigen"><span class="dot bad"></span>{{ nav.fehler }}</a>
       {% else %}<a href="/einstellungen#pruefung" class="status" title="Buch geprüft · 0 Fehler"><span class="dot"></span><span class="vh">Geprüft</span></a>{% endif %}
       <details class="menu mandant">
@@ -42,7 +54,7 @@
           <span class="small muted">{{ settings.adresse.ort or "" }}{% if settings.sperre_bis %} · gesperrt bis {{ settings.sperre_bis|datum }}{% else %} · nichts gesperrt{% endif %}</span>
           <span class="small muted" title="{{ book.root }}">Ordner: {{ book.root.name }}</span>
           {% if not user %}<a class="btn small" href="/firmen">Firma wechseln oder neu anlegen</a>{% endif %}
-          {% if user %}<span class="small">{{ user.anzeige }} · {{ {"lesen": "Leserecht", "buchhaltung": "Buchhaltung", "admin": "Admin"}[user.rolle] }}</span>
+          {% if user %}<span class="small">{{ user.anzeige }} · {{ user.rolle_text }}</span>
           <span class="small"><a class="link" href="/konto">Mein Konto</a> · <a class="link" href="/benutzer">Benutzer</a></span>{% endif %}
           <span class="small"><a class="link" href="/datensicherung">Datensicherung</a> · <a class="link" href="/m/ansicht?zu=handy" title="Die schlanke Ansicht fürs Handy: Kunden, Rechnungen, Belege scannen, Agent">Handy-Ansicht</a></span>{% if user %}
           <form hx-post="/logout"><button class="btn small ghost" type="submit">Abmelden</button></form>{% endif %}
@@ -50,6 +62,7 @@
       </details>
       <a class="icon {{ 'on' if path.startswith('/verlauf') }}" href="/verlauf" title="Verlauf (g v)" aria-label="Verlauf" data-key="v"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.5a6.5 6.5 0 1 1-6.1 4.3M3.5 3.5v4h4M10 6.5V10l2.5 1.5"/></svg></a>
       <a class="icon {{ 'on' if path.startswith('/einstellungen') or (navigation and navigation.einstellungen) }}" href="/einstellungen" title="Einstellungen (g e)" aria-label="Einstellungen" data-key="e"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 6h13M3.5 14h13"/><circle cx="7.5" cy="6" r="2" class="knob"/><circle cx="12.5" cy="14" r="2" class="knob"/></svg></a>
+      {% endif %}
       <button class="icon" id="themeBtn" type="button" title="Hell / Dunkel" aria-label="Hell / Dunkel"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5a6.5 6.5 0 0 1 0 13z" class="fill"/></svg></button>
     </div>
   </div>
@@ -60,17 +73,17 @@
   {% endif %}
 </header>
   <main class="main" id="main">
-    {% if user and not user.can_write %}<div class="alert info">Du hast Leserecht: Ansehen und Berichte ja, Änderungen nein.</div>{% endif %}
+    {% if user and not user.can_write and not nur_verkauf %}<div class="alert info">Du hast Leserecht: Ansehen und Berichte ja, Änderungen nein.</div>{% endif %}
     {% block main %}{% endblock %}
   </main>
 </div>
-{% include "_chat.html" %}
+{% if not nur_verkauf %}{% include "_chat.html" %}{% endif %}
 </div>
-<button class="btn chatopen" type="button" id="chatOpen" hidden>Agent fragen</button>
+{% if not nur_verkauf %}<button class="btn chatopen" type="button" id="chatOpen" hidden>Agent fragen</button>{% endif %}
 {% if flash %}<div class="toast {{ 'error' if flash.kind == 'error' }}" id="toast" role="status">✓ {{ flash.msg }}</div>{% endif %}
 <div class="livebar" id="livebar" hidden><button class="btn small primary" type="button" id="reloadBtn">Buch wurde geändert · neu laden</button></div>
 <script src="/static/htmx.min.js?v={{ asset }}"></script>
 <script src="/static/app.js?v={{ asset }}"></script>
-<script src="/static/chat.js?v={{ asset }}"></script>
+{% if not nur_verkauf %}<script src="/static/chat.js?v={{ asset }}"></script>{% endif %}
 </body>
 </html>

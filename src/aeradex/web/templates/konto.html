@@ -4,7 +4,15 @@
 {% block main %}
 <div class="topbar"><div><h1>Mein Konto</h1>
   <div class="sub">{{ ich.anzeige }} · Benutzername {{ ich.name }} · {{ ich.rolle_text }}{% if ich.eingeladen_von %} · eingeladen von {{ ich.eingeladen_von }}{% endif %}</div></div>
-  <div class="actions"><a class="btn" href="/benutzer">Benutzer</a></div></div>
+  {% if not ich.nur_verkauf %}<div class="actions"><a class="btn" href="/benutzer">Benutzer</a></div>{% endif %}</div>
+
+{% if zwei_faktor and (zwei_faktor.pflicht or zwei_faktor.aktiv) %}
+<section class="panel">
+  <header><h2>Zwei-Faktor</h2><span class="hint">Code aus der Authenticator-App nach dem Passwort</span></header>
+  <div class="body"><p>{% if zwei_faktor.aktiv %}<span class="pill ok">aktiv</span> · noch {{ zwei_faktor.ersatzcodes }} Ersatzcodes{% else %}<span class="pill warn">noch nicht eingerichtet</span>{% endif %}</p>
+  <p class="small muted">Handy verloren und keine Ersatzcodes mehr: Ein Admin setzt den zweiten Faktor auf dem Server zurück (<code>aeradex user 2fa-zuruecksetzen NAME</code>); beim nächsten Anmelden richtest du ihn neu ein.</p></div>
+</section>
+{% endif %}
 
 <form class="panel" hx-post="/konto" hx-target="find .errors">
   <header><h2>Anzeigename</h2><span class="hint">steht im Verlauf und im Journal bei jeder Buchung</span></header>

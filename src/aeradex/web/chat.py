@@ -819,10 +819,20 @@ def routes(ui) -> list[Route]:
             return JSONResponse({"ok": False, "fehler": str(exc)}, status_code=400)
         return JSONResponse({"ok": True, "text": text})
 
+    def no_sales(handler):
+        """The sales role never reaches the agent (it sees nothing of the books); the middleware refuses it
+        already, this holds even if that changes."""
+        async def guarded(request: Request):
+            user = getattr(request.state, "user", None)
+            if user is not None and user.nur_verkauf:
+                return JSONResponse({"ok": False, "fehler": "Der Agent ist für deine Rolle nicht verfügbar."}, status_code=403)
+            return await handler(request)
+        return guarded
+
     return [
-        Route("/chat/send", send, methods=["POST"]),
-        Route("/chat/diktat", diktat, methods=["POST"]),
-        Route("/chat/stream/{turn:str}", stream),
-        Route("/chat/neu", reset, methods=["POST"]),
-        Route("/chat/verlauf", history),
+        Route("/chat/send", no_sales(send), methods=["POST"]),
+        Route("/chat/diktat", no_sales(diktat), methods=["POST"]),
+        Route("/chat/stream/{turn:str}", no_sales(stream)),
+        Route("/chat/neu", no_sales(reset), methods=["POST"]),
+        Route("/chat/verlauf", no_sales(history)),
     ]
