@@ -57,6 +57,11 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   header and key salts), `aeradex-zugriff` (ssh keys for Claude Code, locked to the forced command `aeradex-ssh`),
   `aeradex-anruf` + `aeradex-telegram` (voice/Telegram assistant over `web/chat.py`). Server templates: `deploy/`.
   Nothing customer-specific in them: names, domains, logos and trade rules are settings or branding.
+- `aeradex-ebics`: own EBICS 3.0 (H005) client (`protokoll.py`, no aeradex imports: keys/certs, XML-DSig over
+  `authenticate="true"` with inclusive C14N of the subtree — lxml's own subtree c14n is wrong, see `_c14n` —, AES/RSA,
+  INI/HIA/HPB/BTD) and the book side (`ebics.py`): state and private keys only in `.aeradex/lokal/ebics/` (never git),
+  downloads confirmed to the bank once stored, imported via `api.bank_import` from a copy outside the book (the import
+  works on a staged copy without `lokal/`). Tests run against `tests/testbank.py` (official XSDs in `tests/xsd/`).
 - `aeradex-leistungen` beyond time and material: `entwuerfe.py` invoice drafts (open entries of a customer/object
   collected until a person sets the missing prices and issues them through `abrechnung.bill`; positions always computed
   from the entries), `rapporte.py` scanned paper reports (Regie-/Material-/Wochenrapport; QR of the printed form or the

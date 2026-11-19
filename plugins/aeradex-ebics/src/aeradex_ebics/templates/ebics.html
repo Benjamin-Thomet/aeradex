@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% from "_macros.html" import errors %}
+{% block title %}EBICS{% endblock %}
+{% set labels = {"einrichten": "Einrichten", "senden": "Schlüssel senden", "brief": "Brief an die Bank", "freischaltung": "Freischaltung", "pruefen": "Bankschlüssel prüfen", "aktiv": "Aktiv"} %}
+{% set nr = {"einrichten": 1, "senden": 2, "freischaltung": 3, "pruefen": 4, "aktiv": 5} %}
+{% block main %}
+<div class="topbar">
+  <div><h1>EBICS</h1><div class="sub">Kontoauszüge (camt.053) automatisch von der Bank · EBICS 3.0{% if cfg.bank %} · {{ cfg.bank }}{% endif %}</div></div>
+  <div class="actions">{% if schritt == 'aktiv' %}<span class="pill ok">aktiv</span>{% else %}<span class="pill warn">Schritt {{ nr[schritt] }} von 5 · {{ labels[schritt] }}</span>{% endif %}</div>
+</div>
+
+{% if schritt == 'aktiv' %}
+<div class="panel">
+  <header><h2>Abholen</h2><span class="hint">täglich automatisch · nur was die Bank noch nicht geliefert hat</span></header>
+  <form class="body" hx-post="/p/ebics/ebics/abholen" hx-target="find .errors">
+    <p>Letzter Abruf: {{ (cfg.letzter_abruf or '—')|replace('T', ' ') }}{% if cfg.letzter_fehler %} · <span class="pill warn">Fehler</span> {{ cfg.letzter_fehler.text }} ({{ cfg.letzter_fehler.zeit|replace('T', ' ') }}){% endif %}</p>
+    {% if offen %}<p class="small"><span class="pill warn">{{ offen|length }} Datei(en) warten auf den Import</span> — siehe Protokoll unten.</p>{% endif %}
+    {{ errors() }}
+    <div class="formfoot"><span class="small muted">Die Auszüge landen unter Bank wie ein hochgeladener camt.053</span><button class="btn primary" type="submit">Jetzt abholen</button></div>
+  </form>
+  <form class="body" hx-post="/p/ebics/ebics/zeitraum" hx-target="find .errors" style="border-top:1px solid var(--rule)">
+    <p class="small muted">Einen Zeitraum nochmals holen, z.B. alles seit Beginn des Buchs (auch schon Abgeholtes; der Import erkennt Doppeltes). Wie weit zurück die Bank liefert, bestimmt die Bank.</p>
+    <div class="form four">
+      <div class="field"><label for="z-von">von</label><input class="input" type="date" id="z-von" name="von" value="{{ buchbeginn }}" required></div>
+      <div class="field"><label for="z-bis">bis</label><input class="input" type="date" id="z-bis" name="bis" value="{{ heute }}" required></div>
+    </div>
+    {{ errors() }}
+    <div class="formfoot"><span></span><button class="btn" type="submit">Zeitraum abholen</button></div>
+  </form>
+</div>
+{% endif %}
+
+{% if schritt == 'einrichten' or not cfg.ini_gesendet %}
+<div class="panel">
+  <header><h2>1 · Verbindung zur Bank</h2><span class="hint">aus dem Brief «EBICS-Verbindungsparameter» der Bank</span></header>
+  <form class="body" hx-post="/p/ebics/ebics/einrichten" hx-target="find .errors">
+    <div class="form four">
+      <div class="field" style="grid-column: span 2"><label for="e-url">URL</label><input class="input" id="e-url" name="url" value="{{ cfg.url or '' }}" placeholder="https://…" required></div>
+      <div class="field"><label for="e-bank">Bank</label><input class="input" id="e-bank" name="bank" value="{{ cfg.bank or '' }}"></div>
+      <div class="field"><label for="e-host">Host-ID</label><input class="input" id="e-host" name="host_id" value="{{ cfg.host_id or '' }}" required></div>
+      <div class="field"><label for="e-partner">Partner-ID</label><input class="input" id="e-partner" name="partner_id" value="{{ cfg.partner_id or '' }}" required></div>
+      <div class="field"><label for="e-user">Teilnehmer-ID</label><input class="input" id="e-user" name="user_id" value="{{ cfg.user_id or '' }}" required></div>
+    </div>
+    <p class="small muted" style="margin-top:12px">Hashwerte der Bank aus demselben Brief (optional, aber empfohlen): dann werden die Bankschlüssel später automatisch geprüft.</p>
+    <div class="form four">
+      {% for k in hashes %}<div class="field" style="grid-column: span 2"><label for="h-{{ k }}">{{ {"x002_schluessel": "Bank Schlüssel Authentifikation (X002)", "e002_schluessel": "Bank Schlüssel Verschlüsselung (E002)", "x002_zertifikat": "Bank Zertifikat Authentifikation (X002)", "e002_zertifikat": "Bank Zertifikat Verschlüsselung (E002)"}[k] }}</label><input class="input num" id="h-{{ k }}" name="{{ k }}" value="{{ (cfg.erwartet or {}).get(k, '') }}" placeholder="e5 3e 96 …"></div>{% endfor %}
+    </div>
+    {{ errors() }}
+    <div class="formfoot"><span class="small muted">Beim ersten Speichern werden die drei Schlüssel erzeugt (bleiben auf diesem Server, nie im Buch)</span><button class="btn primary" type="submit">Speichern</button></div>
+  </form>
+</div>
+{% endif %}
+
+{% if schritt == 'senden' %}
+<div class="panel">
+  <header><h2>2 · Schlüssel an die Bank senden</h2><span class="hint">INI und HIA · geht nur einmal</span></header>
+  <form class="body" hx-post="/p/ebics/ebics/senden" hx-target="find .errors" hx-confirm="Die Schlüssel jetzt an {{ cfg.bank or 'die Bank' }} senden? Das geht nur einmal — danach Teilnehmer und Bank nicht mehr ändern.">
+    <p>Teilnehmer {{ cfg.user_id }} · Partner {{ cfg.partner_id }} · Host {{ cfg.host_id }}</p>
+    {{ errors() }}
+    <div class="formfoot"><span class="small muted">INI {{ 'gesendet' if cfg.ini_gesendet else 'offen' }} · HIA {{ 'gesendet' if cfg.hia_gesendet else 'offen' }}</span><button class="btn primary" type="submit">Senden</button></div>
+  </form>
+</div>
+{% endif %}
+
+{% if cfg.ini_gesendet and cfg.hia_gesendet and schritt != 'aktiv' %}
+<div class="panel">
+  <header><h2>3 · Brief an die Bank</h2><span class="hint">unterschreiben und der Bank schicken — erst dann schaltet sie frei</span></header>
+  <div class="body">
+    <p><a class="btn" href="/x/ebics/brief" target="_blank">Initialisierungsbrief (PDF)</a></p>
+    {% if schritt == 'freischaltung' %}
+    <form hx-post="/p/ebics/ebics/bankschluessel" hx-target="find .errors" style="margin-top:12px">
+      <p class="small muted">Sobald die Bank freigeschaltet hat (meist ein paar Tage nach dem Brief): Bankschlüssel holen.</p>
+      {{ errors() }}
+      <div class="formfoot"><span></span><button class="btn primary" type="submit">Bankschlüssel holen</button></div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if vergleich %}
+<div class="panel">
+  <header><h2>4 · Bankschlüssel</h2><span class="hint">{% if cfg.bestaetigt %}bestätigt: {{ cfg.bestaetigt.wie }} ({{ cfg.bestaetigt.zeit|replace('T', ' ') }}){% else %}mit dem Brief der Bank vergleichen{% endif %}</span></header>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Hashwert</th><th>vom Server erhalten</th><th>laut Brief</th><th></th></tr></thead>
+    <tbody>{% for r in vergleich %}<tr class="row"><td>{{ r.label }}</td><td class="num small">{{ r.erhalten }}</td><td class="num small">{{ r.erwartet or '—' }}</td>
+      <td>{% if r.gleich is sameas true %}<span class="pill ok">gleich</span>{% elif r.gleich is sameas false %}<span class="pill warn">ANDERS</span>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if schritt == 'pruefen' %}
+  <form class="body" hx-post="/p/ebics/ebics/bestaetigen" hx-target="find .errors" hx-confirm="Hast du die Hashwerte mit dem Brief der Bank verglichen und stimmen sie überein?">
+    {{ errors() }}
+    <div class="formfoot"><span class="small muted">Nur bestätigen, wenn die Werte mit dem Brief der Bank übereinstimmen</span><button class="btn primary" type="submit">Stimmt, bestätigen</button></div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if eigene %}
+<details class="panel">
+  <summary class="body"><b>Eigene Schlüssel</b> <span class="small muted">· Hashwerte wie im Initialisierungsbrief</span></summary>
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Schlüssel</th><th>Zertifikat (SHA-256)</th><th>Schlüssel (SHA-256)</th></tr></thead>
+    <tbody>{% for h in eigene %}<tr class="row"><td>{{ h.version }} {{ h.art }}</td><td class="num small">{{ h.zertifikat }}</td><td class="num small">{{ h.schluessel }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</details>
+{% endif %}
+
+{% if verlauf %}
+<div class="panel">
+  <header><h2>Protokoll</h2></header>
+  <div class="tablewrap"><table class="ledger">
+    <tbody>{% for v in verlauf %}<tr class="row"><td class="small num">{{ v.zeit|replace('T', ' ') }}</td><td>{{ v.art }}</td><td>{% if v.ok %}<span class="pill ok">ok</span>{% else %}<span class="pill warn">Fehler</span>{% endif %}</td><td class="small">{{ v.text }}{% if v.datei %} · {{ v.datei }}{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if cfg.ini_gesendet %}
+<details class="panel"><summary class="body small muted">Neu beginnen …</summary>
+  <form class="body" hx-post="/p/ebics/ebics/neu" hx-target="find .errors" hx-confirm="Schlüssel und Stand verwerfen? Danach muss die Bank den Teilnehmer zurücksetzen und es braucht einen neuen Brief.">
+    <p class="small">Nur wenn die Bank den Teilnehmer zurückgesetzt hat (z.B. neue Schlüssel nötig). Der alte Stand bleibt als Kopie liegen.</p>
+    {{ errors() }}
+    <div class="formfoot"><span></span><button class="btn ghost" type="submit">Neu beginnen</button></div>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

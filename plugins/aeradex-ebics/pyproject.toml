@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeradex-ebics"
+version = "0.1.0"
+description = "EBICS 3.0: Kontoauszüge (camt.053) automatisch von der Bank abholen — Plugin für aeradex"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+dependencies = ["aeradex>=0.8", "cryptography>=42", "lxml>=5"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.entry-points."aeradex.plugins"]
+ebics = "aeradex_ebics"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aeradex_ebics = ["templates/*.html"]
+
+[tool.pytest.ini_options]
+pythonpath = ["tests"]
