@@ -53,7 +53,7 @@ CODES = {
     "090005": "Keine neuen Daten zum Abholen",
     "091002": "Teilnehmer noch nicht freigeschaltet oder gesperrt (Initialisierungsbrief schon bei der Bank?)",
     "091003": "Unbekannter oder nicht berechtigter Teilnehmer",
-    "091004": "Unbekannter oder nicht berechtigter Teilnehmer",
+    "091004": "Teilnehmer noch nicht freigeschaltet (unterschriebener Initialisierungsbrief schon bei der Bank?)",
     "091005": "Auftragsart nicht erlaubt",
     "091008": "Die Bankschlüssel stimmen nicht mehr (neu mit HPB holen)",
     "091010": "Die Schlüsselversion wird von der Bank nicht unterstützt",

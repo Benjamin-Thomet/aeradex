@@ -44,7 +44,12 @@ def ordner(book) -> Path:
 
 
 def _now() -> str:
-    return dt.datetime.now().isoformat(timespec="seconds")
+    """Swiss local time (servers often run on UTC; the letter and the page show this)."""
+    try:
+        from zoneinfo import ZoneInfo
+        return dt.datetime.now(ZoneInfo("Europe/Zurich")).replace(tzinfo=None).isoformat(timespec="seconds")
+    except Exception:
+        return dt.datetime.now().isoformat(timespec="seconds")
 
 
 # ---------- settings and state ----------
