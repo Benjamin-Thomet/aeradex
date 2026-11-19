@@ -47,10 +47,13 @@ class Testbank:
         self.user_x = self.user_e = self.user_a = None
         self.aktiv = False                  # the bank releases the participant after the letter
         self.dateien: list[bytes] = []      # what waits to be fetched
+        self.status: list[bytes] = []       # pain.002 status reports waiting
         self.transaktionen: dict[str, dict] = {}
         self.log: list[str] = []
         self.segment_size = segment_size
         self.btd_params: list[etree._Element] = []
+        self.uploads: list[dict] = []          # what arrived complete and correctly signed
+        self.upload_fehler = ""                # set to make the bank refuse the next upload
 
     # --- answers ---
     def _keymgmt(self, code="000000", body_code="000000", data: bytes | None = None) -> bytes:
@@ -74,7 +77,7 @@ class Testbank:
         return p._xml(root)
 
     def _response(self, phase, code="000000", body_code="000000", tid="", segs=None, seg=None, last=True,
-                  tk=None, data=None) -> bytes:
+                  tk=None, data=None, order_id="") -> bytes:
         root = etree.Element(f"{{{p.NS}}}ebicsResponse", {"Version": "H005", "Revision": "1"}, nsmap=p.NSMAP)
         header = p._el(root, "header", authenticate="true")
         static = p._el(header, "static")
@@ -86,6 +89,8 @@ class Testbank:
         p._el(mut, "TransactionPhase", phase)
         if seg:
             p._el(mut, "SegmentNumber", seg, lastSegment="true" if last else "false")
+        if order_id:
+            p._el(mut, "OrderID", order_id)
         p._el(mut, "ReturnCode", code)
         p._el(mut, "ReportText", "[EBICS_OK] OK")
         body = p._el(root, "body")
@@ -155,33 +160,89 @@ class Testbank:
             validate(out)
             return self._keymgmt(data=p._xml(out))
         phase = root.findtext("e:header/e:mutable/e:TransactionPhase", namespaces=E)
+        if phase == "Initialisation" and order == "BTU":
+            return self._btu_init(root)
         if phase == "Initialisation":
             self.log.append(order)
             digests = root.find("e:header/e:static/e:BankPubKeyDigests", E)
             assert base64.b64decode(digests.findtext("e:Authentication", namespaces=E)) == p.cert_hash(self.cert_x)
             assert base64.b64decode(digests.findtext("e:Encryption", namespaces=E)) == p.cert_hash(self.cert_e)
-            self.btd_params.append(root.find("e:header/e:static/e:OrderDetails/e:BTDOrderParams", E))
-            if not self.dateien:
+            params = root.find("e:header/e:static/e:OrderDetails/e:BTDOrderParams", E)
+            self.btd_params.append(params)
+            queue = self.status if params.findtext("e:Service/e:MsgName", namespaces=E) == "pain.002" else self.dateien
+            if not queue:
                 return self._response(phase, body_code="090005")
-            data = self.dateien[0]
+            data = queue[0]
             enc, tk = p.encrypt(data, self.user_e.public_key())
             size = self.segment_size or len(enc)
             parts = [enc[i:i + size] for i in range(0, len(enc), size)]
             tid = hashlib.md5(enc).hexdigest().upper()
-            self.transaktionen[tid] = {"parts": parts, "quittung": None}
+            self.transaktionen[tid] = {"parts": parts, "quittung": None, "queue": queue}
             return self._response(phase, tid=tid, segs=len(parts), seg=1, last=len(parts) == 1, tk=tk, data=parts[0])
         tid = root.findtext("e:header/e:static/e:TransactionID", namespaces=E)
         tx = self.transaktionen[tid]
+        if phase == "Transfer" and tx.get("upload"):
+            return self._btu_transfer(root, tid, tx)
         if phase == "Transfer":
             n = int(root.findtext("e:header/e:mutable/e:SegmentNumber", namespaces=E))
             return self._response(phase, tid=tid, seg=n, last=n == len(tx["parts"]), data=tx["parts"][n - 1])
         code = root.findtext("e:body/e:TransferReceipt/e:ReceiptCode", namespaces=E)
         tx["quittung"] = code
         if code == "0":
-            self.dateien.pop(0)
+            tx["queue"].pop(0)
             return self._response(phase, code="011000")
         return self._response(phase, code="011001")
 
 
+def _decrypt(self, tk_b64: str, data: bytes) -> bytes:
+    key = self.e.decrypt(base64.b64decode(tk_b64), padding.PKCS1v15())
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    dec = Cipher(algorithms.AES(key), modes.CBC(b"\0" * 16)).decryptor()
+    raw = dec.update(data) + dec.finalize()
+    return zlib.decompress(raw[:-raw[-1]])
+
+
+def _btu_init(self, root):
+    self.log.append("BTU")
+    params = root.find("e:header/e:static/e:OrderDetails/e:BTUOrderParams", E)
+    assert params.find("e:SignatureFlag", E) is not None
+    info = root.find("e:body/e:DataTransfer/e:DataEncryptionInfo", E)
+    assert base64.b64decode(info.findtext("e:EncryptionPubKeyDigest", namespaces=E)) == p.cert_hash(self.cert_e)
+    tk = info.findtext("e:TransactionKey", namespaces=E)
+    sig = etree.fromstring(_decrypt(self, tk, base64.b64decode(
+        root.findtext("e:body/e:DataTransfer/e:SignatureData", namespaces=E))))
+    validate(sig, "ebics_signature_S002.xsd")
+    s2 = {"s": p.S002}
+    value = base64.b64decode(sig.findtext("s:OrderSignatureData/s:SignatureValue", namespaces=s2))
+    digest = base64.b64decode(root.findtext("e:body/e:DataTransfer/e:DataDigest", namespaces=E))
+    assert root.find("e:body/e:DataTransfer/e:DataDigest", E).get("SignatureVersion") == "A006"
+    self.user_a.public_key().verify(value, digest, padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=32),
+                                    hashes.SHA256())
+    segs = int(root.findtext("e:header/e:static/e:NumSegments", namespaces=E))
+    tid = hashlib.md5(value).hexdigest().upper()
+    self.transaktionen[tid] = {"upload": True, "tk": tk, "digest": digest, "segs": segs, "parts": [],
+                               "params": params, "order_id": f"A{len(self.uploads) + 1:03d}"}
+    if self.upload_fehler:
+        code, self.upload_fehler = self.upload_fehler, ""
+        return self._response("Initialisation", body_code=code)
+    return self._response("Initialisation", tid=tid)
+
+
+def _btu_transfer(self, root, tid, tx):
+    n = int(root.findtext("e:header/e:mutable/e:SegmentNumber", namespaces=E))
+    assert n == len(tx["parts"]) + 1
+    tx["parts"].append(base64.b64decode(root.findtext("e:body/e:DataTransfer/e:OrderData", namespaces=E)))
+    if n < tx["segs"]:
+        return self._response("Transfer", tid=tid, seg=n, last=False)
+    data = _decrypt(self, tx["tk"], b"".join(tx["parts"]))
+    assert p.order_digest(data) == tx["digest"], "Unterschrift passt nicht zu den Daten"
+    self.uploads.append({"data": data, "order_id": tx["order_id"], "params": tx["params"]})
+    return self._response("Transfer", tid=tid, seg=n, last=True, order_id=tx["order_id"])
+
+
 def _cert(data):
     return x509.load_der_x509_certificate(base64.b64decode(data.find(".//ds:X509Certificate", E).text))
+
+
+Testbank._btu_init = _btu_init
+Testbank._btu_transfer = _btu_transfer

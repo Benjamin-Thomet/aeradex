@@ -374,6 +374,8 @@ def abholen(book, von: dt.date | None = None, bis: dt.date | None = None, post=N
                 protokoll(book, "abholen", True, f"{dienst.msg}: {len(_xml_dateien(data))} Datei(en)", transaktion=tid)
                 if von and bis:
                     break                           # a date range is answered in one go
+        from . import zahlungen
+        result.update(zahlungen.status_abholen(book, c))
         cfg["letzter_abruf"] = _now()
         cfg.pop("letzter_fehler", None)
         schreiben(book, cfg)

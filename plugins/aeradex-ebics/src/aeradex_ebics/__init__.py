@@ -62,6 +62,14 @@ def _run(book, a):
         if a.still and not result.get("dateien") and not result.get("fehler"):
             return None
         return _kurz(result)
+    if a.aktion == "zahlungen":
+        from . import zahlungen
+        return zahlungen.dateien(book)
+    if a.aktion == "zahlung-senden":
+        from . import zahlungen
+        if not a.ja:
+            raise ebics.BookError("Zahlungen gehen sofort an die Bank — mit --ja und --total bestätigen")
+        return zahlungen.senden(book, a.datei, a.total, a.von_wem or "Kommandozeile")
     if a.aktion == "importieren":
         return ebics.importieren(book)
     if a.aktion == "protokoll":
@@ -74,7 +82,8 @@ def _run(book, a):
 
 def _setup(p):
     p.add_argument("aktion", choices=["status", "einrichten", "hev", "senden", "brief", "bankschluessel",
-                                      "bestaetigen", "abholen", "importieren", "protokoll", "neu"])
+                                      "bestaetigen", "abholen", "importieren", "protokoll", "neu",
+                                      "zahlungen", "zahlung-senden"])
     p.add_argument("--url", default="", help="einrichten: EBICS-Adresse der Bank (https://…)")
     p.add_argument("--host", default="", help="einrichten: Host-ID")
     p.add_argument("--partner", default="", help="einrichten: Partner-ID (Kunden-ID)")
@@ -84,6 +93,8 @@ def _setup(p):
         p.add_argument(f"--{key.replace('_', '-')}", dest=key, default="",
                        help=f"einrichten: Hashwert {key} aus dem Brief der Bank")
     p.add_argument("--pdf", default="", help="brief: Zieldatei")
+    p.add_argument("--datei", default="", help="zahlung-senden: Zahlungsdatei im Buch, z.B. zahlungen/2026-12-01-….xml")
+    p.add_argument("--total", default="", help="zahlung-senden: Gesamtbetrag zur Bestätigung (muss der Datei entsprechen)")
     p.add_argument("--von", default="", help="abholen: ab Datum JJJJ-MM-TT (sonst: alles Neue)")
     p.add_argument("--bis", default="")
     p.add_argument("--von-wem", dest="von_wem", default="", help="bestaetigen: wer verglichen hat")
@@ -100,7 +111,9 @@ def aeradex_commands():
 
 def _context(book, query):
     st = ebics.status(book)
+    from . import zahlungen
     return {**st, "verlauf": ebics.verlauf(book, 30), "schritte": ebics.SCHRITTE, "hashes": ebics.HASHES,
+            "zahlungen": zahlungen.dateien(book) if st["schritt"] == "aktiv" else [],
             "buchbeginn": ebics.buchbeginn(book), "heute": dt.date.today().isoformat()}
 
 
@@ -139,6 +152,16 @@ def _zeitraum(book, form):
     return {"meldung": _kurz(ebics.abholen(book, von, bis))}
 
 
+def _zahlung(book, form):
+    from aeradex.web import auth
+
+    from . import zahlungen
+    user = auth.benutzer()
+    sent = zahlungen.senden(book, form.get("pfad", ""), form.get("total", ""), getattr(user, "name", "") or "")
+    return {"meldung": f"{sent['anzahl']} Zahlung(en), CHF {sent['total']} an die Bank gesendet"
+                       + (f" (Auftrag {sent['auftrag']})" if sent.get("auftrag") else "")}
+
+
 def _neu(book, form):
     ebics.neu_beginnen(book)
     return {"meldung": "Zurückgesetzt"}
@@ -148,7 +171,7 @@ def _neu(book, form):
 def aeradex_pages():
     return [Page("ebics", "EBICS", "ebics.html", _context,
                  {"einrichten": _einrichten, "senden": _senden, "bankschluessel": _bankschluessel,
-                  "bestaetigen": _bestaetigen, "abholen": _abholen, "zeitraum": _zeitraum, "neu": _neu},
+                  "bestaetigen": _bestaetigen, "abholen": _abholen, "zeitraum": _zeitraum, "zahlung": _zahlung, "neu": _neu},
                  bereich="bank", rollen=("admin",))]
 
 
@@ -177,6 +200,21 @@ def aeradex_todos(book):
     if cfg.get("letzter_fehler"):
         return [Todo("EBICS: Abholen fehlgeschlagen", "/p/ebics/ebics", detail=cfg["letzter_fehler"]["text"],
                      tag="Bank", level="warn")]
+    if st["schritt"] == "aktiv":
+        from . import zahlungen
+        out = []
+        for z in zahlungen.gesendet(book).values():
+            if z.get("status") in ("abgelehnt", "teilweise abgelehnt"):
+                out.append(Todo(f"Bank: Zahlungen {z['status']}", "/p/ebics/ebics#zahlungen",
+                                detail=f"{z['pfad']} · {z.get('grund', '')}".strip(" ·"), tag="Bank", level="red"))
+        today = dt.date.today().isoformat()
+        ready = [d for d in zahlungen.dateien(book) if not d.get("ebics") and not d.get("fehler")
+                 and d.get("ausfuehrung", "") >= today]
+        if ready:
+            out.append(Todo("Zahlungen an die Bank senden", "/p/ebics/ebics#zahlungen",
+                            detail=f"{len(ready)} Datei(en) bereit", tag="Bank"))
+        if out:
+            return out
     if st["offen"]:
         return [Todo("EBICS: Auszüge warten auf den Import", "/p/ebics/ebics", detail=f"{len(st['offen'])} Datei(en)",
                      tag="Bank", level="warn")]
@@ -213,4 +251,4 @@ def aeradex_tools():
 def aeradex_instructions():
     return ("- EBICS (Plugin ebics): Die Kontoauszüge kommen automatisch von der Bank (täglich). Fehlen die neuesten "
             "Bewegungen, ebics_abholen(); ebics_status() zeigt den Stand. Die Einrichtung (Schlüssel, Brief an die "
-            "Bank) macht ein Mensch unter Bank › EBICS.")
+            "Bank) und das Senden von Zahlungen an die Bank macht ein Mensch unter Bank › EBICS.")

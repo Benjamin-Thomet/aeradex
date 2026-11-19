@@ -277,16 +277,14 @@ class Dienst:
 CAMT053 = Dienst()
 
 
-def btd_request(t: Teilnehmer, k: Schluessel, dienst: Dienst, von: dt.date | None = None,
-                bis: dt.date | None = None) -> bytes:
-    if k.bank_x is None or k.bank_e is None:
-        raise EbicsFehler("------", "Die Bankschlüssel fehlen noch (zuerst HPB)")
-    root = _root("ebicsRequest")
-    header = _el(root, "header", authenticate="true")
-    static = _static(header, t)
-    details = _el(static, "OrderDetails")
-    _el(details, "AdminOrderType", "BTD")
-    params = _el(details, "BTDOrderParams")
+# Swiss uploads and status reports (AEK: XE2 / Z01)
+PAIN001 = Dienst(name="MCT", msg="pain.001", scope="CH", container="", version="09")
+PAIN002 = Dienst(name="PSR", msg="pain.002", scope="CH", container="ZIP")
+SHA256 = "http://www.w3.org/2001/04/xmlenc#sha256"
+SEGMENT = 750_000          # encrypted bytes per segment: base64 stays below the 1 MB EBICS limit
+
+
+def _service(params, dienst: Dienst):
     service = _el(params, "Service")
     _el(service, "ServiceName", dienst.name)
     if dienst.scope:
@@ -298,17 +296,101 @@ def btd_request(t: Teilnehmer, k: Schluessel, dienst: Dienst, von: dt.date | Non
     msg = _el(service, "MsgName", dienst.msg)
     if dienst.version:
         msg.set("version", dienst.version)
+
+
+def _bank_digests(static, k: Schluessel):
+    if k.bank_x is None or k.bank_e is None:
+        raise EbicsFehler("------", "Die Bankschlüssel fehlen noch (zuerst HPB)")
+    digests = _el(static, "BankPubKeyDigests")
+    _el(digests, "Authentication", base64.b64encode(cert_hash(k.bank_x)).decode(), Version="X002", Algorithm=SHA256)
+    _el(digests, "Encryption", base64.b64encode(cert_hash(k.bank_e)).decode(), Version="E002", Algorithm=SHA256)
+
+
+def btd_request(t: Teilnehmer, k: Schluessel, dienst: Dienst, von: dt.date | None = None,
+                bis: dt.date | None = None) -> bytes:
+    root = _root("ebicsRequest")
+    header = _el(root, "header", authenticate="true")
+    static = _static(header, t)
+    details = _el(static, "OrderDetails")
+    _el(details, "AdminOrderType", "BTD")
+    params = _el(details, "BTDOrderParams")
+    _service(params, dienst)
     if von and bis:
         rng = _el(params, "DateRange")
         _el(rng, "Start", von.isoformat())
         _el(rng, "End", bis.isoformat())
-    digests = _el(static, "BankPubKeyDigests")
-    sha = "http://www.w3.org/2001/04/xmlenc#sha256"
-    _el(digests, "Authentication", base64.b64encode(cert_hash(k.bank_x)).decode(), Version="X002", Algorithm=sha)
-    _el(digests, "Encryption", base64.b64encode(cert_hash(k.bank_e)).decode(), Version="E002", Algorithm=sha)
+    _bank_digests(static, k)
     _el(static, "SecurityMedium", "0000")
     _el(_el(header, "mutable"), "TransactionPhase", "Initialisation")
     _el(root, "body")
+    sign(root, k.x002)
+    return _xml(root)
+
+
+# ---------- upload ----------
+
+def order_digest(data: bytes) -> bytes:
+    """SHA-256 of the order data for the electronic signature: CR and LF are left out (EBICS rule; the bank
+    strips them before verifying). The data itself travels unchanged."""
+    return hashlib.sha256(data.replace(b"\r", b"").replace(b"\n", b"")).digest()
+
+
+def a006(key: rsa.RSAPrivateKey, digest: bytes) -> bytes:
+    """A006: RSASSA-PSS, SHA-256, MGF1-SHA-256, salt 32 — over the order digest (as epics and ebics-client-php)."""
+    return key.sign(digest, padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=32), hashes.SHA256())
+
+
+def user_signature_data(t: Teilnehmer, k: Schluessel, digest: bytes) -> bytes:
+    root = etree.Element(f"{{{S002}}}UserSignatureData", nsmap={None: S002})
+    data = _el(root, "OrderSignatureData", ns=S002)
+    _el(data, "SignatureVersion", "A006", ns=S002)
+    _el(data, "SignatureValue", base64.b64encode(a006(k.a006, digest)).decode(), ns=S002)
+    _el(data, "PartnerID", t.partner_id, ns=S002)
+    _el(data, "UserID", t.user_id, ns=S002)
+    return _xml(root)
+
+
+def aes_encrypt(key: bytes, data: bytes) -> bytes:
+    """zlib, then AES-128-CBC (IV zero) with EBICS padding (zeros, last byte = number of padding bytes)."""
+    raw = zlib.compress(data)
+    pad = 16 - len(raw) % 16
+    raw += b"\0" * (pad - 1) + bytes([pad])
+    enc = Cipher(algorithms.AES(key), modes.CBC(b"\0" * 16)).encryptor()
+    return enc.update(raw) + enc.finalize()
+
+
+def btu_request(t: Teilnehmer, k: Schluessel, dienst: Dienst, dateiname: str, transaction_key: bytes,
+                digest: bytes, segmente: int) -> bytes:
+    root = _root("ebicsRequest")
+    header = _el(root, "header", authenticate="true")
+    static = _static(header, t)
+    details = _el(static, "OrderDetails")
+    _el(details, "AdminOrderType", "BTU")
+    params = _el(details, "BTUOrderParams", fileName=dateiname[:250])
+    _service(params, dienst)
+    _el(params, "SignatureFlag")                     # the signature is in this order (AEK: mandatory)
+    _bank_digests(static, k)
+    _el(static, "SecurityMedium", "0000")
+    _el(static, "NumSegments", segmente)
+    _el(_el(header, "mutable"), "TransactionPhase", "Initialisation")
+    body = _el(root, "body")
+    transfer = _el(body, "DataTransfer")
+    info = _el(transfer, "DataEncryptionInfo", authenticate="true")
+    _el(info, "EncryptionPubKeyDigest", base64.b64encode(cert_hash(k.bank_e)).decode(), Version="E002",
+        Algorithm=SHA256)
+    tk = k.bank_e.public_key().encrypt(transaction_key, padding.PKCS1v15())
+    _el(info, "TransactionKey", base64.b64encode(tk).decode())
+    sig = aes_encrypt(transaction_key, user_signature_data(t, k, digest))
+    _el(transfer, "SignatureData", base64.b64encode(sig).decode(), authenticate="true")
+    _el(transfer, "DataDigest", base64.b64encode(digest).decode(), SignatureVersion="A006")
+    sign(root, k.x002)
+    return _xml(root)
+
+
+def upload_transfer_request(t: Teilnehmer, k: Schluessel, tid: str, segment: int, last: bool, data: bytes) -> bytes:
+    root, mutable = _transaction_request(t, k, tid, "Transfer")
+    _el(mutable, "SegmentNumber", segment, lastSegment="true" if last else "false")
+    _el(_el(_el(root, "body"), "DataTransfer"), "OrderData", base64.b64encode(data).decode())
     sign(root, k.x002)
     return _xml(root)
 
@@ -359,6 +441,7 @@ class Antwort:
     letztes: bool = True
     transaction_key: bytes = b""
     order_data: bytes = b""
+    order_id: str = ""
     xml: bytes = field(default=b"", repr=False)
 
     @property
@@ -395,6 +478,7 @@ def parse(xml: bytes) -> Antwort:
         letztes=seg is None or seg.get("lastSegment") in ("true", "1"),
         transaction_key=base64.b64decode(tk) if tk else b"",
         order_data=base64.b64decode(data) if data else b"",
+        order_id=_find(root, "e:header/e:mutable/e:OrderID"),
         xml=xml)
 
 
@@ -415,11 +499,7 @@ def decrypt(order_data: bytes, transaction_key: bytes, e002: rsa.RSAPrivateKey) 
 def encrypt(data: bytes, bank_e002_public) -> tuple[bytes, bytes]:
     """The bank's side (used by the test bank): zlib, AES with padding (ANSI X9.23), key under E002."""
     key = os.urandom(16)
-    raw = zlib.compress(data)
-    pad = 16 - len(raw) % 16
-    raw += b"\0" * (pad - 1) + bytes([pad])
-    enc = Cipher(algorithms.AES(key), modes.CBC(b"\0" * 16)).encryptor()
-    return enc.update(raw) + enc.finalize(), bank_e002_public.encrypt(key, padding.PKCS1v15())
+    return aes_encrypt(key, data), bank_e002_public.encrypt(key, padding.PKCS1v15())
 
 
 def bank_zertifikate(order_data_xml: bytes) -> dict[str, x509.Certificate]:
@@ -496,6 +576,18 @@ class Client:
             self.quittung(first.transaction_id, False)
             raise EbicsFehler("------", f"Die Daten der Bank liessen sich nicht entschlüsseln: {exc}") from None
         return first.transaction_id, data
+
+    def upload(self, dienst: Dienst, data: bytes, dateiname: str) -> tuple[str, str]:
+        """Send an order (e.g. pain.001) with the participant's A006 signature. Returns (transaction id, order id)."""
+        key = os.urandom(16)
+        encrypted = aes_encrypt(key, data)
+        parts = [encrypted[i:i + SEGMENT] for i in range(0, len(encrypted), SEGMENT)]
+        first = self._send(btu_request(self.t, self.k, dienst, dateiname, key, order_digest(data), len(parts)))
+        order_id = first.order_id
+        for n, part in enumerate(parts, 1):
+            answer = self._send(upload_transfer_request(self.t, self.k, first.transaction_id, n, n == len(parts), part))
+            order_id = answer.order_id or order_id
+        return first.transaction_id, order_id
 
     def quittung(self, tid: str, ok: bool = True) -> None:
         try:

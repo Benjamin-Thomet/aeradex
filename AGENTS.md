@@ -59,7 +59,8 @@ This file is for developing aeradex itself. Agents *operating a book* read the
   Nothing customer-specific in them: names, domains, logos and trade rules are settings or branding.
 - `aeradex-ebics`: own EBICS 3.0 (H005) client (`protokoll.py`, no aeradex imports: keys/certs, XML-DSig over
   `authenticate="true"` with inclusive C14N of the subtree — lxml's own subtree c14n is wrong, see `_c14n` —, AES/RSA,
-  INI/HIA/HPB/BTD) and the book side (`ebics.py`): state and private keys only in `.aeradex/lokal/ebics/` (never git),
+  INI/HIA/HPB/BTD, BTU with A006 = PSS over SHA-256 of the data without CR/LF) and the book side (`ebics.py`;
+  `zahlungen.py`: the book's pain.001 files sent once by a person, pain.002 status read back): state and private keys only in `.aeradex/lokal/ebics/` (never git),
   downloads confirmed to the bank once stored, imported via `api.bank_import` from a copy outside the book (the import
   works on a staged copy without `lokal/`). Tests run against `tests/testbank.py` (official XSDs in `tests/xsd/`).
 - `aeradex-leistungen` beyond time and material: `entwuerfe.py` invoice drafts (open entries of a customer/object

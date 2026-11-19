@@ -30,6 +30,34 @@
 </div>
 {% endif %}
 
+{% if schritt == 'aktiv' %}
+<div class="panel" id="zahlungen">
+  <header><h2>Zahlungen an die Bank</h2><span class="hint">Zahlungsläufe (Einkauf) und Lohnzahlungen · mit Delias elektronischer Unterschrift · nur einmal pro Datei</span></header>
+  {% if zahlungen %}
+  <div class="tablewrap"><table class="ledger">
+    <thead><tr><th>Datei</th><th>Ausführung</th><th class="right">Anzahl</th><th class="right">Total CHF</th><th>Bank</th><th></th></tr></thead>
+    <tbody>{% for z in zahlungen %}<tr class="row">
+      <td>{{ z.art }} <span class="small muted">{{ z.pfad }}</span></td>
+      <td>{{ z.ausfuehrung|default('') }}</td>
+      <td class="right num">{{ z.anzahl|default('') }}</td>
+      <td class="right num">{{ z.total|default('') }}</td>
+      <td>{% if z.fehler %}<span class="pill warn">{{ z.fehler }}</span>
+          {% elif z.ebics %}{% set st = z.ebics.status %}<span class="pill {{ 'ok' if st in ('ausgeführt', 'angenommen') else 'warn' if 'abgelehnt' in st else 'info' }}">{{ st }}</span>
+            <span class="small muted">{{ z.ebics.gesendet[:16]|replace('T', ' ') }}{% if z.ebics.von %} · {{ z.ebics.von }}{% endif %}{% if z.ebics.auftrag %} · Auftrag {{ z.ebics.auftrag }}{% endif %}</span>
+            {% if z.ebics.grund %}<br><span class="small">{{ z.ebics.grund }}</span>{% endif %}
+            {% for t in z.ebics.abgelehnt or [] %}<br><span class="small">abgelehnt: {{ t.e2e }} {{ t.grund }}</span>{% endfor %}
+          {% else %}<span class="pill muted">nicht gesendet</span>{% endif %}</td>
+      <td class="right">{% if not z.fehler and not z.ebics and z.ausfuehrung >= heute %}
+        <form hx-post="/p/ebics/ebics/zahlung" hx-target="find .errors" hx-confirm="{{ z.anzahl }} Zahlung(en) über total CHF {{ z.total }} mit Ausführung {{ z.ausfuehrung }} jetzt an {{ cfg.bank or 'die Bank' }} senden? Das Geld geht vom Konto weg.">
+          <input type="hidden" name="pfad" value="{{ z.pfad }}"><input type="hidden" name="total" value="{{ z.total }}">
+          {{ errors() }}<button class="btn primary small" type="submit">An Bank senden</button></form>
+      {% elif not z.ebics and not z.fehler %}<span class="small muted">Datum vorbei — neu erstellen</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="body small muted">Noch keine Zahlungsdateien. Sie entstehen unter Einkauf (Zahlungslauf) und Lohn (Lohnzahlungsdatei).</div>{% endif %}
+</div>
+{% endif %}
+
 {% if schritt == 'einrichten' or not cfg.ini_gesendet %}
 <div class="panel">
   <header><h2>1 · Verbindung zur Bank</h2><span class="hint">aus dem Brief «EBICS-Verbindungsparameter» der Bank</span></header>

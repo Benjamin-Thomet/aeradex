@@ -96,3 +96,30 @@ def test_digest_matches_what_real_banks_signed(name):
     expected = root.xpath("//*[local-name()='DigestValue']")[0].text.strip()
     got = hashlib.sha256(b"".join(p._c14n(e) for e in root.xpath("//*[@authenticate='true']"))).digest()
     assert base64.b64encode(got).decode() == expected
+
+
+def test_upload_is_signed_and_arrives_whole():
+    keys = p.neue_schluessel("PARTNER1", "USER1")
+    bank = Testbank()
+    c = _client(bank, keys)
+    c.ini()
+    c.hia()
+    bank.aktiv = True
+    certs = c.hpb()
+    keys.bank_x, keys.bank_e = certs["X002"], certs["E002"]
+    pain = b'<?xml version="1.0"?>\r\n<Document>\n' + os.urandom(1_600_000).hex().encode() + b"\n</Document>"
+    old = p.SEGMENT
+    p.SEGMENT = 1_000_000                            # several segments
+    try:
+        tid, order_id = c.upload(p.PAIN001, pain, "lauf.xml")
+    finally:
+        p.SEGMENT = old
+    assert bank.uploads[0]["data"] == pain and order_id == "A001"
+    params = bank.uploads[0]["params"]
+    assert params.get("fileName") == "lauf.xml"
+    assert params.findtext("{urn:org:ebics:H005}Service/{urn:org:ebics:H005}MsgName") == "pain.001"
+    validate(p.btu_request(c.t, keys, p.PAIN001, "x.xml", b"0" * 16, p.order_digest(pain), 2))
+    bank.upload_fehler = "091116"
+    with pytest.raises(p.EbicsFehler) as err:
+        c.upload(p.PAIN001, pain, "lauf.xml")
+    assert err.value.code == "091116"

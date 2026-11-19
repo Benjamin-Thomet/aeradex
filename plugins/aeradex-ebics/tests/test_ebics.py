@@ -69,7 +69,7 @@ def test_from_setup_to_imported_statement(tmp_path, bank):
         ebics.abholen(book)
     bank.aktiv = True
     assert ebics.bankschluessel(book)["schritt"] == "aktiv"    # letter hashes match → confirmed
-    assert ebics.abholen(book) == {"dateien": 0, "importe": [], "fehler": []}
+    assert ebics.abholen(book) == {"dateien": 0, "importe": [], "fehler": [], "statusmeldungen": 0}
     camt = statement(IBAN, "1000.00", [(entry("250.00", "CRDT", "2026-03-02", party="Kunde AG", ustrd="Rechnung 7"), "250.00")],
                      "2026-03-02", "2026-03-02", "S-1")
     bank.dateien.append(_zip(camt))

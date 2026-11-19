@@ -4,8 +4,11 @@ Kontoauszüge automatisch von der Bank: EBICS 3.0 (H005), camt.053 «Tagesend-Ko
 Was die Bank liefert, läuft durch den normalen Bankimport von aeradex: abgelegt unter `bank/auszuege/`, Zahlungen
 zu Rechnungen und Kreditoren gebucht oder abgeglichen, nichts doppelt.
 
-Eigener EBICS-Client (keine Fremdbibliothek): `cryptography` + `lxml`. Nur Abholen — Zahlungen hochladen
-(pain.001) ist nicht Teil davon.
+Dazu **Zahlungen an die Bank**: die pain.001-Dateien, die aeradex schon erzeugt (Zahlungsläufe im Einkauf,
+Lohnzahlungsdateien), mit der elektronischen Unterschrift (A006) senden (BTF `MCT` / `CH` / pain.001 v09) und die
+Statusmeldungen der Bank (pain.002, `PSR`) beim nächsten Abholen lesen.
+
+Eigener EBICS-Client (keine Fremdbibliothek): `cryptography` + `lxml`.
 
 ## Einrichten (einmal, unter Bank › EBICS, nur Admins)
 
@@ -20,6 +23,19 @@ Eigener EBICS-Client (keine Fremdbibliothek): `cryptography` + `lxml`. Nur Abhol
 
 Dasselbe auf der Kommandozeile: `aeradex ebics einrichten|senden --ja|brief|bankschluessel|bestaetigen|abholen|status|protokoll`.
 
+## Zahlungen senden
+
+Bank › EBICS › «Zahlungen an die Bank»: jede Zahlungsdatei mit Ausführungsdatum, Anzahl, Total und Stand bei der
+Bank; «An Bank senden» nach Rückfrage. Schutz vor Fehlern, weil hier Geld das Konto verlässt:
+
+- nur ein Mensch sendet (Admin in der Oberfläche oder `aeradex ebics zahlung-senden --datei … --total … --ja`), nie der Agent
+- nur Dateien, die aeradex erstellt hat (`zahlungen/`, Lohnzahlungen mit Manifest und unverändertem SHA-256)
+- jede Datei nur einmal (nach Inhalt und MsgId); bestätigtes Total muss dem CtrlSum der Datei entsprechen
+- kein Ausführungsdatum in der Vergangenheit
+- abgelehnte Zahlungen (pain.002 RJCT/PART) erscheinen rot in der To-do-Liste
+
+Gebucht wird die Zahlung wie bisher, wenn sie im Kontoauszug erscheint.
+
 ## Wo was liegt
 
 Nichts davon kommt ins Buch (git): `<buch>/.aeradex/lokal/ebics/`
@@ -30,6 +46,8 @@ Nichts davon kommt ins Buch (git): `<buch>/.aeradex/lokal/ebics/`
 | `schluessel.yaml` | die privaten Schlüssel (0600; verschlüsselt, wenn `AERADEX_EBICS_PASSWORT` gesetzt ist) und die Zertifikate |
 | `eingang/` | Geliefertes, bis es importiert ist (ein Fehler beim Import lässt die Datei für den nächsten Lauf liegen) |
 | `archiv/` | Importiertes; Auszüge, die vor dem ersten Buchjahr enden, nur hier |
+| `zahlungen.yaml` | gesendete Zahlungsdateien (SHA-256, MsgId, Auftrag, wer, wann, Status der Bank) |
+| `status/` | Statusmeldungen der Bank (pain.002) |
 | `protokoll.jsonl` | jeder Austausch mit der Bank |
 
 Ohne Datumsbereich liefert die Bank alles, was noch nicht abgeholt wurde; bestätigt (Quittung) wird erst, wenn die
