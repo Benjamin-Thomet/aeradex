@@ -1239,7 +1239,8 @@ SETTINGS_KEYS = ("firma", "rechtsform", "uid", "telefon", "email", "iban", "qr_r
                  "zahlungsfrist_tage", "agent_modus", "sprache", "co", "zahlungs_iban", "agent_backend", "web")
 # The letter layout of invoices and offers (`rechnung:` in aeradex.yaml, see pdf.brief).
 LETTER_KEYS = ("layout", "ort", "einleitung", "dank", "unterzeichner", "funktion", "bank", "logo_hoehe_mm",
-               "offerte_einleitung")
+               "offerte_einleitung", "schrift", "farbe_text", "farbe_grau", "farbe_linie", "farbe_flaeche",
+               "kundennummer")
 
 
 def _invoice_number_setting(book: Book, value: dict) -> dict:
@@ -1304,7 +1305,16 @@ def settings_update(book: Book, adresse: dict | None = None, konten: dict | None
                 except ValueError:
                     raise BookError("Logo-Höhe zwischen 8 und 40 mm") from None
                 value = int(number) if number == int(number) else round(number, 1)
-            if value in ("", "kompakt") and key == "layout" or value == "":
+            if key == "schrift" and value and value.lower() not in pdf.FONTS:
+                raise BookError(f"Schrift: {', '.join(sorted(pdf.FONTS))} oder leer (Helvetica)")
+            if key.startswith("farbe_") and value and not pdf.HEX.fullmatch(value):
+                raise BookError(f"{key}: Farbe als Hex, z.B. #1C2B24")
+            if key == "kundennummer" and value not in ("", "ja", "nein"):
+                raise BookError("kundennummer: «ja» oder «nein»")
+            if key == "schrift":
+                value = value.lower()
+            if (value in ("", "kompakt") and key == "layout" or value == ""
+                    or key == "kundennummer" and value == "ja"):
                 current.pop(key, None)
             else:
                 current[key] = value

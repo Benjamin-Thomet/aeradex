@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import contextvars
 import io
+import re
+import threading
+from contextlib import contextmanager
+from pathlib import Path
 from datetime import date
 from decimal import Decimal
 from xml.sax.saxutils import escape
@@ -29,6 +33,7 @@ INK = colors.HexColor("#1c1917")
 MUTED = colors.HexColor("#78716c")
 RULE = colors.HexColor("#d6d3d1")
 SOFT = colors.HexColor("#f5f5f4")
+FONT, FONT_BOLD = "Helvetica", "Helvetica-Bold"
 
 SIDE = 20 * mm
 TOP = 20 * mm
@@ -105,7 +110,7 @@ def _watermark(canvas, doc) -> None:
     w, h = doc.pagesize
     canvas.saveState()
     canvas.setFillColor(colors.Color(0.6, 0.6, 0.6, alpha=0.22))
-    canvas.setFont("Helvetica-Bold", 72)
+    canvas.setFont(FONT_BOLD, 72)
     canvas.translate(w / 2, h / 2)
     canvas.rotate(35)
     canvas.drawCentredString(0, -24, text)
@@ -121,7 +126,7 @@ def _footer(canvas, doc, label: str, y: float = 10 * mm, rule: bool = True, firs
         canvas.setStrokeColor(RULE)
         canvas.setLineWidth(0.5)
         canvas.line(SIDE, y + 4 * mm, A4[0] - SIDE if doc.pagesize == A4 else doc.pagesize[0] - SIDE, y + 4 * mm)
-    canvas.setFont("Helvetica", 7.5)
+    canvas.setFont(FONT, 7.5)
     canvas.setFillColor(MUTED)
     canvas.drawString(SIDE, y, label)
     canvas.drawRightString(doc.pagesize[0] - SIDE, y, f"Seite {doc.page}")
@@ -136,10 +141,10 @@ def _running_head(canvas, doc, title: str) -> None:
         title = title[len(firm) + 3:]
     y = h - 12 * mm
     canvas.saveState()
-    canvas.setFont("Helvetica-Bold", 8)
+    canvas.setFont(FONT_BOLD, 8)
     canvas.setFillColor(INK)
     canvas.drawString(SIDE, y, firm)
-    canvas.setFont("Helvetica", 8)
+    canvas.setFont(FONT, 8)
     canvas.setFillColor(MUTED)
     canvas.drawRightString(w - SIDE, y, title)
     canvas.setStrokeColor(RULE)
@@ -211,17 +216,17 @@ def _letterhead(book: Book, width: float) -> Table:
 
 def _grid(data, widths, header=True, total_rows=(), zebra=False, right_cols=()):
     t = Table(data, colWidths=widths, repeatRows=1 if header else 0)
-    style = [("FONT", (0, 0), (-1, -1), "Helvetica", 8.5), ("TEXTCOLOR", (0, 0), (-1, -1), INK),
+    style = [("FONT", (0, 0), (-1, -1), FONT, 8.5), ("TEXTCOLOR", (0, 0), (-1, -1), INK),
              ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 2.5),
              ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5), ("LEFTPADDING", (0, 0), (-1, -1), 3),
              ("RIGHTPADDING", (0, 0), (-1, -1), 3)]
     for c in right_cols:
         style.append(("ALIGN", (c, 0), (c, -1), "RIGHT"))
     if header:
-        style += [("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8), ("TEXTCOLOR", (0, 0), (-1, 0), MUTED),
+        style += [("FONT", (0, 0), (-1, 0), FONT_BOLD, 8), ("TEXTCOLOR", (0, 0), (-1, 0), MUTED),
                   ("LINEBELOW", (0, 0), (-1, 0), 0.6, INK)]
     for r in total_rows:
-        style += [("FONT", (0, r), (-1, r), "Helvetica-Bold", 8.5), ("LINEABOVE", (0, r), (-1, r), 0.6, INK)]
+        style += [("FONT", (0, r), (-1, r), FONT_BOLD, 8.5), ("LINEABOVE", (0, r), (-1, r), 0.6, INK)]
     if zebra:
         for r in range(1 if header else 0, len(data)):
             if r % 2 == 0:
@@ -252,6 +257,83 @@ def _doc(buf, title: str, author: str, pagesize=A4, label: str = "", head: bool 
 # the signer, and the company in a footer line. Without it the documents keep the compact layout above.
 
 BRIEF_HEAD = colors.HexColor("#e8e8e8")
+
+
+# ---------- House style of the documents a customer gets (invoice, reminder, offer) ----------
+# A book may set in `rechnung:` a typeface bundled with aeradex (`schrift: jost`) and its own colours
+# (`farbe_text`, `farbe_grau`, `farbe_linie`, `farbe_flaeche`, hex like #1C2B24), so the invoice matches the
+# company's letterhead. Without them nothing changes. The QR payment part keeps the font the SIX standard asks for.
+
+FONTS = {"jost": ("Jost", "Jost-Regular.ttf", "Jost-Medium.ttf", "Jost-Italic.ttf")}
+COLOR_KEYS = {"farbe_text": "INK", "farbe_grau": "MUTED", "farbe_linie": "RULE", "farbe_flaeche": "SOFT"}
+HEX = re.compile(r"#[0-9A-Fa-f]{6}")
+_STYLE_LOCK = threading.RLock()          # the style is module state: one styled document at a time
+
+
+def _register_font(key: str) -> tuple[str, str]:
+    """Register a bundled typeface with reportlab once; returns its (regular, bold) names."""
+    from reportlab.lib.fonts import addMapping
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    family, regular, bold, italic = FONTS[key]
+    names = (family, f"{family}-Bold", f"{family}-Italic")
+    if family not in pdfmetrics.getRegisteredFontNames():
+        folder = Path(__file__).parent / "data" / "fonts"
+        for name, file in zip(names, (regular, bold, italic)):
+            pdfmetrics.registerFont(TTFont(name, str(folder / file)))
+        for b, i, name in ((0, 0, names[0]), (1, 0, names[1]), (0, 1, names[2]), (1, 1, names[1])):
+            addMapping(family, b, i, name)
+    return names[0], names[1]
+
+
+def house_style(book: Book) -> dict:
+    """The typeface and colours of the book's customer documents (only what is set)."""
+    cfg = book.settings.get("rechnung") or {}
+    if not isinstance(cfg, dict):
+        return {}
+    out = {}
+    if str(cfg.get("schrift") or "").lower() in FONTS:
+        out["schrift"] = str(cfg["schrift"]).lower()
+    for key in COLOR_KEYS:
+        if HEX.fullmatch(str(cfg.get(key) or "")):
+            out[key] = str(cfg[key])
+    return out
+
+
+def show_customer_number(book: Book) -> bool:
+    """`rechnung: {kundennummer: nein}` leaves the customer number off invoices and offers."""
+    cfg = book.settings.get("rechnung") or {}
+    return not (isinstance(cfg, dict) and str(cfg.get("kundennummer") or "").lower() in ("nein", "false", "no", "0"))
+
+
+@contextmanager
+def styled(book: Book):
+    """Render a customer document in the book's house style; restores the defaults afterwards."""
+    style = house_style(book)
+    if not style:
+        yield
+        return
+    g = globals()
+    with _STYLE_LOCK:
+        saved = {k: g[k] for k in ("FONT", "FONT_BOLD", "INK", "MUTED", "RULE", "SOFT", "BRIEF_HEAD")}
+        saved_st = {n: (st.fontName, st.textColor) for n, st in ST.items()}
+        try:
+            for key, name in COLOR_KEYS.items():
+                if key in style:
+                    g[name] = colors.HexColor(style[key])
+            if "farbe_flaeche" in style:
+                g["BRIEF_HEAD"] = g["SOFT"]
+            if "schrift" in style:
+                g["FONT"], g["FONT_BOLD"] = _register_font(style["schrift"])
+            for n, st in ST.items():
+                old_font, old_color = saved_st[n]
+                st.fontName = g["FONT_BOLD"] if old_font.endswith("Bold") else g["FONT"]
+                st.textColor = g["MUTED"] if old_color == saved["MUTED"] else g["INK"]
+            yield
+        finally:
+            g.update(saved)
+            for n, (font, color) in saved_st.items():
+                ST[n].fontName, ST[n].textColor = font, color
 
 
 def brief(book: Book) -> dict | None:
@@ -335,11 +417,11 @@ def brief_positions(meta: dict, width: float, totals: list[tuple[str, str, bool]
                      P(f"<b>{amount}</b>", "boldright") if bold else amount])
     t = Table(data, colWidths=[width * 0.08, width * 0.44, width * 0.09, width * 0.11, width * 0.13, width * 0.15],
               repeatRows=1)
-    style = [("FONT", (0, 0), (-1, -1), "Helvetica", 9.5), ("TEXTCOLOR", (0, 0), (-1, -1), INK),
+    style = [("FONT", (0, 0), (-1, -1), FONT, 9.5), ("TEXTCOLOR", (0, 0), (-1, -1), INK),
              ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 3),
              ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 4),
              ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-             ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 9.5), ("BACKGROUND", (0, 0), (-1, 0), BRIEF_HEAD),
+             ("FONT", (0, 0), (-1, 0), FONT_BOLD, 9.5), ("BACKGROUND", (0, 0), (-1, 0), BRIEF_HEAD),
              ("ALIGN", (2, 0), (2, -1), "RIGHT"), ("ALIGN", (3, 0), (3, -1), "CENTER"),
              ("ALIGN", (4, 0), (5, -1), "RIGHT")]
     for r in range(1, first_total):
@@ -377,7 +459,7 @@ def brief_footer(canvas, doc, book: Book, y: float = 10 * mm) -> None:
     canvas.setStrokeColor(RULE)
     canvas.setLineWidth(0.5)
     canvas.line(SIDE, y + 7 * mm, w - SIDE, y + 7 * mm)
-    canvas.setFont("Helvetica", 7.5)
+    canvas.setFont(FONT, 7.5)
     canvas.setFillColor(MUTED)
     canvas.drawCentredString(w / 2, y + 3.5 * mm, line)
     if uid:
@@ -493,6 +575,11 @@ def invoice_deductions(book: Book, meta: dict) -> list[tuple[str, Decimal, bool]
 
 
 def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
+    with styled(book):
+        return _invoice_pdf(book, meta, customer)
+
+
+def _invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
     s = book.settings
     width = A4[0] - 2 * SIDE
     a = meta.get("an") or {}
@@ -517,7 +604,9 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
         if meta.get("leistung_von"):                  # Art. 26 Abs. 2 MWSTG: date or period of the service
             info.append(["Leistungszeitraum", f"{d(meta['leistung_von'])} – {d(meta['leistung_bis'])}"]
                         if meta.get("leistung_bis") else ["Leistungsdatum", d(meta["leistung_von"])])
-        info += [["Zahlbar bis", d(meta["faellig"])], ["Kundennummer", meta.get("kunde") or ""]]
+        info.append(["Zahlbar bis", d(meta["faellig"])])
+        if show_customer_number(book):
+            info.append(["Kundennummer", meta.get("kunde") or ""])
         if meta.get("referenz"):
             info.append(["Referenz", qr.format_reference(meta["referenz"])])
         story.append(Table([[P(k, "small"), P(v)] for k, v in info], colWidths=[34 * mm, 80 * mm],
@@ -605,6 +694,11 @@ def invoice_pdf(book: Book, meta: dict, customer: dict | None) -> bytes:
 
 def reminder_pdf(book: Book, meta: dict, state: dict, entry: dict, text: str, customer: dict | None) -> bytes:
     """A reminder letter with a QR-bill for the open amount (same reference as the invoice)."""
+    with styled(book):
+        return _reminder_pdf(book, meta, state, entry, text, customer)
+
+
+def _reminder_pdf(book: Book, meta: dict, state: dict, entry: dict, text: str, customer: dict | None) -> bytes:
     s = book.settings
     width = A4[0] - 2 * SIDE
     a = meta.get("an") or {}
@@ -770,18 +864,18 @@ def payslip_pdf(book: Book, meta: dict, emp: dict) -> bytes:
         total("Nettolohn (Auszahlung)", chf(w["nettolohn"]), big=True)
 
     t = Table(rows, colWidths=[width * 0.5, width * 0.18, width * 0.13, width * 0.19], repeatRows=1)
-    style = [("FONT", (0, 0), (-1, -1), "Helvetica", 9), ("TEXTCOLOR", (0, 0), (-1, -1), INK),
+    style = [("FONT", (0, 0), (-1, -1), FONT, 9), ("TEXTCOLOR", (0, 0), (-1, -1), INK),
              ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
              ("TOPPADDING", (0, 0), (-1, -1), 2.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.6),
              ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-             ("FONT", (0, 0), (-1, 0), "Helvetica", 7.5), ("TEXTCOLOR", (0, 0), (-1, 0), MUTED),
+             ("FONT", (0, 0), (-1, 0), FONT, 7.5), ("TEXTCOLOR", (0, 0), (-1, 0), MUTED),
              ("LINEBELOW", (0, 0), (-1, 0), 0.6, INK)]
     for r in sections:
         style += [("TOPPADDING", (0, r), (-1, r), 7), ("SPAN", (0, r), (-1, r))]
     for r in totals:
-        style += [("FONT", (0, r), (-1, r), "Helvetica-Bold", 9), ("LINEABOVE", (0, r), (-1, r), 0.5, INK)]
+        style += [("FONT", (0, r), (-1, r), FONT_BOLD, 9), ("LINEABOVE", (0, r), (-1, r), 0.5, INK)]
     for r in strong:
-        style += [("FONT", (0, r), (-1, r), "Helvetica-Bold", 10.5), ("LINEABOVE", (0, r), (-1, r), 1, INK),
+        style += [("FONT", (0, r), (-1, r), FONT_BOLD, 10.5), ("LINEABOVE", (0, r), (-1, r), 1, INK),
                   ("LINEBELOW", (0, r), (-1, r), 1, INK), ("BACKGROUND", (0, r), (-1, r), SOFT),
                   ("TOPPADDING", (0, r), (-1, r), 4), ("BOTTOMPADDING", (0, r), (-1, r), 4)]
     t.setStyle(TableStyle(style))
@@ -858,19 +952,19 @@ def statement_pdf(book: Book, st: dict, anhang_blocks: list) -> bytes:
             line = [label, _amount(r["aktuell"])] + ([_amount(r["vorjahr"])] if prior else [])
             data.append(line)
             if r["stil"] == "zwischentotal":
-                style += [("FONT", (0, n), (-1, n), "Helvetica-Bold", 8.5), ("LINEABOVE", (1, n), (-1, n), 0.4, MUTED)]
+                style += [("FONT", (0, n), (-1, n), FONT_BOLD, 8.5), ("LINEABOVE", (1, n), (-1, n), 0.4, MUTED)]
             elif r["stil"] == "total":
-                style += [("FONT", (0, n), (-1, n), "Helvetica-Bold", 9), ("LINEABOVE", (0, n), (-1, n), 0.8, INK),
+                style += [("FONT", (0, n), (-1, n), FONT_BOLD, 9), ("LINEABOVE", (0, n), (-1, n), 0.8, INK),
                           ("LINEBELOW", (0, n), (-1, n), 0.8, INK), ("TOPPADDING", (0, n), (-1, n), 4),
                           ("BOTTOMPADDING", (0, n), (-1, n), 4)]
             n += 1
         widths = [width * 0.62, width * 0.19, width * 0.19] if prior else [width * 0.75, width * 0.25]
         t = Table(data, colWidths=widths, repeatRows=1)
-        t.setStyle(TableStyle([("FONT", (0, 0), (-1, -1), "Helvetica", 8.5), ("TEXTCOLOR", (0, 0), (-1, -1), INK),
+        t.setStyle(TableStyle([("FONT", (0, 0), (-1, -1), FONT, 8.5), ("TEXTCOLOR", (0, 0), (-1, -1), INK),
                                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
                                ("TOPPADDING", (0, 0), (-1, -1), 2.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.6),
                                ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-                               ("FONT", (1, 0), (-1, 0), "Helvetica-Bold", 8), ("TEXTCOLOR", (1, 0), (-1, 0), MUTED),
+                               ("FONT", (1, 0), (-1, 0), FONT_BOLD, 8), ("TEXTCOLOR", (1, 0), (-1, 0), MUTED),
                                ("LINEBELOW", (0, 0), (-1, 0), 0.6, INK)] + style))
         return t
 
@@ -1188,9 +1282,9 @@ def _mwst_abschnitt(section: dict, width: float) -> Table:
             style += [("BOX", (c, r), (c, r), 0.5, MUTED),
                       ("BACKGROUND", (c, r), (c, r), SOFT if line["von_hand"] else colors.white)]
         if bold:
-            style += [("FONT", (2, r), (-1, r), "Helvetica-Bold", 9), ("LINEABOVE", (0, r), (1, r), 0.4, RULE)]
+            style += [("FONT", (2, r), (-1, r), FONT_BOLD, 9), ("LINEABOVE", (0, r), (1, r), 0.4, RULE)]
         else:
-            style.append(("FONT", (2, r), (-1, r), "Helvetica", 9))
+            style.append(("FONT", (2, r), (-1, r), FONT, 9))
         if line["nr"] in ("500", "510"):
             style += [("LINEABOVE", (0, r), (-1, r), 1, INK), ("BOX", (-1, r), (-1, r), 1.2, INK)]
     t = Table(data, colWidths=widths)
@@ -1293,7 +1387,7 @@ def report_pdf(book: Book, title: str, blocks: list, subtitle: str = "", wide: b
             heads = [h + 1 for h in opts.get("heads", ())]
             if heads:
                 t.setStyle(TableStyle([s for h in heads for s in (
-                    ("FONT", (0, h), (-1, h), "Helvetica-Bold", 8.5), ("TOPPADDING", (0, h), (-1, h), 7))]))
+                    ("FONT", (0, h), (-1, h), FONT_BOLD, 8.5), ("TOPPADDING", (0, h), (-1, h), 7))]))
             story.append(t)
             story.append(Spacer(1, 3 * mm))
     doc.build(story)
@@ -1325,8 +1419,8 @@ def stamp(page, text: str) -> None:
     x0, y0 = float(box.left), float(box.bottom)
 
     def draw(c, size):
-        c.setFont("Helvetica-Bold", 8)
-        tw = c.stringWidth(text, "Helvetica-Bold", 8)
+        c.setFont(FONT_BOLD, 8)
+        tw = c.stringWidth(text, FONT_BOLD, 8)
         x, y = x0 + w - tw - 10 * mm, y0 + h - 8 * mm
         c.setFillColor(colors.white)
         c.setStrokeColor(INK)

@@ -72,6 +72,11 @@ def _brief_quote(book: Book, meta: dict, width: float) -> list:
 
 
 def quote_pdf(book: Book, meta: dict) -> bytes:
+    with core.styled(book):
+        return _quote_pdf(book, meta)
+
+
+def _quote_pdf(book: Book, meta: dict) -> bytes:
     s = book.settings
     width = A4[0] - 2 * SIDE
     if core.brief(book):
@@ -80,8 +85,8 @@ def quote_pdf(book: Book, meta: dict) -> bytes:
         return buf.getvalue()
     title = f"Offerte {meta['nummer']}" + (f" · {meta['titel']}" if meta.get("titel") else "")
     story = _head(book, meta, title, width)
-    story.append(_info([("Datum", d(meta["datum"])), ("Gültig bis", d(meta["gueltig_bis"])),
-                        ("Kundennummer", meta.get("kunde") or "")]))
+    story.append(_info([("Datum", d(meta["datum"])), ("Gültig bis", d(meta["gueltig_bis"]))]
+                       + ([("Kundennummer", meta.get("kunde") or "")] if core.show_customer_number(book) else [])))
     if meta.get("_text"):
         story += [Spacer(1, 6 * mm)] + [P(p) for p in meta["_text"].split("\n\n") if p.strip()]
     story.append(Spacer(1, 6 * mm))
@@ -113,12 +118,18 @@ def quote_pdf(book: Book, meta: dict) -> bytes:
 
 def rapport_pdf(book: Book, invoice: dict, items: list[dict]) -> bytes:
     """Every entry behind an invoice: date, who, what, quantity, price, amount."""
+    with core.styled(book):
+        return _rapport_pdf(book, invoice, items)
+
+
+def _rapport_pdf(book: Book, invoice: dict, items: list[dict]) -> bytes:
     s = book.settings
     width = A4[0] - 2 * SIDE
     names = {k: p["name"] for k, p in daten.people(book).items()}
     projs = daten.projects(book)
     story = _head(book, invoice, f"Leistungsrapport zu Rechnung {invoice['nummer']}", width)
-    story += [_info([("Rechnungsdatum", d(invoice["datum"])), ("Kundennummer", invoice.get("kunde") or "")]),
+    story += [_info([("Rechnungsdatum", d(invoice["datum"]))]
+                    + ([("Kundennummer", invoice.get("kunde") or "")] if core.show_customer_number(book) else [])),
               Spacer(1, 6 * mm)]
     data = [["Datum", "Wer", "Leistung", "Menge", "Preis", "Betrag"]]
     for e in sorted(items, key=lambda e: (e["datum"], e["id"])):

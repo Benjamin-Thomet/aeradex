@@ -1441,7 +1441,9 @@ def update_settings(firma: str = "", uid: str = "", telefon: str = "", email: st
         mwst: {"methode": keine|effektiv|saldo, "periode": quartal|semester, "saldosteuersatz": "6.2"}.
         web: Website (steht im Briefkopf bzw. in der Fusszeile).
         rechnung: Brief-Layout von Rechnung und Offerte: {"layout": "brief"|"kompakt", "ort", "einleitung",
-            "offerte_einleitung", "dank", "unterzeichner", "funktion", "bank" (Name der Bank), "logo_hoehe_mm"};
+            "offerte_einleitung", "dank", "unterzeichner", "funktion", "bank" (Name der Bank), "logo_hoehe_mm",
+        "schrift" ("jost" oder leer = Helvetica), "farbe_text", "farbe_grau", "farbe_linie", "farbe_flaeche" (Hex),
+        "kundennummer" ("nein" = nicht auf Rechnung/Offerte)};
             nur genannte Felder ändern sich, "" entfernt eines.
     """
     loc = locals()
