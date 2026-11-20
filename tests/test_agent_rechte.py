@@ -187,3 +187,33 @@ def test_mcp_reads_files_on_the_server(book):
     assert "Muster AG 120.00" in asyncio.run(call("inbox/notiz.txt")).text
     assert asyncio.run(call("inbox/foto.png")).type == "image"
     assert asyncio.run(call("aeradex.yaml")).text.startswith("Fehler")
+
+
+def test_mcp_hands_out_the_issued_invoice_pdf(tmp_path, monkeypatch):
+    """Claude Code on a PC gets the very PDF the server made (design, QR-bill) to attach it to an e-mail draft."""
+    pytest.importorskip("mcp")
+    import asyncio
+    import base64
+    from aeradex import mcp_server
+    root = tmp_path / "buch"
+    api.init_book(root, "Test GmbH", 2026, strasse="Weg", nr="1", plz="3000", ort="Bern",
+                  iban="CH93 0076 2011 6238 5295 7")
+    monkeypatch.setenv("AERADEX_BUCH", str(root))
+    book = Book(root)
+    api.customer_add(Book(book.root), name="Anna", firma="Kunde AG", strasse="Gasse", nr="1", plz="3011", ort="Bern")
+    res = api.invoice_create(Book(book.root), "K0001", [{"text": "Beratung", "menge": 1, "preis": "150"}], "2026-11-20")
+    nr, stored = res["rechnung"]["nummer"], (book.root / res["pdf"]).read_bytes()
+    server = mcp_server.build_server()
+
+    async def call(**args):
+        return (await server.call_tool("document_pdf", args)).content
+
+    blob, note = asyncio.run(call(nummer=nr))
+    mime = getattr(blob.resource, "mime_type", None) or getattr(blob.resource, "mimeType", None)
+    assert blob.type == "resource" and mime == "application/pdf"
+    assert base64.b64decode(blob.resource.blob) == stored and nr in note.text
+    by_path = asyncio.run(call(datei=res["pdf"]))[0]
+    assert base64.b64decode(by_path.resource.blob) == stored
+    assert asyncio.run(call(nummer="INV-9999"))[0].text.startswith("Fehler")
+    for datei in ("aeradex.yaml", "rechnungen/../aeradex.yaml", "../x.pdf", res["pdf"].replace(".pdf", ".md")):
+        assert asyncio.run(call(datei=datei))[0].text.startswith("Fehler"), datei
